@@ -1,0 +1,15 @@
+[workspace]
+members = [
+    "spikes/sim-spike",
+    "crates/sim-core",
+    "crates/sim-cli",
+    "crates/sim-protocol",
+    "crates/sim-server",
+    "crates/sim-persist",
+]
+resolver = "2"
+
+[profile.release]
+debug = "line-tables-only"
+lto = "thin"
+

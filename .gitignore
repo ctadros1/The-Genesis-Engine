@@ -1,0 +1,21 @@
+# Planning repository: keep generated results and local data out of version control.
+.DS_Store
+# Local agent tooling caches (vendored third-party skills), not project content.
+.agents/
+.claude/
+skills-lock.json
+target/
+node_modules/
+dist/
+.phase0-tools/
+.env
+.env.*
+!.env.example
+data/
+saves/
+exports/
+benchmarks/raw/
+benchmarks/screenshots/
+coverage/
+playwright-report/
+test-results/
