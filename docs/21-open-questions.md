@@ -20,7 +20,7 @@
 | SIMD strategy | backlog, needs profiling evidence | scalar/SoA baseline |
 | Disaster rules | not scheduled | disabled |
 | Communication rules | Phase 12 | `specifications/social-signal-channel.md` |
-| Disease rules | Phase 13, optional slice | disabled |
+| Disease rules | Phase 13b, optional slice | disabled |
 
 ## Open Questions From The 2026-08-04 Goal Change
 
@@ -38,7 +38,7 @@ implementer does not have to rediscover that it was considered.
 | Should plasticity rule form 5 (observational) exist, or must imitation be discovered from generic plasticity plus perception? | Phase 12, by measurement | Run both as conditions P and S rather than deciding by assertion. See `specifications/social-signal-channel.md` |
 | When should elevation become mutable? | not scheduled | Immutable. It feeds coastline derivation, drainage, and the lapse term, and the generator validates land fraction and connectivity against it |
 | What density threshold selects the dense terrain-modification representation? | Phase 11 | Set from measurement, recorded as versioned config, never a magic constant |
-| Do the Phase 7 to 12 campaigns need re-running under `lifesim-physiology-v1`? | Phase 13 | Yes for any result that is to become a standing finding. Stated in ADR-0017 |
+| Do the Phase 7 to 12 campaigns need re-running under `lifesim-physiology-v2`? | Phase 13b | Yes for any result that is to become a standing finding. Stated in ADR-0017 |
 | Can the deployment VM supply the compute a full campaign needs? | before any campaign | Unknown and unmeasured. This is a live risk, not a resolved default |
 
 ## Open Questions From The Research Reconciliation
@@ -51,6 +51,15 @@ implementer does not have to rediscover that it was considered.
 | Does stigmergic transmission occur, given that Phase 12 was reordered to depend on it? | Phase 11 | Unknown. If not, Phase 12 loses its baseline and reverts to the weaker comparison |
 | Does the developmental encoding survive its discontinuity gate? | Phase 9 | Unknown. Failure takes the parameterized fallback and forces a Phase 15 re-plan |
 | Should the 2.5D height and support subset land in Phase 11 or later? | Phase 11 | Later. Until it lands the plan does not claim stacked construction |
+
+## Open Questions From Intra-World Parallelism (ADR-0026)
+
+| Question | Deadline | Default If Unresolved |
+|---|---|---|
+| Does thread-count invariance (Tier 1) hold, or does the fallback to per-thread-count determinism get taken? | Phase 17 | Unknown. C17.2 decides it. Tier 1 is proposed because the all-fixed-point state makes cross-partition reductions order-independent by construction |
+| What is the real serial fraction, and does it survive Phases 7, 11, and 12? | Phase 17, re-measured after each | Unknown. The ~3.1 percent estimate mixes two benchmark records. `apply` is the serial part and those three phases each add conflict resolution to it |
+| Below what population is parallelism a net loss? | Phase 17 | Unknown. Barrier overhead is roughly fixed per tick while parallel work scales with population, so a crossover exists. Default stays disabled until it is measured |
+| Is 200,000 organisms in one world reachable? | Phase 17 | Plausible at current phase composition, marginal at full Phase 13 complexity. This is the question the phase exists to answer |
 
 ## Decision Protocol
 

@@ -160,7 +160,63 @@ Suggested target sequence: 5 headless, 6 biomes/origins, 7 contest,
 13 social, 14 ontogeny/sexual selection, 15 abiogenesis,
 16 multicellularity, 17 era detection.
 
-## 8. Explicitly deferred
+## 9. Intra-world parallelism (ADR-0026, Phase 17)
+
+`specifications/determinism-extensions.md` Rule 10 was amended directly (it
+was clean). Everything below belongs in files the concurrent session holds.
+
+### Decision-log entry (next available D-number)
+
+| Date | Status | Decision | Revisit Condition |
+|---|---|---|---|
+| 2026-08-04 | Proposed technical baseline | Intra-world parallelism authorized under conditions (ADR-0026), amending Rule 10 which forbade it outright. Shape: freeze read state, partition by `f(object_id, P)` with `P` a config constant **independent of thread count**, workers emit intents only, merge canonically in `(partition_index, object_id)` order, resolve conflicts under existing policies, commit once single-threaded. **Tier 1 (thread-count invariance) is proposed rather than the Tier 2 target originally set**, because the methodology review recommends partitioning by stable ID rather than worker count, and because this project's all-fixed-point state makes cross-partition reductions order-independent by construction (the ledger is `i128`; no cross-organism float accumulation exists). Tier 2 (thread count in the config hash, different thread count = different lineage) is the defined fallback. Tier 3 (true non-determinism) is **not available**: it would remove fail-closed checkpoint verification on the one world whose checkpoint chain is irreplaceable. Campaign worlds stay single-threaded and remain the basis for every claim | Tier 1 fails and the fallback's lineage cost is taken; a future phase adds a cross-organism float reduction; the measured serial fraction makes the speedup not worth the complexity; population turns out not to be the binding constraint |
+
+### Roadmap changes (`docs/19-implementation-roadmap.md`)
+
+- Add Phase 17, Intra-World Parallelism, marked **cross-cutting
+  infrastructure, does not execute last**. Recommended position: after Phase
+  13a, before Phase 12.
+- Ordering note: raising the population ceiling before demography is
+  regulated would only scale a world that is 99.9 percent starvation
+  mortality; running Phase 12 under a ceiling that is itself the suspected
+  blocker would confound a null.
+- Decision gates: add a `Intra-world parallelism` gate requiring
+  clean-process checksum equality per thread count (C17.1), the Tier 1
+  cross-thread-count result (C17.2), and the measured serial fraction,
+  speedup curve, and net-loss crossover (C17.6).
+
+### Backlog changes (`planning/backlog.md`)
+
+- Add Phase 17 to the phase table.
+- Deferred backlog: the entry "Profiling, SIMD, and parallelism work from
+  the superseded Phase 5 plan" is **partly superseded**  -  intra-world
+  parallelism now has its own ADR and phase. SIMD and profiling remain
+  separate and still need their own evidence.
+- Add: re-measure the `apply` serial fraction after Phases 7, 11, and 12,
+  since each adds conflict resolution to exactly the part that caps speedup.
+
+### FILE_MANIFEST.md
+
+    - decisions/0026-intra-world-parallelism.md
+    - planning/phase-17-intra-world-parallelism.md
+
+### Performance-strategy note (`docs/13-performance-strategy.md`)
+
+The staged plan's item 6 ("Parallelize only systems with deterministic
+ordering/reduction policy and equality tests") is now specified rather than
+aspirational; point it at ADR-0026 and Phase 17. The Amdahl estimate
+(~3.1 percent serial, ~9x ceiling at 12 threads) mixes the Phase 1 and Phase
+2 records and is an orientation, not evidence  -  Phase 17 measures the real
+split.
+
+### Time-scale note (`docs/27-time-scale-and-pacing.md`)
+
+This document is mine and clean, but its pacing table assumes
+single-threaded throughput. Once Phase 17 lands the table is restated,
+because generations per real day changes by whatever the measured speedup
+turns out to be. Left unedited for now since the number is unknown.
+
+## 10. Explicitly deferred
 
 **Sphere-world geometry and off-planet environments.** Recorded in
 ADR-0024's revisit conditions so that nothing in the rendering choice

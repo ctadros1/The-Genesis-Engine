@@ -291,9 +291,75 @@ must be identical at scheduler concurrency 1, 2, and C, and identical to
 single-world execution of the same seed. Any work-stealing, thread-count,
 or completion-order dependency shows up as a checksum difference.
 
-Within a world, parallelism remains opt-in and gated on ADR-0010's existing
-requirement of an ordering and reduction policy plus equality tests. Nothing
-in Phases 5 through 16 authorizes intra-world parallelism.
+### Intra-world parallelism (amended by ADR-0026)
+
+This rule previously stated that nothing authorizes intra-world
+parallelism. ADR-0026 amends that: intra-world parallelism is authorized
+**under the conditions below, and only under them**. ADR-0010's requirement
+of an ordering and reduction policy plus equality tests is satisfied here,
+not waived.
+
+Population is the binding constraint on the project's central question, and
+one world on one core caps a flagship world at an estimated 10,000 to 30,000
+organisms. That is the motivation; the conditions are what make it safe.
+
+**The required shape.** This is Rules 4 and 5 generalized from perception
+and learning to the whole tick, not a new pattern:
+
+1. Freeze read state at the tick boundary.
+2. Partition by `f(object_id, P)`, a pure function of stable ID. **Never by
+   thread count and never by array slice.**
+3. Workers produce intents into per-partition buffers. **No worker writes
+   world state.**
+4. Merge canonically, in ascending `(partition_index, object_id)`. **Never
+   in completion order.**
+5. Resolve cross-partition conflicts under the existing complete policies:
+   priority key, then stable ID, then `lifesim-pairkey-v1` where a lottery
+   is configured.
+6. Commit once, single-threaded.
+7. Hash and compare against the single-threaded reference.
+
+**Partition count `P` is a config constant independent of thread count**,
+folded into the config hash. Changing `P` changes reduction tree topology
+and is therefore a new replay lineage; a different `P` must produce a
+different config hash.
+
+**Reduction discipline.** Cross-partition reductions must be integer, or use
+a reduction tree whose topology is fixed independent of worker count.
+Integer addition is associative, so fixed-point accumulators are
+order-independent by construction. This project's state is entirely fixed
+point and its ledger is `i128`, which is what makes thread-count invariance
+reachable at all.
+
+**Standing obligation on every future phase.** Any new cross-organism
+reduction is integer, or has a fixed-topology tree. A float sum introduced
+across organisms silently degrades thread-count invariance to per-thread-
+count determinism, and the degradation will not announce itself.
+
+**Rule 6 is unchanged and is where this most easily goes wrong.**
+Per-organism float summation stays pinned to ascending `homology_id` order.
+It is safe under partitioning only because it never crosses organisms: all
+per-organism float work lives inside a single partition. Any design that
+moves float summation across a partition boundary violates this rule.
+
+**The guarantee, in preference order.** ADR-0026 proposes Tier 1. A phase
+claiming a lower tier records the degradation in the decision log rather
+than absorbing it.
+
+| Tier | Guarantee |
+|---|---|
+| **1 (proposed)** | Same seed, **any** thread count, bit-identical. Thread count is a scheduling detail and stays out of the config hash |
+| **2 (fallback)** | Same seed **and same thread count**, bit-identical. Thread count enters the config hash; a different thread count is a different replay lineage |
+| **3** | **Not available.** True non-determinism would remove fail-closed checkpoint verification, degrading restore from "reproduces exactly or errors" to "looks statistically similar"  -  on the one world whose checkpoint chain is irreplaceable. Abandoning intra-world parallelism is preferable |
+
+**Campaign worlds stay single-threaded** and remain the basis for every
+claim (ADR-0023). Parallelism is a flagship capability. Under Tier 1 that
+distinction costs nothing because results are identical; under Tier 2 it
+matters, and it is acceptable only because a flagship world is already
+barred from supporting a claim on n=1 grounds.
+
+Nothing here authorizes speculative execution, rollback, or optimistic
+parallel discrete-event simulation. The model is synchronous and phased.
 
 ## Test Obligations
 
