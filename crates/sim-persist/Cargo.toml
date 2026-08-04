@@ -1,0 +1,17 @@
+[package]
+name = "sim-persist"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "sim_persist"
+path = "src/lib.rs"
+
+# Persistence adapter: encodes/decodes versioned logical state and owns
+# files, compression, and the catalog. The two dependencies are the
+# documented ADR-0007 baseline (zstd compression, SQLite catalog).
+[dependencies]
+sim-core = { path = "../sim-core" }
+zstd = "0.13"
+rusqlite = { version = "0.32", features = ["bundled"] }
