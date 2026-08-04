@@ -1,8 +1,16 @@
 # Planning repository: keep generated results and local data out of version control.
 .DS_Store
 # Local agent tooling caches (vendored third-party skills), not project content.
-.agents/
-.claude/
+# The six project-specific genesis-* skills are tracked: they carry the
+# commissioned research reviews that govern engine design (ADR-0022).
+.agents/*
+!.agents/skills/
+.agents/skills/*
+!.agents/skills/genesis-*
+.claude/*
+!.claude/skills/
+.claude/skills/*
+!.claude/skills/genesis-*
 skills-lock.json
 target/
 node_modules/

@@ -38,7 +38,7 @@ blast radius. Everything after it depends on it.
   generalized point mutation.
 - World-global innovation ID counter as saved world state.
 - Controller v2: synchronous update over an arbitrary graph, activations as
-  world state, edges summed in innovation-ID order.
+  world state, edges summed in `homology_id` order.
 - A versioned input/output channel registry replacing the hard-coded 20 and
   12, so future capabilities are registry entries rather than schema bumps.
 - Structural caps with deterministic rejection and counting.
@@ -70,7 +70,7 @@ blast radius. Everything after it depends on it.
 - Innovation IDs come from a monotonic world counter, allocated in the
   lifecycle phase in ascending child object-ID order.
 - Parent haplotype slots assigned by ID comparison (Rule 3).
-- Per-node edge summation in ascending edge innovation-ID order (Rule 6).
+- Per-node edge summation in ascending edge `homology_id` order (Rule 6).
   This is the single most easily overlooked determinism requirement in the
   phase: float addition is not associative, so a storage-order sum is a
   latent replay bug that only appears after a compaction changes layout.
@@ -83,7 +83,7 @@ blast radius. Everything after it depends on it.
 
 ## Acceptance Criteria
 
-Conditions, matched on seeds (12), config, and run length:
+Conditions, matched on seeds (30), config, and run length:
 
 - **A**: structural mutation enabled (duplication, deletion, insertion,
   transposition at configured rates).
@@ -99,18 +99,18 @@ Criteria:
 - [ ] **C8.1 Structural evolution actually occurs.** Under A, the median
       expressed node count and edge count among living organisms at tick T
       differ from the founder median by at least the stated amount in at
-      least 8 of 12 seeds, and the population contains more than one distinct
-      (node count, edge count) pair in at least 10 of 12 seeds. Under B both
+      least 20 of 30 seeds, and the population contains more than one distinct
+      (node count, edge count) pair in at least 25 of 30 seeds. Under B both
       are invariant by construction, which is the control confirming the
       measurement instrument.
 - [ ] **C8.2 Structural freedom does not destabilize the ecology.** Median
       population and median lifespan under A are within the stated tolerance
-      of B, or better, in at least 8 of 12 seeds. A topology system that
+      of B, or better, in at least 20 of 30 seeds. A topology system that
       simply kills worlds has not delivered evolvability.
 - [ ] **C8.3 Mendelian validation.** Under condition C, at a marked neutral
       biallelic locus under random mating with selection disabled, observed
       genotype frequencies match Hardy-Weinberg expectation within sampling
-      error across at least 30 generations, in at least 10 of 12 seeds. This
+      error across at least 30 generations, in at least 25 of 30 seeds. This
       is the check that meiosis is unbiased and that dominance expression is
       not silently distorting allele transmission.
 - [ ] **C8.4 Linkage validation.** Under condition C, the association

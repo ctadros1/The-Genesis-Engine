@@ -143,8 +143,10 @@ empirical question, and the whole point of the instrument.
 
 In rough order of decreasing plausibility:
 
-- Organized inter-group conflict arising from scarcity plus kin-biased
-  grouping.
+- Organized inter-group conflict. Note the correction in ADR-0022 A1: the
+  shortcut "scarcity plus kin bias plus damage implies war" is withdrawn.
+  Organized conflict needs recognition, memory, coalition recruitment, and
+  capturable value, so it is a Phase 12 question rather than a Phase 7 one.
 - Tool use: an object acquired, retained, and applied to a task with a
   measurable fitness effect.
 - Persistent structures: placed objects that outlast their makers and change
@@ -169,7 +171,7 @@ Given that, our predictions:
 
 | Outcome | Prediction |
 |---|---|
-| Territoriality and organized inter-group conflict | Likely. Scarcity plus kin-biased grouping produces this in many models, and it does not depend on the culture stack. |
+| Territoriality and organized inter-group conflict | Plausible, and **downgraded from "likely"**. The commissioned review rejects the scarcity-plus-kin-bias shortcut and lists roughly eleven further dependencies, most of which are Phase 10 to 12 machinery. It is no longer the cheap early win the plan assumed (ADR-0022 A1). |
 | Tool use in the weak sense (carry and apply an object) | Plausible. Requires only that carrying pay off somewhere in the physics. |
 | Persistent structures that alter the landscape | Plausible. |
 | Behavioral traditions outliving individuals | Plausible to remarkable. Depends entirely on whether transmission fidelity clears the accumulation threshold. This is the single most likely place for a null result. |
@@ -204,7 +206,7 @@ continue identically.
 That machinery is exactly what turns an anecdote into a measurement. It lets
 this project make claims of the form:
 
-> "Transmission occurs in 8 of 12 seeds under condition A and 0 of 12 under
+> "Transmission occurs in 20 of 30 seeds under condition A and 0 of 30 under
 > condition B, where B differs from A only in that the signal channel is
 > delivered to a randomly chosen receiver rather than to the neighbours in
 > range. Config hashes, seeds, and per-seed checksums are recorded."

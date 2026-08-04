@@ -28,6 +28,22 @@ This repository is in planning phase. Treat the documentation as the source of t
 - Do not use an LLM as the decision engine for organisms, and do not deliver
   an authored reward to any network.
 
+## Consult Skills And Research Before Designing
+
+Before designing any complex part of the engine, consult
+`research/deep-research-index.md` and the matching `genesis-*` skill. Six
+commissioned reviews are carried in-repo and govern controller design,
+genome encoding, culture claims, object ontology, social mechanisms, and
+experimental method. Use `experimental-design`, `statistical-power`, and
+`statistical-analysis` for acceptance criteria rather than improvising
+thresholds.
+
+ADR-0022 records what skipping this cost: two reversed phase orderings, two
+scripted perception channels removed, and every seed count tripled.
+
+Reviews are evidence, not authority. A contradiction with a recorded
+decision is resolved in an ADR, never silently either way.
+
 ## Orientation After The 2026-08-04 Goal Change
 
 Read `docs/25-emergence-and-epistemic-position.md` before making any claim

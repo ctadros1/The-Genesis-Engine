@@ -168,8 +168,8 @@ this manifest.
 - planning/phase-8-evolvable-genome.md
 - planning/phase-9-modular-morphology.md
 - planning/phase-10-lifetime-learning.md
-- planning/phase-11-social-channel.md
-- planning/phase-12-mutable-world-and-artifacts.md
+- planning/phase-11-mutable-world-and-artifacts.md
+- planning/phase-12-social-channel.md
 - planning/phase-13-physiology-and-life-history.md
 - planning/phase-14-abiogenesis-and-unicellular-regime.md
 - planning/phase-15-multicellularity-transition.md
@@ -250,11 +250,28 @@ this manifest.
 - decisions/0019-modular-morphology-encoding.md
 - decisions/0020-two-regime-simulation.md
 - decisions/0021-world-origin-modes.md
+- decisions/0022-research-findings-adopted-and-declined.md
 - decisions/README.md
 - decisions/adr-template.md
 
+## Project Skills And Commissioned Research
+
+The six `genesis-*` skills are tracked because they carry the commissioned
+research reviews that govern engine design (ADR-0022, indexed in
+`research/deep-research-index.md`). Generic third-party skills remain
+untracked local tooling.
+
+- .agents/skills/genesis-artificial-genetics/ (SKILL.md + references/)
+- .agents/skills/genesis-cumulative-culture/
+- .agents/skills/genesis-experimental-methodology/
+- .agents/skills/genesis-mutable-world-tool-use/
+- .agents/skills/genesis-neuroevolution/
+- .agents/skills/genesis-social-organization-territory-conflict/
+- .claude/skills/genesis-* (symlinks into .agents/skills/)
+
 ## Research
 
+- research/deep-research-index.md
 - research/neural-network-options.md
 - research/performance-notes.md
 - research/related-projects.md

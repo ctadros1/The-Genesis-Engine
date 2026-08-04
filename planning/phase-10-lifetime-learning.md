@@ -8,7 +8,7 @@ Specification: `specifications/plasticity-and-learning.md`.
 Controller weights are fixed at birth, so behavior can only change across
 generations. Technology is cumulative culture, transmitted far faster than
 genes can move. Without within-lifetime plasticity, any "discovery" collapses
-into just another inherited trait, and Phase 11's transmission question
+into just another inherited trait, and Phase 12's transmission question
 cannot even be posed: there would be nothing an organism could acquire that
 it was not born with.
 
@@ -35,7 +35,7 @@ it was not born with.
   `docs/02-scope-and-non-goals.md` survives intact and is sharpened rather
   than relaxed. See ADR-0014.
 - No Lamarckian inheritance by default. Learned state resets at birth.
-- No observational learning. Rule form 5 requires the Phase 11 social channel
+- No observational learning. Rule form 5 requires the Phase 12 social channel
   and is not in the registry yet.
 - No backpropagation, no error signal, no supervised target.
 - No claim that any observed change constitutes cognition.
@@ -54,14 +54,14 @@ it was not born with.
 - Learned state is Q16 `i32`, accumulated with integer arithmetic and a
   specified rounding rule, per Rule 7. Float accumulation over 10^5 or more
   ticks is exactly the fragility ADR-0011 exists to avoid.
-- Plastic edges are updated in ascending edge innovation-ID order.
+- Plastic edges are updated in ascending edge `homology_id` order.
 - The `learn` phase reads only values committed earlier in the same tick and
   writes only learned state.
 - Checksum section `lifesim-learn-state-v1`, present only when enabled.
 
 ## Acceptance Criteria
 
-Conditions, matched on seeds (12), config, and run length:
+Conditions, matched on seeds (30), config, and run length:
 
 - **A**: plasticity enabled.
 - **B**: plasticity disabled; `eta` forced to zero for every edge, genomes
@@ -81,13 +81,16 @@ Criteria:
       probe (a resource patch is relocated at tick t), individual organisms
       alive both before and after the relocation show a measurable shift in
       their own action distribution within their own lifetime under A, and
-      do not under B. Measured **per individual**, not per population; a
-      population-level shift is explicable by selection and proves nothing.
-      Required in at least 8 of 12 seeds under `E-variable`.
+      do not under B. The shift is computed **per individual**, because a
+      population-level shift is explicable by selection and proves nothing;
+      it is then **aggregated to a world-level rate, and the world is the
+      replicate** (ADR-0022 A5). Individuals are nested observations, not
+      sample size. Required in at least 20 of 30 worlds under `E-variable`.
+      This is the phase's designated primary endpoint.
 - [ ] **C10.2 Learning is under selection.** The distribution of `eta` and
       plastic-edge-fraction at tick T differs from the founder distribution
       by more than the drift expectation, measured against a neutral marker
-      locus in the same run as the drift control, in at least 8 of 12 seeds
+      locus in the same run as the drift control, in at least 20 of 30 seeds
       under `E-variable`. Under `E-stationary` the prediction is the
       opposite: plasticity should be selected *down* because it costs and
       does not pay. A result showing plasticity increasing in a stationary
@@ -157,7 +160,7 @@ decision log, ADR-0014.
 
 | Risk | Mitigation |
 |---|---|
-| **Plasticity is selected to zero and the phase returns a null result.** The single most likely failure in this phase | The `E-variable` sweep is the mitigation and is mandatory. If plasticity is still selected to zero under environmental variability, that is a real and reportable finding about this world's structure, and it is a strong signal that Phase 11 will also return null |
+| **Plasticity is selected to zero and the phase returns a null result.** The single most likely failure in this phase | The `E-variable` sweep is the mitigation and is mandatory. If plasticity is still selected to zero under environmental variability, that is a real and reportable finding about this world's structure, and it is a strong signal that Phase 12 will also return null |
 | Learned state doubles snapshot size and breaks the checkpoint budget | Sparse storage (plastic edges only); C10.7 measures it; asynchronous checkpointing from Phase 5 is a prerequisite for exactly this reason |
 | Runaway plasticity destabilizes controllers into noise | Hard clamps on learned delta and effective weight; decay term; energy cost; fault counting |
 | Float-to-fixed conversion introduces a subtle asymmetry that biases learning | The rounding rule is specified exactly and unit-tested at ties and sign boundaries |

@@ -27,8 +27,8 @@ acceptance criteria and a stated ablation.
 - **Phase 8** A diploid chromosomal genome with meiosis, linkage, dominance, and structural mutation, producing variable network topology.
 - **Phase 9** Modular morphology: typed modules on a lattice grown by a developmental genome, with mass, speed, sensing, and controller node budget all derived from the module set.
 - **Phase 10** Genome-encoded synaptic plasticity with evolved neuromodulation.
-- **Phase 11** Perception of other organisms' actions and a costly local signal channel with no authored meaning.
-- **Phase 12** Materials, objects, carrying, placing, striking, combining, and persistent world modification, with save format 2.
+- **Phase 12** Perception of other organisms' actions and a costly local signal channel with no authored meaning.
+- **Phase 11** Materials, objects, carrying, placing, striking, combining, and persistent world modification, with save format 2.
 - **Phase 13** Allometric metabolism, thermoregulation, ontogeny, senescence, sexual selection, and optionally disease.
 - **Phase 14** Abiogenesis and a field-regime unicellular phase, coupled to the individual engine.
 - **Phase 15** The multicellularity transition as a representation change, with multicellularity itself reached by ordinary morphological evolution.

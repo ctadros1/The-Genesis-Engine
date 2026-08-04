@@ -57,7 +57,7 @@ results are treated as the project's standing findings.
 - Senescence: age-dependent mortality hazard replacing the hard age cutoff,
   with lifespan an evolvable consequence rather than a config constant.
 - Sexual selection: mate choice conditioned on perceived phenotype through
-  the Phase 11 perception channels, replacing compatibility-threshold-only
+  the Phase 12 perception channels, replacing compatibility-threshold-only
   pairing.
 - Disease as an optional slice: a transmissible load with contact-structured
   spread, run as its own condition and only if the earlier items land
@@ -76,9 +76,9 @@ results are treated as the project's standing findings.
 
 ## Prerequisites
 
-- Phase 12, so the campaigns whose results this phase invalidates have
+- Phase 11, so the campaigns whose results this phase invalidates have
   already been run.
-- Phase 11 perception channels for mate choice.
+- Phase 12 perception channels for mate choice.
 
 ## Determinism Notes
 
@@ -97,10 +97,10 @@ the operational definition of realism used throughout
 `docs/26-biological-realism-policy.md`. A mechanism that cannot be checked
 against a known result is decoration.
 
-Conditions, matched on seeds (12) and run length:
+Conditions, matched on seeds (30) and run length:
 
 - **A**: physiology enabled.
-- **B**: Phase 12 abstract energetics.
+- **B**: Phase 11 abstract energetics.
 - **M-high / M-low**: an extrinsic-mortality sweep applied to A, used only
   for C13.3.
 
@@ -113,13 +113,13 @@ Criteria:
       minimum bar before any of the following mean anything.
 - [ ] **C13.2 Life-history tradeoff emerges.** Under A, a negative
       correlation emerges between per-offspring investment and offspring
-      number across the evolved population, in at least 8 of 12 seeds. This
+      number across the evolved population, in at least 20 of 30 seeds. This
       is the classic tradeoff axis and it is not authored anywhere: it must
       fall out of the energy budget. Under B, the correlation is absent or
       weaker.
 - [ ] **C13.3 Senescence responds to extrinsic mortality.** Under `M-low`,
       evolved median lifespan is higher than under `M-high`, in at least 8
-      of 12 seeds. This is a specific, directional, falsifiable prediction
+      of 30 seeds. This is a specific, directional, falsifiable prediction
       from evolutionary theory that the model was not tuned to produce, and
       it is the strongest realism test in the entire plan. A failure here is
       genuinely informative: it means either the hazard model, the energy
@@ -127,7 +127,7 @@ Criteria:
 - [ ] **C13.4 Thermal preference becomes load-bearing.** Under A, the
       distribution of the thermal preference gene correlates with the
       thermal distribution of the cells its carriers occupy, in at least 8
-      of 12 seeds. Under B the gene is inert and the correlation is absent,
+      of 30 seeds. Under B the gene is inert and the correlation is absent,
       which is the control confirming the measurement.
 - [ ] **C13.5 Ontogeny is real.** Juveniles are measurably constrained:
       their realized speed, carry capacity, and sensor range differ from
@@ -136,7 +136,7 @@ Criteria:
 - [ ] **C13.6 Exactness and determinism.** Ledger exact to the milli-unit
       over a 10^6-tick run with growth, thermoregulation, hazard, and (if
       enabled) disease; clean-process fixture replay; storage-permutation
-      equality; physiology-disabled configs reproduce the Phase 12 fixture
+      equality; physiology-disabled configs reproduce the Phase 11 fixture
       exactly.
 - [ ] **C13.7 Disease, if enabled.** Contact-structured spread produces an
       epidemic curve whose shape depends on contact rate in the direction
@@ -156,7 +156,7 @@ Criteria:
 - Determinism: clean-process fixture; storage permutation; pair-key symmetry
   for disease transmission.
 - Long run: exact ledgers with all physiology terms active.
-- Disabled-section equality against the Phase 12 fixture.
+- Disabled-section equality against the Phase 11 fixture.
 
 ## Benchmark Impact
 
@@ -165,7 +165,7 @@ sampling), `apply` (growth, thermoregulation), and `lifecycle` (hazard
 draws). Record each separately, because the phase's whole tension is that
 realism costs throughput.
 
-Record explicitly: the per-organism cost delta against Phase 12, and the
+Record explicitly: the per-organism cost delta against Phase 11, and the
 resulting change in ticks per second per world and therefore in generations
 reachable per unit of compute. That number is the honest price of this phase
 and it belongs in the record, not in a footnote.
@@ -197,5 +197,5 @@ decision log, ADR-0017.
 
 Every item is an independently config-gated section: allometry,
 thermoregulation, ontogeny, senescence, sexual selection, disease. Any
-subset can be disabled. All disabled reproduces the Phase 12 fixture
+subset can be disabled. All disabled reproduces the Phase 11 fixture
 exactly.

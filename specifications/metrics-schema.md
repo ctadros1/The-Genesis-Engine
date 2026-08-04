@@ -59,8 +59,8 @@ bounded label enumerations, no high-cardinality labels.
 | 7 | `lifesim_damage_events_total`, `lifesim_deaths_total{cause="damage"}`, `lifesim_carcasses` | counter, counter, gauge |
 | 8 | `lifesim_genome_bytes`, `lifesim_controller_nodes`, `lifesim_controller_edges`, `lifesim_structural_mutations_total{operator}`, `lifesim_structural_rejected_total{cap}` | gauge, gauge, gauge, counter, counter |
 | 10 | `lifesim_plastic_edges`, `lifesim_plasticity_faults_total`, `lifesim_plasticity_energy_spent_milli_total` | gauge, counter, counter |
-| 11 | `lifesim_signals_emitted_total`, `lifesim_signal_energy_spent_milli_total`, `lifesim_perceived_neighbours` | counter, counter, gauge |
-| 12 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge |
+| 12 | `lifesim_signals_emitted_total`, `lifesim_signal_energy_spent_milli_total`, `lifesim_perceived_neighbours` | counter, counter, gauge |
+| 11 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge |
 | 13 | `lifesim_median_lifespan_ticks`, `lifesim_juvenile_fraction`, `lifesim_disease_load` | gauge, gauge, gauge |
 
 Two label rules specific to the new goal:

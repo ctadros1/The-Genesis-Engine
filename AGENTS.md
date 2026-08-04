@@ -39,6 +39,60 @@ If a conflict exists, explicit current user instructions override this file. Rec
 - Prefer simple correct data flow over clever abstractions.
 - Keep live infrastructure private and make reversible changes only after approval.
 
+## Skills And Research: Consult Before Designing
+
+This repository carries two evidence assets that are **not optional
+background**. Before designing any complex part of the engine, consult both.
+
+### The six deep-research reviews
+
+Indexed in `research/deep-research-index.md`, carried in-repo under
+`.agents/skills/genesis-*/references/`, covering neuroevolution and lifetime
+learning, artificial genetics and lineages, cumulative culture, mutable
+worlds and tool use, social organization and conflict, and open-ended-
+evolution methodology.
+
+Consult the matching review **before** writing a specification, an
+acceptance criterion, or an ADR for:
+
+- controller topology, evaluation order, plasticity, learned-state
+  persistence;
+- genome encoding, inheritance, crossover, structural mutation, identity;
+- any claim of transmission, tradition, or accumulation;
+- objects, materials, structures, terrain mutation, save format;
+- perception of conspecifics, recognition, grouping, aggression, territory;
+- acceptance criteria, seed counts, controls, claim wording.
+
+ADR-0022 is the record of what happens when this is skipped: the plan was
+written first, and correcting it against the reviews reversed two phase
+orderings, removed two scripted perception channels, and tripled every seed
+count.
+
+### The project skills
+
+`.claude/skills/` provides both the six `genesis-*` skills above and general
+method skills. Use them rather than improvising:
+
+| Skill | Use for |
+|---|---|
+| `experimental-design` | Choosing controls, ablations, blocking, and avoiding pseudoreplication |
+| `statistical-power` | Seed counts, minimum detectable effect, power analysis |
+| `statistical-analysis` | Effect sizes, intervals, equivalence tests, reporting |
+| `hypothesis-generation` | Turning an observation into a falsifiable claim with rival explanations |
+| `scientific-critical-thinking` | Grading evidence, finding confounders in a proposed criterion |
+| `agent-based-modeling` | Simulation structure and emergence questions |
+| `property-based-testing`, `cargo-fuzz` | Codec, genome, and protocol boundary testing |
+| `rust-skills` | Kernel implementation conventions |
+
+### The boundary
+
+Reviews and skills are **evidence and method, not authority**. Where one
+contradicts a recorded project decision, resolve it in an ADR with the
+reasoning written down, as ADR-0022 does. Never silently follow a review
+against a decision, and never silently ignore one. A finding in a review is
+a reason to design something a particular way; it is never a substitute for
+measuring it in this system.
+
 ## Architecture Boundaries
 
 - sim-core may not depend on HTTP, WebSocket, browser, database, wall clock, or GPU APIs.
@@ -77,7 +131,7 @@ rules there that are easiest to violate by accident:
   object_id)`, and truncated before any selection. A spatial bucket built in
   scan order may never be read in scan order.
 - All social perception and learning is read-prior, commit-after.
-- Per-node float summation is pinned to ascending edge innovation-ID order.
+- Per-node float summation is pinned to ascending edge `homology_id` order.
   Float addition is not associative, so a storage-order sum is a replay bug
   that stays invisible until a compaction changes layout.
 - Anything that accumulates over a lifetime is fixed point, not float.

@@ -73,7 +73,7 @@ This phase builds the instrument. It adds no organism behavior at all.
       pacing, at maximum headless speed, with an observer attached, and with
       an observer attached and then detached mid-run. Four executions, one
       checksum.
-- [ ] **A5.2 Scheduling is result-neutral.** For a fixed set of 12 seeds and
+- [ ] **A5.2 Scheduling is result-neutral.** For a fixed set of 30 seeds and
       one config, per-world final state checksums are identical at scheduler
       concurrency 1, 2, and C (the configured maximum), and identical to
       running each world alone. Any work-stealing, thread-count, or

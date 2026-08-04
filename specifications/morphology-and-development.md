@@ -88,7 +88,8 @@ deferred; Phase 9 allocates it.
 
 ### Regulatory loci
 
-    Regulatory { innovation_id, condition, action, parameters }
+    Regulatory { homology_id, gene_lineage_id, mutation_event_id,
+                 condition, action, parameters }
 
 A growth step reads local context (current module count, neighbour types,
 position, developmental clock, and an energy-availability term) and may
@@ -98,7 +99,7 @@ Execution is a bounded deterministic loop:
 
 1. Start from a single `Structural` module at lattice origin.
 2. For `step` in `0..max_growth_steps`: evaluate every regulatory locus in
-   ascending innovation-ID order against the current body; collect the
+   ascending `homology_id` order against the current body; collect the
    matching actions; apply them in ascending `(locus_innovation_id,
    lattice_index)` order.
 3. Stop at `max_growth_steps`, at `max_modules`, or when no locus matches.
@@ -121,8 +122,27 @@ is what makes the morphospace searchable at all.
 
 The cost is honest and recorded in ADR-0019: indirect encodings are harder
 to analyze, the genotype-phenotype map is many-to-one and discontinuous, and
-small genetic changes can produce large phenotypic jumps. Phase 9 measures
-that discontinuity rather than assuming it is acceptable.
+small genetic changes can produce large phenotypic jumps.
+
+Two commissioned reviews (`genetics` section 1.6, `neuroevolution` section 1.4)
+recommend against making a developmental program a baseline encoding at all.
+ADR-0022 D1 records why that is partially declined for morphology and fully
+adopted elsewhere, and what it costs:
+
+- The **controller** stays directly encoded. The developmental program is
+  scoped to morphology only, because the one-module-is-a-unicell unification
+  is what removes the need for an authored multicellularity mechanic.
+- The program is declared as a **bounded versioned module** carrying every
+  field `genetics` section 1.6 requires: maximum expansion steps, maximum emitted
+  modules, deterministic rule-match and conflict order, phenotype-overflow
+  behavior, canonical intermediate representation, compiler and registry
+  versions, and provenance links from each emitted module back to the locus
+  that generated it.
+- The **direct parameterized body plan is retained as a specified
+  fallback**, not a hypothetical one.
+- Phase 9's discontinuity measurement is a **gate**, not a metric. If a
+  typical single-locus mutation produces an unrelated body, the encoding has
+  failed its own premise and the fallback is taken.
 
 ## Interaction With Existing Systems
 
@@ -140,8 +160,8 @@ that discontinuity rather than assuming it is acceptable.
 - New stream `Morphogenesis` (17) for any stochastic developmental term.
   The default policy is fully deterministic development with no draws; the
   stream exists so that adopting developmental noise later cannot renumber.
-- Regulatory loci evaluate in ascending innovation-ID order; actions apply
-  in ascending `(locus_innovation_id, lattice_index)` order. Body
+- Regulatory loci evaluate in ascending `homology_id` order; actions apply
+  in ascending `(locus_homology_id, lattice_index)` order. Body
   construction never depends on iteration order.
 - All module sums iterate in ascending lattice index.
 - Lattice positions are integers; no float geometry anywhere in morphology.

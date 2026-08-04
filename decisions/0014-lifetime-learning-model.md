@@ -66,7 +66,7 @@ covers the accumulation.
 **No Lamarckian inheritance by default.** Learned state resets at birth.
 This is an invariant, not an optimization: if learned weights were
 inherited, a discovery would become a heritable trait and transmission would
-be indistinguishable from inheritance, which would make Phase 11
+be indistinguishable from inheritance, which would make Phase 12
 unanswerable. A `lamarckian_fraction_q16` config field exists, defaults to
 zero, and any nonzero value is an experimental condition that must be
 reported.
@@ -90,7 +90,7 @@ Negative and accepted:
   within a lifetime and is predictable within it, so Phase 10 makes an
   environmental-variability sweep mandatory rather than optional. If
   plasticity is still selected down under variability, that is a real
-  finding about this world and a strong predictor that Phase 11 will also
+  finding about this world and a strong predictor that Phase 12 will also
   return null.
 - The modulatory design is indirect, and evolution may not find it. Partial
   mitigation: rule forms 1 and 2 are ungated and produce unsupervised change

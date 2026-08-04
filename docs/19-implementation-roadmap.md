@@ -18,8 +18,8 @@ fixtures, and benchmark records are preserved unchanged.
 | 8 | Evolvable genome: diploid genetics and variable topology | planned |
 | 9 | Modular morphology and development | planned |
 | 10 | Lifetime learning | planned |
-| 11 | Social channel | planned |
-| 12 | Mutable world and artifacts | planned |
+| 11 | Mutable world and artifacts | planned |
+| 12 | Social channel, and organized conflict | planned |
 | 13 | Physiology, life history, and senescence | planned |
 | 14 | Abiogenesis and the unicellular regime | planned |
 | 15 | The multicellularity transition | planned |
@@ -37,8 +37,8 @@ The ordering is a dependency argument, not a preference. Each claim below is
 the reason a phase cannot usefully precede its predecessor.
 
 **5 is first because every later acceptance criterion is a multi-seed
-claim.** Criteria of the form "the effect occurs in 8 of 12 seeds under
-condition A and 0 of 12 under condition B" are not measurable today: runs
+claim.** Criteria of the form "the effect occurs in 20 of 30 seeds under
+condition A and 0 of 30 under condition B" are not measurable today: runs
 are paced against observer time, there is no independent-world scheduler,
 and there is no event log. Building any mechanism before the instrument that
 measures it means measuring it later, worse, and with fewer seeds.
@@ -52,16 +52,22 @@ also finally implements the temperature field that `docs/05` has specified
 since Phase 1 and that the thermal-preference gene, inherited-but-inert
 since Phase 2, was written for.
 
-**7 before the genome successor.** Contest is the one behavioral goal
-implementable inside the existing frozen topology, because topology 1 already
-reserves its channels: health is input 2 reading a neutral 1.0, threat is
-input 10, recent damage is input 16, and attack is output 4, a documented
-no-op. That means it validates the Phase 5 harness on a real behavioral
-question before the expensive genome work, and it makes threat information
-real before a signal channel exists. Alarm signalling is the best-attested
-natural signalling system precisely because threat information has receiver
-value, so running Phase 11 in a world with contest runs it in the condition
-most likely to produce a result.
+**7 before the genome successor, with reduced scope.** Contest is the one
+behavioral mechanism implementable inside the frozen topology, because
+topology 1 already reserves its channels: health is input 2 reading a
+neutral 1.0, threat is input 10, recent damage is input 16, and attack is
+output 4, a documented no-op. That lets it validate the Phase 5 harness on a
+real question before the expensive genome work, and it makes threat
+information real before a signal channel exists.
+
+**What changed here.** The earlier justification also claimed organized
+violence "tends to fall out of scarcity plus kin-biased grouping". The
+commissioned social-organization review rejects that shortcut outright and
+lists roughly eleven further dependencies, most of which are Phase 10 to 12
+machinery (ADR-0022 A1). Phase 7 therefore keeps its position but delivers
+only the *physics* of damage and contest; kin recognition, directed
+inter-group aggression, and coalition formation move to Phase 12 where
+recognition, memory, and transmission exist.
 
 **8 before 9** because morphology's developmental encoding is a genome locus
 type, and schema 3 extends schema 2's locus machinery, innovation IDs, and
@@ -78,12 +84,22 @@ transmit. A signalling channel in a world where behavior is fixed at birth
 can carry information about state, but nothing an organism acquires can be
 acquired by another, so the transmission question cannot be posed.
 
-**11 before 12** because building artifacts before a transmission channel
-exists would produce another inherited trait and teach us nothing. A world
-where organisms construct things but cannot learn from each other tests
-whether construction is genetically encodable, which is a much less
-interesting question than whether construction accumulates. Phase 12's
-cumulative-dependency criterion depends entirely on transmission existing.
+**11 before 12: artifacts precede signalling.** This reverses the earlier
+order, and the reversal is triple-sourced (ADR-0022 A2). The earlier
+argument was that building artifacts before a transmission channel exists
+would produce another inherited trait. That assumed transmission means
+signalling, and it does not: **an artifact left behind is a transmission
+channel that requires no perception of conspecifics at all.**
+`cumulative_culture` section 1.2 lists persistent generic artifacts inside the
+*minimum viable* transmission system; `artifacts` section 1.7 puts social
+transmission at step 10 of 12, after carrying, reuse, caching, structures,
+and stigmergy; `social_organization` section 1.1 puts stigmergic cooperation before
+communication.
+
+So Phase 11 delivers objects and the first transmission mechanism
+(stigmergy), and Phase 12 asks whether a *second*, faster channel adds
+anything on top. That is a sharper question than the original ordering could
+have asked, because it has a baseline to beat.
 
 **13 after the culture stack** is the one placement where two good arguments
 conflict, and the resolution is in ADR-0017 rather than glossed. Physiology
@@ -110,7 +126,7 @@ dependency order.
   keeps a null there from consuming the budget of everything else.
 
 **16 last** because it reads what the earlier phases wrote. It needs the
-event log (Phase 5), transmission (Phase 11), and artifacts (Phase 12) for
+event log (Phase 5), artifacts (Phase 11), and transmission (Phase 12) for
 there to be anything to detect. It changes no world, so it carries the least
 risk in the plan by construction.
 
@@ -134,8 +150,8 @@ ADR-0012. See ADR-0021.
 ## What Would Change This Order
 
 - If Phase 10 shows plasticity is selected to zero under every environmental
-  condition, Phase 11's prior drops sharply and reordering Phase 12 ahead of
-  it becomes worth arguing, accepting that Phase 12 then answers the weaker
+  condition, Phase 12's prior drops sharply and reordering Phase 11 ahead of
+  it becomes worth arguing, accepting that Phase 11 then answers the weaker
   question.
 - If Phase 8 or Phase 9 cost proves prohibitive, contest and artifacts are
   both implementable on schema 1 with reserved channels, and the genome and

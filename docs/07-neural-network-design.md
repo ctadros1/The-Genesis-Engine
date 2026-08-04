@@ -11,7 +11,7 @@ weights/biases in [-8, 8]. Policy specifics recorded for replay:
   add/multiply/divide (no libm), so results are reproducible bit-for-bit on
   the recorded build/platform; cross-platform equality is not claimed.
 - Inputs 1-9 and 13-15 plus memory are live; threat (10), temperature
-  comfort (11), moisture comfort (12), and recent damage (16) are documented
+  comfort (11), moisture comfort (30), and recent damage (16) are documented
   neutral zeros until their mechanics exist. Health (2) is neutral 1.0.
 - Output mapping (config-thresholded, Q16-versioned): turn combines the
   turn channel with `(follow - avoid) * approach_tendency * relative
@@ -50,7 +50,7 @@ What changes:
   makes node evaluation order irrelevant, and makes activations world state
   that is checksummed and saved. The 4-value memory vector becomes a special
   case of recurrent nodes rather than a separate concept.
-- Per-node incoming edges are summed in ascending edge innovation-ID order.
+- Per-node incoming edges are summed in ascending edge `homology_id` order.
   Float addition is not associative, so this is a policy requirement, not an
   implementation detail: a storage-order sum is a latent replay bug that
   only appears after a compaction changes layout.

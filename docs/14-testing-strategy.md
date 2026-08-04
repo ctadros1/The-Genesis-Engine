@@ -33,6 +33,31 @@ Behavioral phases produce claims about observed behavior, which need a
 different kind of rigor than a unit test. These rules are as binding as the
 testing pyramid above.
 
+- **The world is the experimental unit.** Organisms, births, encounters,
+  generations, ticks, and sliding windows are *nested observations*, not
+  replicates. Counting them as independent produces arbitrarily small and
+  invalid intervals. Per-individual quantities are computed and then
+  aggregated to a world-level statistic; the number of independent worlds is
+  the sample size. An organism is a valid unit only under a genuinely
+  randomized organism-level intervention, which is rare here (ADR-0022 A5).
+- **Seed counts: 30 independent worlds minimum** per confirmatory condition,
+  **50** where the outcome is rare, heavy-tailed, or fixation-driven. These
+  are floors, not power guarantees: a pilot estimates variance, extinction,
+  and event prevalence, and a simulation-based power analysis sets the final
+  number (ADR-0022 A6).
+- **One designated primary endpoint per phase, and acceptance is
+  conjunctive.** A phase passes only when its primary endpoint, its causal
+  controls, its determinism gates, its log-completeness gate, and its
+  performance budget all pass. Secondary metrics never rescue a failed
+  primary (ADR-0022 A7).
+- **Nulls are bounded, not bare.** Report the smallest effect of interest
+  fixed in advance, an interval, and an equivalence result, so "no effect
+  larger than the SESOI" is distinguishable from "underpowered". Also report
+  achieved exposure, extinctions, and censoring.
+- **Novelty is not progress.** Reserve claims of innovation for novelty with
+  demonstrated consequence and persistence. A growing controller, a diverging
+  module count, or a rising count of object arrangements is variation, not
+  adaptation, until consequence is shown (ADR-0022 A13).
 - **Every behavioral acceptance criterion states its control or ablation
   before the campaign runs.** A criterion of the form "the effect occurs" is
   incomplete; the form is "the effect occurs in N of M seeds under condition
@@ -49,7 +74,7 @@ testing pyramid above.
   run long enough or across enough seeds for a null to be meaningful, it is
   reported as underpowered, and that distinction must survive into every
   downstream summary.
-- **Confounds get their own condition.** The canonical case is Phase 11's
+- **Confounds get their own condition.** The canonical case is Phase 12's
   condition D, where signals are delivered to a random unrelated receiver:
   it preserves the behavior, the energy cost, and the receipt, and destroys
   only the information. A difference against the do-nothing control without

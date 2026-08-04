@@ -19,7 +19,7 @@
 | Analytics columnar format | Phase 4 | CSV export |
 | SIMD strategy | backlog, needs profiling evidence | scalar/SoA baseline |
 | Disaster rules | not scheduled | disabled |
-| Communication rules | Phase 11 | `specifications/social-signal-channel.md` |
+| Communication rules | Phase 12 | `specifications/social-signal-channel.md` |
 | Disease rules | Phase 13, optional slice | disabled |
 
 ## Open Questions From The 2026-08-04 Goal Change
@@ -29,17 +29,28 @@ implementer does not have to rediscover that it was considered.
 
 | Question | Deadline | Default If Unresolved |
 |---|---|---|
-| How many seeds and how many ticks make a null result meaningful, given the measured throughput? | Phase 5, from its own measurements | 12 seeds; run length set so the median seed reaches at least an order of magnitude more ancestry generations than Phase 2's 127 |
+| How many seeds and how many ticks make a null result meaningful, given the measured throughput? | Phase 5, from its own measurements | 30 seeds; run length set so the median seed reaches at least an order of magnitude more ancestry generations than Phase 2's 127 |
 | Should controller activations move to fixed point along with the learned accumulator? | Phase 8 | Keep f32 activations (proven and benchmarked under ADR-0011) with a fixed-point learned accumulator. Full fixed-point evaluation stays the recorded fallback if cross-platform replay ever becomes a requirement |
-| What is the right `propagation_passes_per_tick` for synchronous variable-topology evaluation? | Phase 8 | 1. A deeper network then needs more ticks to respond, which is itself a selection pressure and must be reported rather than treated as a bug |
+| What is the right `propagation_passes_per_tick`? | **Resolved 2026-08-04, ADR-0022 A9.** Superseded by hybrid evaluation: zero-delay edges propagate within a tick in canonical topological order, delayed edges read prior-state buffers. The knob is gone | - |
 | Duplication-only structural growth, or duplication plus explicit insertion? | Phase 8 | Measure both (C8.5). If duplication alone cannot produce structural change within the run budget, insertion becomes the default with the measurement recorded |
 | Should a regulatory locus type (schema 2 type tag 5) exist? | not scheduled | Reserved and unallocated. Adding it needs its own ADR; `docs/26-biological-realism-policy.md` records why molecular-level regulation is excluded |
-| Is providing computed genetic distance as a kinship input channel too generous? A real organism infers kin from visible cues | Phase 7 review | Provide it, and record the limitation. A phenotype-only kin-inference condition is a stated follow-up, not a Phase 7 deliverable |
-| Should plasticity rule form 5 (observational) exist, or must imitation be discovered from generic plasticity plus perception? | Phase 11, by measurement | Run both as conditions P and S rather than deciding by assertion. See `specifications/social-signal-channel.md` |
+| Is providing computed genetic distance as a kinship input channel too generous? | **Resolved 2026-08-04, ADR-0022 A3.** No genotype-distance channel exists. Recognition must be solved from perceptible cues or reported unsolved | - |
+| Should plasticity rule form 5 (observational) exist, or must imitation be discovered from generic plasticity plus perception? | Phase 12, by measurement | Run both as conditions P and S rather than deciding by assertion. See `specifications/social-signal-channel.md` |
 | When should elevation become mutable? | not scheduled | Immutable. It feeds coastline derivation, drainage, and the lapse term, and the generator validates land fraction and connectivity against it |
-| What density threshold selects the dense terrain-modification representation? | Phase 12 | Set from measurement, recorded as versioned config, never a magic constant |
+| What density threshold selects the dense terrain-modification representation? | Phase 11 | Set from measurement, recorded as versioned config, never a magic constant |
 | Do the Phase 7 to 12 campaigns need re-running under `lifesim-physiology-v1`? | Phase 13 | Yes for any result that is to become a standing finding. Stated in ADR-0017 |
 | Can the deployment VM supply the compute a full campaign needs? | before any campaign | Unknown and unmeasured. This is a live risk, not a resolved default |
+
+## Open Questions From The Research Reconciliation
+
+| Question | Deadline | Default If Unresolved |
+|---|---|---|
+| Can 30 to 50 worlds per condition actually be run on the available hardware? | Phase 5 | Unknown. If not, the number of claims is reduced rather than the seeds per claim, and every affected criterion says so |
+| What is the smallest effect of interest for each primary endpoint? | Before each campaign | Must be fixed before data collection; there is no defensible default and picking one afterwards invalidates the null |
+| Is recognition reachable from phenotype cues alone in this physics? | Phase 12 | Unknown, and the honest answer may be no. C12.7 reports either way |
+| Does stigmergic transmission occur, given that Phase 12 was reordered to depend on it? | Phase 11 | Unknown. If not, Phase 12 loses its baseline and reverts to the weaker comparison |
+| Does the developmental encoding survive its discontinuity gate? | Phase 9 | Unknown. Failure takes the parameterized fallback and forces a Phase 15 re-plan |
+| Should the 2.5D height and support subset land in Phase 11 or later? | Phase 11 | Later. Until it lands the plan does not claim stacked construction |
 
 ## Decision Protocol
 

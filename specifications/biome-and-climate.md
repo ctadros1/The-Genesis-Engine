@@ -31,7 +31,7 @@ format 2 baseline-plus-delta save contract is unaffected.
 | Temperature | Dynamic | Base plus season plus drift plus bounded weather |
 | Biome | Dynamic, derived | Classified from elevation, temperature, moisture |
 | Food capacity | Dynamic | Biome-dependent, replacing the current elevation-only field |
-| Material yield | Dynamic | Biome-dependent (Phase 12) |
+| Material yield | Dynamic | Biome-dependent (Phase 11) |
 
 Moisture uses the deliberately simplified model `docs/04` already describes.
 The project labels this ecological simulation, not weather forecasting, and

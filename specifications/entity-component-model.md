@@ -39,7 +39,7 @@ compacting with the same removal flags as the primary arrays:
 | Carcass | remaining energy, decay state, source entity ID (the entry below, finally implemented) | 6 |
 | Genome2 | diploid chromosomal genome, canonical hash; expression recomputed on load | 7 |
 | Activation | per-node activation vector (world state under synchronous evaluation) | 7 |
-| Learned | sparse `(edge_innovation_id, learned_q16, trace_q16)` for plastic edges only, sorted by innovation ID | 8 |
+| Learned | sparse `(edge_homology_id, learned_q16, trace_q16)` for plastic edges only, sorted by innovation ID | 8 |
 | Inventory | held object IDs, carried mass | 10 |
 | Object | material, position, integrity, holder, composition list, depth, creator, created tick | 10 |
 | Physiology | developmental stage, accumulated hazard, disease load (fixed point) | 11 |

@@ -1,6 +1,6 @@
 # Social Signal Channel Specification
 
-Status: design specification, not implemented. Phase 11. Policy version
+Status: design specification, not implemented. Phase 12. Policy version
 `lifesim-social-v1`. Depends on genome schema 2 (channel registry) and
 plasticity (`specifications/plasticity-and-learning.md`).
 
@@ -46,17 +46,30 @@ the registry:
 | `neighbour_present[k]` | 1.0 if slot k is occupied, else 0.0 |
 | `neighbour_distance[k]` | Normalized distance |
 | `neighbour_bearing[k]` | Relative heading, normalized |
-| `neighbour_action[k]` | The neighbour's last committed action class, one-hot compressed to a small fixed number of channels: move, eat, attack, mate, place, combine, signal, rest |
-| `neighbour_kinship[k]` | Normalized genetic distance to the observer, computed from the two genomes |
-| `neighbour_visible_trait[k][j]` | A small fixed set of externally visible phenotype values (pigmentation, body scale, health fraction) |
+| `neighbour_motion[k]` | Speed and turn magnitude, normalized. Body motion, not an action name |
+| `neighbour_contact[k]` | Whether the neighbour is in contact with an object, a cell resource, or another organism. Contact, not intent |
+| `neighbour_object_delta[k]` | Whether an object near the neighbour changed state last tick, and by how much. The *outcome*, not the act |
+| `neighbour_carried[k]` | Material class of any object the neighbour is carrying |
+| `neighbour_visible_trait[k][j]` | A small fixed set of externally visible phenotype values (pigmentation, body scale, health fraction, size) |
 
 Every value is read from the **previous tick's committed state**
 (`determinism-extensions.md` Rule 4). An organism never perceives the
 current tick.
 
-`neighbour_kinship` is computed from genomes, not from cluster labels. This
-is the same physics-versus-label line drawn in
-`docs/25-emergence-and-epistemic-position.md`.
+**There is no kinship channel and no action-label channel.** ADR-0022 A3
+and A4 remove both:
+
+- A normalized genetic distance handed to an organism short-circuits
+  recognition entirely. Real recognition is solved from perceptible cues,
+  and if it cannot be solved from cues here then it is not solved.
+- A one-hot action class is a privileged action identifier, which scripts
+  the channel: it supplies the very categorization that an observer would
+  otherwise have to infer from motion and outcome.
+
+What remains is deliberately harder to use and is the only thing that makes
+a positive result mean anything. Phenotype cues are heritable, so kin
+*assortment* remains reachable through phenotype matching without any
+genotype access.
 
 Unbound channels cost nothing: an organism whose genome contains no
 `IoBinding` to `neighbour_action[2]` never has it gathered. Sense-phase cost
@@ -91,7 +104,7 @@ Propagation:
 - The field decays per tick by a configured factor, so a signal is a
   transient local event and not a permanent world marking. Permanent
   marking is what artifacts are for, and conflating the two would blur the
-  Phase 11 and Phase 12 results.
+  Phase 12 and Phase 11 results.
 
 Reception:
 
@@ -125,7 +138,7 @@ conspecific action. A stricter reading of the project philosophy would omit
 it and require imitation to be discovered from generic plasticity plus
 perception alone.
 
-We do not resolve this by assertion. Phase 11 runs both as experimental
+We do not resolve this by assertion. Phase 12 runs both as experimental
 conditions:
 
 - **Condition P (permissive):** rule 5 available in the registry.

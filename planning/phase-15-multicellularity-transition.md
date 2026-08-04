@@ -75,7 +75,7 @@ argument that justified it.
 
 ## Acceptance Criteria
 
-Conditions per ADR-0018, matched on seeds (12) and run length, every
+Conditions per ADR-0018, matched on seeds (30) and run length, every
 scaffolded condition paired with its unscaffolded control.
 
 - [ ] **C15.1 Conservation across the conversion.** Mass and energy are
@@ -97,9 +97,9 @@ scaffolded condition paired with its unscaffolded control.
       clean processes.
 - [ ] **C15.5 `scratch` runs end to end**, or reports precisely where it
       stops. A run from chemistry to at least one materialized individual
-      organism, in at least N of 12 seeds under the best scaffold condition,
+      organism, in at least N of 30 seeds under the best scaffold condition,
       with N stated before the campaign. Under the unscaffolded control the
-      expected result is 0 of 12, and that comparison is the finding.
+      expected result is 0 of 30, and that comparison is the finding.
 - [ ] **C15.6 Multicellularity is reached, or reported as not reached.** The
       fraction of seeds in which any lineage exceeds one module, and the
       distribution of module counts over time, for scaffolded and

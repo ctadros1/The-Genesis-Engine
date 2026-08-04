@@ -86,8 +86,8 @@ They are one phase because biome-matched seeding needs biomes.
       founder population, verified by state checksum at tick 0.
 - [ ] **C6.3 Demes are real.** With `deme_count = 4`, mean genetic distance
       within a deme is lower than between demes by the stated effect size at
-      tick 0, in 12 of 12 seeds. This is deterministic setup, so anything
-      less than 12 of 12 is a defect rather than a result.
+      tick 0, in 30 of 30 seeds. This is deterministic setup, so anything
+      less than 30 of 30 is a defect rather than a result.
 - [ ] **C6.4 Biome-matched placement or fail-closed.** Every founder is
       placed in a cell matching its archetype's affinity, or generation
       fails with a typed actionable error. No founder is ever silently

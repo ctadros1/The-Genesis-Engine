@@ -25,8 +25,8 @@ Phases 5 to 16 are planned and none has started:
 | 8 | Evolvable genome: diploid genetics and variable topology | `phase-8-evolvable-genome.md` |
 | 9 | Modular morphology and development | `phase-9-modular-morphology.md` |
 | 10 | Lifetime learning | `phase-10-lifetime-learning.md` |
-| 11 | Social channel | `phase-11-social-channel.md` |
-| 12 | Mutable world and artifacts | `phase-12-mutable-world-and-artifacts.md` |
+| 11 | Mutable world and artifacts | `phase-11-mutable-world-and-artifacts.md` |
+| 12 | Social channel | `phase-12-social-channel.md` |
 | 13 | Physiology, life history, and senescence | `phase-13-physiology-and-life-history.md` |
 | 14 | Abiogenesis and the unicellular regime | `phase-14-abiogenesis-and-unicellular-regime.md` |
 | 15 | The multicellularity transition | `phase-15-multicellularity-transition.md` |

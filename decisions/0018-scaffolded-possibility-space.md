@@ -84,8 +84,8 @@ These are what keep a scaffolded result honest, and they are not optional.
    same seeds under a neutral environment. The reportable quantity is the
    difference between conditions, not the scaffolded result alone.
 3. **A scaffolded-only result is explicitly the weaker claim** and is
-   written that way: "the transition occurred in N of 12 scaffolded seeds
-   and 0 of 12 unscaffolded seeds" states both the finding and its
+   written that way: "the transition occurred in N of 30 scaffolded seeds
+   and 0 of 30 unscaffolded seeds" states both the finding and its
    dependence on the scaffold.
 4. **Scaffold strength is swept, not fixed.** Where feasible, report the
    transition rate across a range of scaffold intensities, so the result is

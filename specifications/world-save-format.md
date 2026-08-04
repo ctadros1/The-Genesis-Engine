@@ -7,7 +7,7 @@ state version 1). Header: magic `ALIF`, format version, header length,
 flags (bit 0 = zstd), world ID, parent world ID, tick, seed, config hash,
 save-state and genome schema versions, build-version string reference,
 event-log offset (zero until the event-log file exists), uncompressed and
-stored lengths, payload CRC32, state checksum, and terrain checksum —
+stored lengths, payload CRC32, state checksum, and terrain checksum  - 
 little-endian throughout, matching the kernel's canonical hashing.
 Payload sections (tagged, length-prefixed, per-section CRC32): config,
 world metadata, organism table, biomass field, ledger/counters, and the
@@ -25,7 +25,7 @@ ordering, recovery, and restore-verification behavior follow the Write
 Contract and Restore Test sections below and are covered by the
 `sim-persist` test suite.
 
-## Planned Successor: ALIF Format 2 (Phase 12)
+## Planned Successor: ALIF Format 2 (Phase 11)
 
 Design: `specifications/mutable-world-state.md`. Decision: ADR-0015.
 
@@ -47,7 +47,7 @@ checksummed like the existing ones:
 | Section | Contents | Present when |
 |---|---|---|
 | Contest | Health, damage counters | contest enabled |
-| Genome 2 | Diploid variable-topology genomes, `next_innovation_id` | schema 2 |
+| Genome 2 | Diploid variable-topology genomes. No ID allocator is stored: the four identity fields are derived by hash (ADR-0022 A8), so there is no counter to persist | schema 2 |
 | Activations | Per-node activation vector | schema 2 |
 | Learned state | Per-plastic-edge Q16 deltas and traces, sparse | plasticity enabled |
 | Signal field | Committed signal field | social enabled |

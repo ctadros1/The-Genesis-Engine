@@ -65,15 +65,15 @@ Realism is bounded, in this order of precedence:
 | Within-lifetime change | None; weights fixed at birth | Genome-encoded synaptic plasticity with neuromodulation | 10 |
 | Reinforcement | None | Evolved neuromodulatory signal, never an authored reward | 10 |
 | Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 13 |
-| Development | None; organisms are born adult-shaped | Ontogeny: growth trajectory, juvenile constraint, maturation | 13 |
+| Ontogeny | None; organisms are born adult-shaped | Growth trajectory, juvenile constraint, maturation | 13 |
 | Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 13 |
 | Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 13 |
 | Body structure | Small fixed parameter set, identical for every organism | Typed modules on a lattice, grown by a developmental genome | 9 |
-| Development | Organisms born adult-shaped | A growth program executed from a single origin module | 9 |
+| Morphogenesis | No developmental stage at all | A growth program executed from a single origin module | 9 |
 | Climate | Seasons only; temperature field unimplemented | Moisture and temperature fields, biomes, long-timescale drift | 6 |
 | Origin of life | Organisms exist at tick 0 by construction | Optional abiogenesis from a chemistry field | 14 |
 | Major transitions | None | Unicell to differentiated multicell as ordinary morphological evolution | 15 |
-| Disease | None | Transmissible load with contact-structured spread | 11 (optional slice) |
+| Disease | None | Transmissible load with contact-structured spread | 13 (optional slice) |
 
 ## Structural Change By Duplication, Not By Graph Editing
 
@@ -103,7 +103,7 @@ alone proves too slow. That comparison is itself a Phase 8 experiment.
 Learned state is reset at birth. This is not an optimization; it is the
 property that makes the project's central question meaningful. If learned
 weights were inherited, a "discovery" would become a heritable trait, culture
-would collapse into genetics, and Phase 11 would be unable to distinguish
+would collapse into genetics, and Phase 12 would be unable to distinguish
 transmission from inheritance. A `lamarckian_fraction` config field exists,
 defaults to zero, and enabling it is an explicit experimental condition that
 must be reported, never a default.

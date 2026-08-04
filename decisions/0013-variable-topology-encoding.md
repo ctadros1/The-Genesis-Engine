@@ -46,10 +46,15 @@ Key elements:
 
 - Diploid, chromosomal, with typed loci sorted by innovation ID. Adjacency
   in innovation order is linkage.
-- Innovation IDs from a world-global monotonic counter allocated in the
-  lifecycle phase in ascending child object-ID order. This gives NEAT's
-  historical-marking alignment as a consequence of ordinary chromosomal
-  inheritance rather than as a separate matching algorithm.
+- Structural identity as **four fields** (gene lineage, homology class,
+  structural signature, mutation event), each derived by domain-separated
+  hash over a canonical event key. **Amended by ADR-0022 A8**: the original
+  draft used a single innovation ID from a world-global monotonic counter,
+  which conflated four meanings and made allocation order-fragile. Alignment
+  during meiosis is by homology class, which gives NEAT's historical-marking
+  behavior as a consequence of ordinary chromosomal inheritance, and makes
+  independent identical mutations converge on the same class rather than
+  being treated as disjoint.
 - Meiosis with crossover replaces per-gene independent parent choice, so
   linkage exists and co-adapted gene sets can be held together.
 - Dominance is a per-locus evolvable gene, spanning codominant to complete

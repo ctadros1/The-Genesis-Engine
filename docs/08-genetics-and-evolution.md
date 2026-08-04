@@ -69,7 +69,7 @@ history rather than of our specification. See ADR-0014.
 Learned state is **not** inherited. That is an invariant, not a default: if
 learned weights passed to offspring, a discovery would become a heritable
 trait and transmitted knowledge would be indistinguishable from genetics,
-which would make the Phase 11 question unanswerable.
+which would make the Phase 12 question unanswerable.
 
 ## Genome Sections
 

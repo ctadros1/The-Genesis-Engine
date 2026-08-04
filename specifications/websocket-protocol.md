@@ -19,7 +19,7 @@ hostile-count, and a 20,000-case seeded corruption sweep cover the codec;
 sequence-gap/lag resync and slow-client collapse are covered by server
 integration tests.
 
-## Planned Successor: `ALSP` 1.1 (Phase 12)
+## Planned Successor: `ALSP` 1.1 (Phase 11)
 
 Objects and organism-modified terrain must reach the observer, and neither
 fits the current frame set. The protocol version increments; frames are

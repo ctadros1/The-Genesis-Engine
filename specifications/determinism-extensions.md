@@ -252,10 +252,10 @@ canonical config hash only when their section is enabled:
 | - | `lifesim-structmut-v1` | Structural mutation operators (Phase 8) |
 | - | `lifesim-pairkey-v1` | Pairwise draw subject derivation (Phase 7) |
 | - | `lifesim-plasticity-v1` | Learning rule registry and update arithmetic (Phase 10) |
-| - | `lifesim-social-v1` | Perception and signalling (Phase 11) |
-| - | `lifesim-material-v1` | Material registry and properties (Phase 12) |
-| - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 12) |
-| - | `lifesim-worldmod-v1` | Terrain modification rules (Phase 12) |
+| - | `lifesim-social-v1` | Perception and signalling (Phase 12) |
+| - | `lifesim-material-v1` | Material registry and properties (Phase 11) |
+| - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 11) |
+| - | `lifesim-worldmod-v1` | Terrain modification rules (Phase 11) |
 | - | `lifesim-physiology-v1` | Allometry, ontogeny, senescence (Phase 13) |
 | `lifesim-worldgen-v1` | `lifesim-worldgen-v2` | Adds moisture, temperature, and biome fields (Phase 6). v1 worlds keep v1 forever, so their terrain checksums and both fixtures are unaffected |
 | - | `lifesim-biome-v1` | Biome classification thresholds (Phase 6) |
@@ -280,7 +280,7 @@ config hash, because an analysis version can never affect a world:
 `lifesim-tradition-v1`.
 
 Save framing versions are separate again: ALIF format 1 (existing), ALIF
-format 2 (Phase 12). See `specifications/world-save-format.md`.
+format 2 (Phase 11). See `specifications/world-save-format.md`.
 
 ## Rule 10: Scheduling Never Reaches The Kernel
 

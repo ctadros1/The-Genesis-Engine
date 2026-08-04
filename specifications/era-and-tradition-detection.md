@@ -142,7 +142,7 @@ and its injected changes are fixtures.
 
 **Null control.** On event logs from runs with the relevant mechanisms
 ablated (no artifacts, no signalling, no contest), the detector reports no
-segments above threshold in at least 10 of 12 seeds. A detector that finds
+segments above threshold in at least 25 of 30 seeds. A detector that finds
 eras in a world where nothing can happen is finding noise, and this check is
 what catches it.
 

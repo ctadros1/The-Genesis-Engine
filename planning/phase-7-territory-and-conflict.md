@@ -2,41 +2,34 @@
 
 Status: planned, not started. Policy version `contest-behavior-v1`.
 
-## Why This Is Second, Not Sixth
+## Why This Is Second, And What It Can And Cannot Establish
 
-The ordering suggested when the goal changed put territory and conflict
-after the whole culture stack, on the grounds that it is the easiest of the
-behavioral goals and does not depend on the others. Both are true. Three
-further arguments move it earlier, and they are the reason this plan
-deviates from the suggested order.
+Contest is scheduled early for two reasons that survive review, and its
+scope was cut for a third that did not.
 
-**It needs no schema change.** Topology 1 was designed with these channels
-already reserved. Input 2 (health) reads a neutral 1.0, input 10 (local
-threat estimate) and input 16 (recent damage fraction) are documented
-neutral zeros, and output 4 (attack request) is a documented no-op. Phase 7
-makes reserved channels live. It is the one behavioral goal implementable
-inside the existing frozen topology, which means it can be delivered before
-the expensive genome successor and can validate the Phase 5 experiment
-harness on a real behavioral question.
+**It needs no schema change.** Topology 1 already reserves its channels:
+input 2 (health) reads a neutral 1.0, input 10 (threat) and input 16 (recent
+damage) are documented neutral zeros, and output 4 (attack) is a documented
+no-op. Contest is the one behavioral mechanism implementable inside the
+frozen topology, so it validates the Phase 5 harness on a real question
+before the expensive genome work.
 
-**It creates the information that makes a signal worth having.** A signal
-channel evolves into noise unless something worth signalling about exists.
-Threat is spatially structured, time-varying, and fitness-relevant, and
-alarm signalling is the best-attested natural signalling system precisely
-because threat information has high value to the receiver. Running Phase 11
-in a world with contest is running it in the condition most likely to
-produce a result; running it in a world without contest tests it in a
-weaker one.
+**It makes threat information real** before a signal channel exists, which
+is the condition under which a costly signal is most likely to pay.
 
-**It de-risks the programme early.** It is the highest-prior-probability
-positive result in the plan, and it exercises the multi-seed ablation
-machinery on a question where a null result would itself be informative
-about the harness rather than about the science.
+**What was withdrawn.** The original justification claimed organized
+violence "tends to fall out of scarcity plus kin-biased grouping". The
+social-organization review explicitly rejects that shortcut
+(`social_organization` section 1.3) and lists roughly eleven further dependencies:
+persistent interaction communities, recognition, target discrimination,
+coalition recruitment, numerical-advantage assessment, spatial memory,
+free-rider suppression, and value that can be captured rather than merely
+destroyed. Almost all of them land in Phases 10 to 12.
 
-The counterargument is real and recorded: it burns a lineage break and a
-behavior-policy version before the genome successor lands, so Phase 8 will
-break lineage again. Against that, every phase breaks lineage anyway, which
-is what versioned policies are for.
+So Phase 7 delivers the **physics of damage and contest** and measures only
+what that physics can establish on its own. The organized-conflict claims
+move to Phase 12, where recognition, memory, and transmission exist. See
+ADR-0022 A1.
 
 ## Problem
 
@@ -54,8 +47,10 @@ Health exists in the documented model and not in the kernel.
   channels.
 - Carcasses as a resource, closing the gap `docs/06-organism-model.md` has
   documented since Phase 1.
-- A kinship input derived from genomes, so grouping can become kin-biased
-  without any authored group concept.
+- Perceptible phenotype cues on the existing sensory channels. **No
+  genotype-distance input**: ADR-0022 A3 forbids direct access to genetic
+  distance, pedigree, or observer labels, so kin recognition must be
+  solvable from perceptible cues or not solvable at all.
 - Resource contention sharpened: configured local depletion that makes
   patches worth defending.
 
@@ -97,49 +92,59 @@ Health exists in the documented model and not in the kernel.
 
 ## Acceptance Criteria
 
-Conditions, all matched on seed set (12 seeds), config, and run length:
+**Primary endpoint: C7.1.** Secondary criteria do not rescue a failed
+primary (ADR-0022 A7). The world is the replicate throughout; per-organism
+quantities are aggregated to a world-level statistic before analysis
+(ADR-0022 A5).
+
+Conditions, matched on seed set (30 independent worlds), config, and run
+length. Final seed count is set by simulation-based power analysis from a
+pilot; 30 is the floor.
 
 - **A**: contest enabled.
 - **B**: contest disabled; attack remains a no-op. The Phase 2 baseline.
-- **B'**: contest enabled but kinship-blind; the kinship input channel reads
-  a neutral zero, and genetic compatibility gating for pairing is unchanged.
-  This is the control that separates "violence happens" from "violence is
-  kin-structured".
+- **C**: contest enabled but damage set to zero, so the action fires and
+  costs energy without consequence. This separates "attack is expressed"
+  from "attack does anything".
 
 Criteria:
 
-- [ ] **C7.1 Kin-biased spatial aggregation.** Under A, mean genetic
-      distance between organisms within radius R of each other is lower than
-      between randomly paired organisms by at least the stated effect size,
-      sustained across at least 50,000 ticks, in at least 8 of 12 seeds.
-      Under B' the effect is absent or significantly smaller. Reported with
-      the effect size, the seed-by-seed result, and the random-pairing
-      baseline.
-- [ ] **C7.2 Directed rather than indiscriminate violence.** Under A, the
-      rate of damage events between organisms in different similarity
-      clusters exceeds the rate within clusters by at least factor f in at
-      least 8 of 12 seeds. Under B' the within and between rates do not
-      differ beyond the stated tolerance. Cluster labels are used **only** as
-      an offline analysis grouping for this statistic and never enter the
-      simulation, per ADR-0016.
-- [ ] **C7.3 Contest is not merely lethal noise.** Under A, median
-      population and median lifespan across the seed set remain within the
-      stated tolerance of B, or the difference is explained by a reported
-      mechanism. A conflict model that simply collapses populations has not
-      produced conflict; it has produced a mortality term.
+- [ ] **C7.1 Contest changes spatial structure (primary).** Under A, a
+      world-level index of spatial aggregation and of encounter avoidance
+      differs from B by at least the prespecified smallest effect of
+      interest, in at least 20 of 30 worlds. Condition C distinguishes the
+      energetic cost of attacking from its consequences. Reported with an
+      interval and an equivalence result, so a null is interpretable.
+- [ ] **C7.2 Contest is consequential, not lethal noise.** Median population
+      and median lifespan under A remain within the stated tolerance of B,
+      or the difference is explained by a reported mechanism. A model that
+      simply collapses populations has produced a mortality term, not
+      conflict.
+- [ ] **C7.3 Attack is used selectively rather than saturating.** The
+      per-organism attack rate under A is bounded away from both zero and
+      the ceiling, and correlates with local resource contention at the
+      world level. Saturation is a reportable finding about the cost
+      structure, not a failure to be tuned away.
 - [ ] **C7.4 Energy and health accounting is exact.** The ledger stays exact
       to the milli-unit across damage, healing, death, carcass creation, and
       carcass consumption over a 10^6-tick run. Carcass energy never exceeds
       the source organism's recorded remaining transferable energy.
 - [ ] **C7.5 Determinism.** Clean-process replay of the Phase 7 fixture;
-      order-independence under storage permutation; contest-disabled configs
-      reproduce `0xff9dfcff5dffbf42` exactly.
+      order-independence under storage permutation; pair-key symmetry;
+      contest-disabled configs reproduce `0xff9dfcff5dffbf42` exactly.
 
-If C7.1 and C7.2 both fail across the full seed set, the honest conclusion
-is that this world's scarcity structure does not produce kin-biased
-conflict, and the reported result is that negative finding plus the measured
-statistics. It is not a reason to weaken the thresholds after the fact;
-thresholds are recorded before the runs.
+### Explicitly not claimed here
+
+Kin-biased grouping, directed inter-group violence, territoriality, and
+coalition formation are **not** Phase 7 criteria. They require recognition
+from perceptible cues, associative memory, and spatial memory, none of which
+exist until Phases 10 to 12. Measuring them here would produce either a
+null that says nothing or an artifact of the demes the world was seeded
+with. They are Phase 12 criteria.
+
+Kin structure that arises purely from limited dispersal is measured and
+reported as a **descriptive observation** of the seeded population
+structure, never as evidence of recognition.
 
 ## Test Plan
 
@@ -176,7 +181,7 @@ proposed to implemented), `docs/06-organism-model.md`,
 |---|---|
 | Contest collapses populations and produces an uninformative extinction | C7.3 exists precisely to detect this; damage parameters are config and swept before the campaign |
 | Attack evolves to always-on because it is cheap | Attack carries an explicit energy cost and a retaliation risk; if it still saturates, that is a reportable finding about the cost structure |
-| Kin recognition is trivially solvable because the kinship input is handed over directly | Recorded as a real limitation: providing computed genetic distance as an input authors more than a real organism gets. An alternative condition where kinship must be inferred from visible phenotype only is a stated follow-up, not a Phase 7 deliverable |
+| Kin structure is read as kin *recognition* | Phase 7 has no recognition mechanism and claims none. Limited-dispersal kin structure is reported descriptively; recognition is a Phase 12 question with perceptible cues only |
 | Cluster labels leak into behavior through the C7.2 statistic | Structural: the statistic is computed in the analysis crate over the event log, after the run |
 
 ## Rollback

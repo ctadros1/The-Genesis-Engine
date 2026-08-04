@@ -1,6 +1,6 @@
 # Mutable World State Specification
 
-Status: design specification, not implemented. Phase 12. Policy version
+Status: design specification, not implemented. Phase 11. Policy version
 `lifesim-worldmod-v1`. Introduces ALIF format 2; see
 `specifications/world-save-format.md`.
 
@@ -66,7 +66,7 @@ bytes, which is required for the golden-snapshot tests to mean anything.
 
 ## Mutable Layers
 
-Kept deliberately small in Phase 12. Each added layer is a new lineage and a
+Kept deliberately small in Phase 11. Each added layer is a new lineage and a
 new set of interactions to validate.
 
 | Layer | Mutable | Effect | Notes |
@@ -76,7 +76,7 @@ new set of interactions to validate.
 | Food capacity override | New | Raises or lowers a cell's carrying capacity `K` | Set by clearing or by deposited organic material |
 | Material yield | New | Remaining extractable material in a cell | Depleted by `strike`, regenerates on a configured schedule |
 
-**Elevation is deliberately not mutable in Phase 12.** Elevation feeds
+**Elevation is deliberately not mutable in Phase 11.** Elevation feeds
 coastline derivation, drainage, and the temperature lapse term, and the
 generator validates land fraction and connectivity against it. Making it
 mutable means either revalidating those invariants every tick or accepting
@@ -143,5 +143,5 @@ terrain data already is. This is a protocol version change
 - Ordering: two organisms modifying the same cell in the same tick produce
   the same result under storage permutation.
 - Incremental versus full composed-checksum agreement over a long run.
-- Disabled-section equality: mutable world disabled reproduces the Phase 11
+- Disabled-section equality: mutable world disabled reproduces the Phase 12
   fixture exactly.

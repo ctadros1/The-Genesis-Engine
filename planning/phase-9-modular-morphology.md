@@ -51,8 +51,8 @@ which is exactly what Phase 15's transition requires.
 - New stream `Morphogenesis` (17), unused under the default fully
   deterministic development policy; it exists so adopting developmental
   noise later cannot renumber.
-- Regulatory loci evaluate in ascending innovation-ID order; actions apply
-  in ascending `(locus_innovation_id, lattice_index)` order.
+- Regulatory loci evaluate in ascending `homology_id` order; actions apply
+  in ascending `(locus_homology_id, lattice_index)` order.
 - Every module sum iterates in ascending lattice index, pinning float
   summation order exactly as Rule 6 does for controller edges.
 - Lattice positions are integers; morphology is exactly hashable.
@@ -70,19 +70,25 @@ which is exactly what Phase 15's transition requires.
 - [ ] **C9.2 The unicellular case works.** A one-module body is legal,
       viable, and produces sane bounded derived attributes. Phase 15 depends
       on this and it is verified here rather than discovered there.
-- [ ] **C9.3 Morphology actually evolves.** Under structural mutation, the
-      distribution of module counts and of type composition among living
-      organisms at tick T differs from the founder distribution by the
-      stated amount in at least 8 of 12 seeds, and the population contains
-      more than one distinct body configuration in at least 10 of 12.
-      Control: a fixed-morphology condition where regulatory loci are inert,
-      matched on total mutational input.
-- [ ] **C9.4 Genotype-phenotype discontinuity is measured, not assumed.**
-      Report the distribution of phenotypic distance produced by
-      single-locus mutations. ADR-0019 accepts that indirect encodings are
-      discontinuous; this criterion establishes how much, because if a
-      typical point mutation produces an unrelated body then selection
-      cannot act and the encoding is wrong.
+- [ ] **C9.3 Morphological change has consequence, not just variance
+      (primary).** Structural divergence from the founder distribution is
+      necessary but not sufficient: a diverging module count is novelty, and
+      novelty is not progress (ADR-0022 A13). The criterion requires
+      divergence **and** that the diverged morphologies show a measurable
+      fitness or ecological difference **and** that the change persists
+      beyond the stated window, in at least 20 of 30 worlds. Control: a
+      fixed-morphology condition with regulatory loci inert, matched on total
+      mutational input. Divergence without consequence is reported as
+      structural drift, which is a real and different finding.
+- [ ] **C9.4 Discontinuity gate.** Report the distribution of phenotypic
+      distance produced by single-locus mutations. **This is a gate, not a
+      metric** (ADR-0022 D1): if the median single-locus mutation produces a
+      body beyond the stated dissimilarity threshold, the developmental
+      encoding has failed its own premise, selection cannot act on it, and
+      the specified direct parameterized body-plan fallback is taken. Two
+      commissioned reviews recommend against developmental encodings as a
+      baseline; this gate is the concession to that advice and it is
+      pass/fail, not advisory.
 - [ ] **C9.5 Non-viability rate is bounded and reported.** The fraction of
       births rejected for invalid bodies is a first-class metric. If it is
       high, effective fecundity drops and the ecology shifts, so a stated
@@ -90,7 +96,7 @@ which is exactly what Phase 15's transition requires.
 - [ ] **C9.6 Structural freedom does not destabilize the ecology.** Median
       population and lifespan under evolvable morphology are within the
       stated tolerance of the fixed-morphology control, or the difference is
-      explained by a reported mechanism, in at least 8 of 12 seeds.
+      explained by a reported mechanism, in at least 20 of 30 seeds.
 - [ ] **C9.7 Brain costs body.** Controller node budget derives from neural
       modules, and neural modules carry upkeep. Verify that controller size
       and metabolic cost are coupled as specified, so cognition is expensive

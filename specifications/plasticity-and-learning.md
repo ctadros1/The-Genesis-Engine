@@ -10,7 +10,7 @@ Controller weights are fixed at birth. Any behavioral improvement must
 therefore wait for a mutation and a generation. Cumulative culture requires
 change that propagates faster than genes, which requires change within a
 lifetime. Without it, every "discovery" is just another inherited trait and
-Phase 11's transmission question is unaskable.
+Phase 12's transmission question is unaskable.
 
 ## What Is Authored And What Is Evolved
 
@@ -71,14 +71,14 @@ Bounded and versioned. Registry version enters the config hash. Rules are
 `x` is the presynaptic activation, `y` the postsynaptic activation, `w_eff`
 the current effective weight.
 
-Rules 0 through 4 are available from Phase 10. **Rule 5 requires the Phase 11
+Rules 0 through 4 are available from Phase 10. **Rule 5 requires the Phase 12
 social channel and is not available before it.** Its inclusion is the
 largest philosophical judgment call in the plan and is argued explicitly in
-`planning/phase-11-social-channel.md`: it authors the *capacity* for a
+`planning/phase-12-social-channel.md`: it authors the *capacity* for a
 synapse to be driven by an observed conspecific action, not the content of
 what is learned. The alternative, requiring imitation to be discovered from
 generic plasticity plus perception alone, is more philosophically pure and
-substantially more likely to make Phase 11 unfalsifiable. Phase 11's design
+substantially more likely to make Phase 12 unfalsifiable. Phase 12's design
 runs both as conditions rather than picking one by assertion.
 
 ## Update Arithmetic
@@ -96,7 +96,7 @@ Effective weight used in evaluation:
 
     w_eff = clamp(genome_weight + (learned_q16 as f32) / 65536.0, -8.0, 8.0)
 
-Per tick, for each plastic edge, in ascending edge innovation-ID order:
+Per tick, for each plastic edge, in ascending edge `homology_id` order:
 
 1. Compute `delta` in f32 from the rule form, activations, and coefficients.
 2. Scale: `delta *= eta`. If the rule is modulated, multiply by the
@@ -117,6 +117,29 @@ policy exactly.
 The clamp in step 5 is what bounds the learned contribution and keeps
 `w_eff` inside the range every downstream bound already assumes.
 
+## Bounded Event Memory
+
+`cumulative_culture` section 1.2 lists a retrievable trace of state-action-outcome
+events in the minimum viable transmission system. Recurrent activations do
+not provide one: they are a compressed running state, not something an
+organism can revisit. ADR-0022 A11 adds it.
+
+Each organism carries a fixed-capacity ring of event records:
+
+    (tick_delta, event_class, cue_vector, outcome_delta)
+
+- Capacity and decay are genome-encoded within hard config caps, so how much
+  memory an organism keeps is under selection and bounded.
+- `event_class` is a coarse bounded enum of *perceptual* categories (contact,
+  resource change, damage, conspecific-nearby), never an action label.
+- The ring is world state: fixed point, saved, checksummed under
+  `lifesim-learn-state-v1`, and **reset at birth** like all learned state.
+- Entries are appended in canonical order at `finalize` and are readable by
+  plasticity rules through bound input channels only.
+
+The ring is a bounded per-organism cost, so its cap interacts with the
+snapshot budget and is measured with the rest of the learned state.
+
 ## Cost
 
 Plasticity is not free. Each plastic edge costs a configured energy
@@ -129,7 +152,7 @@ environment pay for" becomes a measurable result.
 ## Reset At Birth: No Lamarckian Inheritance
 
 `learned_q16` and `trace_q16` are zero at birth. This is an invariant, not a
-default, and it is the property that keeps Phase 11's question meaningful: if
+default, and it is the property that keeps Phase 12's question meaningful: if
 learned state were inherited, a discovery would become a heritable trait and
 transmission would be indistinguishable from inheritance.
 

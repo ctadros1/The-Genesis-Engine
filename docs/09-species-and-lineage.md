@@ -69,7 +69,7 @@ The observer should show direct parents, offspring count, known descendants at a
 
 ## Traditions Require A Genetic Control
 
-From Phase 11, a claim that a behavior is a transmitted tradition rather than
+From Phase 12, a claim that a behavior is a transmitted tradition rather than
 an inherited trait requires a genotype-matched control: the variant's
 frequency in the local group must exceed its frequency in a cohort of
 organisms elsewhere matched on genetic distance to that group's genotype
@@ -86,7 +86,7 @@ gene-vector distance is not defined between them. Distance becomes
 
     distance = w_t * trait_distance + w_s * structural_distance
 
-where `structural_distance` is the fraction of innovation IDs not shared
+where `structural_distance` is the fraction of `homology_id` values not shared
 between two expressed networks. Weights are Q16 config. The existing rule
 still applies: do not compare lengths or meanings across incompatible genome
 schema versions.

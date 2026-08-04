@@ -69,7 +69,7 @@ Three sections below become live rather than documented placeholders:
 combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 13, and carcasses in Phase 7.
 
 The tick order gains phases: `learn` after `apply` (Phase 10), and object
-decay plus terrain-modification application inside `lifecycle` (Phase 12).
+decay plus terrain-modification application inside `lifecycle` (Phase 11).
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

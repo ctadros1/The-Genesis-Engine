@@ -35,15 +35,15 @@ New bounded payloads, grouped by the phase that adds them:
 | 7 | `Damage` | attacker, target, raw and applied damage, resulting health |
 | 7 | `DeathByDamage` | organism, attacker, final state summary |
 | 7 | `CarcassCreated` / `CarcassConsumed` | source organism, object ID, transferable energy |
-| 8 | `StructuralMutation` | child, operator class, locus count affected, new innovation ID range |
+| 8 | `StructuralMutation` | child, operator class, locus count affected, new homology-ID range |
 | 8 | `StructuralRejected` | child, cap class that rejected it |
 | 10 | `PlasticityFault` | organism, neutralized non-finite count |
-| 11 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
-| 11 | `PerceptionFault` | organism, neutralized count |
-| 12 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
-| 12 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
-| 12 | `ObjectActionRejected` | actor, action, typed reason |
-| 12 | `TerrainModified` | actor, layer, cell, old and new value |
+| 12 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
+| 12 | `PerceptionFault` | organism, neutralized count |
+| 11 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
+| 11 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
+| 11 | `ObjectActionRejected` | actor, action, typed reason |
+| 11 | `TerrainModified` | actor, layer, cell, old and new value |
 | 13 | `DiseaseTransmitted` | source, target, load |
 
 Rules that do not change: events are append-only logical facts; they carry

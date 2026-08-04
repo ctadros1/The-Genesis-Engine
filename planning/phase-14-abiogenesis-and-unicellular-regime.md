@@ -77,7 +77,7 @@ dependency order.
 
 ## Acceptance Criteria
 
-Conditions per ADR-0018, matched on seeds (12) and run length. Every
+Conditions per ADR-0018, matched on seeds (30) and run length. Every
 scaffolded condition runs its unscaffolded control on the same seeds.
 
 - **N** (neutral): chemistry configured without regard to abiogenesis.

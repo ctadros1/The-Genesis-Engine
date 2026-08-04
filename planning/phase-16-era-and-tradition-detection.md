@@ -87,7 +87,7 @@ than a review finding. See ADR-0016.
       and its injected changes are versioned fixtures.
 - [ ] **C16.5 Null control.** On event logs from runs with the relevant
       mechanisms ablated (no artifacts, no signalling, no contest), the
-      detector reports no segments above threshold in at least 10 of 12
+      detector reports no segments above threshold in at least 25 of 30
       seeds. A detector that finds eras where nothing can happen is finding
       noise, and this is the check that catches it. Without C16.5 the whole
       analysis is unfalsifiable pattern-matching.

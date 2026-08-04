@@ -20,15 +20,30 @@ Topology 1 stays registered, evaluable, and fixture-covered forever.
 Changes that matter for this specification:
 
 - **Canonical layout.** Layer-major weight matrices are replaced by sorted
-  typed locus lists. Nodes and edges carry innovation IDs from a world-global
-  monotonic counter, and loci within a chromosome are strictly ascending by
-  innovation ID as a decode-time invariant.
-- **Evaluation.** Synchronous: every node computes from the previous tick's
-  activations. There is no topological sort, no cycle special case, and node
-  evaluation order is irrelevant. Activations become world state, saved and
-  checksummed under `lifesim-activation-state-v1`.
+  typed locus lists. Nodes and edges carry the four identity fields of
+  ADR-0022 A8, derived by domain-separated hash rather than allocated from a
+  counter, and loci within a chromosome are strictly ascending by
+  `homology_id` as a decode-time invariant.
+- **Evaluation.** Hybrid, per ADR-0022 A9. Edges are typed zero-delay or
+  delayed. Zero-delay edges are evaluated in a **canonical topological
+  order** over the acyclic subgraph, so information can cross several edges
+  within one tick. Delayed and recurrent edges read from **prior-state
+  buffers**, which breaks every cycle by construction and needs no cycle
+  special case.
+
+  An earlier draft made every edge delayed (fully synchronous update). That
+  was chosen to avoid topological sorting entirely, at the cost of one edge
+  of propagation per tick, which makes a deep network unable to respond
+  within a tick. The hybrid is strictly more capable and remains
+  deterministic, because the topological order is canonicalized by
+  `homology_id` and ties are broken by it.
+
+  A cycle among zero-delay edges is a **decode-time error**, not a runtime
+  condition: the genome is rejected, counted, and evented, exactly as a cap
+  violation is. Activations and prior-state buffers are both world state,
+  saved and checksummed under `lifesim-activation-state-v1`.
 - **Summation order is policy.** Per-node incoming edges are summed in
-  ascending edge innovation-ID order, never in storage order. Float addition
+  ascending edge `homology_id` order, never in storage order. Float addition
   is not associative, so a storage-order sum is a replay bug that stays
   invisible until a compaction changes layout.
 - **Channels.** The fixed 20 inputs and 12 outputs become a versioned

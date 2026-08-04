@@ -44,11 +44,50 @@ related material stays linked by default and can be unlinked by
 transposition. That is the biological arrangement and it is also what makes
 crossover positions meaningful.
 
-## Innovation IDs
+## Structural Identity: Four Fields, Not One
 
-Every node and edge locus carries an `innovation_id: u32`, allocated from a
-world-global monotonic counter `next_innovation_id` held in world state and
-saved.
+An earlier draft carried a single `innovation_id` and used it for
+alignment, ancestry, and event identity at once. `neuroevolution` section 1.6
+identifies that as a false-equivalence hazard, and a global sequential
+counter as order-fragile. ADR-0022 A8 adopts the correction: identity is
+four separate fields.
+
+| Field | Meaning | Used for |
+|---|---|---|
+| `gene_lineage_id` | Persistent identity of a heritable gene lineage | Ancestry and provenance analysis |
+| `homology_id` | The structural slot two loci share | **Alignment during meiosis** |
+| `structural_signature` | Canonical phenotype-relevant fields: source, target, role, activation, delay | Detecting genuinely equivalent structure |
+| `mutation_event_id` | Identity of the reproduction/mutation event that created the locus | Audit and event-log joins |
+
+Loci are sorted within a chromosome by `homology_id`, and it is
+`homology_id` that makes crossover between structurally different homologues
+meaningful.
+
+### Derivation without a global counter
+
+IDs are **derived, not allocated**: a domain-separated hash over a canonical
+event key, rather than a shared mutable counter.
+
+    homology_id = H("lifesim-homology-v1", policy_version, parent_homology,
+                    operator, target_slot, attempt_ordinal)
+    mutation_event_id = H("lifesim-mutevent-v1", world_seed, tick,
+                          child_object_id, operator, attempt_ordinal)
+    gene_lineage_id   = inherited from the source locus; fresh only on
+                        duplication or insertion, derived as above
+
+This removes the last piece of shared mutable state from reproduction, so
+no allocation depends on scheduling or traversal, and it keeps the property
+that the same structural mutation applied to the same parent under the same
+policy yields the same identity.
+
+**Independent identical mutations** therefore converge on the same
+`homology_id` by construction. Two lineages that independently evolve the
+same structural change align during meiosis instead of being treated as
+disjoint, which is the problem NEAT's innovation record exists to patch and
+which the original single-counter design would have reproduced.
+
+Hash width and collision policy are versioned config; a collision between
+different canonical keys is a fail-closed error, never a silent merge.
 
 Allocation happens in the lifecycle phase when a child is materialized,
 processing pending children in ascending child object-ID order, and within a
@@ -196,7 +235,7 @@ hemizygous and expresses its single value.
 The formula is order-free given the fixed haplotype slot assignment.
 
 **Node and edge loci.** The expressed network is the union of both
-haplotypes' nodes and edges, keyed by innovation ID. For an innovation
+haplotypes' nodes and edges, keyed by `homology_id`. For an innovation
 present on both haplotypes, scalar parameters (bias, weight, gain, time
 constant) combine by the same dominance formula; boolean flags combine by
 a specified rule: `disabled` is expressed only when disabled on both
@@ -222,7 +261,7 @@ For each chromosome index `i` in `0..C`:
    crossover per chromosome per meiosis, which is the biological norm.
 2. Draw `n` crossover positions in locus-index space from subsequent draws,
    deduplicate, and sort ascending. Positions are expressed in the merged
-   innovation-ID ordering of the two homologues, so a crossover point is a
+   `homology_id` ordering of the two homologues, so a crossover point is a
    position in innovation space, not an array index. This makes crossover
    meaningful between homologues of different lengths.
 3. Walk the merged innovation ordering, alternating source haplotype at each
@@ -246,6 +285,26 @@ preserves linkage, and linkage decay with map distance becomes a testable
 prediction (Phase 8 acceptance criterion C8.5).
 
 `uniform-bounded-v1` remains valid and unchanged for schema-1 worlds.
+
+## Inheritance Modes
+
+`genetics` section 1.2 records that crossover is not universally beneficial and can
+destroy coadapted structure under strong epistasis. Paired reproduction
+therefore does **not** imply mandatory crossover. The world genetics policy
+selects a mode, and the alternatives exist as first-class controls rather
+than as a future idea (ADR-0022 A10).
+
+| Mode | Behavior |
+|---|---|
+| `clonal` | Single parent, no recombination. The baseline control |
+| `paired_whole_genome` | Two parents, offspring takes one parent's genome intact. Isolates mate choice from recombination |
+| `biparental_assort` | Independent assortment of whole chromosomes, no within-chromosome crossover |
+| `meiotic` | Full meiosis with crossover, as specified below. The default |
+| `rearranging` | Meiotic plus rare non-homologous rearrangement. Experimental |
+
+Any claim about the benefit of recombination is reported against at least
+`clonal` and `paired_whole_genome`. Inheritance-mode probabilities are not
+heritable; making them so would be a separately versioned experiment.
 
 ## Mutation
 
@@ -279,7 +338,7 @@ Reproduction may be gated on compatibility computed from the two genomes:
 
     distance = w_t * trait_distance + w_s * structural_distance
 
-where `structural_distance` is the fraction of innovation IDs not shared
+where `structural_distance` is the fraction of `homology_id` values not shared
 between the two expressed networks, and `w_t`, `w_s` are Q16 config weights.
 
 This is physics, not an analysis label: it is computed from the records

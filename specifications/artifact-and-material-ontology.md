@@ -1,6 +1,6 @@
 # Artifact And Material Ontology Specification
 
-Status: design specification, not implemented. Phase 12. Policy versions
+Status: design specification, not implemented. Phase 11. Policy versions
 `lifesim-material-v1`, `lifesim-artifact-v1`.
 
 ## Problem
@@ -44,7 +44,7 @@ dense, no energy, negligible decay), wood (moderate hardness, moderate
 decay, low energy), fiber (soft, light, fast decay), and carcass (soft, high
 energy, fast decay). Carcass ties the object system to the existing
 lifecycle: `docs/06-organism-model.md` already specifies carcasses as finite
-resource entities, and Phase 12 is where they become real objects rather
+resource entities, and Phase 11 is where they become real objects rather
 than a documented gap.
 
 Materials enter the world from terrain: cells carry a material yield
@@ -149,7 +149,7 @@ which matters because the energy ledger is a hard invariant.
 ## Persistence In The World
 
 Placed objects remain until integrity reaches zero through decay or damage.
-This is the property that makes Phase 12 different from every earlier phase:
+This is the property that makes Phase 11 different from every earlier phase:
 an object outlives the organism that made it, and later organisms encounter
 a world that earlier organisms shaped.
 
@@ -157,6 +157,34 @@ Objects are perceivable: the channel registry gains `object_present`,
 `object_distance`, `object_bearing`, `object_material`, and
 `object_composite_depth` channels for the K nearest objects, gathered under
 the same sorted-candidate rule as neighbours.
+
+## Height And Support: The Deferred Subset
+
+`artifacts` section 1.5 recommends a hybrid 2.5D representation with discrete
+height intervals, a collider palette, and an explicit bond/support graph.
+The recommendation is sound, and **stacking genuinely cannot be expressed
+without height**: a 2D world can hold objects side by side but cannot build
+upward, which limits what "persistent structure" can mean.
+
+ADR-0022 D2 defers rather than declines it. The reasoning is cost
+concentration: height changes collision, movement, perception, rendering,
+and the save format simultaneously, arriving in a plan that already carries
+four unmeasured cost multipliers (variable topology, morphology, learned
+state, and object churn).
+
+The recorded minimum viable subset, scheduled as a Phase 11 stretch item
+gated on the Phase 11 cost measurement:
+
+- one integer `height_interval` per object, not a continuous z coordinate;
+- a `supported_by` object reference forming an explicit support graph,
+  acyclic by construction and validated at decode;
+- a support rule: an object whose supporter is destroyed either falls to the
+  next supporting interval or is destroyed, by material policy;
+- no rotation, no toppling, no torque, no partial overlap.
+
+**Until this lands the plan does not claim stacked construction**, and no
+document may describe a placed-object arrangement as a built structure in
+the vertical sense. Object placement remains planar.
 
 ## Cell Occupancy And Movement
 
@@ -195,6 +223,6 @@ rejected deterministically, counted, and evented.
 - Contested acquisition is order-independent under storage permutation.
 - Save round trip with composites of depth greater than one, and with held
   objects.
-- Disabled-section equality: artifacts disabled reproduces the Phase 11
+- Disabled-section equality: artifacts disabled reproduces the Phase 12
   fixture exactly.
 - Seeded malformed-input harness over the object table codec.
