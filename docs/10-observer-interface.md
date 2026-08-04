@@ -59,3 +59,43 @@ The canvas must have text alternatives for selected-world status, simulation sta
 - A scientific overlay can be toggled without changing simulation state.
 - A viewport with dense organisms stays responsive through LOD/culling.
 - Browser render cadence is decoupled from server tick cadence.
+
+
+## Planned Successor: 3D Voxel Observer (ADR-0024)
+
+The observer moves from 2D pixel-art sprites to a 3D voxel presentation:
+heightmap terrain built from the existing elevation field, with voxel
+organisms, artifacts, and structures standing on it under a free camera.
+
+**Appearance is derived, never authored per entity.** The renderer holds a
+bounded palette of roughly fifteen primitives (one per module type, one per
+material, one per biome tint) and every organism, artifact, and structure is
+an arrangement of those, taken from simulation state. Nothing is
+pre-generated, so nothing about the asset pipeline caps what the simulation
+is allowed to contain. See `specifications/appearance-derivation.md`.
+
+Consequences for this document's design direction:
+
+- **Legibility is preserved and strengthened.** The scientific-overlay
+  principle is unchanged, and structure becomes directly readable: after
+  Phase 9 an organism with three motor modules visibly has three motor
+  modules, so selection on body plan is observed rather than inferred.
+- **Rendering dimensionality is not simulation dimensionality.** The
+  simulation stays 2D. The 3D view is a presentation of a 2D world with an
+  elevation field, so it carries no kernel, determinism, or fixture impact.
+  Stacking, multi-storey structures, and flight are **not** available and
+  require the height-and-support subset deferred in ADR-0022 D2.
+- **No generative models in the render path.** An image or mesh model asked
+  what a creature looks like answers from its prior, not from the organism,
+  which would make the view stop being evidence about the world. Offline
+  authoring of the primitive palette is permitted; runtime generation is
+  not.
+- **Reusable from the current observer**: protocol handling, selection,
+  overlay toggling, charts, controls, reconnect and resync. **Not reusable**:
+  the render layer.
+- Pre-Phase-9 organisms have no modules and render through a plain
+  parametric derivation from the pigmentation, body-scale, and heading
+  fields the render record already carries.
+
+Sphere-world geometry and off-planet environments are explicitly out of
+scope and deferred to a later project stage.

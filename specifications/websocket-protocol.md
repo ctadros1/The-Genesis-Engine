@@ -67,3 +67,28 @@ Server tracks acknowledgement age and queue budget. On lag, it drops superseded 
 ## Tests
 
 Golden encode/decode, endian, truncated/oversized/corrupt frame, version negotiation, sequence gap, duplicate, resync, and slow-client tests are mandatory.
+
+
+## Planned Successor: Structural Render Fields (ADR-0024)
+
+3D voxel rendering with derived appearance
+(`specifications/appearance-derivation.md`) needs per-entity structure in
+the state stream once morphology exists.
+
+Render records gain a bounded module list of `(lattice_position, type,
+scale)`, capped by `max_modules` and length-checked before allocation like
+every other count, alongside the existing pigmentation, body-scale, and
+heading fields. Objects gain material, integrity bucket, and composition
+depth.
+
+This is a **versioned protocol change** (`ALSP` minor version), never a
+silent field addition, and it follows the existing bounded fail-closed
+decode discipline.
+
+Unchanged and non-negotiable: **genome and controller matrices never appear
+in state frames.** A module list is a phenotype summary, not a genome. Deep
+morphology, full composition trees, and learned state stay on the HTTP
+detail path.
+
+Pre-morphology worlds send no module list and render through the parametric
+path, so this change is additive and old worlds stream unchanged.

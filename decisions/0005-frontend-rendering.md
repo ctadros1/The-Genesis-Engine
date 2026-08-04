@@ -54,3 +54,19 @@ Seven browser E2E tests pass on desktop and a 390x844 mobile viewport, and
 live render sampling recorded frame interval p50 8.3 ms / p95 9.0 ms at
 175 streamed organisms (WebGL, local Chrome). WebGPU preference and
 physical mobile/kiosk devices remain unmeasured. Status remains Proposed.
+
+
+## Amended By ADR-0024 (2026-08-04)
+
+The 2D sprite decision is superseded in direction by ADR-0024, which adopts
+3D voxel rendering with appearance derived from simulation state.
+
+What this ADR's evidence still supports: TypeScript as the observer
+language, the browser as the surface, viewport culling as the scaling
+mechanism, and the server-authority boundary. What it no longer supports:
+PixiJS as the renderer, and the measured Phase 0 and Phase 3 frame figures,
+which were for sprite rendering and do not transfer to a voxel path.
+
+Status remains Proposed. The physical desktop and mobile device gate that
+was already open now covers a different rendering technique and must be
+re-measured rather than inherited.

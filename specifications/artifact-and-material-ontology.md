@@ -226,3 +226,36 @@ rejected deterministically, counted, and evented.
 - Disabled-section equality: artifacts disabled reproduces the Phase 12
   fixture exactly.
 - Seeded malformed-input harness over the object table codec.
+
+
+## Required Addition: Composite Geometry (ADR-0024)
+
+This specification defines a composite as a bounded **list** of constituent
+object IDs with derived scalar properties, and defines **no spatial
+arrangement**. A depth-2 composite therefore has no shape.
+
+That gap was surfaced by the rendering work
+(`specifications/appearance-derivation.md`) but it is a gap in this
+specification, not in the renderer: a renderer that invented an arrangement
+would be authoring appearance, which ADR-0024 forbids.
+
+The addition required before composites can be rendered as structures:
+
+- Combination records a **relative lattice offset and orientation per
+  constituent**, chosen deterministically at combination time from the
+  combining organism's state and a draw from the `Artifact` stream keyed on
+  the canonical pair key.
+- The offset set is validated **connected and non-overlapping**, exactly as
+  a morphology body is. An invalid arrangement fails the combination with a
+  typed reason and a counter; it never produces an invalid object.
+- Offsets are integer lattice coordinates, so composite geometry is exactly
+  representable and hashable, with no float geometry.
+- Constituents are stored in ascending offset order so composition is
+  canonical and comparable.
+- **Fracture restores constituents to independent objects at their offset
+  positions**, preserving the existing exact mass and energy conservation
+  including the rounding-remainder convention.
+
+Until this lands, composites render as an aggregate sized by total mass and
+coloured by dominant material, and the observer must not present that
+aggregate as the object's structure.
