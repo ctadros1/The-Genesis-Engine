@@ -13,7 +13,7 @@ preference, and defense tendency are stored and inherited for analysis but
 behaviorally inert in Phase 2. Health, combat, and carcasses remain
 unimplemented; the health input channel reads a neutral 1.0.
 
-## Planned Successors (Phases 6 To 11)
+## Planned Successors (Phases 7 To 11)
 
 The state table below gains entries, each config-gated and absent when its
 section is disabled:
@@ -29,9 +29,9 @@ section is disabled:
 | Physiology | Developmental stage, accumulated hazard, disease load (all fixed point) | 11 |
 
 Three documented gaps in this file close: health and carcasses become real
-in Phase 6, and the "health input channel reads a neutral 1.0" note stops
+in Phase 7, and the "health input channel reads a neutral 1.0" note stops
 being true in the same phase. Ontogeny replaces the age-threshold maturity
-model and senescence replaces the hard `max_age_ticks` cutoff in Phase 11.
+model and senescence replaces the hard `max_age_ticks` cutoff in Phase 13.
 
 Carrying is a genuine tradeoff rather than a free ability: capacity scales
 with body scale, and carried mass adds to movement cost through the existing

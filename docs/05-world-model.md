@@ -49,11 +49,11 @@ Day/night primarily affects visibility, temperature, and activity opportunity; i
 
 ## Disasters
 
-Rare configurable disasters are event-driven, scoped, and auditable. Examples: drought, wildfire, storm, cold snap, and food blight. Each has a seed, spatial extent, duration, intensity, and start/end event. The product-direction default is rare, bounded disasters enabled in the mature high-realism world profile. They remain disabled because the implementation does not exist yet, and they are not scheduled in Phases 5 through 12. A future disaster slice requires long-run recovery and extinction evidence first, and its own plan entry.
+Rare configurable disasters are event-driven, scoped, and auditable. Examples: drought, wildfire, storm, cold snap, and food blight. Each has a seed, spatial extent, duration, intensity, and start/end event. The product-direction default is rare, bounded disasters enabled in the mature high-realism world profile. They remain disabled because the implementation does not exist yet, and they are not scheduled in Phases 5 through 16. A future disaster slice requires long-run recovery and extinction evidence first, and its own plan entry.
 
-## World Editing By Organisms (Phase 10)
+## World Editing By Organisms (Phase 12)
 
-Distinct from sandbox intervention: from Phase 10 organisms themselves
+Distinct from sandbox intervention: from Phase 12 organisms themselves
 modify the world, and the modification persists after they die. Design in
 `specifications/mutable-world-state.md`; decision in ADR-0015.
 

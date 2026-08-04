@@ -85,8 +85,8 @@ Negative and accepted:
   duplication-based or indirect encodings outperform direct ones at this
   scale, and asserting otherwise would be unevidenced. The mitigation is
   that both operator sets act on the same locus list: the explicit insertion
-  operator remains available as a configured variation policy, and Phase 7
-  criterion C7.5 measures the comparison rather than assuming an answer. If
+  operator remains available as a configured variation policy, and Phase 8
+  criterion C8.5 measures the comparison rather than assuming an answer. If
   duplication alone cannot produce structural change within the run budget,
   insertion becomes the default with the measurement recorded.
 - Diploidy roughly doubles genome storage. This is the direct cost of the
@@ -115,7 +115,7 @@ roughly 0.32 to 0.33 microseconds per organism per tick with a fixed
 topology and stack buffers. Variable topology changes the cost model at
 every level: evaluation, allocation, snapshot size, and memory.
 
-No performance claim is made here. Phase 7's benchmark requirements demand
+No performance claim is made here. Phase 8's benchmark requirements demand
 the distribution rather than the mean, because evolved topology sizes will
 be skewed, and the structural caps are to be set from that measurement
 rather than guessed in advance.
@@ -130,7 +130,7 @@ Asynchronous checkpointing is a Phase 5 prerequisite, and
 
 ## Revisit Conditions
 
-- C7.5 shows duplication-only growth cannot reach the structural change the
+- C8.5 shows duplication-only growth cannot reach the structural change the
   phase requires within budget.
 - Evaluation cost or snapshot growth breaks the tick or checkpoint budget at
   a supported tier.
@@ -139,9 +139,9 @@ Asynchronous checkpointing is a Phase 5 prerequisite, and
 
 ## Evidence Required To Accept
 
-- Phase 7 acceptance criteria C7.1 through C7.8, in particular the Mendelian
-  and linkage validations (C7.3, C7.4) and the duplication-versus-insertion
-  comparison (C7.5).
+- Phase 8 acceptance criteria C8.1 through C8.8, in particular the Mendelian
+  and linkage validations (C8.3, C8.4) and the duplication-versus-insertion
+  comparison (C8.5).
 - Benchmark evidence for evaluation cost distribution, snapshot size, and
   memory at both supported tiers.
 - Malformed-input harness of at least 100,000 cases with zero panics and

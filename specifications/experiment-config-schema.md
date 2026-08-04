@@ -23,7 +23,7 @@ Phase 1 configs; enabling Phase 2 always starts a new replay lineage.
 
 ## Planned Additions: Conditions And Campaigns (Phase 5)
 
-Every acceptance criterion from Phase 6 onward is a multi-seed,
+Every acceptance criterion from Phase 7 onward is a multi-seed,
 multi-condition claim, so conditions become a first-class config concept
 rather than a convention.
 

@@ -18,7 +18,7 @@ work. Infrastructure and physical-device gates remain open; see
 
 **The project goal changed on 2026-08-04** (see Purpose below). Phases 0
 through 4 are unchanged and their records, fixtures, and benchmarks are
-preserved exactly. Phases 5 through 12 are newly planned and none has
+preserved exactly. Phases 5 through 16 are newly planned and none has
 started. All ADRs remain Proposed.
 
 Run it locally:
@@ -47,6 +47,22 @@ Three things are kept separate, because conflating them is how projects like thi
 Tool use, persistent structures, behavioral traditions that outlive individuals, and organized inter-group conflict are plausible-to-remarkable outcomes. A recognizable stone-age-to-enlightenment arc, language, and civilization are **not planned around and not promised**. A null result is a likely outcome of several phases and an acceptable outcome of all of them, because every phase states its ablation before it is run.
 
 The full position, including why the project's determinism and benchmark discipline let it make claims most artificial-life projects cannot, is in [docs/25-emergence-and-epistemic-position.md](docs/25-emergence-and-epistemic-position.md).
+
+## How A World Starts
+
+Three origin modes ([specifications/world-origin-modes.md](specifications/world-origin-modes.md)). Each is a **starting condition**, never a trajectory: authoring where the search begins is not authoring the path it takes.
+
+| Mode | Founders |
+|---|---|
+| `random` | Bounded-random organisms of one body plan, optionally in several separated demes. The current behavior |
+| `seeded` | A head start: founder archetypes placed in the biomes that suit them. On a large enough map, several adapted populations start at once in different biomes |
+| `scratch` | No organisms at all. A chemistry field from which protocells may arise, then unicells, then possibly differentiated multicellular bodies |
+
+Two things this deliberately does **not** do. There is no scripted progression through microbe, fish, and reptile grades; that arrow is a hypothesis being tested, not a mechanism being executed, and reaching anything fish-like is not planned around. And there is no ice age the world *enters*: cold regions exist at generation and climate genuinely drifts over long timescales, so an observer may label a cold stretch afterwards, but no rule ever reads an era.
+
+Archetypes are trait distributions, not designed creatures, and none is named after a real species. No rule or analysis may read an archetype ID, and a test enforces it.
+
+For the `scratch` mode only, ADR-0018 permits deliberately shaping environments toward the major transitions. That genuinely weakens the resulting claims, so every scaffolded result carries an unscaffolded control on the same seeds and reports both.
 
 ## Product Decisions
 

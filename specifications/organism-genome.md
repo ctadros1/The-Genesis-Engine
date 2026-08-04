@@ -12,7 +12,7 @@ genome hash covers the encoded header and values. Recombination and bounded
 variation return validated genomes by construction and are covered by a
 deterministic malformed-input harness plus regression cases.
 
-## Schema 2 (Phase 7)
+## Schema 2 (Phase 8)
 
 Genome schema 2 is specified in full in
 `specifications/genome-schema-2.md`. Summary of what changes here:

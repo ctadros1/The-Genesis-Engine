@@ -9,7 +9,7 @@ biological form unless the shortcut is justified in writing with the cost
 that made it necessary.
 
 This is a standing policy, not a phase. It applies to every mechanism added
-from Phase 6 onward and is the reason several design choices in
+from Phase 7 onward and is the reason several design choices in
 `specifications/genome-schema-2.md` and
 `specifications/plasticity-and-learning.md` are more expensive than the
 minimum that would work.
@@ -58,21 +58,26 @@ Realism is bounded, in this order of precedence:
 
 | Area | Current (Phase 2) | Successor | Phase |
 |---|---|---|---|
-| Ploidy | Haploid; a single flat gene vector | Diploid, chromosomes, dominance | 7 |
-| Recombination | Per-gene independent parent choice | Meiosis with crossover points and linkage | 7 |
-| Mutation classes | Point mutation only | Point, duplication, deletion, insertion, transposition | 7 |
-| Network structure | Fixed 20-16-12-12, human-authored | Grows and shrinks by gene duplication and deletion | 7 |
-| Within-lifetime change | None; weights fixed at birth | Genome-encoded synaptic plasticity with neuromodulation | 8 |
-| Reinforcement | None | Evolved neuromodulatory signal, never an authored reward | 8 |
-| Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 11 |
-| Development | None; organisms are born adult-shaped | Ontogeny: growth trajectory, juvenile constraint, maturation | 11 |
-| Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 11 |
-| Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 11 |
+| Ploidy | Haploid; a single flat gene vector | Diploid, chromosomes, dominance | 8 |
+| Recombination | Per-gene independent parent choice | Meiosis with crossover points and linkage | 8 |
+| Mutation classes | Point mutation only | Point, duplication, deletion, insertion, transposition | 8 |
+| Network structure | Fixed 20-16-12-12, human-authored | Grows and shrinks by gene duplication and deletion | 8 |
+| Within-lifetime change | None; weights fixed at birth | Genome-encoded synaptic plasticity with neuromodulation | 10 |
+| Reinforcement | None | Evolved neuromodulatory signal, never an authored reward | 10 |
+| Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 13 |
+| Development | None; organisms are born adult-shaped | Ontogeny: growth trajectory, juvenile constraint, maturation | 13 |
+| Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 13 |
+| Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 13 |
+| Body structure | Small fixed parameter set, identical for every organism | Typed modules on a lattice, grown by a developmental genome | 9 |
+| Development | Organisms born adult-shaped | A growth program executed from a single origin module | 9 |
+| Climate | Seasons only; temperature field unimplemented | Moisture and temperature fields, biomes, long-timescale drift | 6 |
+| Origin of life | Organisms exist at tick 0 by construction | Optional abiogenesis from a chemistry field | 14 |
+| Major transitions | None | Unicell to differentiated multicell as ordinary morphological evolution | 15 |
 | Disease | None | Transmissible load with contact-structured spread | 11 (optional slice) |
 
 ## Structural Change By Duplication, Not By Graph Editing
 
-The single most consequential application of this policy is in Phase 7. The
+The single most consequential application of this policy is in Phase 8. The
 obvious way to make a network topology evolvable is a NEAT-style pair of
 graph-editing operators: "add a node", "add a connection". That is an
 authored editing scheme imposed on a graph.
@@ -91,14 +96,14 @@ literature does not establish that indirect or duplication-based encodings
 outperform direct ones at this scale. The mitigation is that both operator
 sets act on the same variable-length locus list, so the explicit-insertion
 operator remains available as a configured variation policy if duplication
-alone proves too slow. That comparison is itself a Phase 7 experiment.
+alone proves too slow. That comparison is itself a Phase 8 experiment.
 
 ## No Lamarckian Inheritance By Default
 
 Learned state is reset at birth. This is not an optimization; it is the
 property that makes the project's central question meaningful. If learned
 weights were inherited, a "discovery" would become a heritable trait, culture
-would collapse into genetics, and Phase 9 would be unable to distinguish
+would collapse into genetics, and Phase 11 would be unable to distinguish
 transmission from inheritance. A `lamarckian_fraction` config field exists,
 defaults to zero, and enabling it is an explicit experimental condition that
 must be reported, never a default.
@@ -113,9 +118,22 @@ Recorded so nobody has to rediscover the reasoning:
   added realism does not change the questions being asked. A coarse
   regulatory locus type is an open question for a later schema, not a
   commitment.
-- **Continuous morphology and physical body simulation.** Rigid-body or
-  soft-body morphology evolution is a different project. Body plan stays a
-  small parameter set.
+- **Physical body simulation.** Morphology evolves as typed modules on a
+  discrete lattice (Phase 9, ADR-0019), which is a real structural
+  morphospace. It is deliberately **not** rigid-body or soft-body dynamics:
+  modules confer capability and cost, and they do not swing, bend, or
+  collide with each other. Full biomechanics would dominate the compute
+  budget and displace the culture and cognition work, and remains a
+  different project.
+- **Open-ended microbial genome evolution.** The field regime evolves
+  between a bounded set of genotype classes rather than over open genomes
+  (ADR-0020). This is a deliberate realism loss taken under the precedence
+  order below, and it means only the individual regime can demonstrate
+  open-ended evolution.
+- **A correct relationship between microbial and organism timescales.**
+  `field_steps_per_tick` is the knob that makes a microbial phase reachable
+  in a finite campaign. It is an abstraction, not a claim, and no document
+  may imply otherwise.
 - **Real chemistry for materials.** Materials carry abstract physical
   properties (hardness, mass, durability, energy content), not composition.
 - **Real climate or hydrology.** `docs/04-simulation-model.md` already
@@ -128,5 +146,5 @@ Recorded so nobody has to rediscover the reasoning:
 - Genetics: `08-genetics-and-evolution.md`,
   `specifications/genome-schema-2.md`
 - Learning: `specifications/plasticity-and-learning.md`
-- Physiology and life history: `planning/phase-11-physiology-and-life-history.md`
+- Physiology and life history: `planning/phase-13-physiology-and-life-history.md`
 - ADR-0013 (encoding), ADR-0014 (learning), ADR-0017 (this policy)

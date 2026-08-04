@@ -23,7 +23,7 @@ events carry tick and typed payload only.
 
 ## Planned Successor: Event Schema Version 3
 
-`EVENT_SCHEMA_VERSION` becomes 3 across Phases 6 to 11. Version 2 payloads
+`EVENT_SCHEMA_VERSION` becomes 3 across Phases 7 to 13. Version 2 payloads
 are unchanged; version 3 is additive. A reader that encounters an unknown
 event type fails closed rather than skipping it, because a silently skipped
 event would corrupt any analysis that counts rates.
@@ -32,19 +32,19 @@ New bounded payloads, grouped by the phase that adds them:
 
 | Phase | Event | Payload |
 |---|---|---|
-| 6 | `Damage` | attacker, target, raw and applied damage, resulting health |
-| 6 | `DeathByDamage` | organism, attacker, final state summary |
-| 6 | `CarcassCreated` / `CarcassConsumed` | source organism, object ID, transferable energy |
-| 7 | `StructuralMutation` | child, operator class, locus count affected, new innovation ID range |
-| 7 | `StructuralRejected` | child, cap class that rejected it |
-| 8 | `PlasticityFault` | organism, neutralized non-finite count |
-| 9 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
-| 9 | `PerceptionFault` | organism, neutralized count |
-| 10 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
-| 10 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
-| 10 | `ObjectActionRejected` | actor, action, typed reason |
-| 10 | `TerrainModified` | actor, layer, cell, old and new value |
-| 11 | `DiseaseTransmitted` | source, target, load |
+| 7 | `Damage` | attacker, target, raw and applied damage, resulting health |
+| 7 | `DeathByDamage` | organism, attacker, final state summary |
+| 7 | `CarcassCreated` / `CarcassConsumed` | source organism, object ID, transferable energy |
+| 8 | `StructuralMutation` | child, operator class, locus count affected, new innovation ID range |
+| 8 | `StructuralRejected` | child, cap class that rejected it |
+| 10 | `PlasticityFault` | organism, neutralized non-finite count |
+| 11 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
+| 11 | `PerceptionFault` | organism, neutralized count |
+| 12 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
+| 12 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
+| 12 | `ObjectActionRejected` | actor, action, typed reason |
+| 12 | `TerrainModified` | actor, layer, cell, old and new value |
+| 13 | `DiseaseTransmitted` | source, target, load |
 
 Rules that do not change: events are append-only logical facts; they carry
 no secrets, no unbounded activation history, and no arbitrary payload;
@@ -56,7 +56,7 @@ Two additions specific to the new goal:
 - **Signal content is never an event label or a metric label.** It would be
   unbounded cardinality, and it would encourage reading meaning into
   channels that have none.
-- **The event log is the substrate for Phase 12 analysis.** The append-only
+- **The event log is the substrate for Phase 16 analysis.** The append-only
   event-log *file* deferred under D-019 moves into Phase 5's scope, because
   every multi-seed experiment needs it long before era detection does.
   Snapshots carry a zero event-log reference until it exists.

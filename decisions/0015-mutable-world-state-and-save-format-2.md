@@ -96,13 +96,13 @@ Negative and accepted:
 - A second checksum and a second failure mode on every restore.
 - **Migration risk is the largest operational risk in the plan.** A subtle
   difference between the migrated and native paths would corrupt historical
-  worlds silently. The guard is the byte-identity requirement in Phase 10
-  criterion C10.5, plus keeping format 1 readers in the build so the
+  worlds silently. The guard is the byte-identity requirement in Phase 12
+  criterion C12.5, plus keeping format 1 readers in the build so the
   comparison is always available.
 - Snapshot growth from the object table and modification section stacks on
   top of schema 2 genome growth (ADR-0013) and learned state (ADR-0014).
-  The checkpoint budget must be re-verified in Phase 10 rather than assumed
-  to survive from Phase 8.
+  The checkpoint budget must be re-verified in Phase 12 rather than assumed
+  to survive from Phase 10.
 - Organisms can make a region uninhabitable and drive local extinction.
   Extinction is already a valid, savable, observable, latched state, so
   nothing special is needed, but it is worth stating that this is an
@@ -110,7 +110,7 @@ Negative and accepted:
 
 ## Performance Implications
 
-Unmeasured. Phase 10 records: object count effect on spatial index build and
+Unmeasured. Phase 12 records: object count effect on spatial index build and
 query; per-tick decay cost; snapshot size contribution of the object table
 and modification section in both representations; incremental
 composed-checksum cost; restore time with a large modification set.
@@ -136,7 +136,7 @@ to measure.
 
 ## Evidence Required To Accept
 
-- Phase 10 criteria C10.4 through C10.7, in particular the format 1
+- Phase 12 criteria C12.4 through C12.7, in particular the format 1
   migration byte-identity test and the sparse-dense equivalence test.
 - Snapshot size, checkpoint stall, and restore time at both supported tiers
   with realistic object counts and modification density.

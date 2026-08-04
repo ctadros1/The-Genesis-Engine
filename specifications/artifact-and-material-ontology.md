@@ -1,6 +1,6 @@
 # Artifact And Material Ontology Specification
 
-Status: design specification, not implemented. Phase 10. Policy versions
+Status: design specification, not implemented. Phase 12. Policy versions
 `lifesim-material-v1`, `lifesim-artifact-v1`.
 
 ## Problem
@@ -44,7 +44,7 @@ dense, no energy, negligible decay), wood (moderate hardness, moderate
 decay, low energy), fiber (soft, light, fast decay), and carcass (soft, high
 energy, fast decay). Carcass ties the object system to the existing
 lifecycle: `docs/06-organism-model.md` already specifies carcasses as finite
-resource entities, and Phase 10 is where they become real objects rather
+resource entities, and Phase 12 is where they become real objects rather
 than a documented gap.
 
 Materials enter the world from terrain: cells carry a material yield
@@ -149,7 +149,7 @@ which matters because the energy ledger is a hard invariant.
 ## Persistence In The World
 
 Placed objects remain until integrity reaches zero through decay or damage.
-This is the property that makes Phase 10 different from every earlier phase:
+This is the property that makes Phase 12 different from every earlier phase:
 an object outlives the organism that made it, and later organisms encounter
 a world that earlier organisms shaped.
 
@@ -195,6 +195,6 @@ rejected deterministically, counted, and evented.
 - Contested acquisition is order-independent under storage permutation.
 - Save round trip with composites of depth greater than one, and with held
   objects.
-- Disabled-section equality: artifacts disabled reproduces the Phase 9
+- Disabled-section equality: artifacts disabled reproduces the Phase 11
   fixture exactly.
 - Seeded malformed-input harness over the object table codec.

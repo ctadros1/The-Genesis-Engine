@@ -17,7 +17,7 @@ tick). These arrays exist only when Phase 2 is enabled and compact with the
 same removal flags as the primary arrays. Carcass components remain
 unimplemented.
 
-## Planned Successors (Phases 6 To 11)
+## Planned Successors (Phases 7 To 11)
 
 **One shared object ID space.** Organisms and artifacts draw from a single
 monotonic `next_object_id` with a type tag, so there is one total order over

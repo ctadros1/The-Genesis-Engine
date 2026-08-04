@@ -26,21 +26,20 @@ increments the benchmark schema version.
     learn, lifecycle, finalize
 
 - `sense` gains perception of neighbours' last committed actions and of the
-  committed signal field (Phase 9), and object perception (Phase 10). All of
+  committed signal field (Phase 11), and object perception (Phase 12). All of
   it reads the **previous tick's committed state only**.
-- `controllers` evaluates variable-topology networks synchronously (Phase
-  7).
-- `apply` gains contest resolution (Phase 6), object actions (Phase 10),
-  signal emission accumulation (Phase 9), and growth and thermoregulation
-  (Phase 11).
-- `learn` is new (Phase 8): plastic edges update in ascending edge
+- `controllers` evaluates variable-topology networks synchronously (Phase 8).
+- `apply` gains contest resolution (Phase 7), object actions (Phase 12),
+  signal emission accumulation (Phase 11), and growth and thermoregulation
+  (Phase 13).
+- `learn` is new (Phase 10): plastic edges update in ascending edge
   innovation-ID order, reading only values committed earlier in the same
   tick and writing only learned state.
-- `lifecycle` gains carcass creation (Phase 6), innovation-ID allocation for
-  new children (Phase 7), object decay and terrain-modification application
-  in ascending `(layer_id, cell_index)` order (Phase 10), and hazard draws
-  (Phase 11).
-- `finalize` commits the signal field (Phase 9).
+- `lifecycle` gains carcass creation (Phase 7), innovation-ID allocation for
+  new children (Phase 8), object decay and terrain-modification application
+  in ascending `(layer_id, cell_index)` order (Phase 12), and hazard draws
+  (Phase 13).
+- `finalize` commits the signal field (Phase 11).
 
 The ordering rules below are extended by
 `specifications/determinism-extensions.md`, which is normative. The four

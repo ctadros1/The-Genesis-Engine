@@ -1,4 +1,4 @@
-# Phase 10: Mutable World And Artifacts
+# Phase 12: Mutable World And Artifacts
 
 Status: planned, not started. Policy versions `lifesim-material-v1`,
 `lifesim-artifact-v1`, `lifesim-worldmod-v1`. Introduces ALIF format 2.
@@ -24,9 +24,9 @@ another inherited trait and teach us nothing. A world where organisms
 construct things but cannot learn from each other tests whether construction
 is genetically encodable, which is a much less interesting question than
 whether construction accumulates. Every acceptance criterion below that
-matters (C10.3 in particular) depends on transmission existing.
+matters (C12.3 in particular) depends on transmission existing.
 
-The order also means that if Phase 9 returns a clean null, this phase can be
+The order also means that if Phase 11 returns a clean null, this phase can be
 entered knowingly, with its cumulative-dependency criterion understood in
 advance to be unlikely, rather than being surprised by it.
 
@@ -42,7 +42,7 @@ advance to be unlikely, rather than being surprised by it.
 - Object perception channels.
 - Mutable terrain layers: traversability override, food capacity override,
   material yield.
-- Carcasses become real objects, joining Phase 6's carcass work to the
+- Carcasses become real objects, joining Phase 7's carcass work to the
   object system.
 - ALIF format 2 with a registered format 1 migration.
 
@@ -56,15 +56,15 @@ advance to be unlikely, rather than being surprised by it.
   temperature lapse term, and the generator validates land fraction and
   connectivity against it. Deferred, recorded as an open question, not
   permanently excluded.
-- No object-mediated signalling. Signals are Phase 9's transient field;
-  objects are Phase 10's persistent state. Conflating them would blur both
+- No object-mediated signalling. Signals are Phase 11's transient field;
+  objects are Phase 12's persistent state. Conflating them would blur both
   results.
 - No claim that an observed composite is a "tool" in any sense beyond the
   measured definition used in the acceptance criteria.
 
 ## Prerequisites
 
-- Phase 9 (transmission must exist for C10.3 to be meaningful).
+- Phase 11 (transmission must exist for C12.3 to be meaningful).
 - Phase 5's asynchronous checkpointing and event log.
 
 ## Determinism Notes
@@ -120,46 +120,46 @@ Conditions, matched on seeds (12), config, and run length:
 
 Criteria:
 
-- [ ] **C10.1 Object actions are used, not just fired.** Under A, the rate
+- [ ] **C12.1 Object actions are used, not just fired.** Under A, the rate
       of successful pick-up, place, and combine actions exceeds the rate
       under C by the stated effect size in at least 8 of 12 seeds. Condition
       C is the control that distinguishes evolved use from output channels
       firing at their baseline rate.
-- [ ] **C10.2 Structures persist and matter.** Under A, the median lifetime
+- [ ] **C12.2 Structures persist and matter.** Under A, the median lifetime
       of a placed object exceeds the run's median organism lifespan in at
       least 6 of 12 seeds, **and** organisms occupying cells containing
       placed objects show a measurable fitness difference (reproductive
       output or survival) against matched cells without them. Both halves
       are required: persistence without a fitness effect is litter, not
       structure.
-- [ ] **C10.3 Cumulative dependency.** Under A, the frequency of composite
+- [ ] **C12.3 Cumulative dependency.** Under A, the frequency of composite
       objects of combination depth two or more increases over time in at
       least N of 12 seeds, with N stated before the campaign. Under D this
       is zero by construction. **This is the criterion most likely to return
       null and it is stated that way in advance.** A null here is a real
       result about this world's physics and is reported as such, not
       quietly dropped or replaced with a weaker measure after the fact.
-- [ ] **C10.4 Determinism and identity.** Object IDs strictly increase and
+- [ ] **C12.4 Determinism and identity.** Object IDs strictly increase and
       never repeat; storage index order equals ID order; contested
       acquisition is order-independent under storage permutation;
       clean-process fixture replay.
-- [ ] **C10.5 Save format correctness.** Baseline check still fails closed
+- [ ] **C12.5 Save format correctness.** Baseline check still fails closed
       on a `(seed, config)` mismatch; composed check fails closed on a
       tampered modification section; sparse and dense representations
       restore to identical worlds; a world crossing the density threshold
       mid-run saves, restores, and continues bit-identically; the format 1
       migration produces a world byte-identical to a format 1 load.
-- [ ] **C10.6 Mass and energy exactness.** The ledger stays exact to the
+- [ ] **C12.6 Mass and energy exactness.** The ledger stays exact to the
       milli-unit across creation, combination, fracture, decay, carrying,
       and consumption over a 10^6-tick run. Combining then fracturing
       restores constituent mass and energy exactly. Rounding remainders go
       deterministically to the lowest constituent object ID.
-- [ ] **C10.7 Caps enforced visibly.** Composition depth, composition
+- [ ] **C12.7 Caps enforced visibly.** Composition depth, composition
       breadth, cell occupancy, carry capacity, and object count all reject
       deterministically, count, and event. A run that is silently pressed
       against a cap must be visible in its report.
-- [ ] **C10.8 Fixtures preserved.** Artifacts and mutable world disabled
-      reproduces the Phase 9 fixture exactly.
+- [ ] **C12.8 Fixtures preserved.** Artifacts and mutable world disabled
+      reproduces the Phase 11 fixture exactly.
 
 ## Test Plan
 
@@ -173,7 +173,7 @@ Criteria:
   versus full composed-checksum agreement at intervals.
 - Integration: held objects dropped on death in ascending object-ID order;
   blocked-cell movement rejection; occupancy cap rejection.
-- Behavioral: the C10.1 and C10.2 probes as scripted deterministic
+- Behavioral: the C12.1 and C12.2 probes as scripted deterministic
   scenarios across all four conditions.
 - Restore-from-backup: extend the existing Phase 4 isolated restore test to
   format 2 with a nonempty modification set and composite objects.
@@ -190,10 +190,10 @@ composed-terrain checksum incremental cost; the density threshold crossing
 cost; restore time with a large modification set.
 
 Note the specific risk to measure: the Phase 4 record shows snapshot size
-already dominated by per-organism genomes, and Phase 7 and 8 add to that. A
+already dominated by per-organism genomes, and Phase 8 and 10 add to that. A
 world with many persistent objects and a heavily modified terrain adds a
 third growth term. The checkpoint budget must be re-verified here, not
-assumed to survive from Phase 8.
+assumed to survive from Phase 10.
 
 Benchmark schema 7.
 
@@ -215,16 +215,16 @@ carcasses), `docs/12-data-storage-and-saves.md`,
 | Risk | Mitigation |
 |---|---|
 | Snapshot growth from objects plus modified terrain plus schema 2 genomes plus learned state breaks the checkpoint budget | Measured here explicitly rather than assumed; sparse representations; asynchronous checkpointing; object count caps |
-| Save format 2 migration risk: a subtle difference between the migrated and native paths corrupts historical worlds | C10.5's byte-identity requirement is the guard; format 1 readers stay in the build; migration is registered and fail-closed, never inferred |
+| Save format 2 migration risk: a subtle difference between the migrated and native paths corrupts historical worlds | C12.5's byte-identity requirement is the guard; format 1 readers stay in the build; migration is registered and fail-closed, never inferred |
 | Object churn dominates the tick | Decay is a bounded per-cell sweep, not a per-object scan, wherever possible; measured before adoption |
-| C10.3 returns null and the phase looks like a failure | It is stated in advance as the likely outcome. The phase's value is C10.1 and C10.2 plus a measured negative on C10.3 |
+| C12.3 returns null and the phase looks like a failure | It is stated in advance as the likely outcome. The phase's value is C12.1 and C12.2 plus a measured negative on C12.3 |
 | Organisms make regions uninhabitable and drive local extinction | Not a bug. Extinction is already a valid, savable, observable, latched state. Worth reporting, not preventing |
 | Terrain modification interacts with worldgen validation invariants | Baseline invariants validate at generation only; the composed world is checked against narrower safety invariants each tick. Stated explicitly in `specifications/mutable-world-state.md` |
 
 ## Rollback
 
 Objects and mutable world are separate config sections and can be disabled
-independently. Disabled, the Phase 9 fixture reproduces exactly. ALIF format
+independently. Disabled, the Phase 11 fixture reproduces exactly. ALIF format
 1 remains readable forever; format 2 saves of worlds with both sections
 disabled carry empty object and modification sections and restore
 identically to a format 1 save of the same world.

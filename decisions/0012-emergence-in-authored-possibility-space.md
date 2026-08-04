@@ -77,7 +77,7 @@ Negative and accepted:
 - Some capacities sit close to the line and require an explicit argument.
   The clearest current case is plasticity rule form 5 (observational
   learning), which authors the *capacity* for a synapse to be driven by an
-  observed conspecific action without authoring what is learned. Phase 9
+  observed conspecific action without authoring what is learned. Phase 11
   runs its presence and absence as experimental conditions rather than
   resolving it by assertion, which is the pattern this ADR recommends for
   every future borderline case.

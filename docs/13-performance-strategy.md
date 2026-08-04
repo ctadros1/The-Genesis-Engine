@@ -9,7 +9,7 @@ Build the simplest correct simulation, measure it on the deployment-shaped VM, t
 The open-ended-evolution goal adds a dimension that matters more than
 organism count: **generations reached, multiplied by seeds, multiplied by
 ablation conditions.** The Phase 2 long run reached 127 ancestry generations
-in 200,000 ticks and 405.7 s. Every acceptance criterion from Phase 6 onward
+in 200,000 ticks and 405.7 s. Every acceptance criterion from Phase 7 onward
 is of the form "the effect occurs in N of 12 seeds under condition A and
 fewer under condition B", so the compute requirement is the run length times
 the seed count times the condition count.
@@ -38,16 +38,16 @@ interactions are visible in one place, because they stack:
 
 | Phase | Cost added | Where it lands |
 |---|---|---|
-| 6 | Contest resolution, threat sensing, carcass entities | `sense`, `apply`, entity count |
-| 7 | Variable per-organism evaluation; batching by topology ID no longer works; diploid genomes roughly double genome storage | `controllers`, snapshot size, memory |
-| 8 | New `learn` phase scaling with plastic edge count; learned state in snapshots | `learn`, snapshot size, checkpoint stall |
-| 9 | K-nearest gathering and sorting; signal field accumulation and decay | `sense`, `apply`, `finalize` |
-| 10 | Objects in the spatial index; decay; object table and terrain deltas in snapshots | all phases, snapshot size, restore time |
-| 11 | Allometry, thermoregulation, growth, hazard draws per organism per tick | `environment`, `apply`, `lifecycle` |
+| 7 | Contest resolution, threat sensing, carcass entities | `sense`, `apply`, entity count |
+| 8 | Variable per-organism evaluation; batching by topology ID no longer works; diploid genomes roughly double genome storage | `controllers`, snapshot size, memory |
+| 10 | New `learn` phase scaling with plastic edge count; learned state in snapshots | `learn`, snapshot size, checkpoint stall |
+| 11 | K-nearest gathering and sorting; signal field accumulation and decay | `sense`, `apply`, `finalize` |
+| 12 | Objects in the spatial index; decay; object table and terrain deltas in snapshots | all phases, snapshot size, restore time |
+| 13 | Allometry, thermoregulation, growth, hazard draws per organism per tick | `environment`, `apply`, `lifecycle` |
 
 The snapshot budget is the one to watch. The Phase 4 record already shows
 size dominated by per-organism genome arrays at roughly 2.8 KB each, and
-Phases 7, 8, and 10 each add a growth term on top. The checkpoint budget is
+Phases 8, 8, and 10 each add a growth term on top. The checkpoint budget is
 re-verified in each of those phases rather than assumed to carry forward.
 
 ## Staged Plan

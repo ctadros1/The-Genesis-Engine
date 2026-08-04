@@ -46,9 +46,9 @@ genome values and controller evaluation with add/multiply/divide and a
 rational tanh approximation only; world positions, energy, and biomass stay
 fixed-point integers.
 
-## Planned Successors (Phases 5 To 12)
+## Planned Successors (Phases 5 To 16)
 
-The model below is unchanged for Phases 1 and 2. Phases 5 through 12 add
+The model below is unchanged for Phases 1 and 2. Phases 5 through 16 add
 mechanisms whose designs live in `specifications/`; each is a config-gated
 section, folded into the config hash only when enabled, and behaviorally
 inert when disabled so all earlier fixtures reproduce exactly. The extended
@@ -58,19 +58,18 @@ precedence over anything in this document that contradicts it.
 
 | Addition | Policy version | Phase | Design |
 |---|---|---|---|
-| Health, damage, contest, carcasses | `contest-behavior-v1` | 6 | `planning/phase-6-territory-and-conflict.md` |
-| Diploid variable-topology genome | `lifesim-genome-v2` | 7 | `specifications/genome-schema-2.md` |
-| Synaptic plasticity | `lifesim-plasticity-v1` | 8 | `specifications/plasticity-and-learning.md` |
-| Perception and signalling | `lifesim-social-v1` | 9 | `specifications/social-signal-channel.md` |
-| Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v1`, `lifesim-worldmod-v1` | 10 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
-| Allometry, ontogeny, senescence | `lifesim-physiology-v1` | 11 | `planning/phase-11-physiology-and-life-history.md` |
+| Health, damage, contest, carcasses | `contest-behavior-v1` | 7 | `planning/phase-7-territory-and-conflict.md` |
+| Diploid variable-topology genome | `lifesim-genome-v2` | 8 | `specifications/genome-schema-2.md` |
+| Synaptic plasticity | `lifesim-plasticity-v1` | 10 | `specifications/plasticity-and-learning.md` |
+| Perception and signalling | `lifesim-social-v1` | 11 | `specifications/social-signal-channel.md` |
+| Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v1`, `lifesim-worldmod-v1` | 12 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
+| Allometry, ontogeny, senescence | `lifesim-physiology-v1` | 13 | `planning/phase-13-physiology-and-life-history.md` |
 
 Three sections below become live rather than documented placeholders:
-combat and damage in Phase 6, `C_thermal` in the energy equation in Phase
-11, and carcasses in Phase 6.
+combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 13, and carcasses in Phase 7.
 
-The tick order gains phases: `learn` after `apply` (Phase 8), and object
-decay plus terrain-modification application inside `lifecycle` (Phase 10).
+The tick order gains phases: `learn` after `apply` (Phase 10), and object
+decay plus terrain-modification application inside `lifecycle` (Phase 12).
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

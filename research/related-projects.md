@@ -33,7 +33,7 @@ them**; URLs are deliberately omitted here rather than guessed.
 | Tierra and Avida (digital evolution) | Long-running self-replicator systems with explicit experimental controls; Avida is already listed above for its analysis discipline | Matching their instruction-set organism model |
 | Polyworld and similar embodied neural-agent worlds | Prior art for evolving neural controllers in a spatial ecology with vision and combat | Their topology or metric choices |
 | NEAT and structural neuroevolution | The historical-marking idea for aligning structurally different genomes, obtained here as a consequence of chromosomal inheritance rather than as a separate algorithm (ADR-0013) | Its explicit add-node/add-connection operators as the primary growth mechanism |
-| Cultural evolution and transmission-fidelity modelling | The accumulation threshold that Phase 9's fidelity criterion is measured against: improvements accumulate only when expected persistence per transmission exceeds one | Any specific published fidelity value |
+| Cultural evolution and transmission-fidelity modelling | The accumulation threshold that Phase 11's fidelity criterion is measured against: improvements accumulate only when expected persistence per transmission exceeds one | Any specific published fidelity value |
 | Gene duplication and divergence in molecular evolution | The biological basis for structural growth by duplication rather than graph editing | Molecular-level modelling, which is explicitly excluded |
 
 ## Evaluation Rule

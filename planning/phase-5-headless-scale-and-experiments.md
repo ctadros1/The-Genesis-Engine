@@ -5,7 +5,7 @@ independent-world parts of `planning/superseded/phase-5-performance-optimization
 
 ## Problem
 
-Every acceptance criterion from Phase 6 onward is a claim of the form "the
+Every acceptance criterion from Phase 7 onward is a claim of the form "the
 effect occurs in N of M seeds under condition A and fewer under condition
 B". None of that is measurable today.
 
@@ -19,7 +19,7 @@ Three concrete blockers:
 - There is no independent-world scheduler. It has sat in the deferred
   backlog since Phase 0 and every multi-seed design needs it.
 - There is no append-only event log file. Snapshots carry a zero event-log
-  reference (D-019). Every later analysis, and all of Phase 12, reads that
+  reference (D-019). Every later analysis, and all of Phase 16, reads that
   file.
 
 This phase builds the instrument. It adds no organism behavior at all.

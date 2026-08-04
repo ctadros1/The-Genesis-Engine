@@ -30,3 +30,13 @@
 | Ablation | A condition that removes exactly one mechanism so its contribution can be measured. Required for every behavioral acceptance criterion |
 | Baseline terrain | Terrain regenerated from (seed, config), still checksum-verified in save format 2 |
 | Composed terrain | Baseline plus the stored organism-made modification delta, separately checksummed |
+| Origin mode | How a world begins: `random`, `seeded`, or `scratch`. A starting condition, never a trajectory |
+| Archetype | A founder trait and morphology **distribution** with a biome affinity. Not an organism, not a species, and its name is presentation only: no rule or analysis may read an archetype ID |
+| Deme | One of several spatially separated founder groups, each drawing from an independently offset sub-stream so they start genetically distinct |
+| Scaffold | Environmental or selective structure deliberately shaped toward a major transition (ADR-0018). Must be describable without naming its target, is always reported as a condition, and always requires an unscaffolded control |
+| Climate drift | A stateless deterministic quasi-periodic temperature and moisture term evaluated from tick alone. **Not an age or era**: no code reads it as a world state |
+| Module | One typed unit of an organism's body, occupying a lattice cell. Confers capability and costs mass and upkeep; it does not swing, bend, or collide |
+| Morphospace | The space of bodies reachable within the module caps. A one-module body is a unicell, so multicellularity is a region of the same space rather than a separate mechanic |
+| Field regime | The population-level microbial and chemistry simulation over the raster, with no per-individual randomness, coupled to the individual regime |
+| Genotype class | A bounded discretization of microbial genotype space in the field regime. Deliberately not open-ended, and only the individual regime can demonstrate open-ended evolution |
+| Materialization | The conversion of field density into individual organisms at the aggregation threshold. A representation change, never an achievement, and tested for neutrality |

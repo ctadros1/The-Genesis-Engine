@@ -26,7 +26,7 @@ How each cost is handled rather than dismissed:
 
 | Original cost | Response |
 |---|---|
-| Reduced batching | Real. Grouping by topology ID stops working when topologies are per-organism. Measured in Phase 7 rather than assumed; the replacement is a later performance slice; loss of the zero-per-tick-allocation property is recorded, not absorbed |
+| Reduced batching | Real. Grouping by topology ID stops working when topologies are per-organism. Measured in Phase 8 rather than assumed; the replacement is a later performance slice; loss of the zero-per-tick-allocation property is recorded, not absorbed |
 | Reduced explainability | Real. Mitigated by innovation IDs, which give a traceable structural history, and by the event log recording every structural mutation with its operator class |
 | Migration complexity | Sidestepped entirely: there is **no** schema 1 to schema 2 migration. Schema 1 worlds stay schema 1, and schema 1 decode, evaluation, and fixtures stay in the build permanently |
 
@@ -36,9 +36,9 @@ How each cost is handled rather than dismissed:
 |---|---|---|---|
 | Fixed topology (schema 1) | Cheap, batchable, inspectable | Every capability is a human schema bump | Retained for schema 1 worlds; insufficient for the goal |
 | NEAT-style graph editing | Well understood; historical markings solve alignment | An authored graph-editing scheme; does nothing for genetic realism | Operators available, but not as the primary mechanism |
-| Chromosomal genome with duplication-driven growth | Structural evolution and genetic realism from one mechanism; alignment falls out of ordinary inheritance | Slower and less directed growth; not established as superior at this scale | **Proposed baseline (ADR-0013)**; compared against explicit insertion in Phase 7 criterion C7.5 |
+| Chromosomal genome with duplication-driven growth | Structural evolution and genetic realism from one mechanism; alignment falls out of ordinary inheritance | Slower and less directed growth; not established as superior at this scale | **Proposed baseline (ADR-0013)**; compared against explicit insertion in Phase 8 criterion C8.5 |
 | Indirect or developmental encoding | Highest ceiling in principle | Hardest to make deterministic and to analyze; unevidenced at this scale | Deferred; a regulatory locus type is reserved and unallocated |
 
 No claim is made that duplication-based encodings outperform direct ones.
-The ALife literature does not establish it, and Phase 7 measures the
+The ALife literature does not establish it, and Phase 8 measures the
 comparison instead of asserting an answer.

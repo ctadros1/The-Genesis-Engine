@@ -47,7 +47,7 @@ Phase 4 adds `lifesim_saves_total{result="ok"|"error"}` (counter),
 arrives with a longer-lived metrics pipeline), and `lifesim_save_bytes`
 (gauge).
 
-## Planned Additions (Phases 5 To 12)
+## Planned Additions (Phases 5 To 16)
 
 All follow the existing conventions: `lifesim_` prefix, `_total` counters,
 bounded label enumerations, no high-cardinality labels.
@@ -56,12 +56,12 @@ bounded label enumerations, no high-cardinality labels.
 |---|---|---|
 | 5 | `lifesim_worlds_active`, `lifesim_world_ticks_total{world}` | gauge, counter |
 | 5 | `lifesim_event_log_bytes_total`, `lifesim_event_log_dropped_total` | counter |
-| 6 | `lifesim_damage_events_total`, `lifesim_deaths_total{cause="damage"}`, `lifesim_carcasses` | counter, counter, gauge |
-| 7 | `lifesim_genome_bytes`, `lifesim_controller_nodes`, `lifesim_controller_edges`, `lifesim_structural_mutations_total{operator}`, `lifesim_structural_rejected_total{cap}` | gauge, gauge, gauge, counter, counter |
-| 8 | `lifesim_plastic_edges`, `lifesim_plasticity_faults_total`, `lifesim_plasticity_energy_spent_milli_total` | gauge, counter, counter |
-| 9 | `lifesim_signals_emitted_total`, `lifesim_signal_energy_spent_milli_total`, `lifesim_perceived_neighbours` | counter, counter, gauge |
-| 10 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge |
-| 11 | `lifesim_median_lifespan_ticks`, `lifesim_juvenile_fraction`, `lifesim_disease_load` | gauge, gauge, gauge |
+| 7 | `lifesim_damage_events_total`, `lifesim_deaths_total{cause="damage"}`, `lifesim_carcasses` | counter, counter, gauge |
+| 8 | `lifesim_genome_bytes`, `lifesim_controller_nodes`, `lifesim_controller_edges`, `lifesim_structural_mutations_total{operator}`, `lifesim_structural_rejected_total{cap}` | gauge, gauge, gauge, counter, counter |
+| 10 | `lifesim_plastic_edges`, `lifesim_plasticity_faults_total`, `lifesim_plasticity_energy_spent_milli_total` | gauge, counter, counter |
+| 11 | `lifesim_signals_emitted_total`, `lifesim_signal_energy_spent_milli_total`, `lifesim_perceived_neighbours` | counter, counter, gauge |
+| 12 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge |
+| 13 | `lifesim_median_lifespan_ticks`, `lifesim_juvenile_fraction`, `lifesim_disease_load` | gauge, gauge, gauge |
 
 Two label rules specific to the new goal:
 

@@ -52,9 +52,9 @@ a cited model or a validation experiment.
 textbook result it was not tuned to produce. A mechanism that cannot be
 checked against any known result is decoration, not realism. This turns the
 policy into acceptance criteria rather than an aesthetic: Hardy-Weinberg
-equilibrium at a neutral locus (C7.3), linkage decay with map distance
-(C7.4), the allometric exponent (C11.1), the investment-versus-number
-tradeoff (C11.2), and lifespan responding to extrinsic mortality (C11.3).
+equilibrium at a neutral locus (C8.3), linkage decay with map distance
+(C8.4), the allometric exponent (C13.1), the investment-versus-number
+tradeoff (C13.2), and lifespan responding to extrinsic mortality (C13.3).
 
 **Three hard constraints, in precedence order.**
 
@@ -76,12 +76,12 @@ ADR-0014, because it is as much a realism decision as a learning one, and
 because it is the property that keeps the culture question distinguishable
 from the genetics question.
 
-**Placement.** Genetics realism goes in Phase 7, because the genome is being
+**Placement.** Genetics realism goes in Phase 8, because the genome is being
 rewritten anyway and doing it twice is strictly worse. Physiology realism
-goes in Phase 11, after the scale-sensitive culture experiments, because
+goes in Phase 13, after the scale-sensitive culture experiments, because
 each realism increment multiplies per-organism cost. The cost of that split
-is accepted and stated: results from Phases 6 to 10 do not transfer across
-Phase 11, and the campaigns that matter are re-run under
+is accepted and stated: results from Phases 7 to 12 do not transfer across
+Phase 13, and the campaigns that matter are re-run under
 `lifesim-physiology-v1` before their results become standing findings.
 
 ## Consequences
@@ -95,7 +95,7 @@ Negative and accepted:
 - Diploidy roughly doubles genome storage.
 - Meiosis, dominance expression, allometry, ontogeny, and hazard modelling
   all cost per-organism time, which reduces reachable generations per unit
-  of compute. Phase 11 is required to report that number as a headline
+  of compute. Phase 13 is required to report that number as a headline
   rather than a footnote, because it is the honest price.
 - Several realism mechanisms are deliberately excluded (molecular genetics,
   physical morphology, material chemistry, real climate), and the exclusions
@@ -107,7 +107,7 @@ replay lineage when enabled, exactly as every other behavior policy does.
 
 ## Performance Implications
 
-Negative and measured rather than estimated. Phase 7 and Phase 11 both
+Negative and measured rather than estimated. Phase 8 and Phase 13 both
 record the per-organism cost delta and the resulting change in ticks per
 second per world.
 
@@ -128,7 +128,7 @@ same checkpoint budget work ADR-0013, ADR-0014, and ADR-0015 depend on.
 
 ## Evidence Required To Accept
 
-- The realism validation criteria across Phases 7 and 11: C7.3, C7.4,
-  C11.1, C11.2, C11.3.
+- The realism validation criteria across Phases 8 and 13: C8.3, C8.4,
+  C13.1, C13.2, C13.3.
 - Measured per-organism cost and throughput deltas at both supported tiers.
 - Fixture preservation with every realism section disabled.

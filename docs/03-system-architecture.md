@@ -31,7 +31,7 @@ flowchart TB
 | persistence | Framed snapshot encoding, migration, integrity verification | Unversioned raw memory dumps |
 | observer | Rendering, input UX, client interpolation, local cache | Authoritative organism behavior |
 | experiment runner | Isolated run orchestration, multi-world scheduling, campaign manifests, comparison metadata | Cross-world shared mutable state |
-| sim-analysis (Phase 12) | Offline similarity, era, and tradition detection over the event log and read-only views | A mutable world handle, an RNG stream, any path back into a rule |
+| sim-analysis (Phase 16) | Offline similarity, era, and tradition detection over the event log and read-only views | A mutable world handle, an RNG stream, any path back into a rule |
 | metrics/events | Operational and scientific observability | Blocking the tick |
 
 ### The Analysis Boundary Is A Dependency Direction

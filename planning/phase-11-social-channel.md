@@ -1,4 +1,4 @@
-# Phase 9: Social Channel
+# Phase 11: Social Channel
 
 Status: planned, not started. Policy version `lifesim-social-v1`.
 Specification: `specifications/social-signal-channel.md`.
@@ -43,11 +43,11 @@ return a null result.
 
 ## Prerequisites
 
-- Phase 8 (plasticity: without within-lifetime change there is nothing to
+- Phase 10 (plasticity: without within-lifetime change there is nothing to
   transmit).
-- Phase 6 (contest: threat is the information most likely to be worth
+- Phase 7 (contest: threat is the information most likely to be worth
   signalling, and it is the reason contest was moved earlier in the order).
-- Phase 7 (channel registry).
+- Phase 8 (channel registry).
 
 ## Determinism Notes
 
@@ -102,13 +102,13 @@ every other condition.
 
 ## Acceptance Criteria
 
-- [ ] **C9.1 Transmission occurs.** Naive individuals (born after tick t and
+- [ ] **C11.1 Transmission occurs.** Naive individuals (born after tick t and
       never personally present at resource patch P) reach P measurably
       faster under A than under C, in at least 8 of 12 seeds, with the
       stated effect size. The same difference must hold for **A versus D**.
       An A-versus-C difference without an A-versus-D difference is not
       transmission and is reported as a negative result.
-- [ ] **C9.2 Fidelity clears the accumulation threshold.** Measure
+- [ ] **C11.2 Fidelity clears the accumulation threshold.** Measure
       transmission fidelity F as the correlation between a demonstrator's
       action policy and an observer's post-exposure policy, controlled for
       their genetic similarity. Report F against the threshold at which a
@@ -116,7 +116,7 @@ every other condition.
       which is the condition under which improvements accumulate rather than
       decay. Report F across the corruption sweep, so the result is a curve
       rather than a single number.
-- [ ] **C9.3 Traditions outlive individuals.** A behavioral variant present
+- [ ] **C11.3 Traditions outlive individuals.** A behavioral variant present
       in a local neighbourhood at tick t is present at tick t + L, where L
       exceeds three times that run's median lifespan and no individual is
       present at both endpoints, in at least 6 of 12 seeds under A and 0 of
@@ -126,20 +126,20 @@ every other condition.
       distance to the neighbourhood's genotype distribution. Without that
       control, an inherited trait is indistinguishable from a tradition. See
       `specifications/era-and-tradition-detection.md`.
-- [ ] **C9.4 Scaffolding requirement measured.** Report C9.1 and C9.3
+- [ ] **C11.4 Scaffolding requirement measured.** Report C11.1 and C11.3
       separately for conditions A and S. Three outcomes, all publishable:
       S succeeds (the observational rule was unnecessary and should be
       dropped); S fails and A succeeds (a specific, quantified statement
       about how much scaffolding observational learning needs in this
       world); both fail (a clean null with the scaffolding question already
       controlled for).
-- [ ] **C9.5 Energy accounting.** The ledger stays exact to the milli-unit
+- [ ] **C11.5 Energy accounting.** The ledger stays exact to the milli-unit
       with signalling costs flowing through it over a 10^6-tick run.
-- [ ] **C9.6 Determinism.** Storage-permutation equality over N ticks;
+- [ ] **C11.6 Determinism.** Storage-permutation equality over N ticks;
       committed signal field identical under permutation; clean-process
-      fixture replay; social-disabled configs reproduce the Phase 8 fixture
+      fixture replay; social-disabled configs reproduce the Phase 10 fixture
       exactly.
-- [ ] **C9.7 Perception is causally clean.** A test that mutates an
+- [ ] **C11.7 Perception is causally clean.** A test that mutates an
       organism's state mid-phase must not be observable by any other
       organism in the same tick.
 
@@ -184,15 +184,15 @@ this phase), `docs/21-open-questions.md`,
 
 | Risk | Mitigation |
 |---|---|
-| **Null result: no transmission in any seed under any condition.** The most likely single outcome of this phase | The design makes the null informative. Conditions B, C, D, and S plus the fidelity curve mean a null answers *why*, not just *whether*. This is the intended value of the phase even if C9.1 fails |
+| **Null result: no transmission in any seed under any condition.** The most likely single outcome of this phase | The design makes the null informative. Conditions B, C, D, and S plus the fidelity curve mean a null answers *why*, not just *whether*. This is the intended value of the phase even if C11.1 fails |
 | Signals evolve into noise because they are costly and uninformative | Expected under many parameter settings; the corruption sweep and the contest-derived threat information are the conditions under which it is least likely |
-| A-versus-C difference is claimed as transmission without running D | D is an acceptance criterion, not an optional extra. C9.1 explicitly fails without it |
-| A tradition claim is made without the genotype control | C9.3 is invalid without it, and the report format in `specifications/era-and-tradition-detection.md` requires the control statistic in every finding |
+| A-versus-C difference is claimed as transmission without running D | D is an acceptance criterion, not an optional extra. C11.1 explicitly fails without it |
+| A tradition claim is made without the genotype control | C11.3 is invalid without it, and the report format in `specifications/era-and-tradition-detection.md` requires the control statistic in every finding |
 | Condition S is unfalsifiable in practice: the search never finds it regardless of run length | Real and unresolved. The seed count and run length that would make an S null meaningful may exceed the compute budget. If so, the phase reports S as underpowered rather than as negative. That distinction must survive into every downstream summary |
 | Perception cost dominates the tick at high density | Bounded K, sorted truncation, and a measured density sweep |
 
 ## Rollback
 
 One config section. Disabled, no perception channels are gathered, no signal
-field exists, rule form 5 is absent from the registry, and the Phase 8
+field exists, rule form 5 is absent from the registry, and the Phase 10
 fixture reproduces exactly.

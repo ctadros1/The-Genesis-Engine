@@ -50,6 +50,48 @@ process finds inside the physics.
 | Genomes can gain and lose nodes and edges by duplication and deletion | A target architecture or complexity budget to reach |
 | Events are recorded | What era the world is in |
 
+### Starting conditions are authored; trajectories are not
+
+A world may begin from bounded-random founders, from biome-matched founder
+archetypes, or from a chemistry field with no organisms at all
+(`specifications/world-origin-modes.md`). All three are admissible because
+**authoring where the search begins is not authoring the path it takes.**
+A seeded world is then subject to exactly the same rules as a random one;
+nothing about its starting point constrains, guides, or rewards what happens
+next.
+
+Two guards keep that line real rather than nominal:
+
+- **Archetypes are distributions, not organisms**, and their names are
+  presentation only. No rule, input channel, mating gate, or analysis
+  grouping may read an archetype ID, and a test asserts inertness by
+  permuting the IDs and requiring identical trajectories. No archetype is
+  named after a real species.
+- **A seeded run is a weaker basis for a reachability claim** than a random
+  one, because the starting point was chosen. Reports state which mode
+  produced them, and "behavior X evolved" means something different under
+  each.
+
+### The one amendment: scaffolding, and what it costs
+
+ADR-0018 permits deliberately shaping **environmental and selective
+structure** toward the major evolutionary transitions in the `scratch` mode.
+This fails the "can you name the outcome" test above, by design, and it is
+recorded as an explicit bounded exception rather than absorbed by
+reinterpretation.
+
+Still forbidden, unchanged: rewarding the target trait, granting it, or any
+recipe, stage, or grade. A scaffold must be describable **without naming its
+target** ("patchy resources with high between-patch variance and a dispersal
+cost", not "conditions that favor multicellularity").
+
+The honest cost: **every claim from the scaffolded phases is weaker than an
+unscaffolded one would have been.** Each requires an unscaffolded control on
+the same seeds, and the reportable quantity is the difference between
+conditions rather than the scaffolded result alone. The realistic risk is
+not that the rule gets broken once; it is that the word "scaffolded" quietly
+disappears from a summary three documents downstream.
+
 ### The corollary: analysis observes, it never instructs
 
 This project already holds this line for similarity clustering
@@ -132,6 +174,10 @@ Given that, our predictions:
 | Persistent structures that alter the landscape | Plausible. |
 | Behavioral traditions outliving individuals | Plausible to remarkable. Depends entirely on whether transmission fidelity clears the accumulation threshold. This is the single most likely place for a null result. |
 | Cumulative technological accumulation | Remarkable if observed. We do not plan around it. |
+| Morphological change under selection | Plausible. Phase 9 gives structure a real morphospace, and whether selection can act across a discontinuous developmental encoding is itself measured (C9.4). |
+| Abiogenesis producing a persistent population | Remarkable if observed unscaffolded; expected to require scaffolding, and expected to return null under a neutral chemistry. Recorded in advance. |
+| A unicell-to-differentiated-multicell transition | **Remarkable.** This is one of the least tractable problems in artificial life. The plan is built so a null here is a measurement rather than a surprise. |
+| A microbes-to-fish-to-reptiles progression | **Not promised, and not a sequence the simulation contains.** There is no ladder, no grade, and no stage. The arrow in that phrase is a hypothesis being tested, never a mechanism being executed. Reaching anything fish-like is not planned around. |
 | A recognizable stone-age-to-enlightenment arc | **Not planned around and not promised.** |
 | Language | **Not planned around and not promised.** A signal channel is not a language, and we will not call it one. |
 | Civilization | **Not planned around and not promised.** No civilization mechanic will ever be authored; see the table above. |

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Phases 5 through 12 add learning, signalling, artifacts, mutable terrain,
+Phases 5 through 16 add learning, signalling, artifacts, mutable terrain,
 variable-topology genomes, and multi-world scheduling. Each is a fresh
 opportunity to introduce nondeterminism. This document is the single
 registry of the extended determinism contract: named RNG streams, ordering
@@ -59,18 +59,32 @@ Reserved successors, appended in phase order:
 
 | Value | Name | Phase | Draws it owns |
 |---:|---|---|---|
-| 7 | Contest | 6 | Contest tie lottery, damage variance, retreat resolution |
-| 8 | Meiosis | 7 | Crossover count and crossover positions per chromosome pair |
-| 9 | StructuralMutation | 7 | Duplication, deletion, insertion, transposition site and extent |
-| 10 | PlasticityInit | 8 | Initial plastic-state seeding at birth (zero by default policy; the stream exists so a nonzero policy does not renumber) |
-| 11 | Signal | 9 | Emission noise and channel corruption |
-| 12 | Perception | 9 | Selection among tied perception candidates |
-| 13 | Artifact | 10 | Placement site selection, combination outcome variance, fracture products |
-| 14 | MaterialYield | 10 | Extraction yield variance |
-| 15 | Development | 11 | Ontogenetic variance at developmental checkpoints |
-| 16 | Mortality | 11 | Age-dependent and extrinsic hazard draws |
+| 7 | Contest | 7 | Contest tie lottery, damage variance, retreat resolution |
+| 8 | Meiosis | 8 | Crossover count and crossover positions per chromosome pair |
+| 9 | StructuralMutation | 8 | Duplication, deletion, insertion, transposition site and extent |
+| 10 | PlasticityInit | 10 | Initial plastic-state seeding at birth (zero by default policy; the stream exists so a nonzero policy does not renumber) |
+| 11 | Signal | 11 | Emission noise and channel corruption |
+| 12 | Perception | 11 | Selection among tied perception candidates |
+| 13 | Artifact | 12 | Placement site selection, combination outcome variance, fracture products |
+| 14 | MaterialYield | 12 | Extraction yield variance |
+| 15 | Development | 13 | Ontogenetic variance at developmental checkpoints |
+| 16 | Mortality | 13 | Age-dependent and extrinsic hazard draws |
+| 17 | Morphogenesis | 9 | Developmental growth-program variance (unused under the default fully deterministic policy) |
+| 18 | Abiogenesis | 14 | Protocell formation draws, keyed by cell |
+| 19 | MicrobialField | 14 | Field-regime stochastic terms, keyed by cell, never by individual |
+| 20 | Transition | 15 | Multicellularity handoff materialization draws |
+| 21 | ClimateDrift | 6 | Optional bounded stochastic climate component (unused under the default deterministic policy) |
+| 22 | FounderSeed | 6 | Archetype selection, deme centre choice, founder placement |
 
-Values 17 and above are unallocated. An analysis module never draws from any
+Three of these (17, 21, and to a lesser extent 19) exist specifically so that
+adopting a stochastic policy later cannot renumber an existing stream. They
+are allocated now and unused under the default deterministic policies.
+
+`FounderSeed` (22) is deliberately separate from `GenomeInit` (5) so that
+adding origin modes cannot shift the founder sequence of an existing
+`random` world.
+
+Values 23 and above are unallocated. An analysis module never draws from any
 stream; if an analysis needs sampling it uses a separate deterministic
 sampler seeded from its report parameters, and its output cannot reach world
 state (ADR-0016).
@@ -202,6 +216,18 @@ only when that subsystem's state exists:
 | `lifesim-object-state-v1` | Artifact table, per-cell occupancy | artifacts enabled |
 | `lifesim-terrainmod-state-v1` | Terrain override deltas, composed terrain checksum | mutable world enabled |
 | `lifesim-physiology-state-v1` | Developmental stage, accumulated hazard, disease load | physiology enabled |
+| `lifesim-climate-state-v1` | Dynamic temperature and moisture fields | climate enabled |
+| `lifesim-origin-state-v1` | Archetype and founder-file provenance | `origin.mode != random` |
+| `lifesim-morphology-state-v1` | Developmental clock, non-viability counters | morphology enabled |
+| `lifesim-chemistry-state-v1` | Per-cell substrate concentrations | field regime enabled |
+| `lifesim-microbial-state-v1` | Per-cell, per-class microbial densities | field regime enabled |
+
+Three categories of state are deliberately **absent** from this table because
+they are derived and recomputed on load rather than stored: phenotypes and
+genome hashes (existing), biome classification (Phase 6), and module bodies
+(Phase 9). Development is a pure function of `(genome, config)`, which is
+what lets bodies stay out of both the checksum and the save. Field state is
+the opposite case: it cannot be recomputed from anything, so it is stored.
 
 Sections are appended in the order listed. Adding a section to the end never
 changes the checksum of a world that lacks it.
@@ -219,19 +245,34 @@ canonical config hash only when their section is enabled:
 |---|---|---|
 | `phase1-behavior-v1` | unchanged | Phase 1 worlds |
 | `phase2-behavior-v1` | unchanged | Phase 2 worlds |
-| - | `contest-behavior-v1` | Damage, contest, territory (Phase 6) |
-| `lifesim-genome-v1` | `lifesim-genome-v2` | Diploid variable-topology genome (Phase 7) |
-| `lifesim-controller-v1` | `lifesim-controller-v2` | Synchronous variable-topology evaluation (Phase 7) |
-| `uniform-bounded-v1` | `lifesim-meiosis-v1` | Recombination and crossover (Phase 7) |
-| - | `lifesim-structmut-v1` | Structural mutation operators (Phase 7) |
-| - | `lifesim-pairkey-v1` | Pairwise draw subject derivation (Phase 6) |
-| - | `lifesim-plasticity-v1` | Learning rule registry and update arithmetic (Phase 8) |
-| - | `lifesim-social-v1` | Perception and signalling (Phase 9) |
-| - | `lifesim-material-v1` | Material registry and properties (Phase 10) |
-| - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 10) |
-| - | `lifesim-worldmod-v1` | Terrain modification rules (Phase 10) |
-| - | `lifesim-physiology-v1` | Allometry, ontogeny, senescence (Phase 11) |
-| `lifesim-worldgen-v1` | unchanged | Baseline terrain generation stays identical |
+| - | `contest-behavior-v1` | Damage, contest, territory (Phase 7) |
+| `lifesim-genome-v1` | `lifesim-genome-v2` | Diploid variable-topology genome (Phase 8) |
+| `lifesim-controller-v1` | `lifesim-controller-v2` | Synchronous variable-topology evaluation (Phase 8) |
+| `uniform-bounded-v1` | `lifesim-meiosis-v1` | Recombination and crossover (Phase 8) |
+| - | `lifesim-structmut-v1` | Structural mutation operators (Phase 8) |
+| - | `lifesim-pairkey-v1` | Pairwise draw subject derivation (Phase 7) |
+| - | `lifesim-plasticity-v1` | Learning rule registry and update arithmetic (Phase 10) |
+| - | `lifesim-social-v1` | Perception and signalling (Phase 11) |
+| - | `lifesim-material-v1` | Material registry and properties (Phase 12) |
+| - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 12) |
+| - | `lifesim-worldmod-v1` | Terrain modification rules (Phase 12) |
+| - | `lifesim-physiology-v1` | Allometry, ontogeny, senescence (Phase 13) |
+| `lifesim-worldgen-v1` | `lifesim-worldgen-v2` | Adds moisture, temperature, and biome fields (Phase 6). v1 worlds keep v1 forever, so their terrain checksums and both fixtures are unaffected |
+| - | `lifesim-biome-v1` | Biome classification thresholds (Phase 6) |
+| - | `lifesim-climate-v1` | Climate drift periods and amplitudes (Phase 6) |
+| - | `lifesim-origin-v1` | Origin modes, archetypes, deme placement (Phase 6) |
+| - | `lifesim-morphology-v1` | Module registry and phenotype derivation (Phase 9) |
+| - | `lifesim-develop-v1` | Developmental growth program (Phase 9) |
+| - | `lifesim-chemistry-v1` | Substrate registry, reactions, diffusion (Phase 14) |
+| - | `lifesim-microbial-v1` | Genotype class registry and field dynamics (Phase 14) |
+| - | `lifesim-transition-v1` | Materialization threshold and class-to-genome map (Phase 15) |
+
+Genome schema versions are a separate axis from policy versions: schema 1
+(existing), schema 2 (Phase 8, diploid variable topology), schema 3 (Phase 9,
+adds regulatory loci for development). All three decoders and their fixtures
+stay in the build permanently and **there is no migration between them**, for
+the reason ADR-0013 records: a converted genome would be a record that never
+existed.
 
 Analysis policies are recorded in reports and are deliberately **not** in the
 config hash, because an analysis version can never affect a world:
@@ -239,7 +280,7 @@ config hash, because an analysis version can never affect a world:
 `lifesim-tradition-v1`.
 
 Save framing versions are separate again: ALIF format 1 (existing), ALIF
-format 2 (Phase 10). See `specifications/world-save-format.md`.
+format 2 (Phase 12). See `specifications/world-save-format.md`.
 
 ## Rule 10: Scheduling Never Reaches The Kernel
 
@@ -252,7 +293,7 @@ or completion-order dependency shows up as a checksum difference.
 
 Within a world, parallelism remains opt-in and gated on ADR-0010's existing
 requirement of an ordering and reduction policy plus equality tests. Nothing
-in Phases 5 through 12 authorizes intra-world parallelism.
+in Phases 5 through 16 authorizes intra-world parallelism.
 
 ## Test Obligations
 

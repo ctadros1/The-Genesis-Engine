@@ -12,7 +12,7 @@ buffers (no per-tick heap allocation); SoA batching remains a Phase 5
 optimization option. Cross-version decode is fail-closed (unknown topology
 IDs are rejected).
 
-## Planned Successor: Variable Topology (Phase 7)
+## Planned Successor: Variable Topology (Phase 8)
 
 Full design in `specifications/genome-schema-2.md`; decision in ADR-0013.
 Topology 1 stays registered, evaluable, and fixture-covered forever.
@@ -41,7 +41,7 @@ Changes that matter for this specification:
 - **Batching.** Grouping organisms by topology ID no longer works, because
   topologies are per-organism. The replacement is a measurement question for
   a later performance slice.
-- **Plasticity.** From Phase 8, edges may be plastic and their effective
+- **Plasticity.** From Phase 10, edges may be plastic and their effective
   weight includes a Q16 learned delta. See
   `specifications/plasticity-and-learning.md`.
 

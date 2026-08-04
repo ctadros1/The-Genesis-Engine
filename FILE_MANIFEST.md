@@ -163,13 +163,17 @@ this manifest.
 - planning/phase-3-live-observer.md
 - planning/phase-4-persistence-and-analytics.md
 - planning/phase-5-headless-scale-and-experiments.md
-- planning/phase-6-territory-and-conflict.md
-- planning/phase-7-evolvable-genome.md
-- planning/phase-8-lifetime-learning.md
-- planning/phase-9-social-channel.md
-- planning/phase-10-mutable-world-and-artifacts.md
-- planning/phase-11-physiology-and-life-history.md
-- planning/phase-12-era-and-tradition-detection.md
+- planning/phase-6-biomes-climate-and-origins.md
+- planning/phase-7-territory-and-conflict.md
+- planning/phase-8-evolvable-genome.md
+- planning/phase-9-modular-morphology.md
+- planning/phase-10-lifetime-learning.md
+- planning/phase-11-social-channel.md
+- planning/phase-12-mutable-world-and-artifacts.md
+- planning/phase-13-physiology-and-life-history.md
+- planning/phase-14-abiogenesis-and-unicellular-regime.md
+- planning/phase-15-multicellularity-transition.md
+- planning/phase-16-era-and-tradition-detection.md
 - planning/superseded/phase-5-performance-optimization.md
 - planning/superseded/phase-6-advanced-ecosystems.md
 
@@ -187,6 +191,7 @@ this manifest.
 ## Specifications
 
 - specifications/artifact-and-material-ontology.md
+- specifications/biome-and-climate.md
 - specifications/determinism-extensions.md
 - specifications/entity-component-model.md
 - specifications/era-and-tradition-detection.md
@@ -194,13 +199,16 @@ this manifest.
 - specifications/experiment-config-schema.md
 - specifications/genome-schema-2.md
 - specifications/metrics-schema.md
+- specifications/morphology-and-development.md
 - specifications/mutable-world-state.md
 - specifications/neural-network-schema.md
 - specifications/organism-genome.md
 - specifications/plasticity-and-learning.md
 - specifications/simulation-tick.md
 - specifications/social-signal-channel.md
+- specifications/unicellular-regime.md
 - specifications/websocket-protocol.md
+- specifications/world-origin-modes.md
 - specifications/world-save-format.md
 
 ## Prompts
@@ -238,6 +246,10 @@ this manifest.
 - decisions/0015-mutable-world-state-and-save-format-2.md
 - decisions/0016-analysis-observes-never-instructs.md
 - decisions/0017-biological-realism-policy.md
+- decisions/0018-scaffolded-possibility-space.md
+- decisions/0019-modular-morphology-encoding.md
+- decisions/0020-two-regime-simulation.md
+- decisions/0021-world-origin-modes.md
 - decisions/README.md
 - decisions/adr-template.md
 

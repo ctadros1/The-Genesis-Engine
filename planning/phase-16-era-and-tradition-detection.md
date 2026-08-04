@@ -1,4 +1,4 @@
-# Phase 12: Offline Era And Tradition Detection
+# Phase 16: Offline Era And Tradition Detection
 
 Status: planned, not started. Analysis versions `lifesim-era-v1`,
 `lifesim-tradition-v1`. Specification:
@@ -59,7 +59,7 @@ than a review finding. See ADR-0016.
 - Phase 5's append-only event log (the deferred D-019 item).
 - Event schema version 3 covering contest, structural, social, and object
   events.
-- Phases 9 and 10, because a tradition claim requires transmission and
+- Phases 11 and 12, because a tradition claim requires transmission and
   artifacts to exist for there to be anything to detect.
 
 ## Determinism Notes
@@ -73,35 +73,35 @@ than a review finding. See ADR-0016.
 
 ## Acceptance Criteria
 
-- [ ] **C12.1 Zero feedback, proven.** World state checksums are
+- [ ] **C16.1 Zero feedback, proven.** World state checksums are
       bit-identical with detection enabled at every supported cadence and
       with detection disabled. This mirrors the existing Phase 2
       analysis-neutrality test and is the phase's most important criterion.
-- [ ] **C12.2 Dependency direction enforced by the build.** `sim-core` does
+- [ ] **C16.2 Dependency direction enforced by the build.** `sim-core` does
       not depend on `sim-analysis`. Asserted in CI, not by convention.
-- [ ] **C12.3 Reproducible reports.** The same event log and parameters
+- [ ] **C16.3 Reproducible reports.** The same event log and parameters
       analyzed in two clean processes produce byte-identical reports.
-- [ ] **C12.4 Synthetic ground truth.** On a fixture event log with injected
+- [ ] **C16.4 Synthetic ground truth.** On a fixture event log with injected
       known regime changes at known ticks, the detector recovers boundaries
       within `+/- k` windows at stated precision and recall. The generator
       and its injected changes are versioned fixtures.
-- [ ] **C12.5 Null control.** On event logs from runs with the relevant
+- [ ] **C16.5 Null control.** On event logs from runs with the relevant
       mechanisms ablated (no artifacts, no signalling, no contest), the
       detector reports no segments above threshold in at least 10 of 12
       seeds. A detector that finds eras where nothing can happen is finding
-      noise, and this is the check that catches it. Without C12.5 the whole
+      noise, and this is the check that catches it. Without C16.5 the whole
       analysis is unfalsifiable pattern-matching.
-- [ ] **C12.6 Tradition findings carry their control.** Every tradition
+- [ ] **C16.6 Tradition findings carry their control.** Every tradition
       finding includes its genotype-matched control statistic, the matching
       tolerance, and the cohort size. A finding constructed without one
       fails report validation. A behavior shared by close kin is a plausible
       inherited trait, not a tradition, and the report format makes that
       distinction unavoidable.
-- [ ] **C12.7 Negative results are reported.** A run with no segments above
+- [ ] **C16.7 Negative results are reported.** A run with no segments above
       threshold and no traditions produces a report saying exactly that.
       Silence is not a result and an empty report is not the same as no
       report.
-- [ ] **C12.8 Bounded cost.** Runtime and memory on the largest supported
+- [ ] **C16.8 Bounded cost.** Runtime and memory on the largest supported
       event log are measured and recorded separately from tick cost,
       following the existing similarity-analysis convention.
 
@@ -122,7 +122,7 @@ than a review finding. See ADR-0016.
 Offline only. Record analysis runtime and peak memory against event-log size
 and window count, measured separately from tick cost, exactly as the Phase 2
 similarity-analysis runtime is recorded today. No tick-path impact is
-permitted and C12.1 proves it.
+permitted and C16.1 proves it.
 
 Benchmark schema unchanged; analysis timings are a separate record section.
 
@@ -139,11 +139,11 @@ metrics), `specifications/event-schema.md`,
 
 | Risk | Mitigation |
 |---|---|
-| The detector invents narrative from noise | C12.5's null control is the direct guard, and C12.4 establishes it can find real changes when they exist |
+| The detector invents narrative from noise | C16.5's null control is the direct guard, and C16.4 establishes it can find real changes when they exist |
 | A tradition claim is made without the genetic control and propagates into summaries | The control is a required report field; a finding without one fails validation. This is enforced by the format, not by reviewer diligence |
 | Era language leaks into reports and then into how the project describes itself | Segments are called segments; no historical naming anywhere; `docs/25-emergence-and-epistemic-position.md` governs the vocabulary |
-| Analysis code eventually gets a "small" hook into the kernel for convenience | The crate dependency direction makes it a compile error, which is why C12.2 is an acceptance criterion rather than a guideline |
-| Event log size makes analysis impractical | Measured in C12.8; windowing and sampling bounds are config; the log format is designed for streaming reads rather than full-file loads |
+| Analysis code eventually gets a "small" hook into the kernel for convenience | The crate dependency direction makes it a compile error, which is why C16.2 is an acceptance criterion rather than a guideline |
+| Event log size makes analysis impractical | Measured in C16.8; windowing and sampling bounds are config; the log format is designed for streaming reads rather than full-file loads |
 
 ## Rollback
 

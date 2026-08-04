@@ -15,20 +15,24 @@ was modified.** Phases 0 to 4 records, fixtures (`0x1e3158a26afd3b39`,
 `0xff9dfcff5dffbf42`), and every benchmark ID are preserved exactly. All
 ADRs remain Proposed.
 
-Phases 5 to 12 are planned and none has started:
+Phases 5 to 16 are planned and none has started:
 
 | Phase | Subject | Plan |
 |---|---|---|
 | 5 | Headless scale and multi-world experiments | `phase-5-headless-scale-and-experiments.md` |
-| 6 | Territory, contest, and damage | `phase-6-territory-and-conflict.md` |
-| 7 | Evolvable genome: diploid genetics and variable topology | `phase-7-evolvable-genome.md` |
-| 8 | Lifetime learning | `phase-8-lifetime-learning.md` |
-| 9 | Social channel | `phase-9-social-channel.md` |
-| 10 | Mutable world and artifacts | `phase-10-mutable-world-and-artifacts.md` |
-| 11 | Physiology, development, and life history | `phase-11-physiology-and-life-history.md` |
-| 12 | Offline era and tradition detection | `phase-12-era-and-tradition-detection.md` |
+| 6 | Biomes, climate drift, and world origin modes | `phase-6-biomes-climate-and-origins.md` |
+| 7 | Territory, contest, and damage | `phase-7-territory-and-conflict.md` |
+| 8 | Evolvable genome: diploid genetics and variable topology | `phase-8-evolvable-genome.md` |
+| 9 | Modular morphology and development | `phase-9-modular-morphology.md` |
+| 10 | Lifetime learning | `phase-10-lifetime-learning.md` |
+| 11 | Social channel | `phase-11-social-channel.md` |
+| 12 | Mutable world and artifacts | `phase-12-mutable-world-and-artifacts.md` |
+| 13 | Physiology, life history, and senescence | `phase-13-physiology-and-life-history.md` |
+| 14 | Abiogenesis and the unicellular regime | `phase-14-abiogenesis-and-unicellular-regime.md` |
+| 15 | The multicellularity transition | `phase-15-multicellularity-transition.md` |
+| 16 | Offline era and tradition detection | `phase-16-era-and-tradition-detection.md` |
 
-The former Phase 5 (performance optimization) and Phase 6 (advanced
+The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under
 `planning/superseded/`. Performance work is now a standing discipline in
 every phase's Benchmark Impact section.
@@ -73,7 +77,7 @@ Carried forward unchanged unless noted:
 - Visual palette/sprite identity system.
 - Secure observer/admin authentication mechanism.
 - Exact disaster catalog.
-- Genome topology/trait range exploration. Partly absorbed by Phase 7.
+- Genome topology/trait range exploration. Partly absorbed by Phase 8.
 - GPU experiment design.
 - Independent-world scheduler. **Promoted into Phase 5 scope**, because
   multi-seed experiment design depends on it.
@@ -81,11 +85,11 @@ Carried forward unchanged unless noted:
 - Profiling, SIMD, and parallelism work from the superseded Phase 5 plan.
   Each still requires its own profiler evidence and, for parallelism, its
   own deterministic-ordering evidence under ADR-0010.
-- Controller batching strategy for variable topologies (Phase 7 makes
+- Controller batching strategy for variable topologies (Phase 8 makes
   grouping by topology ID obsolete; the replacement is a later performance
   slice).
 - A phenotype-only kin-inference condition, as an alternative to providing
-  computed genetic distance as a kinship input (Phase 6 follow-up).
+  computed genetic distance as a kinship input (Phase 7 follow-up).
 
 ## Repository Hygiene
 
