@@ -1,0 +1,13 @@
+[package]
+name = "sim-cli"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "lifesim"
+path = "src/main.rs"
+
+[dependencies]
+sim-core = { path = "../sim-core" }
+sim-persist = { path = "../sim-persist" }

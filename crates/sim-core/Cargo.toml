@@ -1,0 +1,13 @@
+[package]
+name = "sim-core"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "sim_core"
+path = "src/lib.rs"
+
+# sim-core is deliberately dependency-free. It must never depend on HTTP,
+# WebSocket, browser, database, filesystem, wall clock, or GPU APIs.
+[dependencies]

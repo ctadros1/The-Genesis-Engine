@@ -1,0 +1,1095 @@
+//! Headless Phase 1 runner.
+//!
+//! All wall-clock, filesystem, and process concerns live here; `sim-core`
+//! stays pure. Subcommands:
+//!
+//! - `run`       advance a world, verify invariants, report a summary
+//! - `fixture`   single-line deterministic fixture for clean-process checks
+//! - `inspect`   world-generation summary at tick zero
+//! - `benchmark` per-phase timing, allocation, and RSS record with provenance
+
+use sim_core::{
+    BEHAVIOR_POLICY_VERSION, CONTROLLER_POLICY_VERSION, GENOME_POLICY_VERSION,
+    GENOME_SCHEMA_VERSION, PHASE2_BEHAVIOR_POLICY_VERSION, RNG_ALGORITHM_VERSION, SimConfig,
+    TOPOLOGY_ID, TickObserver, TickPhase, WORLDGEN_VERSION, World, analyze,
+};
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::env;
+use std::fs::{self, File};
+use std::io::Write;
+use std::path::PathBuf;
+use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
+
+const DEFAULT_SEED: u64 = 0x5eed_cafe_f00d_beef;
+
+// --- Allocation counting (benchmark evidence) ----------------------------
+
+static ALLOCATION_COUNT: AtomicU64 = AtomicU64::new(0);
+
+struct CountingAllocator;
+
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        ALLOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc(layout) }
+    }
+
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(pointer, layout) }
+    }
+
+    unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        ALLOCATION_COUNT.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.realloc(pointer, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL_ALLOCATOR: CountingAllocator = CountingAllocator;
+
+// --- Entry ----------------------------------------------------------------
+
+fn main() {
+    if let Err(error) = run() {
+        eprintln!("lifesim: {error}");
+        std::process::exit(2);
+    }
+}
+
+fn run() -> Result<(), String> {
+    let mut args = env::args().skip(1);
+    match args.next().as_deref() {
+        Some("run") => command_run(parse_options(args.collect())?),
+        Some("fixture") => command_fixture(parse_options(args.collect())?),
+        Some("inspect") => command_inspect(parse_options(args.collect())?),
+        Some("benchmark") => command_benchmark(parse_options(args.collect())?),
+        Some("analyze") => command_analyze(parse_options(args.collect())?),
+        Some("verify-save") => command_verify_save(args.collect()),
+        Some("compare") => command_compare(args.collect()),
+        _ => Err(usage()),
+    }
+}
+
+fn usage() -> String {
+    concat!(
+        "usage: lifesim run --ticks N [config flags] [--pause-at T --pause-ticks M] [--metrics-out PATH|-] [--check-interval N] [--save-path P [--compress L]] [--load-save P] [--csv-out P [--csv-interval N]]\n",
+        "       lifesim fixture --ticks N [config flags]\n",
+        "       lifesim inspect [config flags]\n",
+        "       lifesim benchmark --benchmark-id ID --output DIR [config flags] [--warmup N --samples N --ticks-per-sample N]\n",
+        "       lifesim analyze --ticks N [config flags]   (requires --phase2)\n",
+        "       lifesim verify-save PATH\n",
+        "       lifesim compare SUMMARY_A SUMMARY_B\n",
+        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2"
+    )
+    .to_owned()
+}
+
+#[derive(Default)]
+struct Options {
+    seed: Option<u64>,
+    organisms: Option<u32>,
+    max_entities: Option<u32>,
+    cells_x: Option<u32>,
+    cells_y: Option<u32>,
+    dt_ms: Option<u32>,
+    no_reproduction: bool,
+    phase2: bool,
+    ticks: Option<u64>,
+    pause_at: Option<u64>,
+    pause_ticks: Option<u64>,
+    check_interval: Option<u64>,
+    metrics_out: Option<String>,
+    warmup: Option<u64>,
+    samples: Option<usize>,
+    ticks_per_sample: Option<u64>,
+    benchmark_id: Option<String>,
+    output: Option<PathBuf>,
+    save_path: Option<PathBuf>,
+    load_save: Option<PathBuf>,
+    compress: Option<i32>,
+    csv_out: Option<PathBuf>,
+    csv_interval: Option<u64>,
+}
+
+fn parse_options(args: Vec<String>) -> Result<Options, String> {
+    let mut options = Options::default();
+    let mut index = 0;
+    while index < args.len() {
+        let name = args[index].as_str();
+        if name == "--no-reproduction" {
+            options.no_reproduction = true;
+            index += 1;
+            continue;
+        }
+        if name == "--phase2" {
+            options.phase2 = true;
+            index += 1;
+            continue;
+        }
+        let value = args
+            .get(index + 1)
+            .ok_or_else(|| format!("missing value for {name}\n{}", usage()))?;
+        match name {
+            "--seed" => options.seed = Some(parse_seed(value)?),
+            "--organisms" => options.organisms = Some(parse_number(name, value)?),
+            "--max-entities" => options.max_entities = Some(parse_number(name, value)?),
+            "--cells-x" => options.cells_x = Some(parse_number(name, value)?),
+            "--cells-y" => options.cells_y = Some(parse_number(name, value)?),
+            "--dt-ms" => options.dt_ms = Some(parse_number(name, value)?),
+            "--ticks" => options.ticks = Some(parse_number(name, value)?),
+            "--pause-at" => options.pause_at = Some(parse_number(name, value)?),
+            "--pause-ticks" => options.pause_ticks = Some(parse_number(name, value)?),
+            "--check-interval" => options.check_interval = Some(parse_number(name, value)?),
+            "--metrics-out" => options.metrics_out = Some(value.clone()),
+            "--warmup" => options.warmup = Some(parse_number(name, value)?),
+            "--samples" => options.samples = Some(parse_number(name, value)?),
+            "--ticks-per-sample" => options.ticks_per_sample = Some(parse_number(name, value)?),
+            "--benchmark-id" => options.benchmark_id = Some(value.clone()),
+            "--output" => options.output = Some(PathBuf::from(value)),
+            "--save-path" => options.save_path = Some(PathBuf::from(value)),
+            "--load-save" => options.load_save = Some(PathBuf::from(value)),
+            "--compress" => options.compress = Some(parse_number(name, value)?),
+            "--csv-out" => options.csv_out = Some(PathBuf::from(value)),
+            "--csv-interval" => options.csv_interval = Some(parse_number(name, value)?),
+            _ => return Err(format!("unknown option {name}\n{}", usage())),
+        }
+        index += 2;
+    }
+    Ok(options)
+}
+
+fn parse_number<T: std::str::FromStr>(name: &str, value: &str) -> Result<T, String> {
+    value
+        .parse()
+        .map_err(|_| format!("invalid value for {name}: {value}"))
+}
+
+fn parse_seed(value: &str) -> Result<u64, String> {
+    value
+        .strip_prefix("0x")
+        .map_or_else(|| value.parse(), |hex| u64::from_str_radix(hex, 16))
+        .map_err(|_| format!("invalid seed: {value}"))
+}
+
+fn build_config(options: &Options) -> Result<SimConfig, String> {
+    let mut config = SimConfig::phase1_default(options.seed.unwrap_or(DEFAULT_SEED));
+    if let Some(organisms) = options.organisms {
+        config.initial_organisms = organisms;
+    }
+    if let Some(max_entities) = options.max_entities {
+        config.max_entities = max_entities;
+    }
+    if let Some(cells_x) = options.cells_x {
+        config.cells_x = cells_x;
+    }
+    if let Some(cells_y) = options.cells_y {
+        config.cells_y = cells_y;
+    }
+    if let Some(dt_ms) = options.dt_ms {
+        config.dt_ms = dt_ms;
+    }
+    if options.no_reproduction {
+        config.reproduction_enabled = false;
+    }
+    if options.phase2 {
+        config.phase2.enabled = true;
+    }
+    config.validate().map_err(|error| error.to_string())?;
+    Ok(config)
+}
+
+fn build_world(options: &Options) -> Result<World, String> {
+    let config = build_config(options)?;
+    World::new(config).map_err(|error| error.to_string())
+}
+
+// --- run -------------------------------------------------------------------
+
+fn command_run(options: Options) -> Result<(), String> {
+    let ticks = options
+        .ticks
+        .ok_or_else(|| format!("run requires --ticks\n{}", usage()))?;
+    let check_interval = options.check_interval.unwrap_or(1_000).max(1);
+    let mut world = match &options.load_save {
+        Some(path) => {
+            // Branch from a validated snapshot; config flags are ignored in
+            // favor of the recorded configuration.
+            let (info, world) =
+                sim_persist::SnapshotStore::load_world(path).map_err(|error| error.to_string())?;
+            eprintln!(
+                "loaded save: world {} tick {} config 0x{:016x} build {}",
+                info.world_id, info.tick, info.config_hash, info.build_version
+            );
+            world
+        }
+        None => build_world(&options)?,
+    };
+
+    let mut csv: Option<std::io::BufWriter<File>> = match &options.csv_out {
+        Some(path) => {
+            let mut writer =
+                std::io::BufWriter::new(File::create(path).map_err(|error| error.to_string())?);
+            // Versioned export manifest header.
+            writeln!(writer, "# lifesim-csv-v1").map_err(|error| error.to_string())?;
+            writeln!(
+                writer,
+                "# seed=0x{:016x} config_hash=0x{:016x} policy={}",
+                world.config().world_seed,
+                world.config_hash(),
+                active_policy(&world)
+            )
+            .map_err(|error| error.to_string())?;
+            writeln!(
+                writer,
+                "tick,population,births_total,deaths_starvation_total,deaths_old_age_total,paired_births_total,total_biomass_milli,total_energy_milli,max_ancestry_depth"
+            )
+            .map_err(|error| error.to_string())?;
+            Some(writer)
+        }
+        None => None,
+    };
+    let csv_interval = options.csv_interval.unwrap_or(100).max(1);
+
+    let mut paused_ticks_verified = 0_u64;
+    let mut tick_durations = Vec::with_capacity(ticks.min(1_000_000) as usize);
+    let wall_started = Instant::now();
+
+    for tick in 0..ticks {
+        if options.pause_at == Some(tick) {
+            let pause_ticks = options.pause_ticks.unwrap_or(10);
+            world.set_paused(true);
+            let checksum_before = world.state_checksum();
+            let tick_before = world.tick_number();
+            for _ in 0..pause_ticks {
+                world.step();
+            }
+            if world.tick_number() != tick_before || world.state_checksum() != checksum_before {
+                return Err("paused world advanced state; determinism violation".to_owned());
+            }
+            paused_ticks_verified = pause_ticks;
+            world.set_paused(false);
+        }
+        let started = Instant::now();
+        world.step();
+        tick_durations.push(started.elapsed());
+        if (tick + 1) % check_interval == 0 {
+            world.check_invariants().map_err(|violation| {
+                format!("invariant violation at tick {}: {violation}", tick + 1)
+            })?;
+        }
+        if let Some(writer) = csv.as_mut()
+            && (tick + 1) % csv_interval == 0
+        {
+            let sample = world.metrics();
+            writeln!(
+                writer,
+                "{},{},{},{},{},{},{},{},{}",
+                sample.tick,
+                sample.population,
+                sample.births_total,
+                sample.deaths_starvation_total,
+                sample.deaths_old_age_total,
+                sample.paired_births_total,
+                sample.total_biomass_milli,
+                sample.total_energy_milli,
+                sample.max_ancestry_depth
+            )
+            .map_err(|error| error.to_string())?;
+        }
+    }
+    if let Some(mut writer) = csv.take() {
+        writer.flush().map_err(|error| error.to_string())?;
+    }
+    let wall_elapsed = wall_started.elapsed();
+    world
+        .check_invariants()
+        .map_err(|violation| format!("final invariant violation: {violation}"))?;
+
+    if let Some(path) = &options.save_path {
+        let bytes = sim_persist::encode_snapshot(
+            &world.export_state(),
+            1,
+            0,
+            world.state_checksum(),
+            sim_persist::BUILD_VERSION,
+            0,
+            Some(options.compress.unwrap_or(3)),
+        )
+        .map_err(|error| error.to_string())?;
+        fs::write(path, &bytes).map_err(|error| error.to_string())?;
+        eprintln!(
+            "saved {} bytes to {} (state 0x{:016x})",
+            bytes.len(),
+            path.display(),
+            world.state_checksum()
+        );
+    }
+
+    if let Some(target) = options.metrics_out.as_deref() {
+        let text = prometheus_text(&world, &tick_durations, wall_elapsed);
+        if target == "-" {
+            print!("{text}");
+        } else {
+            fs::write(target, text).map_err(|error| error.to_string())?;
+        }
+    }
+
+    let metrics = world.metrics();
+    println!(
+        concat!(
+            "{{\"run_schema_version\":2,",
+            "\"behavior_policy\":\"{}\",\"rng_algorithm\":\"{}\",\"worldgen_version\":\"{}\",",
+            "\"seed\":\"0x{:016x}\",\"config_hash\":\"0x{:016x}\",",
+            "\"ticks_requested\":{},\"final_tick\":{},",
+            "\"population\":{},\"births_total\":{},",
+            "\"deaths_starvation_total\":{},\"deaths_old_age_total\":{},",
+            "\"capacity_rejections_total\":{},\"dropped_events_total\":{},",
+            "\"total_energy_milli\":{},\"total_biomass_milli\":{},",
+            "\"extinct\":{},\"paused_ticks_verified\":{},",
+            "\"phase2_enabled\":{},\"paired_births_total\":{},",
+            "\"pair_rejected_capacity_total\":{},\"pair_rejected_placement_total\":{},",
+            "\"pair_rejected_energy_total\":{},\"controller_faults_total\":{},",
+            "\"max_ancestry_depth\":{},",
+            "\"terrain_checksum\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
+            "\"invariants\":\"ok\"}}"
+        ),
+        active_policy(&world),
+        RNG_ALGORITHM_VERSION,
+        WORLDGEN_VERSION,
+        world.config().world_seed,
+        world.config_hash(),
+        ticks,
+        world.tick_number(),
+        metrics.population,
+        metrics.births_total,
+        metrics.deaths_starvation_total,
+        metrics.deaths_old_age_total,
+        metrics.capacity_rejections_total,
+        metrics.dropped_events_total,
+        metrics.total_energy_milli,
+        metrics.total_biomass_milli,
+        metrics.extinct,
+        paused_ticks_verified,
+        metrics.phase2_enabled,
+        metrics.paired_births_total,
+        metrics.pair_rejected_capacity_total,
+        metrics.pair_rejected_placement_total,
+        metrics.pair_rejected_energy_total,
+        metrics.controller_faults_total,
+        metrics.max_ancestry_depth,
+        world.terrain().terrain_checksum,
+        world.state_checksum()
+    );
+    Ok(())
+}
+
+/// Verify a snapshot file through an isolated restore. Never modifies
+/// anything; prints a provenance report.
+fn command_verify_save(args: Vec<String>) -> Result<(), String> {
+    let path = args.first().ok_or_else(usage)?;
+    let bytes = fs::read(path).map_err(|error| error.to_string())?;
+    let info = sim_persist::read_info(&bytes).map_err(|error| format!("invalid save: {error}"))?;
+    sim_persist::migration_for(info.format_version)?;
+    let (_, world) = sim_persist::SnapshotStore::load_world(std::path::Path::new(path))
+        .map_err(|error| format!("restore failed: {error}"))?;
+    println!(
+        concat!(
+            "{{\"verify_schema_version\":1,\"path\":\"{}\",\"format_version\":{},",
+            "\"compressed\":{},\"world_id\":{},\"tick\":{},\"seed\":\"0x{:016x}\",",
+            "\"config_hash\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
+            "\"terrain_checksum\":\"0x{:016x}\",\"build_version\":\"{}\",",
+            "\"population\":{},\"result\":\"ok\"}}"
+        ),
+        json_escape(path),
+        info.format_version,
+        info.compressed,
+        info.world_id,
+        info.tick,
+        info.seed,
+        info.config_hash,
+        info.state_checksum,
+        info.terrain_checksum,
+        json_escape(&info.build_version),
+        world.population()
+    );
+    Ok(())
+}
+
+/// Compare two run-summary JSON files (stdout of `lifesim run`). Reports
+/// whether the runs share an experiment lineage and the metric deltas.
+fn command_compare(args: Vec<String>) -> Result<(), String> {
+    if args.len() != 2 {
+        return Err(usage());
+    }
+    let read_summary = |path: &str| -> Result<String, String> {
+        fs::read_to_string(path).map_err(|error| format!("{path}: {error}"))
+    };
+    let first = read_summary(&args[0])?;
+    let second = read_summary(&args[1])?;
+    let field = |body: &str, name: &str| -> String {
+        body.split(&format!("\"{name}\":"))
+            .nth(1)
+            .map(|rest| {
+                rest.trim_start()
+                    .trim_start_matches('"')
+                    .split([',', '}', '"'])
+                    .next()
+                    .unwrap_or("")
+                    .to_owned()
+            })
+            .unwrap_or_default()
+    };
+    let same_lineage = field(&first, "config_hash") == field(&second, "config_hash")
+        && field(&first, "seed") == field(&second, "seed")
+        && field(&first, "behavior_policy") == field(&second, "behavior_policy");
+    let numeric = |body: &str, name: &str| -> i128 { field(body, name).parse().unwrap_or(0) };
+    let mut deltas = String::new();
+    for name in [
+        "final_tick",
+        "population",
+        "births_total",
+        "deaths_starvation_total",
+        "deaths_old_age_total",
+        "paired_births_total",
+        "max_ancestry_depth",
+    ] {
+        if !deltas.is_empty() {
+            deltas.push(',');
+        }
+        deltas.push_str(&format!(
+            "\"{name}\":{{\"a\":{},\"b\":{},\"delta\":{}}}",
+            numeric(&first, name),
+            numeric(&second, name),
+            numeric(&second, name) - numeric(&first, name)
+        ));
+    }
+    println!(
+        concat!(
+            "{{\"compare_schema_version\":1,\"same_experiment_lineage\":{},",
+            "\"config_hash_a\":\"{}\",\"config_hash_b\":\"{}\",",
+            "\"state_checksum_a\":\"{}\",\"state_checksum_b\":\"{}\",",
+            "\"identical_final_state\":{},\"metrics\":{{{}}},",
+            "\"note\":\"runs with different config hashes are different experiments and must not be labeled identical\"}}"
+        ),
+        same_lineage,
+        field(&first, "config_hash"),
+        field(&second, "config_hash"),
+        field(&first, "state_checksum"),
+        field(&second, "state_checksum"),
+        same_lineage && field(&first, "state_checksum") == field(&second, "state_checksum"),
+        deltas
+    );
+    Ok(())
+}
+
+fn active_policy(world: &World) -> &'static str {
+    if world.phase2_enabled() {
+        PHASE2_BEHAVIOR_POLICY_VERSION
+    } else {
+        BEHAVIOR_POLICY_VERSION
+    }
+}
+
+// --- fixture ----------------------------------------------------------------
+
+fn command_fixture(options: Options) -> Result<(), String> {
+    let ticks = options.ticks.unwrap_or(500);
+    let mut world = build_world(&options)?;
+    for _ in 0..ticks {
+        world.step();
+    }
+    world
+        .check_invariants()
+        .map_err(|violation| format!("invariant violation: {violation}"))?;
+    let metrics = world.metrics();
+    if world.phase2_enabled() {
+        // Fixture schema 3: the Phase 2 lineage. Never relabeled as v2.
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":3,\"phase\":\"phase2\",",
+                "\"behavior_policy\":\"{}\",\"genome_policy\":\"{}\",",
+                "\"controller_policy\":\"{}\",\"genome_schema\":{},\"topology_id\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"births_total\":{},\"paired_births_total\":{},\"deaths_total\":{},",
+                "\"controller_faults_total\":{},\"max_ancestry_depth\":{}}}"
+            ),
+            PHASE2_BEHAVIOR_POLICY_VERSION,
+            GENOME_POLICY_VERSION,
+            CONTROLLER_POLICY_VERSION,
+            GENOME_SCHEMA_VERSION,
+            TOPOLOGY_ID,
+            world.config().initial_organisms,
+            ticks,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.births_total,
+            metrics.paired_births_total,
+            metrics.deaths_starvation_total + metrics.deaths_old_age_total,
+            metrics.controller_faults_total,
+            metrics.max_ancestry_depth
+        );
+    } else {
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":2,\"phase\":\"phase1\",",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"births_total\":{},\"deaths_total\":{}}}"
+            ),
+            world.config().initial_organisms,
+            ticks,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.births_total,
+            metrics.deaths_starvation_total + metrics.deaths_old_age_total
+        );
+    }
+    Ok(())
+}
+
+/// Run a Phase 2 world for the requested ticks, then execute the offline
+/// similarity analysis and print its report with timing.
+fn command_analyze(options: Options) -> Result<(), String> {
+    let ticks = options.ticks.unwrap_or(0);
+    let mut world = build_world(&options)?;
+    if !world.phase2_enabled() {
+        return Err("analyze requires --phase2".to_owned());
+    }
+    for _ in 0..ticks {
+        world.step();
+    }
+    world
+        .check_invariants()
+        .map_err(|violation| format!("invariant violation: {violation}"))?;
+    let started = Instant::now();
+    let report = analyze(&world).expect("phase2 world always yields a report");
+    let elapsed = started.elapsed();
+    let mut sizes = String::new();
+    for (index, size) in report.cluster_sizes.iter().enumerate() {
+        if index > 0 {
+            sizes.push(',');
+        }
+        sizes.push_str(&size.to_string());
+    }
+    println!(
+        concat!(
+            "{{\"analysis_schema_version\":1,\"algorithm\":\"{}\",",
+            "\"analysis_tick\":{},\"config_hash\":\"0x{:016x}\",",
+            "\"genome_schema\":{},\"population\":{},\"sampled\":{},",
+            "\"sample_stride\":{},\"threshold_q16\":{},\"neural_weight_q16\":{},",
+            "\"cluster_count\":{},\"cluster_sizes\":[{}],",
+            "\"mean_pairwise_distance\":{:.6},",
+            "\"analysis_runtime_microseconds\":{:.1}}}"
+        ),
+        report.algorithm,
+        report.analysis_tick,
+        report.config_hash,
+        report.genome_schema_version,
+        report.population,
+        report.sampled,
+        report.sample_stride,
+        report.threshold_q16,
+        report.neural_weight_q16,
+        report.cluster_count,
+        sizes,
+        report.mean_pairwise_distance,
+        elapsed.as_secs_f64() * 1_000_000.0
+    );
+    Ok(())
+}
+
+// --- inspect ----------------------------------------------------------------
+
+fn command_inspect(options: Options) -> Result<(), String> {
+    let world = build_world(&options)?;
+    world
+        .check_invariants()
+        .map_err(|violation| format!("invariant violation: {violation}"))?;
+    let terrain = world.terrain();
+    println!(
+        concat!(
+            "{{\"inspect_schema_version\":1,",
+            "\"seed\":\"0x{:016x}\",\"config_hash\":\"0x{:016x}\",",
+            "\"cells_x\":{},\"cells_y\":{},\"cell_size_m\":{},",
+            "\"land_cells\":{},\"habitable_cells\":{},\"land_fraction_q16\":{},",
+            "\"initial_population\":{},\"total_biomass_milli\":{},",
+            "\"terrain_checksum\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\"}}"
+        ),
+        world.config().world_seed,
+        world.config_hash(),
+        terrain.cells_x,
+        terrain.cells_y,
+        world.config().cell_size_m,
+        terrain.land_cells,
+        terrain.habitable_cells,
+        terrain.land_fraction_q16(),
+        world.population(),
+        world.total_biomass_milli(),
+        terrain.terrain_checksum,
+        world.state_checksum()
+    );
+    Ok(())
+}
+
+// --- benchmark ----------------------------------------------------------------
+
+struct PhaseTimer {
+    started: Option<Instant>,
+    totals: [Duration; TickPhase::ALL.len()],
+}
+
+impl PhaseTimer {
+    fn new() -> Self {
+        Self {
+            started: None,
+            totals: [Duration::ZERO; TickPhase::ALL.len()],
+        }
+    }
+
+    fn reset(&mut self) {
+        self.totals = [Duration::ZERO; TickPhase::ALL.len()];
+    }
+}
+
+fn phase_index(phase: TickPhase) -> usize {
+    TickPhase::ALL
+        .iter()
+        .position(|&candidate| candidate == phase)
+        .expect("phase is in ALL")
+}
+
+impl TickObserver for PhaseTimer {
+    fn phase_started(&mut self, _phase: TickPhase) {
+        self.started = Some(Instant::now());
+    }
+
+    fn phase_finished(&mut self, phase: TickPhase) {
+        if let Some(started) = self.started.take() {
+            self.totals[phase_index(phase)] += started.elapsed();
+        }
+    }
+}
+
+fn command_benchmark(options: Options) -> Result<(), String> {
+    let benchmark_id = options
+        .benchmark_id
+        .clone()
+        .ok_or_else(|| "--benchmark-id is required".to_owned())?;
+    let output_dir = options
+        .output
+        .clone()
+        .ok_or_else(|| "--output is required".to_owned())?;
+    let warmup = options.warmup.unwrap_or(200);
+    let samples = options.samples.unwrap_or(50);
+    let ticks_per_sample = options.ticks_per_sample.unwrap_or(10);
+    if samples == 0 || ticks_per_sample == 0 {
+        return Err("samples and ticks-per-sample must be positive".to_owned());
+    }
+    fs::create_dir_all(&output_dir).map_err(|error| error.to_string())?;
+
+    let mut world = build_world(&options)?;
+    let organisms = world.config().initial_organisms;
+    let phase_label = if world.phase2_enabled() {
+        "phase2"
+    } else {
+        "phase1"
+    };
+    // Fixed-population (reproduction-off) scenarios get their own label so
+    // records with different conditions never collide or get compared as
+    // the same scenario.
+    let scenario_label = if world.config().reproduction_enabled {
+        format!("{organisms}")
+    } else {
+        format!("{organisms}-fixedpop")
+    };
+    let population_at_start = world.population();
+    for _ in 0..warmup {
+        world.step();
+    }
+    let population_after_warmup = world.population();
+
+    let phase_count = TickPhase::ALL.len();
+    let mut timer = PhaseTimer::new();
+    let mut tick_samples: Vec<f64> = Vec::with_capacity(samples);
+    let mut phase_samples: Vec<Vec<f64>> = vec![Vec::with_capacity(samples); phase_count];
+    let mut allocation_samples: Vec<f64> = Vec::with_capacity(samples);
+
+    for _ in 0..samples {
+        timer.reset();
+        let allocations_before = ALLOCATION_COUNT.load(Ordering::Relaxed);
+        let started = Instant::now();
+        for _ in 0..ticks_per_sample {
+            world.step_with_observer(&mut timer);
+        }
+        let elapsed = started.elapsed();
+        let allocations_after = ALLOCATION_COUNT.load(Ordering::Relaxed);
+        let divisor = ticks_per_sample as f64;
+        tick_samples.push(elapsed.as_secs_f64() * 1_000_000.0 / divisor);
+        for (samples_for_phase, total) in phase_samples.iter_mut().zip(timer.totals.iter()) {
+            samples_for_phase.push(total.as_secs_f64() * 1_000_000.0 / divisor);
+        }
+        allocation_samples.push((allocations_after - allocations_before) as f64 / divisor);
+    }
+    world
+        .check_invariants()
+        .map_err(|violation| format!("invariant violation after benchmark: {violation}"))?;
+
+    let raw_path = output_dir.join(format!("{phase_label}-rust-{scenario_label}-raw.csv"));
+    let mut raw = File::create(&raw_path).map_err(|error| error.to_string())?;
+    write!(raw, "sample,tick_us").map_err(|error| error.to_string())?;
+    for phase in TickPhase::ALL {
+        write!(raw, ",{}_us", phase.name()).map_err(|error| error.to_string())?;
+    }
+    writeln!(raw, ",allocations_per_tick").map_err(|error| error.to_string())?;
+    for sample in 0..samples {
+        write!(raw, "{sample},{:.3}", tick_samples[sample]).map_err(|error| error.to_string())?;
+        for samples_for_phase in &phase_samples {
+            write!(raw, ",{:.3}", samples_for_phase[sample]).map_err(|error| error.to_string())?;
+        }
+        writeln!(raw, ",{:.1}", allocation_samples[sample]).map_err(|error| error.to_string())?;
+    }
+
+    let generated_at = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|error| error.to_string())?
+        .as_secs();
+    let metrics = world.metrics();
+
+    // Phase 2 extras: policy versions, audit counters, and the offline
+    // similarity-analysis runtime (measured separately from tick cost).
+    let phase2_json = if world.phase2_enabled() {
+        let started = Instant::now();
+        let report = analyze(&world).expect("phase2 world yields a report");
+        let similarity_us = started.elapsed().as_secs_f64() * 1_000_000.0;
+        format!(
+            concat!(
+                "  \"phase2\": {{\"behavior_policy\": \"{}\", \"genome_policy\": \"{}\", ",
+                "\"controller_policy\": \"{}\", \"genome_schema\": {}, \"topology_id\": {}, ",
+                "\"paired_births_total\": {}, \"pair_rejected_capacity_total\": {}, ",
+                "\"pair_rejected_placement_total\": {}, \"pair_rejected_energy_total\": {}, ",
+                "\"controller_faults_total\": {}, \"invalid_records_admitted\": 0, ",
+                "\"max_ancestry_depth\": {}, ",
+                "\"similarity\": {{\"algorithm\": \"{}\", \"sampled\": {}, \"sample_stride\": {}, ",
+                "\"cluster_count\": {}, \"mean_pairwise_distance\": {:.6}, ",
+                "\"runtime_microseconds\": {:.1}}}}},\n"
+            ),
+            PHASE2_BEHAVIOR_POLICY_VERSION,
+            GENOME_POLICY_VERSION,
+            CONTROLLER_POLICY_VERSION,
+            GENOME_SCHEMA_VERSION,
+            TOPOLOGY_ID,
+            metrics.paired_births_total,
+            metrics.pair_rejected_capacity_total,
+            metrics.pair_rejected_placement_total,
+            metrics.pair_rejected_energy_total,
+            metrics.controller_faults_total,
+            metrics.max_ancestry_depth,
+            report.algorithm,
+            report.sampled,
+            report.sample_stride,
+            report.cluster_count,
+            report.mean_pairwise_distance,
+            similarity_us
+        )
+    } else {
+        String::new()
+    };
+
+    let mut phase_json = String::new();
+    for (index, phase) in TickPhase::ALL.iter().enumerate() {
+        if index > 0 {
+            phase_json.push_str(", ");
+        }
+        phase_json.push_str(&format!(
+            "\"{}\": {}",
+            phase.name(),
+            stats_json(summarize(&phase_samples[index]))
+        ));
+    }
+
+    let summary = format!(
+        concat!(
+            "{{\n",
+            "  \"benchmark_schema_version\": {},\n",
+            "  \"benchmark_id\": \"{}-{}-rust-{}\",\n",
+            "  \"generated_at_unix_seconds\": {},\n",
+            "  \"revision\": \"{}\",\n",
+            "  \"working_tree_dirty\": {},\n",
+            "  \"toolchain\": \"{}\",\n",
+            "  \"build_profile\": \"release-lto-thin\",\n",
+            "  \"os\": \"{}\",\n",
+            "  \"architecture\": \"{}\",\n",
+            "  \"cpu\": \"{}\",\n",
+            "  \"host_memory_bytes\": {},\n",
+            "  \"scenario\": {{\"initial_organisms\": {}, \"cells_x\": {}, \"cells_y\": {}, \"cell_size_m\": {}, \"max_entities\": {}, \"reproduction\": {}, \"observers\": 0, \"dt_ms\": {}}},\n",
+            "{}",
+            "  \"behavior_policy\": \"{}\",\n",
+            "  \"config_hash\": \"0x{:016x}\",\n",
+            "  \"seed\": \"0x{:016x}\",\n",
+            "  \"method\": {{\"warmup_ticks\": {}, \"samples\": {}, \"ticks_per_sample\": {}, \"deterministic_mode\": \"strict\", \"checksum_excluded_from_tick\": true}},\n",
+            "  \"population\": {{\"at_start\": {}, \"after_warmup\": {}, \"at_end\": {}}},\n",
+            "  \"tick_microseconds\": {},\n",
+            "  \"phase_microseconds\": {{{}}},\n",
+            "  \"allocations_per_tick\": {},\n",
+            "  \"rss_bytes_at_completion\": {},\n",
+            "  \"final_tick\": {},\n",
+            "  \"final_state_checksum\": \"0x{:016x}\",\n",
+            "  \"raw_samples\": \"{}\",\n",
+            "  \"limitations\": [\"local development host, not deployment VM\", \"RSS is sampled at completion, not peak\", \"{}\", \"spatial-query cost is the spatial_index plus sense phases\"]\n",
+            "}}\n"
+        ),
+        if world.phase2_enabled() { 2 } else { 1 },
+        json_escape(&benchmark_id),
+        phase_label,
+        scenario_label,
+        generated_at,
+        json_escape(&git_revision()),
+        git_dirty(),
+        json_escape(
+            &command_output("rustc", &["--version"]).unwrap_or_else(|| "unknown".to_owned())
+        ),
+        json_escape(&os_description()),
+        env::consts::ARCH,
+        json_escape(&sysctl("machdep.cpu.brand_string").unwrap_or_else(|| "unknown".to_owned())),
+        sysctl("hw.memsize").unwrap_or_else(|| "0".to_owned()),
+        organisms,
+        world.config().cells_x,
+        world.config().cells_y,
+        world.config().cell_size_m,
+        world.config().max_entities,
+        world.config().reproduction_enabled,
+        world.config().dt_ms,
+        phase2_json,
+        active_policy(&world),
+        world.config_hash(),
+        world.config().world_seed,
+        warmup,
+        samples,
+        ticks_per_sample,
+        population_at_start,
+        population_after_warmup,
+        metrics.population,
+        stats_json(summarize(&tick_samples)),
+        phase_json,
+        stats_json(summarize(&allocation_samples)),
+        current_rss_bytes(),
+        world.tick_number(),
+        world.state_checksum(),
+        json_escape(&raw_path.to_string_lossy()),
+        if world.config().reproduction_enabled {
+            "population varies across the run; per-tick cost reflects the live population trajectory"
+        } else {
+            "fixed-population scenario: no births occur; population changes only through deaths"
+        }
+    );
+    let summary_path = output_dir.join(format!("{phase_label}-rust-{scenario_label}-summary.json"));
+    fs::write(&summary_path, &summary).map_err(|error| error.to_string())?;
+    print!("{summary}");
+    Ok(())
+}
+
+// --- metrics -----------------------------------------------------------------
+
+fn prometheus_text(world: &World, tick_durations: &[Duration], wall_elapsed: Duration) -> String {
+    let metrics = world.metrics();
+    let mut text = String::new();
+    let world_label = "local";
+
+    text.push_str("# TYPE lifesim_organisms gauge\n");
+    text.push_str(&format!(
+        "lifesim_organisms{{world=\"{world_label}\",life_state=\"alive\"}} {}\n",
+        metrics.population
+    ));
+    text.push_str("# TYPE lifesim_births_total counter\n");
+    text.push_str(&format!(
+        "lifesim_births_total{{world=\"{world_label}\"}} {}\n",
+        metrics.births_total
+    ));
+    text.push_str("# TYPE lifesim_deaths_total counter\n");
+    text.push_str(&format!(
+        "lifesim_deaths_total{{world=\"{world_label}\",cause=\"starvation\"}} {}\n",
+        metrics.deaths_starvation_total
+    ));
+    text.push_str(&format!(
+        "lifesim_deaths_total{{world=\"{world_label}\",cause=\"old_age\"}} {}\n",
+        metrics.deaths_old_age_total
+    ));
+    text.push_str("# TYPE lifesim_births_rejected_capacity_total counter\n");
+    text.push_str(&format!(
+        "lifesim_births_rejected_capacity_total{{world=\"{world_label}\"}} {}\n",
+        metrics.capacity_rejections_total
+    ));
+    text.push_str("# TYPE lifesim_food_biomass gauge\n");
+    text.push_str(&format!(
+        "lifesim_food_biomass{{world=\"{world_label}\",biome=\"all\"}} {}\n",
+        format_units(metrics.total_biomass_milli)
+    ));
+    if metrics.phase2_enabled {
+        text.push_str("# TYPE lifesim_paired_births_total counter\n");
+        text.push_str(&format!(
+            "lifesim_paired_births_total{{world=\"{world_label}\"}} {}\n",
+            metrics.paired_births_total
+        ));
+        text.push_str("# TYPE lifesim_pair_rejected_total counter\n");
+        for (reason, value) in [
+            ("capacity", metrics.pair_rejected_capacity_total),
+            ("placement", metrics.pair_rejected_placement_total),
+            ("energy", metrics.pair_rejected_energy_total),
+        ] {
+            text.push_str(&format!(
+                "lifesim_pair_rejected_total{{world=\"{world_label}\",reason=\"{reason}\"}} {value}\n"
+            ));
+        }
+        text.push_str("# TYPE lifesim_controller_faults_total counter\n");
+        text.push_str(&format!(
+            "lifesim_controller_faults_total{{world=\"{world_label}\"}} {}\n",
+            metrics.controller_faults_total
+        ));
+        text.push_str("# TYPE lifesim_max_ancestry_depth gauge\n");
+        text.push_str(&format!(
+            "lifesim_max_ancestry_depth{{world=\"{world_label}\"}} {}\n",
+            metrics.max_ancestry_depth
+        ));
+    }
+
+    // Tick duration histogram measured by this host process.
+    let buckets_seconds = [
+        0.000_1, 0.000_25, 0.000_5, 0.001, 0.002_5, 0.005, 0.01, 0.025,
+    ];
+    let mut counts = [0_u64; 8];
+    let mut sum_seconds = 0.0_f64;
+    for duration in tick_durations {
+        let seconds = duration.as_secs_f64();
+        sum_seconds += seconds;
+        for (index, bucket) in buckets_seconds.iter().enumerate() {
+            if seconds <= *bucket {
+                counts[index] += 1;
+            }
+        }
+    }
+    text.push_str("# TYPE lifesim_tick_duration_seconds histogram\n");
+    for (index, bucket) in buckets_seconds.iter().enumerate() {
+        text.push_str(&format!(
+            "lifesim_tick_duration_seconds_bucket{{world=\"{world_label}\",le=\"{bucket}\"}} {}\n",
+            counts[index]
+        ));
+    }
+    text.push_str(&format!(
+        "lifesim_tick_duration_seconds_bucket{{world=\"{world_label}\",le=\"+Inf\"}} {}\n",
+        tick_durations.len()
+    ));
+    text.push_str(&format!(
+        "lifesim_tick_duration_seconds_sum{{world=\"{world_label}\"}} {sum_seconds:.9}\n"
+    ));
+    text.push_str(&format!(
+        "lifesim_tick_duration_seconds_count{{world=\"{world_label}\"}} {}\n",
+        tick_durations.len()
+    ));
+
+    let rate = if wall_elapsed.as_secs_f64() > 0.0 {
+        tick_durations.len() as f64 / wall_elapsed.as_secs_f64()
+    } else {
+        0.0
+    };
+    text.push_str("# TYPE lifesim_tick_rate_hz gauge\n");
+    text.push_str(&format!(
+        "lifesim_tick_rate_hz{{world=\"{world_label}\"}} {rate:.3}\n"
+    ));
+    text
+}
+
+fn format_units(milli: i64) -> String {
+    format!("{}.{:03}", milli / 1000, (milli % 1000).unsigned_abs())
+}
+
+// --- shared helpers ------------------------------------------------------------
+
+#[derive(Clone, Copy)]
+struct Stats {
+    p50: f64,
+    p95: f64,
+    p99: f64,
+    min: f64,
+    max: f64,
+}
+
+fn summarize(samples: &[f64]) -> Stats {
+    let mut sorted = samples.to_vec();
+    sorted.sort_by(f64::total_cmp);
+    Stats {
+        p50: percentile(&sorted, 0.50),
+        p95: percentile(&sorted, 0.95),
+        p99: percentile(&sorted, 0.99),
+        min: sorted[0],
+        max: *sorted.last().expect("non-empty samples"),
+    }
+}
+
+fn percentile(sorted: &[f64], percentile: f64) -> f64 {
+    let index = ((sorted.len() - 1) as f64 * percentile).ceil() as usize;
+    sorted[index]
+}
+
+fn stats_json(stats: Stats) -> String {
+    format!(
+        "{{\"p50\":{:.3},\"p95\":{:.3},\"p99\":{:.3},\"min\":{:.3},\"max\":{:.3}}}",
+        stats.p50, stats.p95, stats.p99, stats.min, stats.max
+    )
+}
+
+fn current_rss_bytes() -> u64 {
+    let pid = std::process::id().to_string();
+    command_output("ps", &["-o", "rss=", "-p", &pid])
+        .and_then(|value| value.trim().parse::<u64>().ok())
+        .unwrap_or(0)
+        .saturating_mul(1024)
+}
+
+fn git_revision() -> String {
+    command_output("git", &["rev-parse", "HEAD"]).unwrap_or_else(|| "unborn-main".to_owned())
+}
+
+fn git_dirty() -> bool {
+    Command::new("git")
+        .args(["status", "--porcelain"])
+        .output()
+        .map(|output| !output.stdout.is_empty())
+        .unwrap_or(true)
+}
+
+fn os_description() -> String {
+    command_output("sw_vers", &["-productName"])
+        .zip(command_output("sw_vers", &["-productVersion"]))
+        .map(|(name, version)| format!("{name} {version}"))
+        .unwrap_or_else(|| env::consts::OS.to_owned())
+}
+
+fn sysctl(name: &str) -> Option<String> {
+    command_output("sysctl", &["-n", name])
+}
+
+fn command_output(program: &str, args: &[&str]) -> Option<String> {
+    let output = Command::new(program).args(args).output().ok()?;
+    output
+        .status
+        .success()
+        .then(|| String::from_utf8_lossy(&output.stdout).trim().to_owned())
+}
+
+fn json_escape(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('"', "\\\"")
+        .replace('\n', "\\n")
+}
