@@ -1,0 +1,13 @@
+[package]
+name = "sim-protocol"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "sim_protocol"
+path = "src/lib.rs"
+
+# Pure frame codec: no I/O, transport, or async dependency. The server and
+# tests share this crate so encoding stays independently fuzzable.
+[dependencies]

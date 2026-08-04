@@ -1,0 +1,19 @@
+[package]
+name = "sim-server"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[[bin]]
+name = "lifesim-server"
+path = "src/main.rs"
+
+# Threaded private server. Dependencies are deliberately minimal and
+# justified in docs/22-decision-log.md: tiny_http for the REST surface and
+# tungstenite for WebSocket framing; no async runtime.
+[dependencies]
+sim-core = { path = "../sim-core" }
+sim-protocol = { path = "../sim-protocol" }
+tiny_http = "0.12"
+tungstenite = "0.24"
+sim-persist = { path = "../sim-persist" }
