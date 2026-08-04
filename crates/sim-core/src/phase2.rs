@@ -1,0 +1,214 @@
+//! Phase 2 per-organism state: genomes, phenotypes, controller memory,
+//! heading/speed, ancestry, intents, and Phase 2 counters.
+//!
+//! This state exists only when `phase2.enabled` is true. A disabled world
+//! carries `None` and executes the exact Phase 1 code paths, so Phase 1
+//! fixtures and checksums are preserved bit for bit.
+
+use crate::checksum::Fnv1a64;
+use crate::genome::{Genome, MEMORY_VALUES, Phenotype, VariationSummary, hash_genome_into};
+
+/// Maximum sensor range in meters for genome schema 1; bucket sizing must
+/// cover it so a 3x3 bucket ring always contains every sensable neighbor.
+pub const SENSOR_RANGE_MAX_M: u32 = 12;
+
+/// One queued paired-parent child, produced in the apply phase and
+/// materialized in the lifecycle phase.
+#[derive(Clone, Debug)]
+pub(crate) struct PendingChild {
+    pub parent_a: u64,
+    pub parent_b: u64,
+    pub genome: Genome,
+    pub genome_hash: u64,
+    pub phenotype: Phenotype,
+    pub x_fp: i32,
+    pub y_fp: i32,
+    pub heading_bam: u16,
+    pub energy_milli: i64,
+    pub invest_a_milli: i64,
+    pub invest_b_milli: i64,
+    pub depth: u32,
+    pub variation: VariationSummary,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum PairRejectReason {
+    Capacity,
+    Placement,
+    Energy,
+}
+
+impl PairRejectReason {
+    pub fn name(self) -> &'static str {
+        match self {
+            PairRejectReason::Capacity => "capacity",
+            PairRejectReason::Placement => "placement",
+            PairRejectReason::Energy => "energy",
+        }
+    }
+}
+
+/// Deterministic Phase 2 counters; hashed into the state checksum.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct Phase2Counters {
+    pub paired_births_total: u64,
+    pub pair_rejected_capacity_total: u64,
+    pub pair_rejected_placement_total: u64,
+    pub pair_rejected_energy_total: u64,
+    pub controller_faults_total: u64,
+    pub mutated_trait_genes_total: u64,
+    pub mutated_neural_genes_total: u64,
+}
+
+/// Parallel per-organism Phase 2 arrays. Kept in lockstep with the world's
+/// primary SoA arrays: births append, removal compacts in the same order.
+#[derive(Clone, Debug)]
+pub(crate) struct Phase2State {
+    pub genomes: Vec<Genome>,
+    pub genome_hashes: Vec<u64>,
+    pub phenotypes: Vec<Phenotype>,
+    pub memory: Vec<[f32; MEMORY_VALUES]>,
+    pub heading_bam: Vec<u16>,
+    pub speed_milli: Vec<i64>,
+    pub last_turn: Vec<f32>,
+
+    // Ancestry (bounded live state; events are the authoritative history).
+    pub parents: Vec<[u64; 2]>,
+    pub depth: Vec<u32>,
+    pub child_count: Vec<u32>,
+    pub birth_tick: Vec<u64>,
+
+    // Per-tick buffers (not logical state; rebuilt every tick).
+    pub inputs: Vec<[f32; crate::genome::CONTROLLER_INPUTS]>,
+    pub intent_turn: Vec<f32>,
+    pub intent_speed_milli: Vec<i64>,
+    pub intent_eat: Vec<bool>,
+    pub intent_mate: Vec<bool>,
+    pub next_memory: Vec<[f32; MEMORY_VALUES]>,
+    pub pending: Vec<PendingChild>,
+
+    pub counters: Phase2Counters,
+}
+
+impl Phase2State {
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            genomes: Vec::with_capacity(capacity),
+            genome_hashes: Vec::with_capacity(capacity),
+            phenotypes: Vec::with_capacity(capacity),
+            memory: Vec::with_capacity(capacity),
+            heading_bam: Vec::with_capacity(capacity),
+            speed_milli: Vec::with_capacity(capacity),
+            last_turn: Vec::with_capacity(capacity),
+            parents: Vec::with_capacity(capacity),
+            depth: Vec::with_capacity(capacity),
+            child_count: Vec::with_capacity(capacity),
+            birth_tick: Vec::with_capacity(capacity),
+            inputs: Vec::new(),
+            intent_turn: Vec::new(),
+            intent_speed_milli: Vec::new(),
+            intent_eat: Vec::new(),
+            intent_mate: Vec::new(),
+            next_memory: Vec::new(),
+            pending: Vec::new(),
+            counters: Phase2Counters::default(),
+        }
+    }
+
+    /// Append one organism's Phase 2 state.
+    #[allow(clippy::too_many_arguments)]
+    pub fn push_organism(
+        &mut self,
+        genome: Genome,
+        genome_hash: u64,
+        phenotype: Phenotype,
+        heading_bam: u16,
+        parents: [u64; 2],
+        depth: u32,
+        birth_tick: u64,
+    ) {
+        self.genomes.push(genome);
+        self.genome_hashes.push(genome_hash);
+        self.phenotypes.push(phenotype);
+        self.memory.push([0.0; MEMORY_VALUES]);
+        self.heading_bam.push(heading_bam);
+        self.speed_milli.push(0);
+        self.last_turn.push(0.0);
+        self.parents.push(parents);
+        self.depth.push(depth);
+        self.child_count.push(0);
+        self.birth_tick.push(birth_tick);
+    }
+
+    /// Compact all logical arrays with the same removal flags the world
+    /// applies to its primary arrays.
+    pub fn retain(&mut self, remove: &[bool]) {
+        retain_by_flags(&mut self.genomes, remove);
+        retain_copy_by_flags(&mut self.genome_hashes, remove);
+        retain_copy_by_flags(&mut self.phenotypes, remove);
+        retain_copy_by_flags(&mut self.memory, remove);
+        retain_copy_by_flags(&mut self.heading_bam, remove);
+        retain_copy_by_flags(&mut self.speed_milli, remove);
+        retain_copy_by_flags(&mut self.last_turn, remove);
+        retain_copy_by_flags(&mut self.parents, remove);
+        retain_copy_by_flags(&mut self.depth, remove);
+        retain_copy_by_flags(&mut self.child_count, remove);
+        retain_copy_by_flags(&mut self.birth_tick, remove);
+    }
+
+    pub fn len(&self) -> usize {
+        self.genomes.len()
+    }
+
+    /// Maximum ancestry depth among living organisms (generation proxy).
+    pub fn max_depth(&self) -> u32 {
+        self.depth.iter().copied().max().unwrap_or(0)
+    }
+
+    /// Hash all logical Phase 2 state (never the per-tick buffers).
+    pub fn hash_into(&self, hasher: &mut Fnv1a64) {
+        hasher.update(b"lifesim-phase2-state-v1");
+        for index in 0..self.len() {
+            hash_genome_into(hasher, &self.genomes[index]);
+            hasher.update_u64(self.genome_hashes[index]);
+            hasher.update_u32(self.heading_bam[index] as u32);
+            hasher.update_i64(self.speed_milli[index]);
+            hasher.update_u32(self.last_turn[index].to_bits());
+            for &value in &self.memory[index] {
+                hasher.update_u32(value.to_bits());
+            }
+            hasher.update_u64(self.parents[index][0]);
+            hasher.update_u64(self.parents[index][1]);
+            hasher.update_u32(self.depth[index]);
+            hasher.update_u32(self.child_count[index]);
+            hasher.update_u64(self.birth_tick[index]);
+        }
+        hasher.update_u64(self.counters.paired_births_total);
+        hasher.update_u64(self.counters.pair_rejected_capacity_total);
+        hasher.update_u64(self.counters.pair_rejected_placement_total);
+        hasher.update_u64(self.counters.pair_rejected_energy_total);
+        hasher.update_u64(self.counters.controller_faults_total);
+        hasher.update_u64(self.counters.mutated_trait_genes_total);
+        hasher.update_u64(self.counters.mutated_neural_genes_total);
+    }
+}
+
+fn retain_by_flags<T>(values: &mut Vec<T>, remove: &[bool]) {
+    let mut index = 0_usize;
+    values.retain(|_| {
+        let keep = !remove[index];
+        index += 1;
+        keep
+    });
+}
+
+fn retain_copy_by_flags<T: Copy>(values: &mut Vec<T>, remove: &[bool]) {
+    let mut write = 0_usize;
+    for read in 0..values.len() {
+        if !remove[read] {
+            values[write] = values[read];
+            write += 1;
+        }
+    }
+    values.truncate(write);
+}
