@@ -64,16 +64,25 @@ Realism is bounded, in this order of precedence:
 | Network structure | Fixed 20-16-12-12, human-authored | Grows and shrinks by gene duplication and deletion | 8 |
 | Within-lifetime change | None; weights fixed at birth | Genome-encoded synaptic plasticity with neuromodulation | 10 |
 | Reinforcement | None | Evolved neuromodulatory signal, never an authored reward | 10 |
-| Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 13 |
-| Ontogeny | None; organisms are born adult-shaped | Growth trajectory, juvenile constraint, maturation | 13 |
-| Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 13 |
-| Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 13 |
+| Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 13a (early) |
+| Ontogeny | None; organisms are born adult-shaped | Juvenile constraint and maturation (13a); developmental growth of a module body (13b) | 13a / 13b |
+| Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 13a (early) |
+| Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 13b (late) |
 | Body structure | Small fixed parameter set, identical for every organism | Typed modules on a lattice, grown by a developmental genome | 9 |
 | Morphogenesis | No developmental stage at all | A growth program executed from a single origin module | 9 |
 | Climate | Seasons only; temperature field unimplemented | Moisture and temperature fields, biomes, long-timescale drift | 6 |
 | Origin of life | Organisms exist at tick 0 by construction | Optional abiogenesis from a chemistry field | 14 |
 | Major transitions | None | Unicell to differentiated multicell as ordinary morphological evolution | 15 |
-| Disease | None | Transmissible load with contact-structured spread | 13 (optional slice) |
+| Disease | None | Transmissible load with contact-structured spread | 13b (optional slice) |
+| Population regulation | Reproduction gated on energy alone; 99.9 percent starvation mortality | Non-food extrinsic mortality, senescence, juvenile mortality, life-history tradeoff | 13a (early) |
+
+**Ordering note (ADR-0025).** The demographic half of physiology executes
+*before* the culture stack rather than after it. Surplus does not come from
+more food; it comes from mortality that is not food-driven, and a population
+held below carrying capacity has the per-capita slack that every
+energetically expensive behavior requires. Running the culture stack in a
+world where 99.9 percent of deaths are starvation would produce nulls caused
+by the ecology rather than by anything about transmission.
 
 ## Structural Change By Duplication, Not By Graph Editing
 
@@ -146,5 +155,6 @@ Recorded so nobody has to rediscover the reasoning:
 - Genetics: `08-genetics-and-evolution.md`,
   `specifications/genome-schema-2.md`
 - Learning: `specifications/plasticity-and-learning.md`
-- Physiology and life history: `planning/phase-13-physiology-and-life-history.md`
+- Demography and life history: `planning/phase-13a-demography-and-life-history.md`
+- Ontogeny and sexual selection: `planning/phase-13b-ontogeny-and-sexual-selection.md`
 - ADR-0013 (encoding), ADR-0014 (learning), ADR-0017 (this policy)

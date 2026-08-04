@@ -84,7 +84,83 @@ cross-cutting:
 - Raise or confirm the observer speed cap (currently clamped to 64) for
   flagship catch-up. Headless is uncapped, so this may not be needed.
 
-## 5. Explicitly deferred
+## 6. Phase ordering change (ADR-0025)
+
+The former Phase 13 is **split**, and its demographic half moves before the
+culture stack. Reason: the Phase 2 record shows 199,871 starvation deaths
+against 180 old-age deaths with population pinned on the `max_entities`
+guard, so every energetically gated culture criterion would have returned a
+null caused by starvation rather than by anything about transmission.
+
+New execution order, with current file numbering preserved:
+
+| Executes | Phase | File |
+|---|---|---|
+| after 7 | **13a Demography and life history** | `phase-13a-demography-and-life-history.md` |
+| after 12 | **13b Ontogeny and sexual selection** | `phase-13b-ontogeny-and-sexual-selection.md` |
+
+`planning/phase-13-physiology-and-life-history.md` no longer exists; it was
+renamed to `phase-13b-...` and its demographic content moved to `13a`.
+
+### Decision-log entry (next available D-number)
+
+| Date | Status | Decision | Revisit Condition |
+|---|---|---|---|
+| 2026-08-04 | Proposed technical baseline | Former Phase 13 split by ADR-0025, amending ADR-0017's placement argument. **13a** (allometry, thermoregulation, senescence, non-food extrinsic mortality, juvenile mortality, life-history tradeoff, death-cause accounting) executes after Phase 7; it has no unmet prerequisites and delivers the non-food mortality that produces per-capita surplus. **13b** (developmental ontogeny, mate choice on perceived phenotype, optional disease) stays after Phase 12 because ontogeny needs the Phase 9 module body and mate choice needs Phase 12 perception. Accepted cost: per-organism cost arrives earlier and applies to every subsequent phase; Phase 7 results do not transfer across 13a | C13a.1 shows the death-cause distribution does not become mixed; the measured throughput cost outweighs running invalid campaigns; ecology cannot bind below an affordable `max_entities` |
+
+### Roadmap changes (`docs/19-implementation-roadmap.md`)
+
+- Phase table: replace the `13 Physiology, life history, and senescence`
+  row with two rows, `13a` executing after 7 and `13b` after 12.
+- Replace the "**13 after the culture stack**" ordering paragraph with the
+  ADR-0025 argument: the old placement assumed the culture results would
+  otherwise be valid, and at 99.9 percent starvation mortality they would
+  not be. Note that only the demographic half moves, because ontogeny and
+  mate choice have hard upstream dependencies.
+- Decision gates table: split the `Realism` gate row into a `Demography`
+  gate (C13a.1 to C13a.3: starvation ceases to dominate, population sits
+  below carrying capacity, ecology binds rather than the guard) and a
+  retained `Realism` gate (Hardy-Weinberg, linkage decay, allometric
+  exponent, lifespan versus extrinsic mortality).
+
+### Backlog changes (`planning/backlog.md`)
+
+- Phase table: same two-row split.
+- Ordered next work: after Phase 7, insert Phase 13a before Phase 8.
+- Add: **raise `max_entities` above the ecological equilibrium** so ecology
+  binds instead of a memory guard. Currently the guard is the carrying
+  capacity and every measured dynamic is an artifact of it. This is a config
+  change gated on the Phase 13a benchmark.
+
+### FILE_MANIFEST.md
+
+    - planning/phase-13a-demography-and-life-history.md
+    - planning/phase-13b-ontogeny-and-sexual-selection.md
+    - decisions/0025-demography-before-culture.md
+
+(remove `planning/phase-13-physiology-and-life-history.md`)
+
+## 7. Numbering repair, to be done in one pass
+
+Phase numbering is no longer monotonic: `13a` executes between 7 and 8, and
+`13b` after 12. This is deliberate and temporary. A full renumber touches
+the roadmap, decision log, backlog, manifest, and every cross-reference in
+roughly forty files, and those were held uncommitted by the Phase 6 session
+when ADR-0025 was written.
+
+**Do the renumber in one atomic pass once Phase 6 is committed**, not
+incrementally. Two prior renumbers in this project each left defects that
+took a sweep to find: stale multi-number lists where only the first number
+was mapped ("Phases 8, 8, and 10"), and table rows whose bare phase numbers
+stayed put while their meanings moved. Check both patterns explicitly
+afterwards.
+
+Suggested target sequence: 5 headless, 6 biomes/origins, 7 contest,
+8 demography, 9 genome, 10 morphology, 11 learning, 12 artifacts,
+13 social, 14 ontogeny/sexual selection, 15 abiogenesis,
+16 multicellularity, 17 era detection.
+
+## 8. Explicitly deferred
 
 **Sphere-world geometry and off-planet environments.** Recorded in
 ADR-0024's revisit conditions so that nothing in the rendering choice
