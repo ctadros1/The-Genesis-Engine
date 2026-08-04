@@ -1,0 +1,16 @@
+[package]
+name = "lifesim-phase0-spike"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "lifesim_phase0_spike"
+path = "src/lib.rs"
+
+[[bin]]
+name = "phase0-bench"
+path = "src/main.rs"
+
+[dependencies]
+

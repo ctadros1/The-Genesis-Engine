@@ -1,0 +1,21 @@
+{
+  "name": "lifesim-phase0-renderer-spike",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "test:smoke": "playwright test",
+    "bench": "node scripts/run-benchmark.mjs"
+  },
+  "dependencies": {
+    "pixi.js": "8.19.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1",
+    "typescript": "7.0.2",
+    "vite": "8.2.0"
+  }
+}
+
