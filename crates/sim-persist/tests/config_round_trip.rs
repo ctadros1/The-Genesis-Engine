@@ -218,3 +218,65 @@ fn a_restored_world_of_every_section_continues_identically() {
     );
     assert!(original.population() > 0, "the world went extinct");
 }
+
+/// A schema-2 world must survive the **codec**, not merely `export_state`
+/// followed by `from_state`.
+///
+/// The Phase 9 world test checked the logical path and passed while the
+/// encoded path was broken the whole time: the Phase 2 section drove its
+/// per-organism loop from `traits.len()`, which is zero in a schema-2 world,
+/// so heading, speed, turn, parents, depth, child count, birth tick and
+/// memory were all dropped on write. Restore failed closed on a length
+/// mismatch rather than corrupting, but the effect was that a schema-2 world
+/// could not be checkpointed at all.
+///
+/// The organism count and the flat-genome count are different numbers and
+/// this is the test that says so.
+#[test]
+fn a_schema_2_world_round_trips_through_the_codec() {
+    let mut config = sim_core::SimConfig::phase2_default(0x9107);
+    config.cells_x = 64;
+    config.cells_y = 64;
+    config.initial_organisms = 120;
+    config.max_entities = 4_000;
+    config.cell_capacity_milli = 240_000;
+    config.genome2.enabled = true;
+    config.genome2.mutation.duplication_q16 = 6_554;
+
+    let mut world = sim_core::World::new(config).expect("world");
+    // Long enough that structure has diversified and organisms are moving,
+    // so the dropped fields would actually differ from their defaults.
+    for _ in 0..3_000 {
+        world.step();
+    }
+    assert!(world.population() > 0);
+    assert!(
+        world.metrics().distinct_structures > 1,
+        "structure never diversified, so this would not exercise the section"
+    );
+    let checksum = world.state_checksum();
+    let state = world.export_state();
+    let phase2 = state.phase2.as_ref().expect("phase 2 state");
+    assert!(
+        phase2.traits.is_empty() && !phase2.heading_bam.is_empty(),
+        "the premise of this test is that the two counts differ: traits={} heading={}",
+        phase2.traits.len(),
+        phase2.heading_bam.len()
+    );
+
+    let encoded =
+        sim_persist::encode_snapshot(&state, 1, 0, checksum, "test", 0, None).expect("encode");
+    let (_, decoded) = sim_persist::decode_snapshot(&encoded).expect("decode");
+    let restored = sim_core::World::from_state(decoded).expect("restore");
+    assert_eq!(restored.state_checksum(), checksum);
+
+    // ...and it must keep stepping identically, because a checksum match at
+    // rest would not catch a field that only matters once the world moves.
+    let mut original = world;
+    let mut restored = restored;
+    for _ in 0..300 {
+        original.step();
+        restored.step();
+    }
+    assert_eq!(original.state_checksum(), restored.state_checksum());
+}

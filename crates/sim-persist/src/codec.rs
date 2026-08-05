@@ -24,7 +24,21 @@ use sim_core::{
 use std::fmt;
 
 pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
-/// Format 2 adds the config sections that Phase 6, 7, and 8 introduced.
+/// Format 3 makes the Phase 2 section describe its own two counts.
+///
+/// Format 2 wrote one count and drove the per-organism loop from
+/// `traits.len()`. That is the organism count in a schema-1 world and zero
+/// in a schema-2 world, which carries no flat genome - so a schema-2
+/// snapshot encoded no per-organism records at all and dropped heading,
+/// speed, turn, parents, depth, child count, birth tick, and memory. It
+/// failed closed on restore rather than corrupting silently, but it failed:
+/// **a schema-2 world could not be checkpointed.** Format 3 writes the
+/// organism count and the flat-genome count separately, so the two are never
+/// again assumed equal. No migration from 2, on the same grounds as 1 to 2:
+/// a format-2 schema-2 file does not contain the dropped state, and a
+/// format-2 schema-1 file would have to be re-framed on a guess.
+///
+/// Format 2 added the config sections that Phase 6, 7, and 8 introduced.
 ///
 /// Format 1 encoded the config only as far as Phase 2, so every section
 /// added afterwards was silently dropped on save and restored at its
@@ -35,7 +49,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// a format-1 file cannot say what its climate settings were, so inventing
 /// them is exactly the "never alter meaning during load" rule this crate
 /// exists to keep.
-pub const FORMAT_VERSION: u16 = 2;
+pub const FORMAT_VERSION: u16 = 3;
 pub const FLAG_ZSTD: u32 = 1;
 const HEADER_LEN: usize = 112;
 const MAX_BUILD_LEN: usize = 64;
@@ -599,7 +613,19 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
 
     if let Some(phase2) = &state.phase2 {
         let mut section = Writer(Vec::new());
-        section.u64(phase2.traits.len() as u64);
+        // **Two counts, because they are not the same number.** A schema-2
+        // world carries no flat genome, so `traits` and `neural` are empty
+        // by construction while every other per-organism array is full
+        // length. This loop used to be driven by `traits.len()`, which meant
+        // a schema-2 snapshot encoded zero per-organism records and silently
+        // dropped heading, speed, turn, parents, depth, child count, birth
+        // tick, and memory - all state a schema-2 world uses. It failed
+        // closed on restore rather than corrupting, but it failed: a
+        // schema-2 world could not be checkpointed at all.
+        let organisms = phase2.heading_bam.len() as u64;
+        let flat_genomes = phase2.traits.len() as u64;
+        section.u64(organisms);
+        section.u64(flat_genomes);
         for index in 0..phase2.traits.len() {
             for &gene in &phase2.traits[index] {
                 section.f32(gene);
@@ -607,6 +633,8 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
             for &gene in &phase2.neural[index] {
                 section.f32(gene);
             }
+        }
+        for index in 0..phase2.heading_bam.len() {
             for &value in &phase2.memory[index] {
                 section.f32(value);
             }
@@ -700,19 +728,42 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
             }
             section.u32(schema2.activation_faults[index]);
         }
-        let counters = &schema2.counters;
+        // **Destructured rather than field-accessed, so the compiler fails
+        // this when a counter is added.** The previous form was a list of
+        // eleven `counters.x` reads, and two counters were added without it:
+        // they were dropped on save, and since the counters are hashed into
+        // the state checksum, a restored world's checksum silently differed
+        // from the one it was saved from. An exhaustive destructuring with
+        // no `..` cannot be left behind that way.
+        let sim_core::MutationCounters {
+            point_applied,
+            duplication_applied,
+            deletion_applied,
+            insertion_applied,
+            transposition_applied,
+            rejected_homology_collision,
+            rejected_orphaned,
+            rejected_min_nodes,
+            rejected_no_bindings,
+            rejected_cap,
+            rejected_inapplicable,
+            rejected_cycle,
+            rejected_invalid,
+        } = schema2.counters;
         for value in [
-            counters.point_applied,
-            counters.duplication_applied,
-            counters.deletion_applied,
-            counters.insertion_applied,
-            counters.transposition_applied,
-            counters.rejected_homology_collision,
-            counters.rejected_orphaned,
-            counters.rejected_min_nodes,
-            counters.rejected_no_bindings,
-            counters.rejected_cap,
-            counters.rejected_invalid,
+            point_applied,
+            duplication_applied,
+            deletion_applied,
+            insertion_applied,
+            transposition_applied,
+            rejected_homology_collision,
+            rejected_orphaned,
+            rejected_min_nodes,
+            rejected_no_bindings,
+            rejected_cap,
+            rejected_inapplicable,
+            rejected_cycle,
+            rejected_invalid,
         ] {
             section.u64(value);
         }
@@ -859,8 +910,9 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 if phase2.is_some() {
                     return Err(CodecError::DuplicateSection(tag));
                 }
-                let count = reader.u64()?;
-                // Cap the declared count against the body before allocating,
+                let organisms = reader.u64()?;
+                let flat_genomes = reader.u64()?;
+                // Cap the declared counts against the body before allocating,
                 // exactly as the climate section does. This was an equality
                 // against `8 + 7 * 8` - the count word plus one word per
                 // Phase 2 counter - and adding an eighth counter broke every
@@ -870,27 +922,36 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 // enforced, by the trailing-bytes check every section runs at
                 // the end, and that check needs no editing when a field is
                 // added.
-                let record_len =
-                    ((TRAIT_COUNT + sim_core::NEURAL_COUNT + 4) * 4 + 2 + 8 + 4 + 16 + 4 + 4 + 8)
-                        as u64;
-                if count.checked_mul(record_len) > Some(body.len() as u64) {
+                let organism_len = (4 * 4 + 2 + 8 + 4 + 16 + 4 + 4 + 8) as u64;
+                let flat_len = ((TRAIT_COUNT + sim_core::NEURAL_COUNT) * 4) as u64;
+                let declared = organisms
+                    .checked_mul(organism_len)
+                    .and_then(|bytes| bytes.checked_add(flat_genomes.checked_mul(flat_len)?));
+                if declared > Some(body.len() as u64) || declared.is_none() {
                     return Err(CodecError::ValueOutOfRange("phase2 count"));
                 }
-                let count = count as usize;
+                // A flat-genome count that is neither zero nor the organism
+                // count cannot describe any world: schema 1 carries one per
+                // organism and schema 2 carries none.
+                if flat_genomes != 0 && flat_genomes != organisms {
+                    return Err(CodecError::ValueOutOfRange("phase2 flat genome count"));
+                }
+                let organisms = organisms as usize;
+                let flat_genomes = flat_genomes as usize;
                 let mut section = Phase2SaveState {
-                    traits: Vec::with_capacity(count),
-                    neural: Vec::with_capacity(count),
-                    memory: Vec::with_capacity(count),
-                    heading_bam: Vec::with_capacity(count),
-                    speed_milli: Vec::with_capacity(count),
-                    last_turn: Vec::with_capacity(count),
-                    parents: Vec::with_capacity(count),
-                    depth: Vec::with_capacity(count),
-                    child_count: Vec::with_capacity(count),
-                    birth_tick: Vec::with_capacity(count),
+                    traits: Vec::with_capacity(flat_genomes),
+                    neural: Vec::with_capacity(flat_genomes),
+                    memory: Vec::with_capacity(organisms),
+                    heading_bam: Vec::with_capacity(organisms),
+                    speed_milli: Vec::with_capacity(organisms),
+                    last_turn: Vec::with_capacity(organisms),
+                    parents: Vec::with_capacity(organisms),
+                    depth: Vec::with_capacity(organisms),
+                    child_count: Vec::with_capacity(organisms),
+                    birth_tick: Vec::with_capacity(organisms),
                     counters: Default::default(),
                 };
-                for _ in 0..count {
+                for _ in 0..flat_genomes {
                     let mut traits = [0.0_f32; TRAIT_COUNT];
                     for gene in traits.iter_mut() {
                         *gene = reader.f32()?;
@@ -899,12 +960,14 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     for _ in 0..sim_core::NEURAL_COUNT {
                         neural.push(reader.f32()?);
                     }
+                    section.traits.push(traits);
+                    section.neural.push(neural);
+                }
+                for _ in 0..organisms {
                     let mut memory = [0.0_f32; 4];
                     for value in memory.iter_mut() {
                         *value = reader.f32()?;
                     }
-                    section.traits.push(traits);
-                    section.neural.push(neural);
                     section.memory.push(memory);
                     section.heading_bam.push(reader.u16()?);
                     section.speed_milli.push(reader.i64()?);
@@ -1082,6 +1145,8 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     &mut counters.rejected_min_nodes,
                     &mut counters.rejected_no_bindings,
                     &mut counters.rejected_cap,
+                    &mut counters.rejected_inapplicable,
+                    &mut counters.rejected_cycle,
                     &mut counters.rejected_invalid,
                 ] {
                     *slot = reader.u64()?;
