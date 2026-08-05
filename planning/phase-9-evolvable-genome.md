@@ -6,9 +6,10 @@ identity, the ALG2 bounded fail-closed codec with every structural
 invariant, diploid expression with evolvable dominance, meiosis with all
 four inheritance modes, the five mutation operators with typed counted
 rejection, controller v2's hybrid evaluator, world integration, and the
-C9.1/C9.2/C9.5/C9.8 campaigns. **C9.1, C9.2, C9.3, C9.4, C9.5, C9.6 and
-C9.8 are met; C9.7 is partial** - a Phase 9 fixture, storage-permutation
-equality, and the compaction test are unwritten. Decisions D-066 to D-079. Policy versions
+C9.1/C9.2/C9.5/C9.8 campaigns. **C9.1 to C9.5 and C9.8 are met; C9.6 and
+C9.7 are partial** - C9.6 because structural-cap rejections are counted and
+checksummed but emit no event, C9.7 because a Phase 9 fixture,
+storage-permutation equality, and the compaction test are unwritten. Decisions D-066 to D-079. Policy versions
 `lifesim-genome-v2`, `lifesim-controller-v2`, `lifesim-meiosis-v1`,
 `lifesim-structmut-v1`, `lifesim-structure-analysis-v1`. Specification:
 `specifications/genome-schema-2.md`.
@@ -269,16 +270,25 @@ Criteria:
       documentation of the shipped rates, which are now known to sit below
       the threshold at which duplication produces population-level structural
       change in 60,000 ticks.
-- [~] **C9.6 Bounded and fail-closed. Codec half met**: 100,000 seeded
-      malformed cases produced zero panics and zero invalid admissions, with
-      every accept re-validated and round-tripped (4,777 accepts, so the
-      structural validation is genuinely exercised rather than everything
-      dying at the checksum). The cap-rejection half needs the mutation
-      operators, which are not implemented. A seeded malformed-input harness of
-      at least 100,000 cases over the schema 2 codec produces zero panics
-      and zero invalid admissions, every accept re-validated and
-      round-tripped. Every structural cap rejects deterministically, counts,
-      and events; no cap is ever silently exceeded.
+- [~] **C9.6 Bounded and fail-closed. Codec half met; the cap half counts
+      but does not event.** 100,000 seeded malformed cases produced zero
+      panics and zero invalid admissions, with every accept re-validated and
+      round-tripped (4,777 accepts, so structural validation is genuinely
+      exercised rather than everything dying at the checksum).
+
+      Every structural cap now rejects deterministically and is **counted**,
+      by typed reason, in world state that enters the checksum -
+      `every_rejection_is_counted_rather_than_silent` drives a cap until it
+      binds and checks the count. Two reasons were added because the
+      counters were not readable otherwise: `Inapplicable` for a precondition
+      that does not hold, and `Cycle` for an insertion that would close one
+      (D-074).
+
+      **What is missing is the event.** The criterion says caps must reject,
+      count, *and* event, and no `EventKind` carries a structural rejection,
+      so a cap that binds is visible in the counters and in the checksum but
+      not in the event log. That is the remaining half and it is why this
+      stays partial.
 - [~] **C9.7 Determinism and fixtures. Fixture half met; the rest is
       unwritten and is not claimed.** A schema-1 configured world still
       reproduces `0xff9dfcff5dffbf42` and a Phase 1 world still reproduces

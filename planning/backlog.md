@@ -43,10 +43,12 @@ every phase's Benchmark Impact section.
 
 ## Current Status
 
-**Phase 9 is complete except one criterion** (2026-08-05). C9.1 through C9.6
-and C9.8 are met; **C9.7 is partial** - a Phase 9 fixture, storage-permutation
-equality, and the compaction test are unwritten and are the first item in the
-deferred backlog. Phase 10 has not been started.
+**Phase 9 is complete except two partial criteria** (2026-08-05). C9.1 to
+C9.5 and C9.8 are met. **C9.6 is partial**: structural-cap rejections are
+typed, counted, and checksummed, but emit no event, and the criterion asks
+for all three. **C9.7 is partial**: a Phase 9 fixture, storage-permutation
+equality, and the compaction test are unwritten. Both are in the deferred
+backlog. Phase 10 has not been started.
 
 Two results carry forward, and both were found by measurement rather than by
 inspection.
@@ -207,6 +209,11 @@ and set the rate accordingly, or they will measure the mutation rate.
 
 Carried forward unchanged unless noted:
 
+- **Finish C9.6: emit an event when a structural cap rejects.** Rejections
+  are typed, counted, and in the checksum; the criterion also asks for an
+  event, and there is no `EventKind` for one. Until there is, a cap that
+  binds is invisible to any analysis that reads the event log rather than
+  the snapshot.
 - **Finish C9.7: a Phase 9 fixture with clean-process replay, storage
   permutation equality, and the compaction test.** The canonical
   topological order and the `homology_id`-ordered edge summation are
