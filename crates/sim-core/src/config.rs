@@ -108,6 +108,35 @@ pub struct SimConfig {
     /// hash, and appends nothing to the checksum, so every earlier fixture
     /// survives.
     pub physiology: PhysiologyConfig,
+    /// Phase 9 genome schema 2 section, disabled by default. A world is
+    /// schema 1 or schema 2 by config; there is no mixed-schema world and no
+    /// migration between them.
+    pub genome2: Genome2Config,
+}
+
+/// Versioned Phase 9 genome schema 2 policy.
+///
+/// Enabling this replaces the genome and the controller and nothing else.
+/// Every other subsystem - movement, feeding, pairing, contest, physiology -
+/// runs the same code, which is what makes a schema-1 world a usable
+/// baseline rather than a different simulation.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct Genome2Config {
+    pub enabled: bool,
+    pub caps: crate::genome2::GenomeCaps,
+    pub meiosis: crate::meiosis::MeiosisConfig,
+    pub mutation: crate::structmut::MutationConfig,
+}
+
+impl Genome2Config {
+    pub fn genome2_default() -> Self {
+        Self {
+            enabled: false,
+            caps: crate::genome2::GenomeCaps::provisional(),
+            meiosis: crate::meiosis::MeiosisConfig::default(),
+            mutation: crate::structmut::MutationConfig::default(),
+        }
+    }
 }
 
 /// Versioned Phase 8 demography policy (`lifesim-demography-v1`).
@@ -522,6 +551,7 @@ impl SimConfig {
             origin: OriginConfig::origin_default(),
             contest: ContestConfig::contest_default(),
             physiology: PhysiologyConfig::physiology_default(),
+            genome2: Genome2Config::genome2_default(),
         }
     }
 
@@ -693,6 +723,21 @@ impl SimConfig {
         }
         if contest.max_carcasses == 0 || contest.max_carcasses > 200_000 {
             return Err(ConfigError::MaxCarcasses(contest.max_carcasses));
+        }
+        if self.genome2.enabled {
+            if !self.phase2.enabled {
+                return Err(ConfigError::PhysiologyRange("genome2 requires phase2", 0));
+            }
+            let caps = &self.genome2.caps;
+            if caps.max_chromosomes == 0
+                || caps.max_loci_per_chromosome == 0
+                || caps.max_nodes == 0
+                || caps.max_edges_per_node == 0
+                || caps.max_genome_bytes == 0
+                || caps.min_nodes == 0
+            {
+                return Err(ConfigError::PhysiologyRange("genome2 cap is zero", 0));
+            }
         }
         let physiology = &self.physiology;
         if physiology.enabled {
@@ -1098,6 +1143,40 @@ impl SimConfig {
             hasher.update_u32(self.physiology.senescence_hazard_q16_per_s);
             hasher.update_u32(self.physiology.extrinsic_hazard_q16_per_s);
             hasher.update_u32(self.physiology.juvenile_hazard_multiplier_q16);
+        }
+        // Phase 9 section: hashed only when enabled, so a schema-1 config
+        // hashes exactly as it did before schema 2 existed and every earlier
+        // fixture is preserved.
+        if self.genome2.enabled {
+            hasher.update(b"lifesim-genome2-config");
+            hasher.update(crate::genome2::GENOME2_POLICY_VERSION.as_bytes());
+            hasher.update(crate::meiosis::MEIOSIS_POLICY_VERSION.as_bytes());
+            hasher.update(crate::structmut::STRUCTMUT_POLICY_VERSION.as_bytes());
+            hasher.update(crate::controller2::CONTROLLER2_POLICY_VERSION.as_bytes());
+            // The registries are part of what a genome means, so their
+            // versions enter the hash: the same loci under a different
+            // channel registry describe a different organism.
+            let (channels, activations) = crate::genome2::registry_versions();
+            hasher.update_u32(u32::from(channels));
+            hasher.update_u32(u32::from(activations));
+            let caps = &self.genome2.caps;
+            hasher.update_u32(u32::from(caps.max_chromosomes));
+            hasher.update_u32(caps.max_loci_per_chromosome);
+            hasher.update_u32(caps.max_nodes);
+            hasher.update_u32(caps.max_edges);
+            hasher.update_u32(caps.max_edges_per_node);
+            hasher.update_u32(caps.max_genome_bytes);
+            hasher.update_u32(caps.min_nodes);
+            hasher.update_u32(u32::from(self.genome2.meiosis.mode.id()));
+            hasher.update_u32(self.genome2.meiosis.max_extra_crossovers);
+            let mutation = &self.genome2.mutation;
+            hasher.update_u32(mutation.point_q16);
+            hasher.update_u32(mutation.duplication_q16);
+            hasher.update_u32(mutation.deletion_q16);
+            hasher.update_u32(mutation.insertion_q16);
+            hasher.update_u32(mutation.transposition_q16);
+            hasher.update_u32(mutation.max_run);
+            hasher.update_u32(mutation.point_delta_q16);
         }
         hasher.finish()
     }

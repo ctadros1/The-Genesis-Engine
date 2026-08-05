@@ -21,6 +21,7 @@ use crate::phase2::{
 };
 use crate::physiology::{HazardOutcome, PhysiologyState};
 use crate::rng::{RngSystem, named_random};
+use crate::schema2::Schema2State;
 use crate::worldgen::{self, Terrain, WorldGenError};
 use std::fmt;
 
@@ -314,6 +315,15 @@ pub struct MetricsSnapshot {
     /// because "population divided by the memory guard" is the artifact
     /// this phase exists to stop measuring.
     pub total_capacity_milli: i64,
+    /// Phase 9. Zero when the schema-2 section is disabled.
+    pub genome2_enabled: bool,
+    /// Mean expressed node and edge count, milli-units. C9.1's quantity.
+    pub mean_nodes_milli: u64,
+    pub mean_edges_milli: u64,
+    /// Distinct `(node count, edge count)` pairs among living organisms.
+    pub distinct_structures: u64,
+    pub structural_mutations_applied: u64,
+    pub structural_mutations_rejected: u64,
     pub carcasses: u64,
     pub total_carcass_energy_milli: i64,
 }
@@ -377,6 +387,17 @@ pub enum InvariantViolation {
         organisms: usize,
         physiology: usize,
     },
+    /// The Phase 9 schema-2 arrays fell out of lockstep.
+    Schema2Desync {
+        organisms: usize,
+        schema2: usize,
+    },
+    /// A schema-2 genome in world state failed validation. The mutation
+    /// operators produce valid records by construction, so this is a bug
+    /// report rather than a runtime condition.
+    Schema2Invalid {
+        id: u64,
+    },
     ContestStateInvalid {
         id: u64,
     },
@@ -394,6 +415,25 @@ impl fmt::Display for InvariantViolation {
 }
 
 impl std::error::Error for InvariantViolation {}
+
+/// Fill absent expressed traits with the midpoint.
+///
+/// A schema-2 genome may lack a trait locus entirely - deletion can remove
+/// one from both haplotypes - and the phenotype mapping needs a value. The
+/// midpoint is chosen because it is the neutral point of every trait's
+/// range; zero would silently push the organism to one extreme and look
+/// like selection.
+pub(crate) fn resolve_traits(
+    expressed: &[Option<f32>; crate::genome::TRAIT_COUNT],
+) -> [f32; crate::genome::TRAIT_COUNT] {
+    let mut out = [0.5_f32; crate::genome::TRAIT_COUNT];
+    for (slot, value) in expressed.iter().enumerate() {
+        if let Some(value) = value {
+            out[slot] = *value;
+        }
+    }
+    out
+}
 
 #[derive(Clone, Debug)]
 pub enum NewWorldError {
@@ -477,6 +517,7 @@ pub struct World {
     /// false, so a disabled world takes the Phase 2 code paths.
     contest: Option<ContestState>,
     physiology: Option<PhysiologyState>,
+    schema2: Option<Schema2State>,
 }
 
 impl World {
@@ -549,6 +590,7 @@ impl World {
             founder_genomes: Vec::new(),
             contest: None,
             physiology: None,
+            schema2: None,
             config,
         };
 
@@ -594,7 +636,7 @@ impl World {
                 let phenotype = Phenotype::derive(&genome);
                 let heading = (named_random(world.config.world_seed, 0, RngSystem::Spawn, id, 3)
                     & 0xffff) as u16;
-                state.push_organism(genome, genome_hash, phenotype, heading, [0, 0], 0, 0);
+                state.push_organism(Some(genome), genome_hash, phenotype, heading, [0, 0], 0, 0);
             }
             world.phase2 = Some(state);
         }
@@ -610,6 +652,34 @@ impl World {
                 }
             }
             world.contest = Some(contest);
+        }
+        if world.config.genome2.enabled {
+            let mut schema2 = Schema2State::with_capacity(world.ids.len());
+            if let Some(p2) = world.phase2.as_mut() {
+                for index in 0..world.ids.len() {
+                    let genome = crate::schema2::founder_from_traits(p2.genomes[index].traits());
+                    let traits = genome.express_traits();
+                    p2.phenotypes[index] =
+                        crate::genome::Phenotype::from_traits(&resolve_traits(&traits));
+                    if !schema2.push_organism(genome) {
+                        return Err(NewWorldError::Config(
+                            crate::config::ConfigError::PhysiologyRange(
+                                "founder genome does not compile",
+                                index as i64,
+                            ),
+                        ));
+                    }
+                }
+                // Schema 1's flat genomes play no part in a schema-2 world;
+                // keeping them would double the memory and invite code to
+                // read a genome the organism does not have. The hashes stay,
+                // now identifying the schema-2 genome.
+                p2.genomes.clear();
+                for (index, hash) in p2.genome_hashes.iter_mut().enumerate() {
+                    *hash = crate::checksum::fnv1a64(&schema2.genomes[index].encode());
+                }
+            }
+            world.schema2 = Some(schema2);
         }
         if world.config.physiology.enabled {
             let mut physiology = PhysiologyState::with_capacity(world.ids.len());
@@ -759,6 +829,27 @@ impl World {
             pair_rejected_energy_total: phase2_counters.pair_rejected_energy_total,
             controller_faults_total: phase2_counters.controller_faults_total,
             max_ancestry_depth: phase2.map(|p2| p2.max_depth()).unwrap_or(0),
+            genome2_enabled: self.schema2.is_some(),
+            mean_nodes_milli: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.mean_structure_milli().0),
+            mean_edges_milli: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.mean_structure_milli().1),
+            distinct_structures: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.distinct_structures() as u64),
+            structural_mutations_applied: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.counters.total_applied()),
+            structural_mutations_rejected: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.counters.total_rejected()),
             physiology_enabled: self.physiology.is_some(),
             deaths_senescence_total: self
                 .physiology
@@ -846,6 +937,15 @@ impl World {
     /// Read-only view of Phase 8 physiology state, `None` when disabled.
     pub(crate) fn physiology_state(&self) -> Option<&PhysiologyState> {
         self.physiology.as_ref()
+    }
+
+    /// Read-only view of Phase 9 schema-2 state, `None` when disabled.
+    pub(crate) fn schema2_state(&self) -> Option<&Schema2State> {
+        self.schema2.as_ref()
+    }
+
+    pub fn genome2_enabled(&self) -> bool {
+        self.schema2.is_some()
     }
 
     pub fn physiology_enabled(&self) -> bool {
@@ -962,6 +1062,7 @@ impl World {
         climate: Option<ClimateWorld>,
         contest: Option<ContestState>,
         physiology: Option<PhysiologyState>,
+        schema2: Option<Schema2State>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -980,6 +1081,7 @@ impl World {
         self.climate = climate;
         self.contest = contest;
         self.physiology = physiology;
+        self.schema2 = schema2;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -1016,7 +1118,11 @@ impl World {
                 / self.config.energy_max_milli.max(1)) as u8;
             let record = match p2 {
                 Some(p2) => {
-                    let traits = p2.genomes[index].traits();
+                    let traits = match self.schema2.as_ref() {
+                        Some(state) => resolve_traits(&state.genomes[index].express_traits()),
+                        None => *p2.genomes[index].traits(),
+                    };
+                    let traits = &traits;
                     RenderEntity {
                         id: self.ids[index],
                         x_fp: x,
@@ -1052,7 +1158,10 @@ impl World {
         let phase2 = self.phase2.as_ref().map(|p2| Phase2Detail {
             heading_bam: p2.heading_bam[index],
             speed_milli: p2.speed_milli[index],
-            trait_genes: *p2.genomes[index].traits(),
+            trait_genes: match self.schema2.as_ref() {
+                Some(state) => resolve_traits(&state.genomes[index].express_traits()),
+                None => *p2.genomes[index].traits(),
+            },
             phenotype: p2.phenotypes[index],
             parents: p2.parents[index],
             ancestry_depth: p2.depth[index],
@@ -1638,8 +1747,41 @@ impl World {
         let mate_threshold = self.config.phase2.mate_threshold_q16 as f32 / 65536.0;
         let rest_threshold = self.config.phase2.rest_threshold_q16 as f32 / 65536.0;
 
+        // Schema 2 evaluates the organism's own evolved graph and maps its
+        // action channels onto the same twelve output slots topology 1
+        // produced, so everything below this point is schema-agnostic.
+        let mut schema2 = self.schema2.take();
         for index in 0..population {
-            let output = controller::evaluate(&p2.genomes[index], &p2.inputs[index]);
+            let output = match schema2.as_mut() {
+                Some(state) => {
+                    let inputs = p2.inputs[index];
+                    let before = state.activations[index].faults;
+                    let mut requests = std::mem::take(&mut state.requests);
+                    crate::controller2::evaluate(
+                        &state.plans[index],
+                        &mut state.activations[index],
+                        &|channel_id| {
+                            // Channel IDs 1..=16 are the sixteen sensory
+                            // inputs in `inputs[0..16]`; 17..20 are topology
+                            // 1's memory registers, which schema 2 does not
+                            // expose.
+                            crate::schema2::SENSE_CHANNELS
+                                .iter()
+                                .position(|candidate| *candidate == channel_id)
+                                .map(|slot| inputs[slot])
+                                .unwrap_or(0.0)
+                        },
+                        &mut requests,
+                    );
+                    let outputs = crate::schema2::outputs_from_requests(&requests);
+                    state.requests = requests;
+                    crate::controller::ControllerOutput {
+                        outputs,
+                        faults: state.activations[index].faults.saturating_sub(before),
+                    }
+                }
+                None => controller::evaluate(&p2.genomes[index], &p2.inputs[index]),
+            };
             if output.faults > 0 {
                 p2.counters.controller_faults_total += u64::from(output.faults);
                 let id = self.ids[index];
@@ -1684,6 +1826,17 @@ impl World {
             }
             p2.next_memory[index] = controller::next_memory(&output);
         }
+        // Prior-state buffers advance only after **every** organism has been
+        // evaluated, exactly as schema 1's memory values become next-tick
+        // memory only after all controller evaluation completes. Doing it
+        // inline would let a later organism read a neighbour's current
+        // activation through a delayed edge.
+        if let Some(state) = schema2.as_mut() {
+            for activation in &mut state.activations {
+                crate::controller2::commit(activation);
+            }
+        }
+        self.schema2 = schema2;
         self.phase2 = Some(p2);
     }
 
@@ -1897,9 +2050,16 @@ impl World {
                         if distance_squared > range_squared {
                             continue;
                         }
-                        if p2.genomes[index].normalized_distance(&p2.genomes[candidate], 0)
-                            > compatibility
-                        {
+                        let distance = match self.schema2.as_ref() {
+                            Some(state) => crate::schema2::compatibility_distance(
+                                &state.genomes[index],
+                                &state.genomes[candidate],
+                            ),
+                            None => {
+                                p2.genomes[index].normalized_distance(&p2.genomes[candidate], 0)
+                            }
+                        };
+                        if distance > compatibility {
                             continue;
                         }
                         let key = (distance_squared, self.ids[candidate], candidate);
@@ -1993,16 +2153,53 @@ impl World {
                 trait_sigma_q16: phase2_config.variation_trait_sigma_q16,
                 neural_sigma_q16: phase2_config.variation_neural_sigma_q16,
             };
-            let (genome, variation): (Genome, VariationSummary) = recombine(
-                &p2.genomes[index],
-                &p2.genomes[partner],
-                policy,
-                self.config.world_seed,
-                next_tick,
-                child_id,
-            );
-            let genome_hash = genome.stable_hash();
-            let phenotype = Phenotype::derive(&genome);
+            // Schema 2 replaces per-gene independent choice with meiosis
+            // plus structural mutation. `child_genome2` is `Some` exactly
+            // when the schema-2 section is enabled.
+            let (genome, variation, child_genome2, genome_hash, phenotype) =
+                match self.schema2.as_mut() {
+                    Some(state) => {
+                        let mut child = crate::meiosis::recombine(
+                            (&state.genomes[index], parent_a),
+                            (&state.genomes[partner], parent_b),
+                            &self.config.genome2.meiosis,
+                            self.config.world_seed,
+                            next_tick,
+                            child_id,
+                        );
+                        crate::structmut::mutate(
+                            &mut child,
+                            &self.config.genome2.mutation,
+                            &self.config.genome2.caps,
+                            &mut state.counters,
+                            self.config.world_seed,
+                            next_tick,
+                            child_id,
+                        );
+                        let hash = crate::checksum::fnv1a64(&child.encode());
+                        let traits = resolve_traits(&child.express_traits());
+                        (
+                            None,
+                            VariationSummary::default(),
+                            Some(child),
+                            hash,
+                            Phenotype::from_traits(&traits),
+                        )
+                    }
+                    None => {
+                        let (genome, variation): (Genome, VariationSummary) = recombine(
+                            &p2.genomes[index],
+                            &p2.genomes[partner],
+                            policy,
+                            self.config.world_seed,
+                            next_tick,
+                            child_id,
+                        );
+                        let hash = genome.stable_hash();
+                        let phenotype = Phenotype::derive(&genome);
+                        (Some(genome), variation, None, hash, phenotype)
+                    }
+                };
             let heading = (named_random(
                 self.config.world_seed,
                 next_tick,
@@ -2027,6 +2224,7 @@ impl World {
                 parent_a,
                 parent_b,
                 genome,
+                genome2: child_genome2,
                 genome_hash,
                 phenotype,
                 x_fp: birth_x,
@@ -2487,6 +2685,9 @@ impl World {
             if let Some(physiology) = self.physiology.as_mut() {
                 physiology.retain(&dead);
             }
+            if let Some(state) = self.schema2.as_mut() {
+                state.retain(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -2522,6 +2723,16 @@ impl World {
                 self.energy_milli.push(child.energy_milli);
                 self.age_ticks.push(0);
                 self.cooldown_ticks.push(0);
+                if let (Some(state), Some(genome2)) = (self.schema2.as_mut(), child.genome2.clone())
+                    && !state.push_organism(genome2)
+                {
+                    // A child whose network will not compile is rejected
+                    // rather than admitted, exactly as a malformed genome
+                    // is. The operators cannot produce one, so this is an
+                    // assertion; if it ever fires the birth is dropped and
+                    // the arrays stay in lockstep.
+                    continue;
+                }
                 p2.push_organism(
                     child.genome,
                     child.genome_hash,
@@ -2624,6 +2835,9 @@ impl World {
         }
         if let Some(contest) = self.contest.as_ref() {
             contest.hash_into(&mut hasher);
+        }
+        if let Some(state) = self.schema2.as_ref() {
+            state.hash_into(&mut hasher);
         }
         if let Some(physiology) = self.physiology.as_ref() {
             physiology.hash_into(&mut hasher);
@@ -2745,6 +2959,25 @@ impl World {
                 actual: self.next_entity_id,
             });
         }
+        // Phase 9 structural invariant. Every parallel-array subsystem needs
+        // one: a missed push on a birth path is invisible until it panics
+        // thousands of ticks later.
+        if let Some(state) = self.schema2.as_ref() {
+            if state.len() != self.ids.len()
+                || state.plans.len() != self.ids.len()
+                || state.activations.len() != self.ids.len()
+            {
+                return Err(InvariantViolation::Schema2Desync {
+                    organisms: self.ids.len(),
+                    schema2: state.len(),
+                });
+            }
+            if let Err(index) = crate::schema2::validate_all(state, &self.config.genome2.caps) {
+                return Err(InvariantViolation::Schema2Invalid {
+                    id: self.ids[index],
+                });
+            }
+        }
         // Phase 8 structural invariant, checked before the hazard arrays
         // are ever indexed by organism position.
         if let Some(physiology) = self.physiology.as_ref()
@@ -2803,6 +3036,11 @@ impl World {
             }
             for index in 0..p2.len() {
                 let id = self.ids[index];
+                if p2.genomes.is_empty() {
+                    // Schema 2: the flat genome arrays are empty and the
+                    // schema-2 invariant above covers genome validity.
+                    break;
+                }
                 let genome = &p2.genomes[index];
                 if Genome::validated(*genome.traits(), genome.neural().to_vec()).is_err() {
                     return Err(InvariantViolation::InvalidGenome { id });

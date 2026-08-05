@@ -60,6 +60,8 @@ const SECTION_CONTEST: u16 = 8;
 /// Phase 8 demography. Optional on the same terms. Tags are permanent and
 /// never reused, so a Phase 7 snapshot decodes unchanged.
 const SECTION_PHYSIOLOGY: u16 = 9;
+/// Phase 9 genome schema 2. Optional on the same terms.
+const SECTION_SCHEMA2: u16 = 10;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodecError {
@@ -359,6 +361,26 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u32(physiology.senescence_hazard_q16_per_s);
     writer.u32(physiology.extrinsic_hazard_q16_per_s);
     writer.u32(physiology.juvenile_hazard_multiplier_q16);
+
+    // Phase 9 genome schema 2.
+    let genome2 = &config.genome2;
+    writer.u8(u8::from(genome2.enabled));
+    writer.u8(genome2.caps.max_chromosomes);
+    writer.u32(genome2.caps.max_loci_per_chromosome);
+    writer.u32(genome2.caps.max_nodes);
+    writer.u32(genome2.caps.max_edges);
+    writer.u32(genome2.caps.max_edges_per_node);
+    writer.u32(genome2.caps.max_genome_bytes);
+    writer.u32(genome2.caps.min_nodes);
+    writer.u8(genome2.meiosis.mode.id());
+    writer.u32(genome2.meiosis.max_extra_crossovers);
+    writer.u32(genome2.mutation.point_q16);
+    writer.u32(genome2.mutation.duplication_q16);
+    writer.u32(genome2.mutation.deletion_q16);
+    writer.u32(genome2.mutation.insertion_q16);
+    writer.u32(genome2.mutation.transposition_q16);
+    writer.u32(genome2.mutation.max_run);
+    writer.u32(genome2.mutation.point_delta_q16);
     writer.0
 }
 
@@ -507,6 +529,25 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.physiology.senescence_hazard_q16_per_s = reader.u32()?;
     config.physiology.extrinsic_hazard_q16_per_s = reader.u32()?;
     config.physiology.juvenile_hazard_multiplier_q16 = reader.u32()?;
+
+    config.genome2.enabled = reader.u8()? != 0;
+    config.genome2.caps.max_chromosomes = reader.u8()?;
+    config.genome2.caps.max_loci_per_chromosome = reader.u32()?;
+    config.genome2.caps.max_nodes = reader.u32()?;
+    config.genome2.caps.max_edges = reader.u32()?;
+    config.genome2.caps.max_edges_per_node = reader.u32()?;
+    config.genome2.caps.max_genome_bytes = reader.u32()?;
+    config.genome2.caps.min_nodes = reader.u32()?;
+    config.genome2.meiosis.mode = sim_core::InheritanceMode::from_id(reader.u8()?)
+        .ok_or(CodecError::ValueOutOfRange("inheritance_mode"))?;
+    config.genome2.meiosis.max_extra_crossovers = reader.u32()?;
+    config.genome2.mutation.point_q16 = reader.u32()?;
+    config.genome2.mutation.duplication_q16 = reader.u32()?;
+    config.genome2.mutation.deletion_q16 = reader.u32()?;
+    config.genome2.mutation.insertion_q16 = reader.u32()?;
+    config.genome2.mutation.transposition_q16 = reader.u32()?;
+    config.genome2.mutation.max_run = reader.u32()?;
+    config.genome2.mutation.point_delta_q16 = reader.u32()?;
     Ok(config)
 }
 
@@ -640,6 +681,42 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.i128(physiology.allometric_cost_milli);
         write_section(&mut payload, SECTION_PHYSIOLOGY, section.0);
     }
+    if let Some(schema2) = state.schema2.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(schema2.genomes.len() as u64);
+        for index in 0..schema2.genomes.len() {
+            let genome = &schema2.genomes[index];
+            section.u32(genome.len() as u32);
+            section.0.extend_from_slice(genome);
+            let values = &schema2.activation_values[index];
+            let prior = &schema2.activation_prior[index];
+            section.u32(values.len() as u32);
+            for value in values {
+                section.u32(value.to_bits());
+            }
+            for value in prior {
+                section.u32(value.to_bits());
+            }
+            section.u32(schema2.activation_faults[index]);
+        }
+        let counters = &schema2.counters;
+        for value in [
+            counters.point_applied,
+            counters.duplication_applied,
+            counters.deletion_applied,
+            counters.insertion_applied,
+            counters.transposition_applied,
+            counters.rejected_homology_collision,
+            counters.rejected_orphaned,
+            counters.rejected_min_nodes,
+            counters.rejected_no_bindings,
+            counters.rejected_cap,
+            counters.rejected_invalid,
+        ] {
+            section.u64(value);
+        }
+        write_section(&mut payload, SECTION_SCHEMA2, section.0);
+    }
     payload
 }
 
@@ -648,6 +725,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
     let mut config = None;
     let mut climate: Option<sim_core::ClimateSaveState> = None;
     let mut physiology: Option<sim_core::PhysiologySaveState> = None;
+    let mut schema2: Option<sim_core::Schema2SaveState> = None;
     let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut meta: Option<(u64, bool, bool, u64, u64)> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -944,6 +1022,71 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     allometric_cost_milli: reader.i128()?,
                 });
             }
+            SECTION_SCHEMA2 => {
+                if schema2.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let organisms = reader.u64()?;
+                // Each organism contributes at least a length word, so a
+                // count beyond the section body is refused before anything
+                // is allocated.
+                if organisms.checked_mul(4) > Some(body.len() as u64) {
+                    return Err(CodecError::ValueOutOfRange("schema2 organisms"));
+                }
+                let mut genomes = Vec::with_capacity(organisms as usize);
+                let mut activation_values = Vec::with_capacity(organisms as usize);
+                let mut activation_prior = Vec::with_capacity(organisms as usize);
+                let mut activation_faults = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    let length = reader.u32()?;
+                    if length as u64 > body.len() as u64 {
+                        return Err(CodecError::ValueOutOfRange("schema2 genome length"));
+                    }
+                    let mut genome = Vec::with_capacity(length as usize);
+                    for _ in 0..length {
+                        genome.push(reader.u8()?);
+                    }
+                    genomes.push(genome);
+                    let nodes = reader.u32()?;
+                    if (nodes as u64).checked_mul(8) > Some(body.len() as u64) {
+                        return Err(CodecError::ValueOutOfRange("schema2 activation length"));
+                    }
+                    let mut values = Vec::with_capacity(nodes as usize);
+                    for _ in 0..nodes {
+                        values.push(f32::from_bits(reader.u32()?));
+                    }
+                    let mut prior = Vec::with_capacity(nodes as usize);
+                    for _ in 0..nodes {
+                        prior.push(f32::from_bits(reader.u32()?));
+                    }
+                    activation_values.push(values);
+                    activation_prior.push(prior);
+                    activation_faults.push(reader.u32()?);
+                }
+                let mut counters = sim_core::MutationCounters::default();
+                for slot in [
+                    &mut counters.point_applied,
+                    &mut counters.duplication_applied,
+                    &mut counters.deletion_applied,
+                    &mut counters.insertion_applied,
+                    &mut counters.transposition_applied,
+                    &mut counters.rejected_homology_collision,
+                    &mut counters.rejected_orphaned,
+                    &mut counters.rejected_min_nodes,
+                    &mut counters.rejected_no_bindings,
+                    &mut counters.rejected_cap,
+                    &mut counters.rejected_invalid,
+                ] {
+                    *slot = reader.u64()?;
+                }
+                schema2 = Some(sim_core::Schema2SaveState {
+                    genomes,
+                    activation_values,
+                    activation_prior,
+                    activation_faults,
+                    counters,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -980,6 +1123,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
         climate,
         contest,
         physiology,
+        schema2,
     })
 }
 

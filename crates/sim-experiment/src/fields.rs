@@ -268,6 +268,19 @@ config_fields! {
     "physiology.senescence_hazard_q16_per_s" => physiology.senescence_hazard_q16_per_s: u32,
     "physiology.extrinsic_hazard_q16_per_s" => physiology.extrinsic_hazard_q16_per_s: u32,
     "physiology.juvenile_hazard_multiplier_q16" => physiology.juvenile_hazard_multiplier_q16: u32,
+    "genome2.enabled" => genome2.enabled: bool,
+    "genome2.caps.max_loci_per_chromosome" => genome2.caps.max_loci_per_chromosome: u32,
+    "genome2.caps.max_nodes" => genome2.caps.max_nodes: u32,
+    "genome2.caps.max_edges" => genome2.caps.max_edges: u32,
+    "genome2.caps.max_edges_per_node" => genome2.caps.max_edges_per_node: u32,
+    "genome2.caps.max_genome_bytes" => genome2.caps.max_genome_bytes: u32,
+    "genome2.meiosis.max_extra_crossovers" => genome2.meiosis.max_extra_crossovers: u32,
+    "genome2.mutation.point_q16" => genome2.mutation.point_q16: u32,
+    "genome2.mutation.duplication_q16" => genome2.mutation.duplication_q16: u32,
+    "genome2.mutation.deletion_q16" => genome2.mutation.deletion_q16: u32,
+    "genome2.mutation.insertion_q16" => genome2.mutation.insertion_q16: u32,
+    "genome2.mutation.transposition_q16" => genome2.mutation.transposition_q16: u32,
+    "genome2.mutation.max_run" => genome2.mutation.max_run: u32,
 }
 
 /// Every field on which two configs disagree, in `FIELD_NAMES` order.

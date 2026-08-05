@@ -77,6 +77,23 @@ pub struct PhysiologySaveState {
     pub allometric_cost_milli: i128,
 }
 
+/// Stored Phase 9 schema-2 state.
+///
+/// Genomes are stored in their canonical encoded form, which already carries
+/// its own checksum and bounds. Activations are stored because they are
+/// logical state: a recurrent organism's memory lives in the prior-state
+/// buffer, and recomputing it on load would silently reset it. Compiled
+/// plans are **not** stored - they are a pure function of the genome and are
+/// rebuilt on load, which is the same rule terrain and phenotypes follow.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Schema2SaveState {
+    pub genomes: Vec<Vec<u8>>,
+    pub activation_values: Vec<Vec<f32>>,
+    pub activation_prior: Vec<Vec<f32>>,
+    pub activation_faults: Vec<u32>,
+    pub counters: crate::structmut::MutationCounters,
+}
+
 /// Complete logical world state in stable field order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveState {
@@ -104,6 +121,8 @@ pub struct SaveState {
     pub contest: Option<ContestSaveState>,
     /// Present exactly when the config's physiology section is enabled.
     pub physiology: Option<PhysiologySaveState>,
+    /// Present exactly when the config's genome2 section is enabled.
+    pub schema2: Option<Schema2SaveState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -131,6 +150,8 @@ impl World {
     /// Capture the complete logical state at the current tick boundary.
     pub fn export_state(&self) -> SaveState {
         let phase2 = self.phase2_state().map(|p2: &Phase2State| Phase2SaveState {
+            // Empty in a schema-2 world, whose traits live in its own
+            // section as part of the diploid genome.
             traits: p2.genomes.iter().map(|genome| *genome.traits()).collect(),
             neural: p2
                 .genomes
@@ -185,6 +206,25 @@ impl World {
                     deaths_by_damage_total: contest.deaths_by_damage_total,
                     healed_milli: contest.healed_milli,
                 }),
+            schema2: self.schema2_state().map(|state| Schema2SaveState {
+                genomes: state.genomes.iter().map(|genome| genome.encode()).collect(),
+                activation_values: state
+                    .activations
+                    .iter()
+                    .map(|activation| activation.values.clone())
+                    .collect(),
+                activation_prior: state
+                    .activations
+                    .iter()
+                    .map(|activation| activation.prior.clone())
+                    .collect(),
+                activation_faults: state
+                    .activations
+                    .iter()
+                    .map(|activation| activation.faults)
+                    .collect(),
+                counters: state.counters,
+            }),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -240,11 +280,74 @@ impl World {
             });
         }
 
+        // Schema 2 presence must match the configuration, and every genome
+        // is decoded through the ordinary fail-closed path rather than
+        // trusted: a save is untrusted input like any other.
+        let rebuilt_schema2 = match (world.genome2_enabled(), state.schema2) {
+            (true, Some(schema2)) => {
+                same_length(schema2.genomes.len(), "schema2.genomes")?;
+                same_length(schema2.activation_values.len(), "schema2.activation_values")?;
+                same_length(schema2.activation_prior.len(), "schema2.activation_prior")?;
+                same_length(schema2.activation_faults.len(), "schema2.activation_faults")?;
+                let caps = world.config().genome2.caps;
+                let mut rebuilt = crate::schema2::Schema2State::with_capacity(population);
+                for (index, bytes) in schema2.genomes.iter().enumerate() {
+                    let genome = crate::genome2::Genome2::decode(bytes, &caps)
+                        .map_err(|error| RestoreError::StateInvalid(error.to_string()))?;
+                    if !rebuilt.push_organism(genome) {
+                        return Err(RestoreError::InvalidGenome { index });
+                    }
+                }
+                for index in 0..rebuilt.activations.len() {
+                    let activation = &mut rebuilt.activations[index];
+                    if schema2.activation_values[index].len() != activation.values.len()
+                        || schema2.activation_prior[index].len() != activation.prior.len()
+                    {
+                        return Err(RestoreError::LengthMismatch {
+                            field: "schema2.activation",
+                        });
+                    }
+                    if schema2.activation_values[index]
+                        .iter()
+                        .chain(schema2.activation_prior[index].iter())
+                        .any(|value| !value.is_finite() || !(-1.0..=1.0).contains(value))
+                    {
+                        return Err(RestoreError::StateInvalid(
+                            "activation out of bounds".to_owned(),
+                        ));
+                    }
+                    activation
+                        .values
+                        .copy_from_slice(&schema2.activation_values[index]);
+                    activation
+                        .prior
+                        .copy_from_slice(&schema2.activation_prior[index]);
+                    activation.faults = schema2.activation_faults[index];
+                }
+                rebuilt.counters = schema2.counters;
+                Some(rebuilt)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "schema2 section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         // Phase 2 presence must match the configuration.
         let phase2_state = match (world.phase2_enabled(), state.phase2) {
             (true, Some(phase2)) => {
-                same_length(phase2.traits.len(), "phase2.traits")?;
-                same_length(phase2.neural.len(), "phase2.neural")?;
+                // A schema-2 world stores no flat genome, so those two
+                // arrays are empty by construction rather than missing.
+                if rebuilt_schema2.is_none() {
+                    same_length(phase2.traits.len(), "phase2.traits")?;
+                    same_length(phase2.neural.len(), "phase2.neural")?;
+                } else if !phase2.traits.is_empty() || !phase2.neural.is_empty() {
+                    return Err(RestoreError::StateInvalid(
+                        "a schema-2 save carries flat genome arrays".to_owned(),
+                    ));
+                }
                 same_length(phase2.memory.len(), "phase2.memory")?;
                 same_length(phase2.heading_bam.len(), "phase2.heading_bam")?;
                 same_length(phase2.speed_milli.len(), "phase2.speed_milli")?;
@@ -268,11 +371,30 @@ impl World {
             Some(phase2) => {
                 let mut rebuilt = Phase2State::with_capacity(population);
                 for index in 0..population {
-                    let genome =
-                        Genome::validated(phase2.traits[index], phase2.neural[index].clone())
+                    // In a schema-2 world the genome, its hash, and the
+                    // phenotype all come from the diploid record; the flat
+                    // path is untouched and still the only one schema 1 uses.
+                    let (genome, genome_hash, phenotype) = match rebuilt_schema2.as_ref() {
+                        Some(state) => {
+                            let genome2 = &state.genomes[index];
+                            let traits = crate::world::resolve_traits(&genome2.express_traits());
+                            (
+                                None,
+                                crate::checksum::fnv1a64(&genome2.encode()),
+                                Phenotype::from_traits(&traits),
+                            )
+                        }
+                        None => {
+                            let genome = Genome::validated(
+                                phase2.traits[index],
+                                phase2.neural[index].clone(),
+                            )
                             .map_err(|_| RestoreError::InvalidGenome { index })?;
-                    let genome_hash = genome.stable_hash();
-                    let phenotype = Phenotype::derive(&genome);
+                            let hash = genome.stable_hash();
+                            let phenotype = Phenotype::derive(&genome);
+                            (Some(genome), hash, phenotype)
+                        }
+                    };
                     rebuilt.push_organism(
                         genome,
                         genome_hash,
@@ -404,6 +526,7 @@ impl World {
             rebuilt_climate,
             rebuilt_contest,
             rebuilt_physiology,
+            rebuilt_schema2,
         );
 
         world

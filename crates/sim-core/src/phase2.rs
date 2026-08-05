@@ -18,7 +18,12 @@ pub const SENSOR_RANGE_MAX_M: u32 = 12;
 pub(crate) struct PendingChild {
     pub parent_a: u64,
     pub parent_b: u64,
-    pub genome: Genome,
+    /// The flat schema-1 genome, `Some` exactly in a schema-1 world.
+    pub genome: Option<Genome>,
+    /// The diploid schema-2 genome, `Some` exactly in a schema-2 world.
+    /// Exactly one of the two is present: a world is one schema or the
+    /// other, and neither carries a placeholder for the one it is not.
+    pub genome2: Option<crate::genome2::Genome2>,
     pub genome_hash: u64,
     pub phenotype: Phenotype,
     pub x_fp: i32,
@@ -119,7 +124,7 @@ impl Phase2State {
     #[allow(clippy::too_many_arguments)]
     pub fn push_organism(
         &mut self,
-        genome: Genome,
+        genome: Option<Genome>,
         genome_hash: u64,
         phenotype: Phenotype,
         heading_bam: u16,
@@ -127,7 +132,14 @@ impl Phase2State {
         depth: u32,
         birth_tick: u64,
     ) {
-        self.genomes.push(genome);
+        // A schema-2 world keeps the flat *genome* array empty; pushing a
+        // placeholder would double the memory and invite code to read a
+        // genome the organism does not have. The **hash** is kept for both
+        // schemas, because "which genome does this organism have" is a
+        // question every schema can answer and the observer asks it.
+        if let Some(genome) = genome {
+            self.genomes.push(genome);
+        }
         self.genome_hashes.push(genome_hash);
         self.phenotypes.push(phenotype);
         self.memory.push([0.0; MEMORY_VALUES]);
@@ -156,8 +168,14 @@ impl Phase2State {
         retain_copy_by_flags(&mut self.birth_tick, remove);
     }
 
+    /// Living organisms this state covers.
+    ///
+    /// Counted from `phenotypes` rather than `genomes` because a schema-2
+    /// world keeps the flat genome arrays empty - its genome lives in the
+    /// schema-2 section - while every organism still has a phenotype
+    /// whichever schema expressed it.
     pub fn len(&self) -> usize {
-        self.genomes.len()
+        self.phenotypes.len()
     }
 
     /// Maximum ancestry depth among living organisms (generation proxy).
@@ -169,7 +187,11 @@ impl Phase2State {
     pub fn hash_into(&self, hasher: &mut Fnv1a64) {
         hasher.update(b"lifesim-phase2-state-v1");
         for index in 0..self.len() {
-            hash_genome_into(hasher, &self.genomes[index]);
+            // A schema-2 world has no flat genome to hash here; its genomes
+            // enter the checksum through the schema-2 section instead.
+            if let Some(genome) = self.genomes.get(index) {
+                hash_genome_into(hasher, genome);
+            }
             hasher.update_u64(self.genome_hashes[index]);
             hasher.update_u32(self.heading_bam[index] as u32);
             hasher.update_i64(self.speed_milli[index]);

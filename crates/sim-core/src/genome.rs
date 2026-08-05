@@ -378,7 +378,16 @@ pub struct Phenotype {
 
 impl Phenotype {
     pub fn derive(genome: &Genome) -> Self {
-        let traits = genome.traits();
+        Self::from_traits(genome.traits())
+    }
+
+    /// Derive a phenotype from bare trait values.
+    ///
+    /// Schema 2 expresses its traits diploidly and has no `Genome` to hand,
+    /// but the mapping from trait to phenotype is the same one and must stay
+    /// the same one: a second copy would let the two schemas drift apart in
+    /// a way that would look like an effect of structural freedom.
+    pub fn from_traits(traits: &[f32; TRAIT_COUNT]) -> Self {
         Self {
             body_scale_milli: lerp_milli(traits[GENE_BODY_SCALE], 600, 1600),
             max_speed_milli: lerp_milli(traits[GENE_SPEED_POTENTIAL], 500, 3000),

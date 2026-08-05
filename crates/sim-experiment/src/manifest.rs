@@ -51,6 +51,12 @@ pub struct RunResult {
     pub deaths_juvenile_total: u64,
     pub max_age_ticks_observed: u64,
     pub total_capacity_milli: i64,
+    /// Phase 9 structure metrics. Zero when schema 2 is disabled.
+    pub mean_nodes_milli: u64,
+    pub mean_edges_milli: u64,
+    pub distinct_structures: u64,
+    pub structural_mutations_applied: u64,
+    pub structural_mutations_rejected: u64,
     /// Phase 7 contest outcomes. Zero when the section is disabled.
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
@@ -336,7 +342,9 @@ fn render_run(run: &RunResult) -> String {
          capacity_rejections={} dropped_events={} event_log_bytes={} snapshot_bytes={} \
          attacks={} deaths_by_damage={} carcasses={} spatial_samples={} \
          deaths_senescence={} deaths_extrinsic={} deaths_juvenile={} \
-         max_age_observed={} capacity_milli={}",
+         max_age_observed={} capacity_milli={} mean_nodes_milli={} \
+         mean_edges_milli={} distinct_structures={} structmut_applied={} \
+         structmut_rejected={}",
         run.index,
         run.condition,
         hex(run.seed),
@@ -366,6 +374,11 @@ fn render_run(run: &RunResult) -> String {
         run.deaths_juvenile_total,
         run.max_age_ticks_observed,
         run.total_capacity_milli,
+        run.mean_nodes_milli,
+        run.mean_edges_milli,
+        run.distinct_structures,
+        run.structural_mutations_applied,
+        run.structural_mutations_rejected,
     );
     if let Some(phase2) = run.phase2.as_ref() {
         line.push_str(&format!(
@@ -480,6 +493,11 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         deaths_juvenile_total: number("deaths_juvenile").unwrap_or(0),
         max_age_ticks_observed: number("max_age_observed").unwrap_or(0),
         total_capacity_milli: signed("capacity_milli").unwrap_or(0),
+        mean_nodes_milli: number("mean_nodes_milli").unwrap_or(0),
+        mean_edges_milli: number("mean_edges_milli").unwrap_or(0),
+        distinct_structures: number("distinct_structures").unwrap_or(0),
+        structural_mutations_applied: number("structmut_applied").unwrap_or(0),
+        structural_mutations_rejected: number("structmut_rejected").unwrap_or(0),
     })
 }
 

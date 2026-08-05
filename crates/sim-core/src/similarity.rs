@@ -74,6 +74,12 @@ pub fn analyze(world: &World) -> Option<SimilarityReport> {
     let mut distance_count = 0_u64;
     for left in 0..sampled {
         for right in (left + 1)..sampled {
+            // Schema 2's genetic distance is `schema2::compatibility_distance`;
+            // this report is the schema-1 similarity analysis and simply has
+            // nothing to sample in a schema-2 world.
+            if p2.genomes.is_empty() {
+                break;
+            }
             let distance = p2.genomes[sampled_indices[left]]
                 .normalized_distance(&p2.genomes[sampled_indices[right]], neural_weight);
             distance_sum += f64::from(distance);
