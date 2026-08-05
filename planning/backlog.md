@@ -21,18 +21,20 @@ been started. Phases 7 to 16 are planned and none has started:
 
 | Phase | Subject | Plan |
 |---|---|---|
-| 5 | Headless scale and multi-world experiments — **done** | `phase-5-headless-scale-and-experiments.md` |
-| 6 | Biomes, climate drift, and world origin modes — **climate half done, origins not started** | `phase-6-biomes-climate-and-origins.md` |
-| 7 | Territory, contest, and damage — **physics done, primary endpoint C7.1 unmeasured** | `phase-7-territory-and-conflict.md` |
+| 5 | Headless scale and multi-world experiments - **done** | `phase-5-headless-scale-and-experiments.md` |
+| 6 | Biomes, climate drift, and world origin modes - **done** | `phase-6-biomes-climate-and-origins.md` |
+| 7 | Territory, contest, and damage - **physics done, primary endpoint C7.1 unmeasured** | `phase-7-territory-and-conflict.md` |
 | 8 | Evolvable genome: diploid genetics and variable topology | `phase-8-evolvable-genome.md` |
 | 9 | Modular morphology and development | `phase-9-modular-morphology.md` |
 | 10 | Lifetime learning | `phase-10-lifetime-learning.md` |
 | 11 | Mutable world and artifacts | `phase-11-mutable-world-and-artifacts.md` |
 | 12 | Social channel | `phase-12-social-channel.md` |
-| 13 | Physiology, life history, and senescence | `phase-13-physiology-and-life-history.md` |
+| 13a | Demography and life history - **executes after 7** | `phase-13a-demography-and-life-history.md` |
 | 14 | Abiogenesis and the unicellular regime | `phase-14-abiogenesis-and-unicellular-regime.md` |
 | 15 | The multicellularity transition | `phase-15-multicellularity-transition.md` |
+| 13b | Ontogeny and sexual selection - **executes after 12** | `phase-13b-ontogeny-and-sexual-selection.md` |
 | 16 | Offline era and tradition detection | `phase-16-era-and-tradition-detection.md` |
+| 17 | Intra-world parallelism - **cross-cutting; after 13a, before 12** | `phase-17-intra-world-parallelism.md` |
 
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under
@@ -46,8 +48,8 @@ damage, healing, death by depletion, the attack action and the three
 reserved sensing channels, carcasses with an exact ledger, the canonical
 pair key, RNG stream `Contest` (7), and event schema 3 are all in and
 tested. C7.4 (exact accounting) and C7.5 (determinism) are met. **C7.1, the
-designated primary endpoint, was not measured** — it needs a world-level
-spatial-aggregation index that does not exist — and secondary criteria do
+designated primary endpoint, was not measured** - it needs a world-level
+spatial-aggregation index that does not exist - and secondary criteria do
 not rescue a failed primary. The behavioral campaign ran anyway and its
 four-condition decomposition is recorded in
 `planning/phase-7-territory-and-conflict.md` (D-052): perception alone costs
@@ -65,7 +67,7 @@ field that maintains its gradient, biome-dependent capacity with a ledgered
 loss sink, degenerate-map rejection, world integration, and save/restore.
 Both fixtures are preserved and the config hash of a climate-disabled world
 is provably unchanged. **Not started**: origin modes, founder demes,
-archetypes, biome-matched placement, and founder-population files — criteria
+archetypes, biome-matched placement, and founder-population files - criteria
 C6.2, C6.3, C6.4, C6.5, C6.9, C6.10, and the Phase 6 benchmark record. See
 `planning/phase-6-biomes-climate-and-origins.md` for the status detail and
 the two modelling defects found while building it (D-048).
@@ -106,31 +108,40 @@ ADRs remain proposed.
 
 ## Ordered Next Work
 
-1. Review this planning change: the epistemic position, the phase order and
-   its dependency argument, the determinism successors, and the six new
-   proposed ADRs. Nothing below should start before that review.
-2. Review the Phase 4 implementation, tests, and benchmark evidence.
-3. If separately approved, run a read-only servernode3/monitoring/backup audit and record live facts.
-4. Test physical target desktop, mobile, and kiosk browsers against the
-   live server; do not treat viewport emulation as device evidence.
-5. Resolve the remaining Phase 0 decision gates (deployment-shaped VM benchmark).
-   This now also bounds the compute-cost risk, which is recorded as
-   unresolved in `docs/20-risk-register.md`. Phase 5 measured the
-   development host only; no supported campaign size is claimed.
-6. Review the Phase 5 implementation, tests, and benchmark evidence
-   (D-045, D-046).
-7. Review the Phase 6 climate slice (D-047, D-048), in particular the two
-   modelling defects and the biome-reachability measurement.
-8. Finish Phase 6: `origin.mode` with `random` and `seeded`, founder demes,
-   archetypes, biome-matched placement, and founder-population files. That
-   is criteria C6.2, C6.3, C6.4, C6.5, C6.9, and C6.10, plus the Phase 6
-   benchmark record (environment-phase cost per field, reclassification
-   cost, and whether a dirty-cell strategy is needed). The temperature field
-   `docs/05` has specified since Phase 1 now exists, so the
-   thermal-preference gene inherited-but-inert since Phase 2 finally has
-   something to be preferent about; wiring it is Phase 13's work.
-9. Begin Phase 7 (requires separate approval): territory, contest, and
-   damage. Its prerequisite is Phase 5, which is met.
+Phases 5 and 6 are complete. Phase 7's physics is complete and verified; the
+phase is not, because its primary endpoint was not measured.
+
+1. Review the Phase 5, 6, and 7 implementations and their benchmark
+   evidence (D-045 through D-052), in particular the two Phase 6 modelling
+   defects recorded in D-048 and Phase 7's four-condition decomposition in
+   D-052.
+2. Review the planning changes that landed alongside them, all Proposed and
+   none settled: the flagship and campaign run-mode split (D-053), the
+   time-scale position (D-054), the soak tiers (D-055), 3D voxel rendering
+   (D-056), the Phase 13 split moving demography before the culture stack
+   (D-057), and intra-world parallelism (D-058).
+3. **Build the world-level spatial-aggregation index C7.1 needs, then
+   measure C7.1.** Its absence is the reason Phase 7 is incomplete, and it
+   is a small, well-scoped piece of analysis work rather than a research
+   question. C7.2's tolerance clause and C7.3 stay recorded as unmet rather
+   than adjusted.
+4. **Phase 13a, demography and life history.** Now the next behavioral
+   phase, ahead of the genome successor, because the culture stack cannot be
+   measured in a world where 99.9 percent of deaths are starvation
+   (ADR-0025, D-057). Includes raising `max_entities` above the ecological
+   equilibrium so ecology binds rather than a memory guard.
+5. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
+   benchmark). This bounds the compute-cost risk recorded as unresolved in
+   `docs/20-risk-register.md`. Phase 5 measured the development host only;
+   no supported campaign size is claimed.
+6. If separately approved, run a read-only servernode3/monitoring/backup
+   audit and record live facts.
+7. Test physical target desktop, mobile, and kiosk browsers against the live
+   server; do not treat viewport emulation as device evidence. Note that
+   ADR-0024's voxel path reopens this gate with a different rendering
+   technique, so sprite-path device evidence will not transfer.
+8. Phase 17, intra-world parallelism, when the single-world population
+   ceiling starts to bind. Scheduled after 13a and before Phase 12.
 
 ## Deferred Backlog
 
@@ -144,9 +155,31 @@ Carried forward unchanged unless noted:
 - ~~Independent-world scheduler.~~ **Delivered in Phase 5**
   (`crates/sim-experiment/src/scheduler.rs`).
 - Parquet export (deferred Phase 4 item, still deferred).
-- Profiling, SIMD, and parallelism work from the superseded Phase 5 plan.
-  Each still requires its own profiler evidence and, for parallelism, its
-  own deterministic-ordering evidence under ADR-0010.
+- Profiling and SIMD work from the superseded Phase 5 plan. Each still
+  requires its own profiler evidence. **Intra-world parallelism is no
+  longer a backlog item**: it has ADR-0026 and Phase 17.
+- **Raise `max_entities` above the ecological equilibrium** so ecology binds
+  instead of a memory guard. Population sat on the guard for the entire
+  Phase 2 long run, which means the guard was the carrying capacity and
+  every dynamic measured under it is an artifact. Config change, gated on
+  the Phase 13a benchmark.
+- Re-measure the `apply` serial fraction after Phases 7, 11, and 12. Each
+  adds conflict resolution to exactly the part that caps parallel speedup
+  (ADR-0026).
+- Implement the voxel observer. Reuses protocol handling, selection,
+  overlay, charts, and reconnect; replaces the render layer. Gated on
+  ADR-0024's benchmark evidence.
+- Close the **composite geometry gap** in
+  `specifications/artifact-and-material-ontology.md`: composites have no
+  spatial arrangement, so a depth-2 composite has no shape to render.
+  Required before composites render as structures.
+- Build the **check-in report** for flagship worlds: what changed since the
+  last observation, derived from the event log.
+- Define the **flagship retention and backup policy**, distinct from
+  campaign pruning. A flagship checkpoint chain is irreplaceable once the
+  world has received any intervention.
+- Raise or confirm the observer speed cap (clamped to 64) for flagship
+  catch-up. Headless is uncapped, so this may not be needed.
 - Controller batching strategy for variable topologies (Phase 8 makes
   grouping by topology ID obsolete; the replacement is a later performance
   slice).
@@ -178,10 +211,22 @@ Carried forward unchanged unless noted:
 
 - `.DS_Store` files are present in the working tree at several levels and
   are excluded from `FILE_MANIFEST.md`.
+- **Non-ASCII punctuation** (em-dashes, curly quotes) remains in eight
+  project documents: `docs/04`, `docs/12`, `docs/15`,
+  `planning/phase-6-biomes-climate-and-origins.md`,
+  `planning/phase-7-territory-and-conflict.md`,
+  `specifications/event-schema.md`,
+  `specifications/experiment-config-schema.md`,
+  `specifications/metrics-schema.md`, and `research/performance-notes.md`.
+  `AGENTS.md` requires ASCII. Purely typographic and meaning-preserving to
+  fix; deliberately not swept during the merge to avoid churning another
+  session's diffs for cosmetics. The vendored research reviews under
+  `.agents/skills/*/references/` are **exempt**: they are verbatim source
+  documents and must not be reformatted.
 
 ## Completed Phase 5 Slice (2026-08-04)
 
-- `crates/sim-persist/src/eventlog.rs`: ALEV format 1 append-only log —
+- `crates/sim-persist/src/eventlog.rs`: ALEV format 1 append-only log  - 
   self-checksumming header (provenance is not framing, so nothing else
   would catch a corrupted seed or config hash), per-segment CRC, all
   declared lengths capped before allocation, unknown event types fail

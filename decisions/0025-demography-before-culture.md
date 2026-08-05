@@ -133,10 +133,18 @@ were held uncommitted by a concurrent Phase 6 implementation session when
 this decision was made. Renumbering them would have clobbered in-progress
 work.
 
-The execution order is stated at the top of each phase document and is
-authoritative. The monotonic repair is staged in
-`planning/pending-integration-longevity-and-rendering.md` and happens once
-Phase 6 lands.
+The execution order is stated at the top of each phase document and in
+`docs/19-implementation-roadmap.md`, which is authoritative.
+
+**The monotonic renumber remains outstanding**, and it should be done in one
+atomic pass rather than incrementally. Two prior renumbers each left defects
+that took a sweep to find: stale multi-number lists where only the first
+number was mapped ("Phases 8, 8, and 10"), and table rows whose bare phase
+numbers stayed put while their meanings moved. Check both patterns
+explicitly afterwards. Suggested target sequence: 5 headless, 6
+biomes/origins, 7 contest, 8 demography, 9 genome, 10 morphology, 11
+learning, 12 artifacts, 13 social, 14 ontogeny/sexual selection, 15
+abiogenesis, 16 multicellularity, 17 era detection, 18 parallelism.
 
 ## Performance Implications
 

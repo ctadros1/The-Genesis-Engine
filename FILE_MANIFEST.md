@@ -181,6 +181,7 @@ this manifest.
 - docs/24-codex-execution-playbook.md
 - docs/25-emergence-and-epistemic-position.md
 - docs/26-biological-realism-policy.md
+- docs/27-time-scale-and-pacing.md
 
 ## Planning
 
@@ -198,10 +199,12 @@ this manifest.
 - planning/phase-10-lifetime-learning.md
 - planning/phase-11-mutable-world-and-artifacts.md
 - planning/phase-12-social-channel.md
-- planning/phase-13-physiology-and-life-history.md
+- planning/phase-13a-demography-and-life-history.md
+- planning/phase-13b-ontogeny-and-sexual-selection.md
 - planning/phase-14-abiogenesis-and-unicellular-regime.md
 - planning/phase-15-multicellularity-transition.md
 - planning/phase-16-era-and-tradition-detection.md
+- planning/phase-17-intra-world-parallelism.md
 - planning/superseded/phase-5-performance-optimization.md
 - planning/superseded/phase-6-advanced-ecosystems.md
 
@@ -218,6 +221,7 @@ this manifest.
 
 ## Specifications
 
+- specifications/appearance-derivation.md
 - specifications/artifact-and-material-ontology.md
 - specifications/biome-and-climate.md
 - specifications/determinism-extensions.md
@@ -226,6 +230,7 @@ this manifest.
 - specifications/event-schema.md
 - specifications/experiment-config-schema.md
 - specifications/genome-schema-2.md
+- specifications/long-horizon-soak.md
 - specifications/metrics-schema.md
 - specifications/morphology-and-development.md
 - specifications/mutable-world-state.md
@@ -279,6 +284,10 @@ this manifest.
 - decisions/0020-two-regime-simulation.md
 - decisions/0021-world-origin-modes.md
 - decisions/0022-research-findings-adopted-and-declined.md
+- decisions/0023-flagship-and-campaign-worlds.md
+- decisions/0024-voxel-rendering-and-derived-appearance.md
+- decisions/0025-demography-before-culture.md
+- decisions/0026-intra-world-parallelism.md
 - decisions/README.md
 - decisions/adr-template.md
 

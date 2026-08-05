@@ -20,10 +20,12 @@ fixtures, and benchmark records are preserved unchanged.
 | 10 | Lifetime learning | planned |
 | 11 | Mutable world and artifacts | planned |
 | 12 | Social channel, and organized conflict | planned |
-| 13 | Physiology, life history, and senescence | planned |
+| 13a | Demography and life history (**executes after 7**) | planned |
 | 14 | Abiogenesis and the unicellular regime | planned |
 | 15 | The multicellularity transition | planned |
+| 13b | Ontogeny and sexual selection (**executes after 12**) | planned |
 | 16 | Offline era and tradition detection | planned |
+| 17 | Intra-world parallelism (**cross-cutting; after 13a, before 12**) | planned |
 
 The former Phase 5 (performance optimization) and Phase 6 (advanced
 ecosystems) plans are superseded and preserved unmodified under
@@ -107,16 +109,38 @@ So Phase 11 delivers objects and the first transmission mechanism
 anything on top. That is a sharper question than the original ordering could
 have asked, because it has a baseline to beat.
 
-**13 after the culture stack** is the one placement where two good arguments
-conflict, and the resolution is in ADR-0017 rather than glossed. Physiology
-changes the entire selection landscape, so introducing it late means prior
-cross-condition results do not transfer across it. Introducing it early
-makes every culture experiment more expensive per organism and reduces the
-generations each can reach. The split: genetics realism goes in Phase 8
-because the genome is being rewritten anyway and doing it twice is strictly
-worse; physiology realism goes here, with the explicit acknowledgement that
-the campaigns that matter are re-run under `lifesim-physiology-v1` before
-their results become standing findings.
+**13a before the culture stack, 13b after it (ADR-0025).** This reverses
+this document's earlier placement, which put all of physiology last on
+ADR-0017's reasoning that each realism increment multiplies per-organism
+cost. That reasoning assumed the culture-stack results would otherwise be
+valid, and the Phase 2 record says they would not be: 199,871 starvation
+deaths against 180 old-age deaths, with population pinned on the
+`max_entities` guard rather than an ecological equilibrium. Every
+culture-stack criterion is energetically gated, so those campaigns would
+have returned nulls caused by starvation rather than by anything about
+transmission, and ADR-0022 A7 already commits the project to distinguishing
+a negative result from an underpowered one.
+
+Only the demographic half can move. **13a** (allometry, thermoregulation,
+senescence, non-food extrinsic mortality, juvenile mortality, life-history
+tradeoff) has no unmet prerequisites: allometry uses the existing body-scale
+gene, senescence uses age, the tradeoff uses the existing
+reproduction-investment gene, and thermoregulation uses the temperature
+field Phase 6 built. **13b** (developmental ontogeny, mate choice on
+perceived phenotype, optional disease) stays late because ontogeny needs the
+Phase 9 module body and mate choice needs Phase 12 perception.
+
+The mechanism: surplus does not come from more food, it comes from mortality
+that is not food-driven. A population held below carrying capacity has the
+per-capita slack every energetically expensive behavior requires.
+
+**17 is cross-cutting and does not execute last.** Intra-world parallelism
+(ADR-0026) lifts the single-world population ceiling, currently estimated at
+10,000 to 30,000 organisms because one world runs on one core. Population is
+the binding constraint on cumulative culture, so this is scheduled after
+13a (scaling an unregulated, starving world is pointless) and before Phase
+12 (whose criteria need population most, and would confound a null if run
+under the suspected blocker).
 
 **14 and 15 are last, and this is the most counterintuitive decision here**,
 because "from scratch" sounds like it should be first. Narrative order is not
@@ -196,7 +220,11 @@ behavior emerged.
 | Learning | per-individual within-lifetime change, drift-controlled selection on learning genes | accept ADR-0014 |
 | Transmission | A-versus-D control result and fidelity curve | claim transmission or report a measured null |
 | Save format 2 | format 1 migration byte-identity, corruption sweep, restore-from-backup | accept ADR-0015 |
+| Demography | Starvation ceases to dominate the death-cause mix, population sits below carrying capacity, ecology binds rather than the `max_entities` guard (C13a.1-C13a.3) | accept ADR-0025 |
 | Realism | Hardy-Weinberg, linkage decay, allometric exponent, lifespan versus extrinsic mortality | accept ADR-0017 |
+| Intra-world parallelism | Clean-process checksum equality per thread count (C17.1), the cross-thread-count result (C17.2), measured serial fraction, speedup curve, and net-loss crossover (C17.6) | accept ADR-0026 |
+| Flagship run mode | Soak-30 criteria passing; a check-in report from a real multi-week run | accept ADR-0023 |
+| Voxel rendering | Frame time and draw calls at the supported tier, terrain rebuild cost, physical device evidence | accept ADR-0024 |
 | Two-regime engine | exact conservation across the boundary, field cost independent of population, transition neutrality | accept ADR-0020 |
 | Scaffolding | unscaffolded control run and reported, naming test passed under review | accept ADR-0018 |
 

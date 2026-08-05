@@ -57,7 +57,7 @@ re-verified in each of those phases rather than assumed to carry forward.
 3. Profile CPU and memory under fixed seeds and representative map/resource settings.
 4. Adopt SoA/dense loops and spatial buckets where traces show cost.
 5. Batch neural inputs/outputs and eliminate per-organism allocation.
-6. Parallelize only systems with deterministic ordering/reduction policy and equality tests.
+6. Parallelize only systems with deterministic ordering/reduction policy and equality tests. **Now specified rather than aspirational**: intra-world parallelism has ADR-0026 and Phase 17. Estimated serial fraction near 3.1 percent and a ceiling near 9x at 12 threads, but that estimate mixes the Phase 1 and Phase 2 records and is an orientation, not evidence; Phase 17 measures the real split. The serial part is `apply`, which Phases 7, 11, and 12 each grow.
 7. Evaluate SIMD after data layout is stable.
 8. Compare GPU inference against CPU batching with end-to-end timing, not kernel-only claims.
 9. Run independent experiment worlds on spare capacity only after one world is stable. Promoted from a late optimization to Phase 5 enabling work, because multi-seed experiment design depends on it.

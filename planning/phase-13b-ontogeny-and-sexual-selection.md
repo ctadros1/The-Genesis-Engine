@@ -1,7 +1,8 @@
 # Phase 13b: Ontogeny And Sexual Selection
 
 **Executes after Phase 12 (social channel).** Numbering is provisional; see
-ADR-0025 and `planning/pending-integration-longevity-and-rendering.md`.
+ADR-0025 and `docs/19-implementation-roadmap.md`, which carries the
+authoritative execution order.
 
 Status: planned, not started. Policy version `lifesim-physiology-v2`.
 Split from the former Phase 13 by ADR-0025; the demographic half executes

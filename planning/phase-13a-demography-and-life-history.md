@@ -2,9 +2,8 @@
 
 **Executes after Phase 7 (contest), before Phase 8 (genome successor).**
 Numbering is provisional: the file keeps a 13a label because a full
-monotonic renumber cannot be done while another session holds the roadmap,
-backlog, and decision log. See ADR-0025 and
-`planning/pending-integration-longevity-and-rendering.md`.
+monotonic renumber is deferred; see ADR-0025 and `docs/19-implementation-roadmap.md`,
+which carries the authoritative execution order.
 
 Status: planned, not started. Policy version `lifesim-demography-v1`.
 Split from the former Phase 13 by ADR-0025; the remainder is

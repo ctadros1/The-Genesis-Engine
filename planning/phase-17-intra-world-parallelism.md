@@ -3,8 +3,7 @@
 **Cross-cutting infrastructure, not a behavioral phase.** Numbered 17 to
 avoid renumbering; it does not execute last. Recommended execution: **after
 Phase 13a (demography), before Phase 12 (social)**  -  see Execution Position
-below. Numbering is provisional and the monotonic repair is staged in
-`planning/pending-integration-longevity-and-rendering.md`.
+below. Numbering is provisional; see Numbering below.
 
 Status: planned, not started. Policy version `lifesim-parallel-v1`.
 Decision: ADR-0026, which amends
