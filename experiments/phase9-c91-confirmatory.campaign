@@ -1,0 +1,133 @@
+# Phase 9 confirmatory campaign: C9.1, C9.2, and C9.5.
+#
+# ============================================================
+# PRE-REGISTRATION. Committed before the campaign was run.
+# ============================================================
+#
+# ECOLOGY, chosen by the rule stated in `phase9-ecology-sweep.campaign`
+# before that sweep ran: highest median generation count subject to no
+# extinctions across eight seeds and a final population of at least 200.
+# The sweep selected `k240` unambiguously - 61 median generations, 2,309
+# median population, minimum population 1,616, zero extinctions - against
+# k030 (5 of 8 extinct), k120 (1 of 8 extinct), m000 (58 generations) and
+# m040 (1 of 8 extinct). D-073 is why this had to be settled first:
+# structural evolution is bought with generations, and a campaign run in a
+# birth-limited world measures its birth rate instead.
+#
+# CLIMATE OFF, measured rather than assumed. `phase9-climate-probe.campaign`
+# ran climate on against climate off, seed-matched at 256x256 on eight seeds
+# that generate a full biome set. The structural signal did not move - median
+# mean-node count 3.073 dry against 3.095 with climate, median node count 3
+# and 9 distinct structures under both - while climate cost about 10 percent
+# of the generations (64 to 58) and needs the four-times-larger map. A
+# seasonal environment was worth testing because a stationary world might
+# simply not reward a larger network, which would make a structural null a
+# fact about the environment; it does not appear to be the binding factor.
+#
+# SEEDS 3001..3030, disjoint from the ecology sweep (1..8) and the climate
+# probe (2002..2011), so no seed that informed the design also carries the
+# result.
+#
+# TRANSPOSITION IS 0 IN EVERY CONDITION. With single-chromosome founders the
+# operator is provably inert (D-074): position within a chromosome is
+# determined by homology order, so there is nothing for it to do, and every
+# attempt is refused as `Inapplicable`. Leaving it enabled would add a
+# rejection stream that means nothing and would inflate the matched-load
+# arithmetic below with firings that change no genome.
+#
+# THE SWEPT FACTOR is the per-birth duplication rate, at 1x, 3x, and 10x its
+# documented default, with the deletion rate held at its default throughout.
+# What that actually varies is the duplication-to-deletion balance - 1:1,
+# 3:1, 10:1 - and that is the honest description, because at equal rates
+# genome size is at mutation-deletion equilibrium and has no expected growth
+# at all. ADR-0018's naming test: "a per-birth duplication rate" is a
+# physics constant of the model, like a mortality rate, not an outcome.
+#
+# EVERY RATE IS REPORTED AND THE CRITERION IS EVALUATED AT EACH. There is no
+# designated "primary" rate whose result is the headline and whose siblings
+# are supporting detail. The claim C9.1 can support is "structural evolution
+# occurs at duplication rate X and does not at rate Y", with the whole curve
+# published, which is both more informative than a single pass/fail and
+# impossible to select within after the fact.
+#
+# DECISION RULES, fixed here before the run:
+#
+#   C9.1a  median shift. Under an A condition, median expressed node count
+#          >= 4 OR median edge count >= 3 - that is, founder + 1, the
+#          smallest shift a median of integers can express - in at least
+#          20 of 30 seeds. Either quantity, not both: duplication grows node
+#          count and insertion grows edge count, so requiring both would make
+#          the criterion a test of which operator was enabled.
+#   C9.1b  diversity. Under an A condition, more than one distinct
+#          (node count, edge count) pair among the living, in at least
+#          25 of 30 seeds.
+#   C9.1c  control. Under B, structure invariant - median 3 nodes and
+#          2 edges, mean exactly 3000 and 2000 milli, at most one distinct
+#          structure - in 30 of 30 seeds. This is the instrument check: if
+#          the control drifts, the gating is broken and no A result means
+#          anything. Note it is checked on the mean as well as the median,
+#          because standing variation that has not spread would otherwise
+#          read as a frozen control.
+#   C9.2   stability. Under an A condition against B, seed-paired: median
+#          population within 25 percent of B **or better**, and median
+#          completed lifespan within 25 percent **or better**, each in at
+#          least 20 of 30 seeds. "Or better" is the criterion's own wording -
+#          a treatment that raises population has not destabilized anything -
+#          so the bound is one-sided by design.
+#   C9.5   duplication versus insertion. Descriptive, not pass/fail, as the
+#          criterion specifies. A10 against A10i and A1 against A1i, at
+#          matched duplication rates, reporting structural growth and the
+#          C9.2 outcome for each.
+#
+# TWO CONTROLS, because the criterion's phrase "a rate adjusted so total
+# expected value-change per genome per generation matches A" has two
+# defensible readings and picking one silently would hide a real choice.
+#   B      point mutation at the same 6554 the A conditions use: identical
+#          value-mutation, structural mutation absent. This is C9.1's
+#          instrument control and C9.2's stability baseline.
+#   Bload  point mutation at 13763 = A10's total operator rate
+#          (6554 point + 6554 duplication + 655 deletion): identical total
+#          mutational input, structural mutation absent. This separates
+#          "structure" from "mutation load".
+# If the two controls disagree, that difference is itself the finding.
+campaign phase9-c91-confirmatory
+ticks 60000
+workers 8
+seeds 3001..3030
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.transposition_q16 0
+condition B
+condition Bload
+condition A1
+condition A3
+condition A10
+condition A1i
+condition A10i
+set B genome2.mutation.duplication_q16 0
+set B genome2.mutation.deletion_q16 0
+set B genome2.mutation.insertion_q16 0
+set Bload genome2.mutation.duplication_q16 0
+set Bload genome2.mutation.deletion_q16 0
+set Bload genome2.mutation.insertion_q16 0
+set Bload genome2.mutation.point_q16 13763
+set A1 genome2.mutation.duplication_q16 655
+set A3 genome2.mutation.duplication_q16 1966
+set A10 genome2.mutation.duplication_q16 6554
+set A1i genome2.mutation.duplication_q16 655
+set A1i genome2.mutation.insertion_q16 655
+set A10i genome2.mutation.duplication_q16 6554
+set A10i genome2.mutation.insertion_q16 6554
+vary genome2.mutation.duplication_q16
+vary genome2.mutation.deletion_q16
+vary genome2.mutation.insertion_q16
+vary genome2.mutation.point_q16
+output events on
+output snapshots on

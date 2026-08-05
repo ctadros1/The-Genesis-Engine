@@ -15,6 +15,7 @@ mod demography;
 mod paired;
 mod power;
 mod spatial;
+mod structure;
 
 pub use demography::{
     DEMOGRAPHY_INDEX_VERSION, WorldDemography, spearman_milli, thermal_match_rho_milli,
@@ -32,6 +33,11 @@ pub use sim_core::preferred_temperature_milli;
 pub use spatial::{
     COARSE_SCALE_CELLS, FINE_SCALE_CELLS, IndexRefusal, QuadratGrid, SPATIAL_INDEX_VERSION,
     WorldIndex, world_index,
+};
+pub use structure::{
+    STRUCTURE_ANALYSIS_VERSION, StabilityReport, StructureOutcome, StructurePlan, WorldStructure,
+    pairs_of as structure_pairs, render as render_structure, stability, stability_count,
+    summarise as summarise_structure, worlds_for as structure_worlds,
 };
 
 use sim_experiment::Manifest;

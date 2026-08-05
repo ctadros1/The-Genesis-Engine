@@ -1,0 +1,78 @@
+# Phase 9 ecology calibration sweep.
+#
+# Purpose: fix the ecological regime the C9.1/C9.2/C9.5 campaign runs in,
+# before that campaign is written. D-073 recorded why this has to happen
+# first: structural evolution is bought with generations, not with ticks,
+# and the world-integration test's own first configuration produced 25
+# births in 6,000 ticks and therefore no structural signal at all. A
+# criterion run in a world like that returns a null caused by the birth
+# rate. This is the same move Phase 8 made when it swept its mortality
+# regime before its confirmatory campaign, and for the same reason.
+#
+# The quantity being calibrated is **generational turnover**:
+# `max_ancestry_depth`, the number of generations a lineage has actually
+# gone through. Births alone are not it - a world can have many births and
+# few generations if the population is large - and `max_ancestry_depth` is
+# what multiplies the per-birth mutation rate into mutational input.
+#
+# The selection rule is stated here, before the run: take the condition
+# with the highest median generation count subject to (a) no extinctions
+# across the eight seeds and (b) a final population of at least 200, which
+# is the population below which a median over the survivors starts to be
+# a statement about a handful of organisms. Both are outcome-blind with
+# respect to anything structural - neither mentions node counts, edge
+# counts, or diversity - which is what keeps this a calibration rather
+# than a search for a regime that produces the answer.
+#
+# Seeds 1..8, disjoint from the confirmatory campaign's 3001..3030.
+#
+# Mutation rates are held at their documented defaults throughout. This
+# sweep is about the ecology only; the mutation regime is swept as a
+# factor inside the confirmatory campaign itself and reported as a curve.
+#
+# 128x128 rather than Phase 8's 256x256: without climate there is no
+# `Arid`-cell requirement to refuse seeds on, and the smaller map runs
+# four times faster, which is what makes a 60,000-tick budget affordable.
+# 60,000 ticks because 20,000 gave ~22 generations and 60,000 gives ~60,
+# and generations are the currency here.
+campaign phase9-ecology-sweep
+ticks 60000
+workers 8
+seeds 1..8
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+# Carrying-capacity arm. k030 is the shipped default; k120 is what Phase 8
+# adopted for the same reason (at the default, worlds were dying before the
+# mechanism under test could act).
+condition k030
+condition k120
+condition k240
+# Mortality arm at the k120 capacity. Turnover in a capacity-limited world
+# is set by the death rate, so this is the other lever on generation count.
+condition m000
+condition m040
+# The climate arm lives in `phase9-climate-probe.campaign` instead. At
+# 128x128 the preflight refuses four of these eight seeds, because half of
+# them generate no `Arid` cells at that map size, and a climate arm that
+# ran on a different seed set would not be seed-matched to the others.
+# Moving it to 256x256 keeps the comparison matched at the cost of not
+# sharing this sweep's map size, which is the honest trade: climate vs no
+# climate at one size answers the question, climate confounded with map
+# size does not.
+set k030 cell_capacity_milli 30000
+set k120 cell_capacity_milli 120000
+set k240 cell_capacity_milli 240000
+set m000 cell_capacity_milli 120000
+set m000 physiology.extrinsic_hazard_q16_per_s 0
+set m040 cell_capacity_milli 120000
+set m040 physiology.extrinsic_hazard_q16_per_s 40
+vary cell_capacity_milli
+vary physiology.extrinsic_hazard_q16_per_s
+output events off
+output snapshots off

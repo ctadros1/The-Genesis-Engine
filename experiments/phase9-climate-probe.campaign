@@ -1,0 +1,36 @@
+# Phase 9 climate probe: does a seasonal environment change the structural
+# signal?
+#
+# Split out of `phase9-ecology-sweep.campaign` because at 128x128 half the
+# seeds generate no `Arid` cells and the preflight refuses them, so a
+# climate arm there could not be seed-matched to the others. Run at 256x256
+# on eight seeds Phase 6 established generate a full biome set, with
+# climate as the only difference between the two conditions.
+#
+# The question is real and not rhetorical. A stationary, homogeneous world
+# may simply not reward a larger network: if three nodes are enough, then a
+# structural null is a fact about the environment rather than about
+# duplication, and reporting it as the latter would be wrong. A seasonal
+# world is the cheapest available environment with a time-varying optimum.
+#
+# This is a probe, not a criterion. It informs whether the confirmatory
+# campaign runs with climate on, and its result is reported either way.
+campaign phase9-climate-probe
+ticks 60000
+workers 8
+seeds 2002..2003 2005 2007..2011
+base preset phase2
+base cells_x 256
+base cells_y 256
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+condition dry
+condition clim
+set clim climate.enabled true
+vary climate.enabled
+output events off
+output snapshots off

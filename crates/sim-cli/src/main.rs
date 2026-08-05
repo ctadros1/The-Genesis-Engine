@@ -76,6 +76,7 @@ fn run() -> Result<(), String> {
         Some("report") => command_report(parse_options(args.collect())?),
         Some("spatial") => command_spatial(parse_options(args.collect())?),
         Some("demography") => command_demography(parse_options(args.collect())?),
+        Some("structure") => command_structure(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -95,6 +96,7 @@ fn usage() -> String {
         "       lifesim report --manifest FILE [--baseline CONDITION]\n",
         "       lifesim spatial --manifest FILE --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX] [--power]\n",
         "       lifesim demography --manifest FILE\n",
+        "       lifesim structure --manifest FILE --baseline CONDITION\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2\n",
@@ -747,6 +749,98 @@ fn command_spatial(options: Options) -> Result<(), String> {
             }
         }
     }
+    Ok(())
+}
+
+/// Phase 9 C9.1, C9.2, and C9.5: structural evolution against a control.
+///
+/// The baseline condition is the structural-mutation-disabled control every
+/// stability contrast is drawn against. Criterion decisions are printed with
+/// the counts that produced them, and the analysis plan is echoed, so a
+/// reader can check the bars against the campaign source rather than trusting
+/// this program's arithmetic.
+fn command_structure(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("structure requires --manifest\n{}", usage()))?;
+    let baseline = options
+        .baseline
+        .as_deref()
+        .ok_or_else(|| format!("structure requires --baseline\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    if !manifest
+        .campaign
+        .conditions
+        .iter()
+        .any(|condition| condition.name == baseline)
+    {
+        return Err(format!("no condition named '{baseline}' in this campaign"));
+    }
+
+    let mut plan = sim_analysis::StructurePlan::default();
+    if let Some(seed) = options.analysis_seed {
+        plan.analysis_seed = seed;
+    }
+    if let Some(sesoi) = options.sesoi {
+        plan.stability_tolerance_milli = sesoi;
+    }
+
+    let per_world: Vec<(String, Vec<sim_analysis::WorldStructure>)> = manifest
+        .campaign
+        .conditions
+        .iter()
+        .map(|condition| {
+            (
+                condition.name.clone(),
+                sim_analysis::structure_worlds(&manifest, directory, &condition.name),
+            )
+        })
+        .collect();
+    let outcomes: Vec<sim_analysis::StructureOutcome> = per_world
+        .iter()
+        .map(|(name, worlds)| sim_analysis::summarise_structure(name, worlds, &plan))
+        .collect();
+
+    let control = per_world
+        .iter()
+        .find(|(name, _)| name == baseline)
+        .map(|(_, worlds)| worlds.clone())
+        .unwrap_or_default();
+    let mut stabilities = Vec::new();
+    for (name, worlds) in &per_world {
+        if name == baseline {
+            continue;
+        }
+        for (label, quantity) in [
+            (
+                "population",
+                (|world: &sim_analysis::WorldStructure| world.population as i64)
+                    as fn(&sim_analysis::WorldStructure) -> i64,
+            ),
+            ("median_lifespan", |world: &sim_analysis::WorldStructure| {
+                world.median_lifespan_ticks as i64
+            }),
+        ] {
+            let pairs = sim_analysis::structure_pairs(worlds, &control, quantity);
+            stabilities.push(sim_analysis::stability(
+                name, baseline, label, &pairs, &plan,
+            ));
+        }
+    }
+
+    print!(
+        "{}",
+        sim_analysis::render_structure(
+            &manifest.campaign.id,
+            &plan,
+            &per_world,
+            &outcomes,
+            &stabilities
+        )
+    );
     Ok(())
 }
 
