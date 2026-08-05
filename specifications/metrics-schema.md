@@ -89,6 +89,26 @@ Negative results are reported explicitly. A run with no segments and no
 traditions produces a report saying exactly that; an empty report is not the
 same as no report.
 
+## Phase 5 Metrics
+
+Two server gauges/counters added with asynchronous checkpointing:
+
+| Metric | Type | Labels | Meaning |
+|---|---|---|---|
+| `lifesim_checkpoint_capture_seconds` | gauge | `world`, `mode` | Wall-clock cost of the last state capture. In asynchronous mode this is the **only** part of a checkpoint the tick thread pays for, so it is exported separately from `lifesim_save_duration_seconds`, which covers the whole write |
+| `lifesim_checkpoints_skipped_total` | counter | `world` | Automatic checkpoints refused because the previous one was still being written |
+
+`lifesim_checkpoints_skipped_total` is deliberately a metric rather than a
+log line. A nonzero value is a configuration fact — the checkpoint interval
+is shorter than a checkpoint takes — and the alternative designs both lie
+about it: an unbounded queue turns a latency problem into a memory problem,
+and a silent drop makes the configured interval untrue.
+
+The batch runner and the event-log verifier emit single-line JSON summaries
+(`batch_schema_version`, `event_log_schema_version`) on stdout, in the same
+style as the existing `run`/`fixture` summaries. Campaign results proper
+live in the manifest, not in metrics: a campaign is not a time series.
+
 ## Benchmark Record
 
 Every benchmark result stores: benchmark schema version, git revision, date, host/VM profile, OS, CPU flags, toolchain/build profile, config hash, seed, world size, observed clients, warmup/run duration, raw sample path, p50/p95/p99, RSS, allocation and bandwidth notes. Benchmark IDs cannot be reused for different conditions.

@@ -30,9 +30,38 @@ flowchart TB
 | sim-server | World lifecycle, scheduling, authenticated controls, stream fan-out | Hidden simulation rules |
 | persistence | Framed snapshot encoding, migration, integrity verification | Unversioned raw memory dumps |
 | observer | Rendering, input UX, client interpolation, local cache | Authoritative organism behavior |
-| experiment runner | Isolated run orchestration, multi-world scheduling, campaign manifests, comparison metadata | Cross-world shared mutable state |
+| sim-experiment (Phase 5) | Isolated run orchestration, multi-world scheduling, campaign manifests, comparison metadata | Cross-world shared mutable state, any path back into a rule |
 | sim-analysis (Phase 16) | Offline similarity, era, and tradition detection over the event log and read-only views | A mutable world handle, an RNG stream, any path back into a rule |
 | metrics/events | Operational and scientific observability | Blocking the tick |
+
+### The Experiment Runner (Phase 5, implemented)
+
+`crates/sim-experiment` depends on `sim-core` and `sim-persist` and is
+depended on by neither. It introduces no randomness of its own, draws from
+no RNG stream, and nothing it computes can reach world state, so it sits on
+the same side of the ADR-0016 boundary as analysis.
+
+Two structural choices carry determinism rule 10, and both matter more than
+they look:
+
+- **A worker owns its world completely.** It builds the config, builds the
+  world, ticks it, and writes its own files. Nothing is borrowed across
+  worlds, so there is no shared buffer that could carry state from one world
+  into another.
+- **Results are stored by unit index, never appended on completion.** Output
+  ordering is the campaign's canonical (condition, seed) order no matter
+  which worker finished first. Appending on completion would make the
+  manifest depend on thread scheduling, which is the exact class of bug A5.2
+  exists to catch.
+
+Which worker claims which world is genuinely nondeterministic and is
+supposed to be. If that choice could reach a result, A5.2 fails, and it is
+designed to fail loudly rather than be argued away.
+
+A panicking or failing world is isolated: its unit is recorded as failed
+with its reason and the campaign continues. A failed world is reported,
+never silently dropped, and the comparison report refuses to aggregate a
+campaign that contains one.
 
 ### The Analysis Boundary Is A Dependency Direction
 

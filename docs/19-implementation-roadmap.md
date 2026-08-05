@@ -2,7 +2,7 @@
 
 ## Order Of Work
 
-Phases 0 through 4 are complete. Their plan documents, acceptance evidence,
+Phases 0 through 6 are complete. Phase 7's physics is complete and verified, but its primary endpoint is not yet measured, so the phase is not. Their plan documents, acceptance evidence,
 fixtures, and benchmark records are preserved unchanged.
 
 | Phase | Subject | Status |
@@ -12,9 +12,9 @@ fixtures, and benchmark records are preserved unchanged.
 | 2 | Genome, neural controller, paired reproduction | done |
 | 3 | Binary protocol, private server, PixiJS observer | done |
 | 4 | Versioned persistence and verified restore | done |
-| 5 | Headless scale and multi-world experiments | planned |
-| 6 | Biomes, climate drift, and world origin modes | planned |
-| 7 | Territory, contest, and damage | planned |
+| 5 | Headless scale and multi-world experiments | done |
+| 6 | Biomes, climate drift, and world origin modes | done |
+| 7 | Territory, contest, and damage | physics done; primary endpoint C7.1 unmeasured |
 | 8 | Evolvable genome: diploid genetics and variable topology | planned |
 | 9 | Modular morphology and development | planned |
 | 10 | Lifetime learning | planned |
@@ -36,12 +36,18 @@ evaluation remain backlog items requiring their own evidence.
 The ordering is a dependency argument, not a preference. Each claim below is
 the reason a phase cannot usefully precede its predecessor.
 
-**5 is first because every later acceptance criterion is a multi-seed
+**5 was first because every later acceptance criterion is a multi-seed
 claim.** Criteria of the form "the effect occurs in 20 of 30 seeds under
-condition A and 0 of 30 under condition B" are not measurable today: runs
-are paced against observer time, there is no independent-world scheduler,
-and there is no event log. Building any mechanism before the instrument that
+condition A and 0 of 30 under condition B" were not measurable: runs were
+paced against observer time, there was no independent-world scheduler, and
+there was no event log. Building any mechanism before the instrument that
 measures it means measuring it later, worse, and with fewer seeds.
+
+All three blockers are now closed, and the instrument turned out to catch
+design errors as well as measure results: a campaign whose declared seed set
+cannot all be generated is refused rather than quietly run at reduced power,
+and two conditions that are secretly the same experiment are refused before
+any compute is spent (D-046).
 
 **6 before 7 for two reasons.** Biome structure makes territory meaningful:
 contested space over a homogeneous map is a weaker question than contested

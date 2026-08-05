@@ -242,6 +242,187 @@ workload-dependent); populations reflect the live trajectory at tick
 2,000. Raw records under `benchmarks/raw/phase4-local-20260804T141013Z/`
 (intentionally ignored).
 
+## Phase 5 Local Record
+
+Benchmark ID: `phase5-local-20260804T210059Z` (2026-08-04 UTC), benchmark
+schema 3, baseline `phase4-local-20260804T141013Z`. Provenance: revision
+`67b6b074`; macOS 26.5 arm64, Apple M3 Pro, 12 logical cores; Rust 1.97.1
+release with thin LTO. Worlds are the Phase 2 defaults after 2,000 warm-up
+ticks. Schema 3 records are per-phase comparable only within schema 3;
+earlier records remain valid and unmodified.
+
+### Headless throughput per world
+
+| Tier | Population | ticks/s | Tick p50 (ms) | Tick p95 (ms) | Tick p99 (ms) |
+|---|---:|---:|---:|---:|---:|
+| 500 | 135 | 8,805 | 0.103 | 0.195 | 0.301 |
+| 2,000 | 1,051 | 1,653 | 0.520 | 1.194 | 1.623 |
+
+### Scheduler scaling and host contention
+
+16 independent worlds, 3,000 ticks each, 128x128 map, 200 founders.
+
+| Workers | Wall (s) | Aggregate ticks/s | Speedup | Per-world degradation |
+|---:|---:|---:|---:|---:|
+| 1 | 3.511 | 13,669 | 1.00x | 0% |
+| 2 | 1.939 | 24,750 | 1.81x | 9.5% |
+| 4 | 0.958 | 50,106 | 3.67x | 8.4% |
+| 8 | 0.708 | 67,790 | 4.96x | 38.0% |
+
+### Event-log write cost and growth
+
+Five alternating repetitions per tier; the median of each side is reported
+with the observed spread, because a single comparison on this host produced
+a *negative* overhead.
+
+| Tier | Median without (s) | Median with (s) | Median overhead | Spread (without/with) | Bytes / 10^6 ticks |
+|---|---:|---:|---:|---:|---:|
+| 500 | 0.5533 | 0.5237 | -5.3% | 18.9% / 50.1% | 0.99 MB |
+| 2,000 | 2.2517 | 2.2736 | +1.0% | 3.0% / 5.1% | 20.7 MB |
+
+### Checkpoint stall on the tick thread (A5.5)
+
+Checkpoint every 200 ticks over 2,000 ticks; tick budget is the configured
+tick interval, 100 ms at `dt_ms = 100`.
+
+| Tier | Mode | Tick p95 (ms) | Checkpoint-tick p50 (ms) | Checkpoint-tick max (ms) |
+|---|---|---:|---:|---:|
+| 500 | synchronous | 0.282 | 26.22 | 29.04 |
+| 500 | asynchronous | 0.154 | 1.44 | 1.63 |
+| 2,000 | synchronous | 1.405 | 67.99 | 75.59 |
+| 2,000 | asynchronous | 1.139 | 4.69 | 6.68 |
+
+Interpretation. **The stall on the tick thread falls by 14 to 18 times**:
+from 26 ms to 1.4 ms at the 500 tier and from 68 ms to 4.7 ms at the 2,000
+tier. The Phase 4 note recorded that the synchronous stall stayed under one
+tick interval at both tiers, which was true, but the 2,000-tier figure of
+75.6 ms was 76 percent of the budget with no headroom for a slower disk, a
+larger population, or the extra state later phases add. Asynchronous
+checkpointing leaves roughly fifteen times the margin. The write itself did
+not get cheaper — it peaked at 86.3 ms at the 2,000 tier — it simply
+stopped happening on the tick thread.
+
+Two caveats stated rather than buried. First, **p95 over all ticks cannot
+see this effect at all**: with a checkpoint every 200 ticks only 0.5 percent
+of ticks carry one, so the stall lives above p99.5 and a p95-only report
+would show nothing. The checkpoint ticks are therefore measured separately
+and that is the column that matters. Second, the asynchronous writer
+competes with the tick thread for memory bandwidth, so the general tick
+distribution is not uniformly better; at the 2,000 tier p95 improved, but
+the effect is small relative to run-to-run variance and is not claimed as a
+result.
+
+At the 500 tier one checkpoint in ten was **refused** because the previous
+write had not finished (200 ticks at 0.1 ms is 20 ms, shorter than a 24 ms
+write). Refusals are counted and exported as
+`lifesim_checkpoints_skipped_total`; a nonzero value means the configured
+interval is shorter than a checkpoint takes, which is a configuration fact
+worth surfacing rather than hiding behind an unbounded queue.
+
+The event-log write cost is **not resolvable above run-to-run variance** at
+either tier: the 2,000-tier median overhead of 1.0 percent sits inside a
+3-5 percent spread, and the 500-tier median is negative. The honest
+statement is that the cost is below this host's noise floor, not that it is
+1 percent. Growth is the firmer number: 20.7 MB per 10^6 ticks at the 2,000
+tier, 0.99 MB at the 500 tier, at 48-58 bytes per event.
+
+Scheduler scaling is close to linear to 4 workers (3.67x with 8.4 percent
+per-world degradation) and falls off at 8 (4.96x, 38 percent), which is the
+expected shape for 12 logical cores where 4 are performance cores. **No
+supported campaign size is claimed from this**; it is one host, and the
+deployment-VM measurement remains an open Phase 0 gate.
+
+Limitations: local development host; a single filesystem; populations
+reflect the live trajectory at tick 2,000; the scheduler measurement uses
+small worlds so that 16 of them fit in a short run. Raw records under
+`benchmarks/raw/phase5-local-20260804T210059Z/` (intentionally ignored).
+
+## Phase 6 Local Record
+
+Benchmark ID: `phase6-local-20260804T224418Z`, benchmark schema 4, baseline
+`phase1-local-20260804T034607Z`. macOS 26.5 arm64, Apple M3 Pro, Rust 1.97.1
+release with thin LTO. 256x256 (65,536 cells), 500 founders, 3,000 measured
+ticks after 500 warm-up.
+
+### Environment phase, by field
+
+| Configuration | Environment p50 (us) | Environment p95 (us) | Ticks/s |
+|---|---:|---:|---:|
+| Climate off (Phase 1/2 regrowth only) | 50.8 | 155.1 | 7,296 |
+| Moisture exchange only | 481.0 | 584.8 | 1,797 |
+| Moisture + reclassify every 100 ticks | 473.0 | 575.9 | 1,793 |
+| Moisture + reclassify every tick | 1,121.3 | 1,203.6 | 832 |
+
+### Founder generation, one-time at tick 0
+
+| Origin | `World::new` p50 (ms) | p95 (ms) |
+|---|---:|---:|
+| `random`, one deme | 5.98 | 6.09 |
+| `random`, four demes | 6.22 | 6.35 |
+| `seeded`, two archetypes | 7.26 | 7.64 |
+
+Interpretation, and it answers the question the plan asked. **The
+reclassification cadence does not need a dirty-cell strategy; the moisture
+exchange does.** Reclassifying every 100 ticks is free — 473 versus 481
+microseconds is inside the run-to-run spread, so the amortization works as
+designed. Reclassifying every tick more than doubles the phase, which is
+exactly the cost the cadence exists to avoid and confirms the cadence is
+load-bearing rather than decorative.
+
+The per-tick moisture exchange is the real cost: it adds roughly 430
+microseconds to a phase that was 51, and drops whole-tick throughput from
+7,296 to 1,793 ticks per second, a **4x slowdown**. That is a large price
+for a field that changes slowly, and it is the obvious first optimization
+target — the exchange visits every neighbouring pair every tick to move
+quantities that are near their fixed point most of the time. A cadence for
+moisture, or a dirty-region scheme, is now a measured backlog item rather
+than a guess.
+
+Founder generation is one-time and small: four demes cost 4 percent more
+than one, and `seeded` costs 21 percent more than `random`, against a
+`World::new` that is dominated by terrain generation in every case.
+
+One comparison to make carefully rather than loosely: the Phase 1 record
+described the environment phase as "about 200 microseconds for the 65,536-cell
+logistic regrowth scan", and the climate-off row here reads 50.8 microseconds
+p50 for what should be the same work. The two are not directly comparable —
+different host state, different measurement harness, and a p50 against a
+figure that was not stated as a percentile — so this is recorded as a note,
+not as a claimed improvement. Benchmark schema 4 records are per-phase
+comparable only within schema 4.
+
+Limitations: local development host; one map size; the environment-phase
+timer is a `TickObserver` hook, so it includes observer dispatch. Raw records
+under `benchmarks/raw/phase6-local-20260804T224418Z/` (intentionally ignored).
+
+## Phase 6 Partial Measurement: Biome Reachability By Map Size
+
+Not a benchmark record; a generation-validity measurement taken while
+calibrating the biome thresholds, recorded because it constrains how Phase 6
+campaigns must be configured.
+
+C6.7 rejects a world in which any biome is empty. How often that fires
+depends almost entirely on map size, because `Arid` requires an interior far
+enough from water to be dry and a small continent does not have one.
+
+| Map | Worlds generated (of 30 seeds) | Rejected for land fraction | Rejected for an empty biome |
+|---|---:|---:|---:|
+| 96x96 | 8 | 1 | 21 |
+| 160x160 | 14 | 0 | 16 |
+| 256x256 | 22 | 0 | 8 |
+
+`Arid` is the only missing biome at 160x160 and above. This is a physical
+result, not a threshold artifact: the thresholds were calibrated against
+measured field distributions across seven seeds (land elevation spans
+roughly 17,000 to 35,500-53,300 Q16; inland moisture spans 18,500-37,000 to
+111,500-115,600 milli-units), and every threshold sits inside the range every
+seed reaches.
+
+The operational consequence is that a Phase 6 campaign must either use the
+256x256 default map or expect roughly a quarter of its seeds to be refused.
+Phase 5's preflight makes that visible before compute is spent rather than
+after, which is exactly what it exists for.
+
 ## Required Record Format
 
 | Field | Required Value |

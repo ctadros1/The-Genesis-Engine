@@ -39,6 +39,13 @@ const SECTION_ORGANISMS: u16 = 3;
 const SECTION_BIOMASS: u16 = 4;
 const SECTION_LEDGER: u16 = 5;
 const SECTION_PHASE2: u16 = 6;
+/// Phase 6 climate. Optional exactly as the Phase 2 section is: present
+/// only when the subsystem exists, absent otherwise, so a world without
+/// climate encodes byte-identically to the way it always did. Section tags
+/// are permanent and never reused.
+const SECTION_CLIMATE: u16 = 7;
+/// Phase 7 contest. Optional on the same terms as Phase 2 and climate.
+const SECTION_CONTEST: u16 = 8;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodecError {
@@ -366,12 +373,47 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.u64(phase2.counters.mutated_neural_genes_total);
         write_section(&mut payload, SECTION_PHASE2, section.0);
     }
+    if let Some(climate) = state.climate.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(climate.moisture_milli.len() as u64);
+        for &value in &climate.moisture_milli {
+            section.i64(value);
+        }
+        section.i128(climate.capacity_loss_milli);
+        write_section(&mut payload, SECTION_CLIMATE, section.0);
+    }
+    if let Some(contest) = state.contest.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(contest.health_milli.len() as u64);
+        for index in 0..contest.health_milli.len() {
+            section.i64(contest.health_milli[index]);
+            section.i64(contest.recent_damage_milli[index]);
+        }
+        section.u64(contest.carcasses.len() as u64);
+        for carcass in &contest.carcasses {
+            section.u64(carcass.id);
+            section.i32(carcass.x_fp);
+            section.i32(carcass.y_fp);
+            section.i64(carcass.energy_milli);
+            section.u64(carcass.created_tick);
+        }
+        section.i128(contest.carcass_created_milli);
+        section.i128(contest.carcass_consumed_milli);
+        section.i128(contest.carcass_decayed_milli);
+        section.u64(contest.attacks_total);
+        section.i128(contest.damage_dealt_milli);
+        section.u64(contest.deaths_by_damage_total);
+        section.i128(contest.healed_milli);
+        write_section(&mut payload, SECTION_CONTEST, section.0);
+    }
     payload
 }
 
 fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecError> {
     let mut offset = 0_usize;
     let mut config = None;
+    let mut climate: Option<sim_core::ClimateSaveState> = None;
+    let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut meta: Option<(u64, bool, bool, u64, u64)> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
     let mut organisms: Option<OrganismColumns> = None;
@@ -564,6 +606,72 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 };
                 phase2 = Some(section);
             }
+            SECTION_CLIMATE => {
+                if climate.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let count = reader.u64()?;
+                // Cap the declared length against the section body before
+                // any allocation, exactly as every other section does.
+                if count.checked_mul(8).and_then(|len| len.checked_add(8 + 16))
+                    != Some(body.len() as u64)
+                {
+                    return Err(CodecError::ValueOutOfRange("climate count"));
+                }
+                let mut moisture_milli = Vec::with_capacity(count as usize);
+                for _ in 0..count {
+                    moisture_milli.push(reader.i64()?);
+                }
+                climate = Some(sim_core::ClimateSaveState {
+                    moisture_milli,
+                    capacity_loss_milli: reader.i128()?,
+                });
+            }
+            SECTION_CONTEST => {
+                if contest.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let organisms = reader.u64()?;
+                // Cap before allocating: 16 bytes per organism plus the
+                // carcass count that follows.
+                if organisms.checked_mul(16).and_then(|len| len.checked_add(8))
+                    > Some(body.len() as u64)
+                {
+                    return Err(CodecError::ValueOutOfRange("contest organisms"));
+                }
+                let mut health_milli = Vec::with_capacity(organisms as usize);
+                let mut recent_damage_milli = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    health_milli.push(reader.i64()?);
+                    recent_damage_milli.push(reader.i64()?);
+                }
+                let carcass_count = reader.u64()?;
+                if carcass_count.checked_mul(32) > Some(body.len() as u64) {
+                    return Err(CodecError::ValueOutOfRange("contest carcasses"));
+                }
+                let mut carcasses = Vec::with_capacity(carcass_count as usize);
+                for _ in 0..carcass_count {
+                    carcasses.push(sim_core::Carcass {
+                        id: reader.u64()?,
+                        x_fp: reader.i32()?,
+                        y_fp: reader.i32()?,
+                        energy_milli: reader.i64()?,
+                        created_tick: reader.u64()?,
+                    });
+                }
+                contest = Some(sim_core::ContestSaveState {
+                    health_milli,
+                    recent_damage_milli,
+                    carcasses,
+                    carcass_created_milli: reader.i128()?,
+                    carcass_consumed_milli: reader.i128()?,
+                    carcass_decayed_milli: reader.i128()?,
+                    attacks_total: reader.u64()?,
+                    damage_dealt_milli: reader.i128()?,
+                    deaths_by_damage_total: reader.u64()?,
+                    healed_milli: reader.i128()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -597,6 +705,8 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
         ledger,
         counters,
         phase2,
+        climate,
+        contest,
     })
 }
 

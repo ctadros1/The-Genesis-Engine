@@ -75,6 +75,50 @@ A snapshot header includes magic bytes, format version, simulation build version
 
 Save work must not block the hot tick indefinitely. If copy-on-write/serialization cost becomes material, measure it before changing the model.
 
+### Asynchronous Checkpointing (Phase 5, implemented)
+
+It did become material, it was measured, and the model changed. Phase 4 ran
+steps 3 through 6 on the tick thread; Phase 5 keeps only step 2 there.
+
+The tick thread captures `SaveState` — an owned deep copy at a tick
+boundary — and hands it to a writer thread that does the encoding,
+compression, atomic write, `fsync`, catalog commit, and pruning. The
+durability ordering above is untouched, so an interrupted asynchronous write
+leaves exactly the same evidence an interrupted synchronous one did, which
+is what the extended crash-simulation test asserts.
+
+Because the writer only ever sees an owned immutable capture, it cannot
+observe a torn world: there is no path by which a snapshot is encoded from
+live arrays. That is what makes the asynchronous path safe rather than
+merely faster.
+
+The queue holds **at most one** request. A checkpoint requested while
+another is still being written is refused and counted, never queued and
+never silently discarded: an unbounded queue under a slow disk turns a
+latency problem into a memory problem, and a silent drop makes the
+configured checkpoint interval a lie. Refusals are exported as
+`lifesim_checkpoints_skipped_total`.
+
+The synchronous path remains available behind `--checkpoint-mode sync` so
+the Phase 4 behavior can be measured and rolled back to.
+
+Measured effect (`phase5-local-20260804T210059Z`): the tick-thread stall
+falls from 26.2 ms to 1.4 ms at the 500 tier and from 68.0 ms to 4.7 ms at
+the 2,000 tier, against a 100 ms tick budget. The write itself did not get
+cheaper — it peaked at 86.3 ms — it stopped happening on the tick thread.
+
+### The Event Log (Phase 5, implemented)
+
+The append-only event-log file deferred under D-019 exists; framing and
+decode rules are specified in `specifications/event-schema.md`. Snapshots
+now record a real `event_log_offset`: the byte length of the log at capture,
+so a restored world knows where its recorded history stops. Snapshots taken
+without a log still record zero, and that remains valid.
+
+Measured growth: 20.7 MB per 10^6 ticks at the 2,000 tier and 0.99 MB at the
+500 tier, at 48-58 bytes per event. The write cost is below this host's
+run-to-run noise floor and is deliberately **not** claimed as a percentage.
+
 ## Recovery And Compatibility
 
 On startup, scan and validate the catalog and latest checkpoints. Reject invalid/incompatible saves with actionable reason codes. Supported migrations are explicit, tested transforms from one format version to another. If no safe migration exists, preserve the old save read-only and require a compatible binary; never best-effort load an unknown schema.

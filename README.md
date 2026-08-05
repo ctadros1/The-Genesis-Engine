@@ -2,24 +2,31 @@
 
 ## Status
 
-**Phase 4 local persistence.** The stack now spans the deterministic
+**Phase 5 experiment instrument.** The stack spans the deterministic
 Phase 1/2 kernel (`crates/sim-core`), the binary observer protocol and
 private server (`crates/sim-protocol`, `crates/sim-server`), the
-TypeScript/PixiJS observer (`apps/observer`), and versioned persistence
-(`crates/sim-persist`): ALIF format 1 snapshots (zstd), atomic writes, an
-SQLite catalog, automatic checkpoints with retention, startup recovery,
-isolated restore verification, save branching (`--load-save`), CSV
-export, and an experiment comparer. Phase 1 and Phase 2 fixtures are
-preserved exactly, and a restored world continues bit-identically. There
-is still no deployment configuration; the server binds 127.0.0.1 only.
-No Proxmox or other homelab service is accessed or changed by any of this
-work. Infrastructure and physical-device gates remain open; see
+TypeScript/PixiJS observer (`apps/observer`), versioned persistence
+(`crates/sim-persist`), and the multi-seed experiment harness
+(`crates/sim-experiment`).
+
+Phase 5 turned the prototype into an instrument: an append-only ALEV event
+log with fail-closed decode, an independent-world scheduler proven not to
+reach a result at any worker count, campaigns whose conditions are named
+config deltas with their own hashes, manifests that carry their own
+campaign source, comparison reports that refuse to aggregate anything they
+cannot justify, and asynchronous checkpointing that cuts the tick-thread
+stall by 14 to 18 times. Both original fixtures still reproduce from clean
+processes under every new execution path.
+
+There is still no deployment configuration; the server binds 127.0.0.1
+only. No Proxmox or other homelab service is accessed or changed by any of
+this work. Infrastructure and physical-device gates remain open; see
 `planning/backlog.md`.
 
 **The project goal changed on 2026-08-04** (see Purpose below). Phases 0
 through 4 are unchanged and their records, fixtures, and benchmarks are
-preserved exactly. Phases 5 through 16 are newly planned and none has
-started. All ADRs remain Proposed.
+preserved exactly. Phase 5 is complete. Phases 6 through 16 are planned and
+none has started. All ADRs remain Proposed.
 
 Run it locally:
 
@@ -28,6 +35,15 @@ scripts/bootstrap-phase0-toolchain.sh
 cargo build --release -p sim-server
 target/release/lifesim-server        # prints generated tokens
 cd apps/observer && npm install && npm run dev
+~~~
+
+Run a multi-seed experiment:
+
+~~~sh
+cargo build --release -p sim-cli
+target/release/lifesim fields                        # settable config fields
+target/release/lifesim batch --campaign my.campaign --output runs/ --workers 4
+target/release/lifesim report --manifest runs/manifest.txt
 ~~~
 
 ## Purpose
@@ -128,9 +144,12 @@ The open-ended-evolution goal adds a second scale axis that matters more
 than organism count: **generations reached, multiplied by seeds, multiplied
 by ablation conditions.** The Phase 2 long run reached 127 ancestry
 generations in 200,000 ticks; a cultural ratchet plausibly needs far more,
-and every ablation multiplies the requirement. Phase 5 exists to decouple
-runs from observer pacing and to schedule many independent worlds. No
-throughput target is claimed before it is measured.
+and every ablation multiplies the requirement. Phase 5 decoupled runs from
+observer pacing and added an independent-world scheduler. Measured on the
+development host: 8,805 ticks/s per world at the 500 tier, 1,653 at the
+2,000 tier, and 3.67x aggregate throughput across 16 worlds at 4 workers.
+**No supported campaign size is claimed from that**; it is one host, and the
+deployment-VM measurement remains an open gate.
 
 ## Observer Experience
 
@@ -152,6 +171,8 @@ The initial browser observer emphasizes clear top-down pixel art, pan/zoom, terr
 - [Codex operating guide](CODEX.md)
 - [Complete file manifest](FILE_MANIFEST.md)
 - [Simulation kernel](crates/sim-core/src/lib.rs)
+- [Experiment harness](crates/sim-experiment/src/lib.rs)
+- [Event log format](crates/sim-persist/src/eventlog.rs)
 - [Headless CLI](crates/sim-cli/src/main.rs)
 - [Observer protocol](crates/sim-protocol/src/lib.rs)
 - [Observer server](crates/sim-server/src/main.rs)

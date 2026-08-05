@@ -350,12 +350,21 @@ name = "sim-cli"
 version = "0.1.0"
 dependencies = [
  "sim-core",
+ "sim-experiment",
  "sim-persist",
 ]
 
 [[package]]
 name = "sim-core"
 version = "0.1.0"
+
+[[package]]
+name = "sim-experiment"
+version = "0.1.0"
+dependencies = [
+ "sim-core",
+ "sim-persist",
+]
 
 [[package]]
 name = "sim-persist"

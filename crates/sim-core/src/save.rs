@@ -7,7 +7,9 @@
 //! `(seed, config)` on restore and verified against the recorded terrain
 //! checksum, so a save cannot silently reinterpret a different world.
 
+use crate::climate::ClimateWorld;
 use crate::config::SimConfig;
+use crate::contest::{Carcass, ContestState};
 use crate::genome::{Genome, MEMORY_VALUES, Phenotype};
 use crate::phase2::{Phase2Counters, Phase2State};
 use crate::world::{Counters, Ledger, World};
@@ -34,6 +36,33 @@ pub struct Phase2SaveState {
     pub counters: Phase2Counters,
 }
 
+/// Stored Phase 6 climate state.
+///
+/// Only the integrator is here. Biome is derived and reclassified on load,
+/// and temperature under the default policy is a pure function of
+/// `(base, tick)`, so neither is stored — the same rule that keeps
+/// phenotypes and genome hashes out of a save.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClimateSaveState {
+    pub moisture_milli: Vec<i64>,
+    pub capacity_loss_milli: i128,
+}
+
+/// Stored Phase 7 contest state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ContestSaveState {
+    pub health_milli: Vec<i64>,
+    pub recent_damage_milli: Vec<i64>,
+    pub carcasses: Vec<Carcass>,
+    pub carcass_created_milli: i128,
+    pub carcass_consumed_milli: i128,
+    pub carcass_decayed_milli: i128,
+    pub attacks_total: u64,
+    pub damage_dealt_milli: i128,
+    pub deaths_by_damage_total: u64,
+    pub healed_milli: i128,
+}
+
 /// Complete logical world state in stable field order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveState {
@@ -55,6 +84,10 @@ pub struct SaveState {
     pub ledger: Ledger,
     pub counters: Counters,
     pub phase2: Option<Phase2SaveState>,
+    /// Present exactly when the config's climate section is enabled.
+    pub climate: Option<ClimateSaveState>,
+    /// Present exactly when the config's contest section is enabled.
+    pub contest: Option<ContestSaveState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -65,6 +98,7 @@ pub enum RestoreError {
     LengthMismatch { field: &'static str },
     EntityOrder,
     InvalidGenome { index: usize },
+    ClimateInvalid(String),
     StateInvalid(String),
     StateChecksumMismatch { recorded: u64, actual: u64 },
 }
@@ -114,6 +148,26 @@ impl World {
             ledger: self.ledger(),
             counters: self.counters(),
             phase2,
+            climate: self
+                .climate_state()
+                .map(|climate: &ClimateWorld| ClimateSaveState {
+                    moisture_milli: climate.state.moisture_milli.clone(),
+                    capacity_loss_milli: climate.capacity_loss_milli,
+                }),
+            contest: self
+                .contest_state()
+                .map(|contest: &ContestState| ContestSaveState {
+                    health_milli: contest.health_milli.clone(),
+                    recent_damage_milli: contest.recent_damage_milli.clone(),
+                    carcasses: contest.carcasses.clone(),
+                    carcass_created_milli: contest.carcass_created_milli,
+                    carcass_consumed_milli: contest.carcass_consumed_milli,
+                    carcass_decayed_milli: contest.carcass_decayed_milli,
+                    attacks_total: contest.attacks_total,
+                    damage_dealt_milli: contest.damage_dealt_milli,
+                    deaths_by_damage_total: contest.deaths_by_damage_total,
+                    healed_milli: contest.healed_milli,
+                }),
         }
     }
 
@@ -212,6 +266,73 @@ impl World {
             None => None,
         };
 
+        // Climate presence must match the configuration, and the restored
+        // moisture is validated and reclassified rather than trusted.
+        let rebuilt_climate = match (world.climate_enabled(), state.climate) {
+            (true, Some(climate)) => {
+                if climate.moisture_milli.len() != world.terrain().cell_count() {
+                    return Err(RestoreError::LengthMismatch {
+                        field: "climate.moisture_milli",
+                    });
+                }
+                Some(
+                    ClimateWorld::from_restored(
+                        world.terrain(),
+                        world.config(),
+                        climate.moisture_milli,
+                        climate.capacity_loss_milli,
+                        state.tick,
+                    )
+                    .map_err(|error| RestoreError::ClimateInvalid(error.to_string()))?,
+                )
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "climate section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
+        // Contest presence must match the configuration, and the restored
+        // arrays are length-checked against the population before use.
+        let rebuilt_contest = match (world.contest_enabled(), state.contest) {
+            (true, Some(contest)) => {
+                same_length(contest.health_milli.len(), "contest.health_milli")?;
+                same_length(
+                    contest.recent_damage_milli.len(),
+                    "contest.recent_damage_milli",
+                )?;
+                if contest
+                    .carcasses
+                    .windows(2)
+                    .any(|pair| pair[0].id >= pair[1].id)
+                {
+                    return Err(RestoreError::StateInvalid(
+                        "carcass table is not sorted by ID".to_owned(),
+                    ));
+                }
+                let mut rebuilt = ContestState::with_capacity(population);
+                rebuilt.health_milli = contest.health_milli;
+                rebuilt.recent_damage_milli = contest.recent_damage_milli;
+                rebuilt.carcasses = contest.carcasses;
+                rebuilt.carcass_created_milli = contest.carcass_created_milli;
+                rebuilt.carcass_consumed_milli = contest.carcass_consumed_milli;
+                rebuilt.carcass_decayed_milli = contest.carcass_decayed_milli;
+                rebuilt.attacks_total = contest.attacks_total;
+                rebuilt.damage_dealt_milli = contest.damage_dealt_milli;
+                rebuilt.deaths_by_damage_total = contest.deaths_by_damage_total;
+                rebuilt.healed_milli = contest.healed_milli;
+                Some(rebuilt)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "contest section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -227,6 +348,8 @@ impl World {
             state.ledger,
             state.counters,
             rebuilt_phase2,
+            rebuilt_climate,
+            rebuilt_contest,
         );
 
         world

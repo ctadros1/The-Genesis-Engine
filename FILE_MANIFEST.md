@@ -44,12 +44,18 @@ this manifest.
 - scripts/verify-determinism.sh
 - scripts/verify-phase1-determinism.sh
 - scripts/verify-phase2-determinism.sh
+- scripts/run-phase5-benchmarks.sh
+- scripts/run-phase6-benchmarks.sh
+- scripts/verify-phase5-determinism.sh
 
 ## Simulation Kernel (Phases 1 And 2)
 
 - crates/sim-core/Cargo.toml
 - crates/sim-core/src/lib.rs
 - crates/sim-core/src/checksum.rs
+- crates/sim-core/src/climate.rs
+- crates/sim-core/src/contest.rs
+- crates/sim-core/src/origin.rs
 - crates/sim-core/src/config.rs
 - crates/sim-core/src/controller.rs
 - crates/sim-core/src/genome.rs
@@ -59,6 +65,9 @@ this manifest.
 - crates/sim-core/src/world.rs
 - crates/sim-core/src/worldgen.rs
 - crates/sim-core/tests/determinism.rs
+- crates/sim-core/tests/phase6_origin.rs
+- crates/sim-core/tests/phase7_contest.rs
+- crates/sim-core/tests/bench_phase6.rs
 - crates/sim-core/tests/genome_malformed_harness.rs
 - crates/sim-core/tests/longrun.rs
 - crates/sim-core/tests/phase2_determinism.rs
@@ -79,6 +88,25 @@ this manifest.
 - crates/sim-persist/src/store.rs
 - crates/sim-persist/tests/bench_saves.rs
 - crates/sim-persist/tests/persistence.rs
+
+## Experiment Harness And Event Log (Phase 5)
+
+- crates/sim-persist/src/eventlog.rs
+- crates/sim-persist/src/founders.rs
+- crates/sim-persist/src/checkpoint.rs
+- crates/sim-persist/tests/eventlog.rs
+- crates/sim-persist/tests/founders.rs
+- crates/sim-experiment/Cargo.toml
+- crates/sim-experiment/src/lib.rs
+- crates/sim-experiment/src/fields.rs
+- crates/sim-experiment/src/campaign.rs
+- crates/sim-experiment/src/scheduler.rs
+- crates/sim-experiment/src/manifest.rs
+- crates/sim-experiment/src/report.rs
+- crates/sim-experiment/tests/phase5_determinism.rs
+- crates/sim-experiment/tests/bench_phase5.rs
+- crates/sim-cli/tests/phase5_cli.rs
+- crates/sim-server/tests/phase5_acceleration.rs
 
 ## Observer Protocol And Server (Phase 3)
 

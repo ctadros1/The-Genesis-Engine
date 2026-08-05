@@ -1,6 +1,102 @@
 # Phase 7: Territory, Contest, And Damage
 
-Status: planned, not started. Policy version `contest-behavior-v1`.
+Status: **physics complete and verified; primary endpoint not measured.
+2026-08-04.** Policy version `contest-behavior-v1`. Decisions D-051, D-052.
+
+## Implementation Status
+
+**Delivered and verified** (`crates/sim-core/src/contest.rs`, world
+integration, save/restore, event schema 3):
+
+- Health as real per-organism state with damage, healing, and death by
+  health depletion joining the existing causes; both accumulators fixed
+  point per determinism rule 7.
+- The attack action wired to the reserved `OUT_ATTACK` channel, and health
+  (input 2), threat (input 10), and recent damage (input 16) wired to their
+  reserved input channels. No genome schema change: topology 1 already
+  reserved all four.
+- Canonical pair key `lifesim-pairkey-v1` and RNG stream `Contest` (7), so
+  damage does not depend on which combatant the tick visited first.
+- Carcasses with decay and consumption, their own exact energy ledger, and a
+  table kept sorted by ID.
+- Event schema 3: `Damage`, `DeathByDamage`, `CarcassCreated`,
+  `CarcassConsumed`, all additive over version 2.
+- Threat is a **perceptible phenotype cue** (relative body size and
+  closeness). There is deliberately no genotype-distance channel: ADR-0022
+  A3 forbids direct access to genetic distance, pedigree, or observer
+  labels, so kin recognition must be solvable from perceptible cues or not
+  at all.
+
+**C7.4 and C7.5 are met** with automated evidence
+(`crates/sim-core/tests/phase7_contest.rs`): exact energy, biomass,
+population, and carcass ledgers across a contest-heavy run; carcass energy
+never exceeding its source; clean replay; save-restore-continue equality;
+and the contest-disabled world reproducing `0xff9dfcff5dffbf42` exactly.
+
+**C7.1 is not met, because it was not measured.** It requires a world-level
+index of spatial aggregation and encounter avoidance, and no such statistic
+is implemented. C7.1 is the designated primary endpoint and secondary
+criteria do not rescue a failed primary (ADR-0022 A7), so **Phase 7 is not
+complete.**
+
+## The Campaign That Did Run, And What It Found
+
+A pre-campaign parameter sweep (the plan's stated mitigation for
+"contest collapses populations") swept damage over {100, 300, 600, 1200} and
+attack cost over {0, 15, 60, 120}. Attack cost turned out to be nearly
+irrelevant at realistic attack rates; damage dominates.
+
+The confirmatory campaign then ran 30 seeds x 4 conditions at 20,000 ticks
+with the documented conservative defaults. A fourth condition **D** was added
+beyond the three the plan specifies, because conditions A and C both change
+*two* things at once — they make the attack action live **and** the reserved
+sensing channels live — so neither isolates the action. D enables contest
+with an attack threshold above the controller's output range: perception
+changes, no attack can ever fire.
+
+| Condition | Median population | Median births | Median attacks | Median deaths by damage |
+|---|---:|---:|---:|---:|
+| **B** contest disabled | 48 | 102 | 0 | 0 |
+| **D** perception only | 48 | 75 | 0 | 0 |
+| **C** attacks fire, zero damage | 30 | 56 | 2,797 | 0 |
+| **A** full contest | 15 | 12 | 206 | 18 |
+
+The decomposition is clean and it is the finding:
+
+- **Making the reserved channels live costs nothing.** D's median population
+  is identical to B's. Threat and health perception, on their own, change no
+  measurable outcome.
+- **The attack action alone costs about 37 percent of the population**, with
+  damage set to exactly zero. That is an energy-cost effect at a saturating
+  attack rate, not a mortality effect.
+- **Damage costs a further 31 percent.**
+
+Against the criteria as written:
+
+- **C7.2 is not satisfied on its tolerance clause** — a median population of
+  15 against 48 is far outside any reasonable tolerance — but it is
+  satisfied on its alternative clause, "or the difference is explained by a
+  reported mechanism", and the mechanism is decomposed above against three
+  controls rather than asserted.
+- **C7.3 is not satisfied.** Under condition C the per-organism attack rate
+  saturates (up to 14,456 attacks per world). Under A it looks lower only
+  because attackers die sooner. The plan anticipated exactly this:
+  "Saturation is a reportable finding about the cost structure, not a
+  failure to be tuned away." It is reported as one.
+
+No criterion was weakened after seeing the data. C7.2's tolerance and C7.3's
+bound are recorded as unmet rather than adjusted.
+
+## Remaining Work
+
+1. Implement the world-level spatial aggregation and encounter-avoidance
+   index C7.1 needs, in the analysis path over the event log.
+2. Re-run the confirmatory campaign with the primary endpoint measured, and
+   with a simulation-based power analysis setting the final seed count (30
+   is the floor).
+3. Decide whether the saturating attack rate is a cost-structure problem
+   worth changing, which would be a new `contest-behavior-v2` lineage, or a
+   finding to carry forward as-is.
 
 ## Why This Is Second, And What It Can And Cannot Establish
 

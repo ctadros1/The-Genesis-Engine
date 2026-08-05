@@ -15,13 +15,15 @@ was modified.** Phases 0 to 4 records, fixtures (`0x1e3158a26afd3b39`,
 `0xff9dfcff5dffbf42`), and every benchmark ID are preserved exactly. All
 ADRs remain Proposed.
 
-Phases 5 to 16 are planned and none has started:
+Phase 5 is complete (2026-08-04). Phase 6 is partially implemented: its
+climate and biome half is built and verified, its origin-modes half has not
+been started. Phases 7 to 16 are planned and none has started:
 
 | Phase | Subject | Plan |
 |---|---|---|
-| 5 | Headless scale and multi-world experiments | `phase-5-headless-scale-and-experiments.md` |
-| 6 | Biomes, climate drift, and world origin modes | `phase-6-biomes-climate-and-origins.md` |
-| 7 | Territory, contest, and damage | `phase-7-territory-and-conflict.md` |
+| 5 | Headless scale and multi-world experiments — **done** | `phase-5-headless-scale-and-experiments.md` |
+| 6 | Biomes, climate drift, and world origin modes — **climate half done, origins not started** | `phase-6-biomes-climate-and-origins.md` |
+| 7 | Territory, contest, and damage — **physics done, primary endpoint C7.1 unmeasured** | `phase-7-territory-and-conflict.md` |
 | 8 | Evolvable genome: diploid genetics and variable topology | `phase-8-evolvable-genome.md` |
 | 9 | Modular morphology and development | `phase-9-modular-morphology.md` |
 | 10 | Lifetime learning | `phase-10-lifetime-learning.md` |
@@ -38,6 +40,55 @@ ecosystems) plans are superseded and preserved unmodified under
 every phase's Benchmark Impact section.
 
 ## Current Status
+
+**Phase 7's physics is complete and verified; the phase is not.** Health,
+damage, healing, death by depletion, the attack action and the three
+reserved sensing channels, carcasses with an exact ledger, the canonical
+pair key, RNG stream `Contest` (7), and event schema 3 are all in and
+tested. C7.4 (exact accounting) and C7.5 (determinism) are met. **C7.1, the
+designated primary endpoint, was not measured** — it needs a world-level
+spatial-aggregation index that does not exist — and secondary criteria do
+not rescue a failed primary. The behavioral campaign ran anyway and its
+four-condition decomposition is recorded in
+`planning/phase-7-territory-and-conflict.md` (D-052): perception alone costs
+nothing, the attack action alone costs ~37 percent of the population at zero
+damage, and damage costs a further ~31 percent. C7.2's tolerance clause and
+C7.3 are recorded as **unmet rather than adjusted**.
+
+**Phase 6 is complete** (2026-08-04), benchmark
+`phase6-local-20260804T224418Z`.
+
+### Prior: Phase 6 detail The
+climate and biome half is built and verified: the seven-biome registry with
+precedence-as-ID ordering, stateless drift, an exactly-conserving moisture
+field that maintains its gradient, biome-dependent capacity with a ledgered
+loss sink, degenerate-map rejection, world integration, and save/restore.
+Both fixtures are preserved and the config hash of a climate-disabled world
+is provably unchanged. **Not started**: origin modes, founder demes,
+archetypes, biome-matched placement, and founder-population files — criteria
+C6.2, C6.3, C6.4, C6.5, C6.9, C6.10, and the Phase 6 benchmark record. See
+`planning/phase-6-biomes-climate-and-origins.md` for the status detail and
+the two modelling defects found while building it (D-048).
+
+### The Phase 5 Experiment Instrument
+
+The Phase 5 experiment instrument is implemented: the ALEV append-only event
+log with a self-checking header and fail-closed decode, snapshots carrying a
+real `event_log_offset` (closing D-019), the `sim-experiment` crate
+(conditions, campaigns, the independent-world scheduler, manifests,
+comparison reports that refuse rather than aggregate), asynchronous
+checkpointing with a capacity-one refuse-and-count queue, and server
+`--pacing headless` / `--run-ticks`. All seven acceptance criteria are met
+with automated evidence; benchmark record `phase5-local-20260804T210059Z`.
+Both fixtures reproduce from clean processes under every new execution path.
+Workspace suite: 177 passed, 0 failed, 9 ignored (the release long-runs and
+the Phase 5 benchmarks).
+
+Deferred within Phase 5: Parquet export (carried from Phase 4) and any live
+monitoring integration. Deployment, TLS, physical-device, and VM gates
+remain unresolved; all ADRs remain proposed.
+
+### Prior: The Phase 4 Local Persistence Slice
 
 The Phase 4 local persistence slice is implemented: `sim_core::SaveState`
 capture/restore, `crates/sim-persist` (ALIF format 1 with zstd, atomic
@@ -64,11 +115,22 @@ ADRs remain proposed.
    live server; do not treat viewport emulation as device evidence.
 5. Resolve the remaining Phase 0 decision gates (deployment-shaped VM benchmark).
    This now also bounds the compute-cost risk, which is recorded as
-   unresolved in `docs/20-risk-register.md`.
-6. Begin Phase 5 (requires separate approval). Its narrowest useful first
-   slice is the append-only event-log segment plus the snapshot event-log
-   reference, which is the deferred D-019 item and is a prerequisite for
-   every later analysis.
+   unresolved in `docs/20-risk-register.md`. Phase 5 measured the
+   development host only; no supported campaign size is claimed.
+6. Review the Phase 5 implementation, tests, and benchmark evidence
+   (D-045, D-046).
+7. Review the Phase 6 climate slice (D-047, D-048), in particular the two
+   modelling defects and the biome-reachability measurement.
+8. Finish Phase 6: `origin.mode` with `random` and `seeded`, founder demes,
+   archetypes, biome-matched placement, and founder-population files. That
+   is criteria C6.2, C6.3, C6.4, C6.5, C6.9, and C6.10, plus the Phase 6
+   benchmark record (environment-phase cost per field, reclassification
+   cost, and whether a dirty-cell strategy is needed). The temperature field
+   `docs/05` has specified since Phase 1 now exists, so the
+   thermal-preference gene inherited-but-inert since Phase 2 finally has
+   something to be preferent about; wiring it is Phase 13's work.
+9. Begin Phase 7 (requires separate approval): territory, contest, and
+   damage. Its prerequisite is Phase 5, which is met.
 
 ## Deferred Backlog
 
@@ -79,9 +141,9 @@ Carried forward unchanged unless noted:
 - Exact disaster catalog.
 - Genome topology/trait range exploration. Partly absorbed by Phase 8.
 - GPU experiment design.
-- Independent-world scheduler. **Promoted into Phase 5 scope**, because
-  multi-seed experiment design depends on it.
-- Parquet export (deferred Phase 4 item).
+- ~~Independent-world scheduler.~~ **Delivered in Phase 5**
+  (`crates/sim-experiment/src/scheduler.rs`).
+- Parquet export (deferred Phase 4 item, still deferred).
 - Profiling, SIMD, and parallelism work from the superseded Phase 5 plan.
   Each still requires its own profiler evidence and, for parallelism, its
   own deterministic-ordering evidence under ADR-0010.
@@ -116,6 +178,31 @@ Carried forward unchanged unless noted:
 
 - `.DS_Store` files are present in the working tree at several levels and
   are excluded from `FILE_MANIFEST.md`.
+
+## Completed Phase 5 Slice (2026-08-04)
+
+- `crates/sim-persist/src/eventlog.rs`: ALEV format 1 append-only log —
+  self-checksumming header (provenance is not framing, so nothing else
+  would catch a corrupted seed or config hash), per-segment CRC, all
+  declared lengths capped before allocation, unknown event types fail
+  closed, strictly ascending ticks, exact counter reconstruction, and a
+  separate prefix reader that reports a torn tail without repairing it.
+- `crates/sim-persist/src/checkpoint.rs`: asynchronous checkpoint writer.
+  Capture on the tick thread, write on another; capacity-one queue that
+  refuses and counts rather than queueing without bound; the Phase 4
+  durability ordering untouched.
+- `crates/sim-experiment`: config-field registry, conditions as named
+  deltas with their own hashes, hand-parsed campaign files, the
+  independent-world scheduler, preflight, manifests with verbatim embedded
+  campaign source, and a comparison report with five typed refusals.
+- CLI: `batch`, `report`, `fields`, `verify-events`, and `--event-log` on
+  `run`. Server: `--pacing headless|realtime`, `--run-ticks`,
+  `--checkpoint-mode sync|async`, plus two new checkpoint metrics.
+- Suites: 65 new tests (177 passed / 0 failed / 9 ignored workspace-wide),
+  including a 20,000-case event-log corruption sweep, a 10^6-tick
+  completeness run, scheduler equality at six worker counts plus solo runs,
+  scheduler failure isolation, an asynchronous crash simulation, and
+  `scripts/verify-phase5-determinism.sh`.
 
 ## Completed Phase 4 Local Slice (2026-08-04)
 

@@ -12,7 +12,7 @@ mod state;
 mod stream;
 
 use sim_core::{SimConfig, World, analyze};
-use state::{Control, MAX_SPEED_Q16, Role, Shared, now_unix_ms};
+use state::{CheckpointMode, Control, MAX_SPEED_Q16, Pacing, Role, Shared, now_unix_ms};
 use std::collections::HashMap;
 use std::io::Read;
 use std::net::TcpListener;
@@ -44,7 +44,13 @@ struct Options {
     data_dir: Option<std::path::PathBuf>,
     checkpoint_interval_secs: u64,
     checkpoint_keep: usize,
+    checkpoint_mode: CheckpointMode,
     load_save: Option<std::path::PathBuf>,
+    pacing: Pacing,
+    /// Stop after this many ticks and print a fixture line. Exists so
+    /// acceleration neutrality (A5.1) is an automated test rather than a
+    /// manual procedure.
+    run_ticks: Option<u64>,
 }
 
 fn parse_options() -> Result<Options, String> {
@@ -59,7 +65,10 @@ fn parse_options() -> Result<Options, String> {
         data_dir: None,
         checkpoint_interval_secs: 0,
         checkpoint_keep: 4,
+        checkpoint_mode: CheckpointMode::Async,
         load_save: None,
+        pacing: Pacing::Realtime,
+        run_ticks: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
     let mut index = 0;
@@ -120,8 +129,37 @@ fn parse_options() -> Result<Options, String> {
                         options.checkpoint_keep =
                             value.parse().map_err(|_| format!("invalid keep {value}"))?;
                     }
+                    "--checkpoint-mode" => {
+                        options.checkpoint_mode = match value.as_str() {
+                            "sync" => CheckpointMode::Sync,
+                            "async" => CheckpointMode::Async,
+                            _ => {
+                                return Err(format!(
+                                    "checkpoint mode must be sync or async, got {value}"
+                                ));
+                            }
+                        };
+                    }
                     "--load-save" => {
                         options.load_save = Some(std::path::PathBuf::from(value));
+                    }
+                    "--pacing" => {
+                        options.pacing = match value.as_str() {
+                            "realtime" => Pacing::Realtime,
+                            "headless" => Pacing::Headless,
+                            _ => {
+                                return Err(format!(
+                                    "pacing must be realtime or headless, got {value}"
+                                ));
+                            }
+                        };
+                    }
+                    "--run-ticks" => {
+                        options.run_ticks = Some(
+                            value
+                                .parse()
+                                .map_err(|_| format!("invalid tick count {value}"))?,
+                        );
                     }
                     _ => return Err(format!("unknown option {name}")),
                 }
@@ -194,7 +232,7 @@ fn run() -> Result<(), String> {
                 "snapshot store: {} valid, {} broken, {} temp files removed",
                 recovery.valid_saves, recovery.broken_saves, recovery.removed_temp_files
             );
-            Some(Mutex::new(store))
+            Some(Arc::new(Mutex::new(store)))
         }
         None => None,
     };
@@ -217,10 +255,14 @@ fn run() -> Result<(), String> {
         store,
         checkpoint_interval_secs: options.checkpoint_interval_secs,
         checkpoint_keep: options.checkpoint_keep,
+        checkpoint_mode: options.checkpoint_mode,
+        pacing: options.pacing,
         saves_total: AtomicU64::new(0),
         save_failures_total: AtomicU64::new(0),
         last_save_duration_us: AtomicU64::new(0),
         last_save_bytes: AtomicU64::new(0),
+        checkpoints_skipped: AtomicU64::new(0),
+        last_capture_us: AtomicU64::new(0),
     });
 
     let ws_listener = TcpListener::bind(("127.0.0.1", options.ws_port))
@@ -236,7 +278,8 @@ fn run() -> Result<(), String> {
     }
     {
         let shared = Arc::clone(&shared);
-        std::thread::spawn(move || tick_loop(shared, dt_ms));
+        let run_ticks = options.run_ticks;
+        std::thread::spawn(move || tick_loop(shared, dt_ms, run_ticks));
     }
 
     let server = tiny_http::Server::http(("127.0.0.1", options.rest_port))
@@ -301,22 +344,53 @@ fn perform_save(
     }
 }
 
-fn tick_loop(shared: Arc<Shared>, dt_ms: u64) {
+fn tick_loop(shared: Arc<Shared>, dt_ms: u64, run_ticks: Option<u64>) {
     let mut scratch = Vec::new();
     let mut next_deadline = Instant::now();
     let mut last_metrics = Instant::now();
     let mut last_checkpoint = Instant::now();
+    // The asynchronous writer exists only when both a store and the
+    // asynchronous mode are configured; otherwise the Phase 4 synchronous
+    // path runs unchanged.
+    let checkpointer = match (shared.store.as_ref(), shared.checkpoint_mode) {
+        (Some(store), CheckpointMode::Async) => {
+            Some(sim_persist::AsyncCheckpointer::spawn(Arc::clone(store)))
+        }
+        _ => None,
+    };
     loop {
+        if let Some(limit) = run_ticks
+            && shared.ticks_total.load(Ordering::Relaxed) >= limit
+        {
+            // Finish any checkpoint still in flight before reporting, so
+            // the summary describes a settled world.
+            if let Some(checkpointer) = checkpointer {
+                let outcomes = checkpointer.shutdown();
+                for outcome in outcomes.iter().filter(|outcome| outcome.error.is_some()) {
+                    eprintln!(
+                        "checkpoint at tick {} failed: {}",
+                        outcome.tick,
+                        outcome.error.as_deref().unwrap_or("")
+                    );
+                }
+            }
+            print_run_summary(&shared, limit);
+            std::process::exit(0);
+        }
         let (paused, speed_q16) = {
             let control = shared.control.lock().expect("control");
             (control.paused, control.speed_q16)
         };
-        if paused || speed_q16 == 0 {
+        // A paused world advances zero ticks in either pacing mode: pausing
+        // is world state, not a pacing policy.
+        if paused || (shared.pacing == Pacing::Realtime && speed_q16 == 0) {
             std::thread::sleep(Duration::from_millis(20));
             next_deadline = Instant::now();
             continue;
         }
-        // Real-time pacing: interval = dt / speed.
+        // Real-time pacing: interval = dt / speed. Headless pacing never
+        // sleeps, so the speed multiplier is ignored entirely rather than
+        // being reinterpreted as a large one.
         let interval_us = (dt_ms * 1_000 * 65_536) / u64::from(speed_q16).max(1);
         let started = Instant::now();
         {
@@ -345,22 +419,67 @@ fn tick_loop(shared: Arc<Shared>, dt_ms: u64) {
             && last_checkpoint.elapsed() >= Duration::from_secs(shared.checkpoint_interval_secs)
         {
             let tick = shared.ticks_total.load(Ordering::Relaxed);
-            match perform_save(&shared, "auto", "checkpoint") {
-                Ok(record) => shared.record_audit(
-                    "service",
-                    "checkpoint",
-                    true,
-                    &format!("save_id {} bytes {}", record.save_id, record.bytes),
-                    tick,
-                    "",
-                ),
-                Err(error) => {
-                    shared.record_audit("service", "checkpoint", false, &error, tick, "");
-                }
+            match checkpointer.as_ref() {
+                Some(checkpointer) => submit_checkpoint(&shared, checkpointer, tick),
+                None => match perform_save(&shared, "auto", "checkpoint") {
+                    Ok(record) => shared.record_audit(
+                        "service",
+                        "checkpoint",
+                        true,
+                        &format!("save_id {} bytes {}", record.save_id, record.bytes),
+                        tick,
+                        "",
+                    ),
+                    Err(error) => {
+                        shared.record_audit("service", "checkpoint", false, &error, tick, "");
+                    }
+                },
             }
             last_checkpoint = Instant::now();
         }
+        // Completed asynchronous writes are reported here rather than on
+        // the writer thread, so audit ordering stays on one thread.
+        if let Some(checkpointer) = checkpointer.as_ref() {
+            for outcome in checkpointer.drain_outcomes() {
+                match (&outcome.record, &outcome.error) {
+                    (Some(record), _) => {
+                        shared.saves_total.fetch_add(1, Ordering::Relaxed);
+                        shared
+                            .last_save_duration_us
+                            .store(outcome.duration_us, Ordering::Relaxed);
+                        shared
+                            .last_save_bytes
+                            .store(outcome.bytes, Ordering::Relaxed);
+                        shared.record_audit(
+                            "service",
+                            "checkpoint",
+                            true,
+                            &format!("save_id {} bytes {}", record.save_id, record.bytes),
+                            outcome.tick,
+                            "",
+                        );
+                    }
+                    (None, Some(error)) => {
+                        shared.save_failures_total.fetch_add(1, Ordering::Relaxed);
+                        shared.record_audit(
+                            "service",
+                            "checkpoint",
+                            false,
+                            error,
+                            outcome.tick,
+                            "",
+                        );
+                    }
+                    (None, None) => {}
+                }
+            }
+        }
 
+        if shared.pacing == Pacing::Headless {
+            // Nothing to wait for: the kernel reads no clock, so running
+            // free cannot change a result. A5.1 is the proof.
+            continue;
+        }
         next_deadline += Duration::from_micros(interval_us);
         let now = Instant::now();
         if next_deadline > now {
@@ -370,6 +489,79 @@ fn tick_loop(shared: Arc<Shared>, dt_ms: u64) {
             next_deadline = now;
         }
     }
+}
+
+/// Capture state on the tick thread and hand the write to the background
+/// writer. Capture is the only cost the tick thread pays.
+fn submit_checkpoint(
+    shared: &Arc<Shared>,
+    checkpointer: &sim_persist::AsyncCheckpointer,
+    tick: u64,
+) {
+    let capture_started = Instant::now();
+    let (state, checksum) = {
+        let world = shared.world.lock().expect("world");
+        (world.export_state(), world.state_checksum())
+    };
+    shared.last_capture_us.store(
+        capture_started.elapsed().as_micros() as u64,
+        Ordering::Relaxed,
+    );
+    let request = sim_persist::CheckpointRequest {
+        state,
+        state_checksum: checksum,
+        world_id: 1,
+        parent_world_id: if shared.world_epoch > 1 { 1 } else { 0 },
+        name: "auto".to_owned(),
+        kind: "checkpoint".to_owned(),
+        event_log_offset: 0,
+        compression_level: Some(3),
+        prune_keep: Some(shared.checkpoint_keep),
+    };
+    if checkpointer.submit(request) == sim_persist::SubmitResult::Busy {
+        // Refused, counted, and audited. The checkpoint interval is shorter
+        // than a checkpoint takes, and pretending otherwise would make the
+        // interval a lie.
+        shared.checkpoints_skipped.fetch_add(1, Ordering::Relaxed);
+        shared.record_audit(
+            "service",
+            "checkpoint",
+            false,
+            "skipped: previous checkpoint still writing",
+            tick,
+            "",
+        );
+    }
+}
+
+/// One-line summary printed when `--run-ticks` completes. Deliberately the
+/// same shape as the CLI fixture line so the two are directly comparable,
+/// which is what makes A5.1 a checksum equality rather than a description.
+fn print_run_summary(shared: &Arc<Shared>, requested: u64) {
+    let world = shared.world.lock().expect("world");
+    let metrics = world.metrics();
+    println!(
+        concat!(
+            "{{\"server_run_schema_version\":1,\"pacing\":\"{}\",",
+            "\"checkpoint_mode\":\"{}\",\"ticks_requested\":{},\"final_tick\":{},",
+            "\"seed\":\"0x{:016x}\",\"config_hash\":\"0x{:016x}\",",
+            "\"population\":{},\"births_total\":{},\"extinct\":{},",
+            "\"checkpoints_skipped\":{},",
+            "\"terrain_checksum\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\"}}"
+        ),
+        shared.pacing.name(),
+        shared.checkpoint_mode.name(),
+        requested,
+        world.tick_number(),
+        world.config().world_seed,
+        world.config_hash(),
+        metrics.population,
+        metrics.births_total,
+        metrics.extinct,
+        shared.checkpoints_skipped.load(Ordering::Relaxed),
+        world.terrain().terrain_checksum,
+        world.state_checksum()
+    );
 }
 
 // --- REST -------------------------------------------------------------------
@@ -1105,6 +1297,20 @@ fn metrics_text(shared: &Shared) -> String {
     text.push_str(&format!(
         "lifesim_save_bytes{{world=\"{world_label}\"}} {}\n",
         shared.last_save_bytes.load(Ordering::Relaxed)
+    ));
+    // Phase 5 checkpoint instrumentation. `capture` is the only part of a
+    // checkpoint the tick thread pays for in asynchronous mode, so it is
+    // exported separately from the total write duration above.
+    text.push_str("# TYPE lifesim_checkpoint_capture_seconds gauge\n");
+    text.push_str(&format!(
+        "lifesim_checkpoint_capture_seconds{{world=\"{world_label}\",mode=\"{}\"}} {:.6}\n",
+        shared.checkpoint_mode.name(),
+        shared.last_capture_us.load(Ordering::Relaxed) as f64 / 1_000_000.0
+    ));
+    text.push_str("# TYPE lifesim_checkpoints_skipped_total counter\n");
+    text.push_str(&format!(
+        "lifesim_checkpoints_skipped_total{{world=\"{world_label}\"}} {}\n",
+        shared.checkpoints_skipped.load(Ordering::Relaxed)
     ));
     text
 }

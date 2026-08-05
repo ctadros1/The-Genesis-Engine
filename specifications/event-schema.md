@@ -1,5 +1,60 @@
 # Event Schema
 
+## Phase 5 Implementation Notes: The Event-Log File (ALEV format 1)
+
+The append-only event-log *file* deferred under D-019 exists as of Phase 5
+(`crates/sim-persist/src/eventlog.rs`). Snapshots carry a real
+`event_log_offset` for the first time; it is the byte length of the log at
+capture, so a restored world knows exactly where its recorded history stops.
+
+Framing, all little-endian, matching the ALIF snapshot codec:
+
+- A fixed 64-byte header: magic `ALEV`, format version, flags, world ID,
+  seed, config hash, event schema version, the kernel's
+  `MAX_EVENTS_PER_TICK`, the start tick, the build string length, and a
+  CRC32 over the header and the build string that follows it.
+- Then zero or more segments in strictly ascending tick order, one per tick
+  that produced events or drops: magic `SEG1`, tick, event count, the number
+  of events the bounded buffer dropped during that tick, body length, body,
+  and a CRC32 over the whole frame.
+- Each event in the body is a one-byte permanent type tag followed by a
+  fixed payload. Tags are never reused or renumbered, exactly like an
+  `RngSystem` value.
+
+Why the header checksums itself, when the snapshot header does not: almost
+everything it carries is provenance rather than framing. A corrupted length
+fails structurally on its own, but a corrupted seed or config hash would
+silently mislabel an experiment, and nothing downstream would notice.
+
+A tick that produced no events and no drops writes nothing, so an idle world
+costs no bytes.
+
+Decoding rules, all of which are tested by a 20,000-case seeded corruption
+sweep:
+
+- Every declared length is capped before it reaches an allocation or a slice
+  index; a segment claiming more events than this kernel can produce in one
+  tick is rejected as impossible rather than trusted.
+- The segment CRC is verified before any byte of the body is parsed.
+- An unknown event type **fails closed**. Skipping it would silently corrupt
+  every rate an analysis computes.
+- Ticks must ascend strictly; a repeated or reordered tick is an error.
+- A torn tail — the shape a crash between `write` and `sync` leaves — is
+  reported by a separate prefix reader that returns the valid prefix and the
+  typed error that ended it. That is a reporting path, not a repair path: it
+  never rewrites the file, never invents a value, and never admits a
+  partially decoded segment.
+
+**Counter reconstruction.** Replaying a log reproduces every counter in
+`sim_core::Counters` and `sim_core::Phase2Counters`. Two subtleties the
+implementation has to get right: a `PairedBirth` advances `births_total` as
+well as `paired_births_total`, and `ControllerFault` contributes its
+neutralized *count*, not one per event. With zero drops the check is exact
+equality on every counter. With drops it cannot be — a dropped event leaves
+no record of which counter it would have advanced — so the check becomes the
+two things that remain exactly checkable: the log's recorded drop total
+equals the kernel's, and no reconstructed counter exceeds the world's.
+
 ## Phase 2 Implementation Notes (event schema version 2)
 
 The in-kernel event stream (`sim_core::EventKind`, versioned by
@@ -57,9 +112,10 @@ Two additions specific to the new goal:
   unbounded cardinality, and it would encourage reading meaning into
   channels that have none.
 - **The event log is the substrate for Phase 16 analysis.** The append-only
-  event-log *file* deferred under D-019 moves into Phase 5's scope, because
-  every multi-seed experiment needs it long before era detection does.
-  Snapshots carry a zero event-log reference until it exists.
+  event-log *file* deferred under D-019 moved into Phase 5's scope, because
+  every multi-seed experiment needs it long before era detection does. It is
+  implemented; see the Phase 5 notes above. Snapshots taken without a log
+  still record a zero reference, and that remains valid.
 
 ## Envelope
 

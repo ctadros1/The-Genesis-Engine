@@ -21,6 +21,18 @@ pub enum RngSystem {
     GenomeInit = 5,
     /// Two-source recombination and bounded variation (Phase 2).
     Recombination = 6,
+    /// Contest tie lottery, damage variance, and retreat resolution
+    /// (Phase 7). Every draw is keyed on the canonical pair key.
+    Contest = 7,
+    /// Optional bounded stochastic climate component (Phase 6). Allocated
+    /// now and unused under the default deterministic policy, so adopting a
+    /// stochastic policy later cannot renumber an existing stream.
+    ClimateDrift = 21,
+    /// Archetype selection, deme centre choice, and founder placement
+    /// (Phase 6). Deliberately separate from `GenomeInit` (5) so adding
+    /// origin modes cannot shift an existing `random` world's founder
+    /// sequence.
+    FounderSeed = 22,
 }
 
 /// Derive one deterministic 64-bit value for a named draw.

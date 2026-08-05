@@ -5,7 +5,9 @@
 //! index order always equals entity-ID order; `check_invariants` verifies it.
 
 use crate::checksum::Fnv1a64;
+use crate::climate::{Biome, ClimateError, ClimateWorld};
 use crate::config::{ConfigError, SimConfig};
+use crate::contest::{Carcass, ContestState};
 use crate::controller::{
     self, OUT_AVOID, OUT_EAT, OUT_FOLLOW, OUT_MATE, OUT_REST, OUT_THROTTLE, OUT_TURN, cos_bam_q15,
     sin_bam_q15,
@@ -13,6 +15,7 @@ use crate::controller::{
 use crate::genome::{
     CONTROLLER_INPUTS, Genome, Phenotype, VariationPolicy, VariationSummary, recombine,
 };
+use crate::origin::{self, OriginError};
 use crate::phase2::{
     PairRejectReason, PendingChild, Phase2Counters, Phase2State, SENSOR_RANGE_MAX_M,
 };
@@ -39,7 +42,11 @@ const JITTER_MODULUS: u64 = 8;
 /// counter instead of growing without limit. The buffer is cleared at the
 /// start of every tick, so caller drain behavior can never influence
 /// simulation state or checksums.
-const MAX_EVENTS_PER_TICK: usize = 4_096;
+///
+/// Exported because the event-log codec caps a declared segment count
+/// against it before allocating: a file claiming more events in one tick
+/// than this kernel can produce did not come from this kernel.
+pub const MAX_EVENTS_PER_TICK: usize = 4_096;
 
 /// Movement directions: index 0 is "stay"; 1..=8 are the 8 neighbors in
 /// row-major scan order (the documented deterministic tie order).
@@ -110,6 +117,9 @@ impl TickObserver for NoopObserver {}
 pub enum DeathCause {
     Starvation,
     OldAge,
+    /// Health depleted by damage (Phase 7). Terminal and idempotent like
+    /// every other cause.
+    Damage,
 }
 
 impl DeathCause {
@@ -117,14 +127,16 @@ impl DeathCause {
         match self {
             DeathCause::Starvation => "starvation",
             DeathCause::OldAge => "old_age",
+            DeathCause::Damage => "damage",
         }
     }
 }
 
-/// Event payloads. `EVENT_SCHEMA_VERSION` 1 covered Birth/Death/
-/// CapacityRejected/Extinction; version 2 adds the Phase 2 variants with
-/// bounded audit payloads. Reading events never alters simulation state.
-pub const EVENT_SCHEMA_VERSION: u32 = 2;
+/// Event payloads. Version 1 covered Birth/Death/CapacityRejected/
+/// Extinction; version 2 added the Phase 2 variants; version 3 adds the
+/// Phase 7 contest variants. Version 3 is additive: every version 2 payload
+/// is unchanged. Reading events never alters simulation state.
+pub const EVENT_SCHEMA_VERSION: u32 = 3;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -163,6 +175,29 @@ pub enum EventKind {
     ControllerFault {
         id: u64,
         faults: u32,
+    },
+    /// One landed attack (Phase 7).
+    Damage {
+        attacker: u64,
+        target: u64,
+        raw_milli: i64,
+        applied_milli: i64,
+        health_milli: i64,
+    },
+    /// Death by health depletion, carrying the attacker that finished it.
+    DeathByDamage {
+        id: u64,
+        attacker: u64,
+    },
+    CarcassCreated {
+        id: u64,
+        source: u64,
+        energy_milli: i64,
+    },
+    CarcassConsumed {
+        id: u64,
+        consumer: u64,
+        energy_milli: i64,
     },
 }
 
@@ -255,6 +290,11 @@ pub struct MetricsSnapshot {
     pub pair_rejected_energy_total: u64,
     pub controller_faults_total: u64,
     pub max_ancestry_depth: u32,
+    pub contest_enabled: bool,
+    pub attacks_total: u64,
+    pub deaths_by_damage_total: u64,
+    pub carcasses: u64,
+    pub total_carcass_energy_milli: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -272,6 +312,10 @@ pub enum InvariantViolation {
     InvalidGenome { id: u64 },
     AncestryInvalid { id: u64 },
     ControllerStateInvalid { id: u64 },
+    ContestDesync { organisms: usize, contest: usize },
+    ContestStateInvalid { id: u64 },
+    CarcassOrder,
+    CarcassLedgerMismatch { expected: i128, actual: i128 },
 }
 
 impl fmt::Display for InvariantViolation {
@@ -286,6 +330,8 @@ impl std::error::Error for InvariantViolation {}
 pub enum NewWorldError {
     Config(ConfigError),
     WorldGen(WorldGenError),
+    Climate(ClimateError),
+    Origin(OriginError),
 }
 
 impl fmt::Display for NewWorldError {
@@ -293,6 +339,8 @@ impl fmt::Display for NewWorldError {
         match self {
             Self::Config(error) => write!(formatter, "invalid config: {error}"),
             Self::WorldGen(error) => write!(formatter, "world generation failed: {error}"),
+            Self::Climate(error) => write!(formatter, "climate generation failed: {error}"),
+            Self::Origin(error) => write!(formatter, "founder generation failed: {error}"),
         }
     }
 }
@@ -346,6 +394,19 @@ pub struct World {
 
     /// Phase 2 state; `None` exactly when `config.phase2.enabled` is false.
     phase2: Option<Phase2State>,
+
+    /// Phase 6 climate; `None` exactly when `config.climate.enabled` is
+    /// false, so a disabled world takes the exact Phase 1/2 code paths.
+    climate: Option<ClimateWorld>,
+
+    /// Genomes produced by a non-default origin, consumed when Phase 2
+    /// state is built. Empty on the default path, which draws founder
+    /// genomes from `GenomeInit` exactly as before.
+    founder_genomes: Vec<Genome>,
+
+    /// Phase 7 contest; `None` exactly when `config.contest.enabled` is
+    /// false, so a disabled world takes the Phase 2 code paths.
+    contest: Option<ContestState>,
 }
 
 impl World {
@@ -414,15 +475,50 @@ impl World {
             crowding_radius_fp: i64::from(config.crowding_radius_m)
                 * i64::from(crate::FP_PER_METER),
             phase2: None,
+            climate: None,
+            founder_genomes: Vec::new(),
+            contest: None,
             config,
         };
 
-        world.spawn_initial_population();
+        // Climate is built before the population so founders are placed in
+        // a classified world and capacity already reflects biomes.
+        if world.config.climate.enabled {
+            let climate =
+                ClimateWorld::new(&world.terrain, &world.config).map_err(NewWorldError::Climate)?;
+            // Initial biomass follows the effective (biome-scaled) capacity,
+            // not the raw elevation capacity.
+            for cell in 0..world.biomass_milli.len() {
+                let capacity = climate.capacity_milli(&world.terrain, &world.config.climate, cell);
+                world.biomass_milli[cell] =
+                    (capacity * i64::from(world.config.initial_biomass_q16)) >> 16;
+            }
+            world.climate = Some(climate);
+        }
+
+        // The default origin takes the exact Phase 1/2 founder path, which
+        // is what preserves both fixtures; any other origin goes through the
+        // Phase 6 generator.
+        if origin::is_default_origin(&world.config.origin) {
+            world.spawn_initial_population();
+        } else {
+            let biome: Vec<Biome> = world
+                .climate
+                .as_ref()
+                .map(|climate| climate.state.biome.clone())
+                .unwrap_or_default();
+            let founders = origin::generate_founders(&world.config, &world.terrain, &biome)
+                .map_err(NewWorldError::Origin)?;
+            world.place_founders(founders);
+        }
         if world.config.phase2.enabled {
             let mut state = Phase2State::with_capacity(world.ids.len());
             for index in 0..world.ids.len() {
                 let id = world.ids[index];
-                let genome = Genome::founder(world.config.world_seed, id);
+                let genome = match world.founder_genomes.get(index) {
+                    Some(genome) => genome.clone(),
+                    None => Genome::founder(world.config.world_seed, id),
+                };
                 let genome_hash = genome.stable_hash();
                 let phenotype = Phenotype::derive(&genome);
                 let heading = (named_random(world.config.world_seed, 0, RngSystem::Spawn, id, 3)
@@ -430,6 +526,19 @@ impl World {
                 state.push_organism(genome, genome_hash, phenotype, heading, [0, 0], 0, 0);
             }
             world.phase2 = Some(state);
+        }
+        world.founder_genomes = Vec::new();
+        if world.config.contest.enabled {
+            let mut contest = ContestState::with_capacity(world.ids.len());
+            if let Some(p2) = world.phase2.as_ref() {
+                for phenotype in &p2.phenotypes {
+                    contest.push_organism(ContestState::health_max_milli(
+                        &world.config.contest,
+                        phenotype.body_scale_milli,
+                    ));
+                }
+            }
+            world.contest = Some(contest);
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -442,6 +551,31 @@ impl World {
             .map(|&biomass| i128::from(biomass))
             .sum();
         Ok(world)
+    }
+
+    /// Materialize generated founders. Entity IDs arrive already allocated
+    /// in canonical `(group, draw_index)` order, so this only places them.
+    fn place_founders(&mut self, founders: Vec<crate::origin::Founder>) {
+        let cell_fp = i64::from(self.config.cell_size_fp());
+        let seed = self.config.world_seed;
+        let mut founder_genomes = Vec::with_capacity(founders.len());
+        for founder in founders {
+            let cell_x = (founder.cell % self.terrain.cells_x as usize) as i64;
+            let cell_y = (founder.cell / self.terrain.cells_x as usize) as i64;
+            let jitter_x = named_random(seed, 0, RngSystem::FounderSeed, founder.entity_id, 4_096);
+            let jitter_y = named_random(seed, 0, RngSystem::FounderSeed, founder.entity_id, 4_097);
+            let x = cell_x * cell_fp + 1 + (jitter_x % (cell_fp - 2) as u64) as i64;
+            let y = cell_y * cell_fp + 1 + (jitter_y % (cell_fp - 2) as u64) as i64;
+            self.ids.push(founder.entity_id);
+            self.x_fp.push(x as i32);
+            self.y_fp.push(y as i32);
+            self.energy_milli.push(self.config.initial_energy_milli);
+            self.age_ticks.push(0);
+            self.cooldown_ticks.push(0);
+            founder_genomes.push(founder.genome);
+        }
+        self.next_entity_id = self.ids.len() as u64 + 1;
+        self.founder_genomes = founder_genomes;
     }
 
     fn spawn_initial_population(&mut self) {
@@ -547,6 +681,20 @@ impl World {
             pair_rejected_energy_total: phase2_counters.pair_rejected_energy_total,
             controller_faults_total: phase2_counters.controller_faults_total,
             max_ancestry_depth: phase2.map(|p2| p2.max_depth()).unwrap_or(0),
+            contest_enabled: self.contest.is_some(),
+            attacks_total: self.contest.as_ref().map_or(0, |c| c.attacks_total),
+            deaths_by_damage_total: self
+                .contest
+                .as_ref()
+                .map_or(0, |c| c.deaths_by_damage_total),
+            carcasses: self
+                .contest
+                .as_ref()
+                .map_or(0, |c| c.carcasses.len() as u64),
+            total_carcass_energy_milli: self
+                .contest
+                .as_ref()
+                .map_or(0, |c| c.total_carcass_energy_milli() as i64),
         }
     }
 
@@ -581,7 +729,69 @@ impl World {
         self.phase2.as_ref()
     }
 
+    pub(crate) fn climate_state(&self) -> Option<&ClimateWorld> {
+        self.climate.as_ref()
+    }
+
+    pub(crate) fn contest_state(&self) -> Option<&ContestState> {
+        self.contest.as_ref()
+    }
+
+    pub fn contest_enabled(&self) -> bool {
+        self.contest.is_some()
+    }
+
+    pub fn climate_enabled(&self) -> bool {
+        self.climate.is_some()
+    }
+
+    /// Read-only biome classification per cell (row-major). Empty when the
+    /// climate section is disabled. Observers and analysis only; nothing in
+    /// the tick reads a biome label to grant or deny a capability.
+    pub fn biome_cells(&self) -> &[crate::climate::Biome] {
+        match self.climate.as_ref() {
+            Some(climate) => &climate.state.biome,
+            None => &[],
+        }
+    }
+
+    /// Cells per biome in registry order; all zero when disabled.
+    pub fn biome_histogram(&self) -> [u32; crate::climate::BIOME_COUNT] {
+        self.climate
+            .as_ref()
+            .map_or([0; crate::climate::BIOME_COUNT], |climate| {
+                climate.biome_histogram()
+            })
+    }
+
+    /// Temperature at one cell for the current tick, milli-degrees. `None`
+    /// when the climate section is disabled.
+    pub fn temperature_milli(&self, cell: usize) -> Option<i32> {
+        let climate = self.climate.as_ref()?;
+        Some(crate::climate::ClimateState::temperature_milli(
+            &climate.base,
+            &self.config.climate,
+            cell,
+            self.tick,
+        ))
+    }
+
+    /// Read-only moisture field (row-major, milli-units). Empty when the
+    /// climate section is disabled.
+    pub fn moisture_cells(&self) -> &[i64] {
+        match self.climate.as_ref() {
+            Some(climate) => &climate.state.moisture_milli,
+            None => &[],
+        }
+    }
+
     pub(crate) fn organism_ids(&self) -> &[u64] {
+        &self.ids
+    }
+
+    /// Read-only view of living organism IDs, ascending. Observers and tests
+    /// only; the tick never iterates through this.
+    pub fn organism_ids_view(&self) -> &[u64] {
         &self.ids
     }
 
@@ -634,6 +844,8 @@ impl World {
         ledger: Ledger,
         counters: Counters,
         phase2: Option<Phase2State>,
+        climate: Option<ClimateWorld>,
+        contest: Option<ContestState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -649,6 +861,8 @@ impl World {
         self.ledger = ledger;
         self.counters = counters;
         self.phase2 = phase2;
+        self.climate = climate;
+        self.contest = contest;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -762,6 +976,7 @@ impl World {
         observer.phase_finished(TickPhase::Commands);
 
         observer.phase_started(TickPhase::Environment);
+        self.step_climate(next_tick);
         self.grow_food();
         observer.phase_finished(TickPhase::Environment);
 
@@ -789,6 +1004,7 @@ impl World {
         } else {
             self.apply_intents(next_tick);
         }
+        self.contest_phase(next_tick);
         observer.phase_finished(TickPhase::Apply);
 
         observer.phase_started(TickPhase::Lifecycle);
@@ -800,13 +1016,40 @@ impl World {
         observer.phase_finished(TickPhase::Finalize);
     }
 
+    /// Carrying capacity for one cell after biome scaling.
+    ///
+    /// Without the climate section this is the terrain's own
+    /// elevation-derived capacity, so the Phase 1/2 arithmetic is unchanged
+    /// byte for byte.
+    pub fn effective_capacity_milli(&self, cell: usize) -> i64 {
+        match self.climate.as_ref() {
+            Some(climate) => climate.capacity_milli(&self.terrain, &self.config.climate, cell),
+            None => self.terrain.capacity_milli[cell],
+        }
+    }
+
+    /// Advance moisture and, on the configured cadence, reclassify biomes.
+    /// Empty when the climate section is disabled, so the environment phase
+    /// costs exactly what it did before Phase 6.
+    fn step_climate(&mut self, next_tick: u64) {
+        if let Some(mut climate) = self.climate.take() {
+            climate.step(
+                &self.terrain,
+                &self.config.climate,
+                next_tick,
+                &mut self.biomass_milli,
+            );
+            self.climate = Some(climate);
+        }
+    }
+
     /// Logistic regrowth with a one-milli seeding floor so grazed cells
     /// recover (policy v1). Exact integer arithmetic; ledger-recorded.
     fn grow_food(&mut self) {
         let rate = i128::from(self.config.growth_rate_q16_per_s);
         let dt = i128::from(self.config.dt_ms);
         for index in 0..self.biomass_milli.len() {
-            let capacity = self.terrain.capacity_milli[index];
+            let capacity = self.effective_capacity_milli(index);
             if capacity <= 0 {
                 continue;
             }
@@ -1076,6 +1319,29 @@ impl World {
         let cells_x = self.terrain.cells_x as i32;
         let cells_y = self.terrain.cells_y as i32;
         let cell_fp = self.config.cell_size_fp();
+        // Snapshot the contest fields the reserved channels read. Taken once
+        // and read-only for the whole phase, so perception cannot observe a
+        // partially updated tick.
+        let contest_view: Option<(Vec<i64>, Vec<i64>, Vec<i64>)> =
+            self.contest.as_ref().map(|contest| {
+                let max: Vec<i64> = p2
+                    .phenotypes
+                    .iter()
+                    .map(|phenotype| {
+                        crate::contest::ContestState::health_max_milli(
+                            &self.config.contest,
+                            phenotype.body_scale_milli,
+                        )
+                    })
+                    .collect();
+                (
+                    contest.health_milli.clone(),
+                    contest.recent_damage_milli.clone(),
+                    max,
+                )
+            });
+        let threat_range_fp = i64::from(self.config.contest.attack_range_m.max(1) * 4)
+            * i64::from(crate::FP_PER_METER);
 
         for index in 0..population {
             let inputs = &mut p2.inputs[index];
@@ -1083,7 +1349,14 @@ impl World {
 
             // 1: energy fraction; 2: health neutral; 3: age fraction.
             inputs[0] = self.energy_milli[index] as f32 / self.config.energy_max_milli as f32;
-            inputs[1] = 1.0;
+            // Reserved channel 2: health. Neutral 1.0 without the contest
+            // section, which is what keeps the Phase 2 fixture exact.
+            inputs[1] = match contest_view.as_ref() {
+                Some((health, _, max)) => {
+                    (health[index] as f32 / max[index].max(1) as f32).clamp(0.0, 1.0)
+                }
+                None => 1.0,
+            };
             inputs[2] =
                 (self.age_ticks[index] as f32 / self.config.max_age_ticks as f32).clamp(0.0, 1.0);
 
@@ -1151,6 +1424,25 @@ impl World {
             // simulated in Phase 2; documented neutral zeros.
 
             // 13: speed fraction; 14: last turn rate.
+            // Reserved channel 10: local threat. Nearest conspecific scaled
+            // by its relative body size, a perceptible phenotype cue. There
+            // is deliberately no genotype-distance channel: ADR-0022 A3
+            // forbids direct access to genetic distance, pedigree, or
+            // observer labels, so kin recognition must be solvable from what
+            // an organism can actually see or not at all.
+            if contest_view.is_some()
+                && let Some((distance, other)) = self.nearest_within(index, threat_range_fp)
+            {
+                let their_scale = p2.phenotypes[other].body_scale_milli as f32;
+                let own_scale = phenotype.body_scale_milli.max(1) as f32;
+                let closeness =
+                    1.0 - (distance as f32 / threat_range_fp.max(1) as f32).clamp(0.0, 1.0);
+                inputs[9] = (closeness * (their_scale / own_scale)).clamp(0.0, 1.0);
+            }
+            // Reserved channel 16: recent damage fraction.
+            if let Some((_, recent, max)) = contest_view.as_ref() {
+                inputs[15] = (recent[index] as f32 / max[index].max(1) as f32).clamp(0.0, 1.0);
+            }
             inputs[12] =
                 (p2.speed_milli[index] as f32 / phenotype.max_speed_milli as f32).clamp(0.0, 1.0);
             inputs[13] = p2.last_turn[index];
@@ -1206,6 +1498,12 @@ impl World {
     /// Evaluate every controller into bounded intents. Controllers request
     /// actions only; the resolver validates them in the apply phase.
     fn controllers_phase2(&mut self, next_tick: u64) {
+        let attack_threshold =
+            self.config.contest.attack_threshold_q16 as f32 / crate::config::Q16_ONE as f32;
+        if let Some(contest) = self.contest.as_mut() {
+            contest.intent_attack.clear();
+            contest.intent_attack.resize(self.ids.len(), false);
+        }
         let mut p2 = self.phase2.take().expect("phase2 state present");
         let population = self.ids.len();
         p2.intent_turn.clear();
@@ -1259,7 +1557,14 @@ impl World {
 
             p2.intent_eat[index] = output.outputs[OUT_EAT] > eat_threshold;
             p2.intent_mate[index] = output.outputs[OUT_MATE] > mate_threshold;
-            // OUT_ATTACK is a documented no-op in Phase 2.
+            // OUT_ATTACK stops being a no-op when the contest section is
+            // enabled; without it the channel stays exactly as inert as it
+            // was, which is what preserves the Phase 2 fixture.
+            if let Some(contest) = self.contest.as_mut() {
+                contest.intent_attack[index] = output.outputs[crate::controller::OUT_ATTACK]
+                    > attack_threshold
+                    && self.cooldown_ticks[index] == 0;
+            }
             p2.next_memory[index] = controller::next_memory(&output);
         }
         self.phase2 = Some(p2);
@@ -1626,13 +1931,305 @@ impl World {
         None
     }
 
+    /// Move a configured share of a dying organism's remaining energy into
+    /// a carcass. The share can never exceed what the organism had, which is
+    /// what C7.4 checks.
+    fn spawn_carcass(&mut self, next_tick: u64, index: usize) {
+        let Some(contest) = self.contest.as_ref() else {
+            return;
+        };
+        let share = self.config.contest.carcass_energy_q16;
+        if share == 0 {
+            return;
+        }
+        // At the cap the oldest carcass is dropped, and the loss is ledgered
+        // as decay rather than silently discarded. "Oldest" is by creation
+        // tick with the lower ID breaking ties, not by table position: the
+        // table is ordered by ID, and an older organism can die later, so
+        // position says nothing about age.
+        if contest.carcasses.len() >= self.config.contest.max_carcasses as usize
+            && let Some(contest) = self.contest.as_mut()
+            && !contest.carcasses.is_empty()
+        {
+            let victim = contest
+                .carcasses
+                .iter()
+                .enumerate()
+                .min_by_key(|(_, carcass)| (carcass.created_tick, carcass.id))
+                .map(|(index, _)| index)
+                .unwrap_or(0);
+            let dropped = contest.carcasses.remove(victim);
+            contest.carcass_decayed_milli += i128::from(dropped.energy_milli);
+        }
+        let remaining = self.energy_milli[index].max(0);
+        let energy = (remaining * i64::from(share)) >> 16;
+        if energy <= 0 {
+            return;
+        }
+        let id = self.ids[index];
+        let (x_fp, y_fp) = (self.x_fp[index], self.y_fp[index]);
+        if let Some(contest) = self.contest.as_mut() {
+            // Inserted in sorted position, not appended: entity IDs are
+            // assigned at birth, so a carcass created later can carry a
+            // lower ID than one created earlier. The table is canonically
+            // ordered by ID so its checksum is order-free.
+            let carcass = Carcass {
+                id,
+                x_fp,
+                y_fp,
+                energy_milli: energy,
+                created_tick: next_tick,
+            };
+            let position = contest
+                .carcasses
+                .binary_search_by_key(&id, |existing| existing.id)
+                .unwrap_or_else(|position| position);
+            contest.carcasses.insert(position, carcass);
+            contest.carcass_created_milli += i128::from(energy);
+        }
+        self.push_event(
+            next_tick,
+            EventKind::CarcassCreated {
+                id,
+                source: id,
+                energy_milli: energy,
+            },
+        );
+    }
+
+    /// Resolve attacks, apply healing, decay recent damage, and decay
+    /// carcasses. Empty when the contest section is disabled, so the tick
+    /// costs exactly what it did before Phase 7.
+    fn contest_phase(&mut self, next_tick: u64) {
+        if self.contest.is_none() {
+            return;
+        }
+        let dt = i64::from(self.config.dt_ms);
+        let contest_config = self.config.contest;
+        let population = self.ids.len();
+        let range_fp = i64::from(contest_config.attack_range_m) * i64::from(crate::FP_PER_METER);
+
+        // --- Attacks. Intents were set during the controller phase. ---
+        // Damage is computed against the *previous* health of every target
+        // and applied afterwards, so two organisms attacking each other in
+        // the same tick resolve simultaneously and symmetrically rather than
+        // in visit order.
+        let mut damage_to = vec![0_i64; population];
+        let mut attacks = Vec::new();
+        if let Some(contest) = self.contest.as_ref() {
+            for index in 0..population {
+                if !contest.intent_attack.get(index).copied().unwrap_or(false) {
+                    continue;
+                }
+                // Nearest valid target within range, ties by (distance, ID),
+                // which is the standard contention policy.
+                let Some((_, target)) = self.nearest_within(index, range_fp) else {
+                    continue;
+                };
+                attacks.push((index, target));
+            }
+        }
+        for &(attacker, target) in &attacks {
+            let (attacker_scale, target_scale) = match self.phase2.as_ref() {
+                Some(p2) => (
+                    p2.phenotypes[attacker].body_scale_milli,
+                    p2.phenotypes[target].body_scale_milli,
+                ),
+                None => (1_000, 1_000),
+            };
+            let raw = ContestState::damage_milli(
+                &contest_config,
+                self.config.world_seed,
+                next_tick,
+                self.ids[attacker],
+                self.ids[target],
+                attacker_scale,
+                target_scale,
+            );
+            damage_to[target] += raw;
+            // The attack costs its attacker whether or not it kills.
+            let cost = contest_config
+                .attack_cost_milli
+                .min(self.energy_milli[attacker]);
+            self.energy_milli[attacker] -= cost;
+            self.ledger.spent_milli += i128::from(cost);
+            let (attacker_id, target_id) = (self.ids[attacker], self.ids[target]);
+            if let Some(contest) = self.contest.as_mut() {
+                contest.attacks_total += 1;
+            }
+            let health_after = self.contest.as_ref().map_or(0, |contest| {
+                contest.health_milli[target] - damage_to[target]
+            });
+            self.push_event(
+                next_tick,
+                EventKind::Damage {
+                    attacker: attacker_id,
+                    target: target_id,
+                    raw_milli: raw,
+                    applied_milli: raw,
+                    health_milli: health_after,
+                },
+            );
+        }
+
+        // --- Apply damage, heal, decay. ---
+        let heal_per_tick = contest_config.heal_milli_per_s * dt / 1_000;
+        let energy_floor =
+            (self.config.energy_max_milli * i64::from(contest_config.heal_energy_floor_q16)) >> 16;
+        let decay_per_tick = i64::from(contest_config.damage_decay_q16_per_s) * dt / 1_000;
+        let mut heal_spend = vec![0_i64; population];
+        if let Some(contest) = self.contest.as_mut() {
+            for (index, &applied) in damage_to.iter().enumerate() {
+                if applied > 0 {
+                    contest.health_milli[index] -= applied;
+                    contest.recent_damage_milli[index] += applied;
+                    contest.damage_dealt_milli += i128::from(applied);
+                }
+                // Recent damage decays toward zero.
+                let decay = (contest.recent_damage_milli[index] * decay_per_tick) >> 16;
+                contest.recent_damage_milli[index] = (contest.recent_damage_milli[index]
+                    - decay.max(if decay > 0 { 1 } else { 0 }))
+                .max(0);
+            }
+        }
+        // Healing is a separate pass so it reads settled health.
+        let max_health: Vec<i64> = match self.phase2.as_ref() {
+            Some(p2) => p2
+                .phenotypes
+                .iter()
+                .map(|phenotype| {
+                    ContestState::health_max_milli(&contest_config, phenotype.body_scale_milli)
+                })
+                .collect(),
+            None => vec![contest_config.base_health_milli; population],
+        };
+        if heal_per_tick > 0
+            && let Some(contest) = self.contest.as_mut()
+        {
+            for index in 0..population {
+                let deficit = max_health[index] - contest.health_milli[index];
+                if deficit <= 0 || contest.health_milli[index] <= 0 {
+                    continue;
+                }
+                let restored = heal_per_tick.min(deficit);
+                let cost = (restored * i64::from(contest_config.heal_energy_cost_q16)) >> 16;
+                heal_spend[index] = (restored, cost).1;
+                contest.health_milli[index] += restored;
+                contest.healed_milli += i128::from(restored);
+            }
+        }
+        for (index, &spend) in heal_spend.iter().enumerate() {
+            if spend <= 0 {
+                continue;
+            }
+            if self.energy_milli[index] <= energy_floor {
+                // Could not afford it after all: undo the restoration.
+                if let Some(contest) = self.contest.as_mut() {
+                    let restored =
+                        (spend << 16) / i64::from(contest_config.heal_energy_cost_q16).max(1);
+                    contest.health_milli[index] -= restored;
+                    contest.healed_milli -= i128::from(restored);
+                }
+                continue;
+            }
+            let cost = spend.min(self.energy_milli[index]);
+            self.energy_milli[index] -= cost;
+            self.ledger.spent_milli += i128::from(cost);
+        }
+
+        // --- Carcass consumption and decay. ---
+        let reach_fp = i64::from(contest_config.carcass_reach_m) * i64::from(crate::FP_PER_METER);
+        let assimilation = i64::from(self.config.assimilation_q16);
+        let decay_q16 = i64::from(contest_config.carcass_decay_q16_per_s) * dt / 1_000;
+        let mut consumed_events = Vec::new();
+        if let Some(mut contest) = self.contest.take() {
+            // Organisms consume in ascending ID order; each carcass is
+            // visited in ascending carcass ID order. Both orders are
+            // canonical, so contested consumption resolves deterministically.
+            for index in 0..population {
+                if self.energy_milli[index] >= self.config.energy_max_milli {
+                    continue;
+                }
+                let (x, y) = (i64::from(self.x_fp[index]), i64::from(self.y_fp[index]));
+                for carcass in contest.carcasses.iter_mut() {
+                    if carcass.energy_milli <= 0 {
+                        continue;
+                    }
+                    let dx = i64::from(carcass.x_fp) - x;
+                    let dy = i64::from(carcass.y_fp) - y;
+                    if dx * dx + dy * dy > reach_fp * reach_fp {
+                        continue;
+                    }
+                    let room = self.config.energy_max_milli - self.energy_milli[index];
+                    let take = carcass.energy_milli.min(self.intake_tick).max(0);
+                    if take <= 0 {
+                        continue;
+                    }
+                    let gained = ((take * assimilation) >> 16).min(room);
+                    if gained <= 0 {
+                        continue;
+                    }
+                    // Raw energy leaves the carcass; the assimilated part
+                    // enters the organism, mirroring the plant path exactly.
+                    let raw = (gained << 16) / assimilation.max(1);
+                    let raw = raw.min(carcass.energy_milli);
+                    carcass.energy_milli -= raw;
+                    contest.carcass_consumed_milli += i128::from(raw);
+                    self.energy_milli[index] += gained;
+                    self.ledger.assimilated_milli += i128::from(gained);
+                    // The unassimilated remainder is a loss from the carcass
+                    // pool and is ledgered as decay so nothing vanishes.
+                    contest.carcass_decayed_milli += i128::from(raw - gained);
+                    contest.carcass_consumed_milli -= i128::from(raw - gained);
+                    consumed_events.push((carcass.id, self.ids[index], gained));
+                    break;
+                }
+            }
+            // Decay, then drop empties.
+            for carcass in contest.carcasses.iter_mut() {
+                let decay = ((carcass.energy_milli * decay_q16) >> 16).max(if decay_q16 > 0 {
+                    1
+                } else {
+                    0
+                });
+                let decay = decay.min(carcass.energy_milli);
+                carcass.energy_milli -= decay;
+                contest.carcass_decayed_milli += i128::from(decay);
+            }
+            contest.carcasses.retain(|carcass| carcass.energy_milli > 0);
+            self.contest = Some(contest);
+        }
+        for (id, consumer, energy_milli) in consumed_events {
+            self.push_event(
+                next_tick,
+                EventKind::CarcassConsumed {
+                    id,
+                    consumer,
+                    energy_milli,
+                },
+            );
+        }
+    }
+
     fn lifecycle(&mut self, next_tick: u64) {
         // Death marks in stable order. Starvation is checked before age
         // (documented tie policy).
         let population = self.ids.len();
         let mut dead = vec![false; population];
+        // Health depletion is checked first when contest is enabled: it is
+        // the most specific cause, and a death has exactly one.
+        let depleted: Vec<bool> = match self.contest.as_ref() {
+            Some(contest) => contest
+                .health_milli
+                .iter()
+                .map(|&health| health <= 0)
+                .collect(),
+            None => vec![false; population],
+        };
         for (index, dead_flag) in dead.iter_mut().enumerate() {
-            let cause = if self.energy_milli[index] <= 0 {
+            let cause = if depleted[index] {
+                Some(DeathCause::Damage)
+            } else if self.energy_milli[index] <= 0 {
                 Some(DeathCause::Starvation)
             } else if self.age_ticks[index] >= self.config.max_age_ticks {
                 Some(DeathCause::OldAge)
@@ -1644,10 +2241,23 @@ impl World {
             match cause {
                 DeathCause::Starvation => self.counters.deaths_starvation_total += 1,
                 DeathCause::OldAge => self.counters.deaths_old_age_total += 1,
+                DeathCause::Damage => {
+                    if let Some(contest) = self.contest.as_mut() {
+                        contest.deaths_by_damage_total += 1;
+                    }
+                }
             }
             self.ledger.removed_at_death_milli += i128::from(self.energy_milli[index]);
             let id = self.ids[index];
             self.push_event(next_tick, EventKind::Death { id, cause });
+            if cause == DeathCause::Damage {
+                self.push_event(next_tick, EventKind::DeathByDamage { id, attacker: 0 });
+            }
+            // A carcass takes a configured share of the dead organism's
+            // remaining energy. That energy is already counted as removed
+            // from the organism pool above, so the carcass pool has its own
+            // exact ledger and can never exceed its source.
+            self.spawn_carcass(next_tick, index);
         }
 
         if dead.iter().any(|&flag| flag) {
@@ -1659,6 +2269,9 @@ impl World {
             retain_by_flags(&mut self.cooldown_ticks, &dead);
             if let Some(p2) = self.phase2.as_mut() {
                 p2.retain(&dead);
+            }
+            if let Some(contest) = self.contest.as_mut() {
+                contest.retain(&dead);
             }
         }
 
@@ -1673,6 +2286,9 @@ impl World {
             self.energy_milli.push(self.config.offspring_energy_milli);
             self.age_ticks.push(0);
             self.cooldown_ticks.push(0);
+            if let Some(contest) = self.contest.as_mut() {
+                contest.push_organism(self.config.contest.base_health_milli);
+            }
             self.counters.births_total += 1;
             self.push_event(next_tick, EventKind::Birth { id, parent_id });
         }
@@ -1698,6 +2314,12 @@ impl World {
                     child.depth,
                     next_tick,
                 );
+                if let Some(contest) = self.contest.as_mut() {
+                    contest.push_organism(ContestState::health_max_milli(
+                        &self.config.contest,
+                        child.phenotype.body_scale_milli,
+                    ));
+                }
                 self.counters.births_total += 1;
                 p2.counters.paired_births_total += 1;
                 self.push_event(
@@ -1774,6 +2396,15 @@ impl World {
         if let Some(p2) = self.phase2.as_ref() {
             p2.hash_into(&mut hasher);
         }
+        // Rule 8: a new subsystem appends a tagged section only when its
+        // state exists, so a climate-disabled world hashes exactly as it did
+        // before Phase 6.
+        if let Some(climate) = self.climate.as_ref() {
+            climate.hash_into(&mut hasher);
+        }
+        if let Some(contest) = self.contest.as_ref() {
+            contest.hash_into(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -1810,7 +2441,7 @@ impl World {
             }
         }
         for (cell, &biomass) in self.biomass_milli.iter().enumerate() {
-            if biomass < 0 || biomass > self.terrain.capacity_milli[cell] {
+            if biomass < 0 || biomass > self.effective_capacity_milli(cell) {
                 return Err(InvariantViolation::BiomassOutOfBounds {
                     cell,
                     biomass_milli: biomass,
@@ -1833,8 +2464,16 @@ impl World {
                 actual: actual_energy,
             });
         }
+        // Capacity loss is a genuine sink: biomass removed because a cell's
+        // biome became less productive. It is ledgered rather than
+        // discarded, so conservation stays exact.
+        let capacity_loss = self
+            .climate
+            .as_ref()
+            .map_or(0, |climate| climate.capacity_loss_milli);
         let expected_biomass = self.ledger.initial_biomass_milli + self.ledger.grown_milli
-            - self.ledger.consumed_biomass_milli;
+            - self.ledger.consumed_biomass_milli
+            - capacity_loss;
         let actual_biomass: i128 = self
             .biomass_milli
             .iter()
@@ -1846,10 +2485,15 @@ impl World {
                 actual: actual_biomass,
             });
         }
+        let damage_deaths = self
+            .contest
+            .as_ref()
+            .map_or(0, |contest| contest.deaths_by_damage_total);
         let expected_population = i128::from(self.config.initial_organisms)
             + i128::from(self.counters.births_total)
             - i128::from(self.counters.deaths_starvation_total)
-            - i128::from(self.counters.deaths_old_age_total);
+            - i128::from(self.counters.deaths_old_age_total)
+            - i128::from(damage_deaths);
         if expected_population != self.ids.len() as i128 {
             return Err(InvariantViolation::PopulationAccounting {
                 expected: expected_population,
@@ -1864,6 +2508,44 @@ impl World {
                 actual: self.next_entity_id,
             });
         }
+        // Phase 7 structural and bounds invariants.
+        if let Some(contest) = self.contest.as_ref() {
+            if contest.len() != self.ids.len() {
+                return Err(InvariantViolation::ContestDesync {
+                    organisms: self.ids.len(),
+                    contest: contest.len(),
+                });
+            }
+            for index in 0..contest.len() {
+                if contest.recent_damage_milli[index] < 0 {
+                    return Err(InvariantViolation::ContestStateInvalid {
+                        id: self.ids[index],
+                    });
+                }
+            }
+            // Carcasses are sorted by ID and hold non-negative energy.
+            if contest
+                .carcasses
+                .windows(2)
+                .any(|pair| pair[0].id >= pair[1].id)
+            {
+                return Err(InvariantViolation::CarcassOrder);
+            }
+            if contest.carcasses.iter().any(|c| c.energy_milli <= 0) {
+                return Err(InvariantViolation::CarcassOrder);
+            }
+            // The carcass pool is its own exact ledger.
+            let expected = contest.carcass_created_milli
+                - contest.carcass_consumed_milli
+                - contest.carcass_decayed_milli;
+            if expected != contest.total_carcass_energy_milli() {
+                return Err(InvariantViolation::CarcassLedgerMismatch {
+                    expected,
+                    actual: contest.total_carcass_energy_milli(),
+                });
+            }
+        }
+
         // Phase 2 structural and validity invariants.
         if let Some(p2) = self.phase2.as_ref() {
             if p2.len() != self.ids.len() {

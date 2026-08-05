@@ -7,6 +7,10 @@
 //! - `fixture`   single-line deterministic fixture for clean-process checks
 //! - `inspect`   world-generation summary at tick zero
 //! - `benchmark` per-phase timing, allocation, and RSS record with provenance
+//! - `batch`     run a multi-seed, multi-condition campaign (Phase 5)
+//! - `report`    compare conditions in a campaign manifest, or refuse
+//! - `fields`    list config fields a campaign may set
+//! - `verify-events` replay an event log and report what it contains
 
 use sim_core::{
     BEHAVIOR_POLICY_VERSION, CONTROLLER_POLICY_VERSION, GENOME_POLICY_VERSION,
@@ -68,6 +72,10 @@ fn run() -> Result<(), String> {
         Some("analyze") => command_analyze(parse_options(args.collect())?),
         Some("verify-save") => command_verify_save(args.collect()),
         Some("compare") => command_compare(args.collect()),
+        Some("batch") => command_batch(parse_options(args.collect())?),
+        Some("report") => command_report(parse_options(args.collect())?),
+        Some("fields") => command_fields(),
+        Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
     }
 }
@@ -81,7 +89,12 @@ fn usage() -> String {
         "       lifesim analyze --ticks N [config flags]   (requires --phase2)\n",
         "       lifesim verify-save PATH\n",
         "       lifesim compare SUMMARY_A SUMMARY_B\n",
-        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2"
+        "       lifesim batch --campaign FILE --output DIR [--workers N] [--no-preflight]\n",
+        "       lifesim report --manifest FILE [--baseline CONDITION]\n",
+        "       lifesim fields\n",
+        "       lifesim verify-events LOG [--expect-events]\n",
+        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2\n",
+        "run also accepts: --event-log PATH"
     )
     .to_owned()
 }
@@ -95,6 +108,7 @@ struct Options {
     cells_y: Option<u32>,
     dt_ms: Option<u32>,
     no_reproduction: bool,
+    no_preflight: bool,
     phase2: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
@@ -111,6 +125,11 @@ struct Options {
     compress: Option<i32>,
     csv_out: Option<PathBuf>,
     csv_interval: Option<u64>,
+    event_log: Option<PathBuf>,
+    campaign: Option<PathBuf>,
+    manifest: Option<PathBuf>,
+    baseline: Option<String>,
+    workers: Option<usize>,
 }
 
 fn parse_options(args: Vec<String>) -> Result<Options, String> {
@@ -125,6 +144,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--phase2" {
             options.phase2 = true;
+            index += 1;
+            continue;
+        }
+        if name == "--no-preflight" {
+            options.no_preflight = true;
             index += 1;
             continue;
         }
@@ -153,6 +177,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--compress" => options.compress = Some(parse_number(name, value)?),
             "--csv-out" => options.csv_out = Some(PathBuf::from(value)),
             "--csv-interval" => options.csv_interval = Some(parse_number(name, value)?),
+            "--event-log" => options.event_log = Some(PathBuf::from(value)),
+            "--campaign" => options.campaign = Some(PathBuf::from(value)),
+            "--manifest" => options.manifest = Some(PathBuf::from(value)),
+            "--baseline" => options.baseline = Some(value.clone()),
+            "--workers" => options.workers = Some(parse_number(name, value)?),
             _ => return Err(format!("unknown option {name}\n{}", usage())),
         }
         index += 2;
@@ -252,6 +281,29 @@ fn command_run(options: Options) -> Result<(), String> {
     };
     let csv_interval = options.csv_interval.unwrap_or(100).max(1);
 
+    // Append-only event log (Phase 5, D-019). Absent by default, so a run
+    // without `--event-log` takes the exact Phase 4 path.
+    let mut recorder = match &options.event_log {
+        Some(path) => {
+            let writer = sim_persist::EventLogWriter::create(
+                path,
+                &sim_persist::EventLogInfo {
+                    format_version: sim_persist::EVENT_LOG_FORMAT_VERSION,
+                    world_id: 1,
+                    seed: world.config().world_seed,
+                    config_hash: world.config_hash(),
+                    event_schema_version: sim_core::EVENT_SCHEMA_VERSION,
+                    max_events_per_tick: sim_core::MAX_EVENTS_PER_TICK as u32,
+                    start_tick: world.tick_number(),
+                    build_version: sim_persist::BUILD_VERSION.to_owned(),
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            Some(sim_persist::EventLogRecorder::new(writer))
+        }
+        None => None,
+    };
+
     let mut paused_ticks_verified = 0_u64;
     let mut tick_durations = Vec::with_capacity(ticks.min(1_000_000) as usize);
     let wall_started = Instant::now();
@@ -274,6 +326,11 @@ fn command_run(options: Options) -> Result<(), String> {
         let started = Instant::now();
         world.step();
         tick_durations.push(started.elapsed());
+        // Recorded immediately: the next step clears the buffer, and the
+        // kernel's own state never depends on whether anyone read it.
+        if let Some(recorder) = recorder.as_mut() {
+            recorder.record(&world).map_err(|error| error.to_string())?;
+        }
         if (tick + 1) % check_interval == 0 {
             world.check_invariants().map_err(|violation| {
                 format!("invariant violation at tick {}: {violation}", tick + 1)
@@ -302,6 +359,24 @@ fn command_run(options: Options) -> Result<(), String> {
     if let Some(mut writer) = csv.take() {
         writer.flush().map_err(|error| error.to_string())?;
     }
+    let event_log_offset = match recorder.as_mut() {
+        Some(recorder) => {
+            recorder
+                .writer_mut()
+                .sync()
+                .map_err(|error| error.to_string())?;
+            let writer = recorder.writer();
+            eprintln!(
+                "event log: {} bytes, {} segments, {} events, {} dropped",
+                writer.offset(),
+                writer.segments(),
+                writer.events(),
+                writer.dropped()
+            );
+            writer.offset()
+        }
+        None => 0,
+    };
     let wall_elapsed = wall_started.elapsed();
     world
         .check_invariants()
@@ -314,7 +389,7 @@ fn command_run(options: Options) -> Result<(), String> {
             0,
             world.state_checksum(),
             sim_persist::BUILD_VERSION,
-            0,
+            event_log_offset,
             Some(options.compress.unwrap_or(3)),
         )
         .map_err(|error| error.to_string())?;
@@ -383,6 +458,239 @@ fn command_run(options: Options) -> Result<(), String> {
         world.state_checksum()
     );
     Ok(())
+}
+
+// --- batch, report, fields, verify-events (Phase 5) -------------------------
+
+/// Run a declared campaign across every (condition, seed) unit and write a
+/// manifest. Worker count is execution policy only: A5.2 requires the
+/// manifest to be identical at every worker count.
+fn command_batch(options: Options) -> Result<(), String> {
+    let campaign_path = options
+        .campaign
+        .as_ref()
+        .ok_or_else(|| format!("batch requires --campaign\n{}", usage()))?;
+    let output = options
+        .output
+        .as_ref()
+        .ok_or_else(|| format!("batch requires --output\n{}", usage()))?;
+    let source = fs::read_to_string(campaign_path)
+        .map_err(|error| format!("{}: {error}", campaign_path.display()))?;
+    let mut campaign =
+        sim_experiment::Campaign::parse(&source).map_err(|error| error.to_string())?;
+    if let Some(workers) = options.workers {
+        campaign.workers = workers.clamp(1, 64);
+    }
+    fs::create_dir_all(output).map_err(|error| error.to_string())?;
+
+    eprintln!(
+        "campaign {} hash 0x{:016x}: {} conditions x {} seeds = {} worlds, {} ticks each, {} workers",
+        campaign.id,
+        campaign.stable_hash(),
+        campaign.conditions.len(),
+        campaign.seeds.len(),
+        campaign.run_count(),
+        campaign.ticks,
+        campaign.workers
+    );
+
+    // Refuse before spending compute: a campaign that can only build some
+    // of its declared worlds would execute a different design from the one
+    // it declares, and the seeds it dropped were selected by terrain, not
+    // at random.
+    if !options.no_preflight {
+        let failures = sim_experiment::preflight(&campaign);
+        if !failures.is_empty() {
+            for failure in failures.iter().take(20) {
+                eprintln!(
+                    "preflight: {} seed 0x{:016x}: {}",
+                    failure.condition, failure.seed, failure.reason
+                );
+            }
+            return Err(format!(
+                "{} of {} declared worlds cannot be generated; fix the seed set or the \
+                 world parameters rather than running a design you did not declare",
+                failures.len(),
+                campaign.run_count()
+            ));
+        }
+    }
+
+    let completed = std::sync::atomic::AtomicUsize::new(0);
+    let total = campaign.run_count();
+    let progress = std::sync::Arc::new(
+        move |unit: &sim_experiment::RunUnit,
+              result: &Result<sim_experiment::RunResult, String>| {
+            let done = completed.fetch_add(1, Ordering::Relaxed) + 1;
+            match result {
+                Ok(run) => eprintln!(
+                    "[{done}/{total}] {} seed 0x{:016x} state 0x{:016x}",
+                    unit.condition, unit.seed, run.state_checksum
+                ),
+                Err(error) => eprintln!(
+                    "[{done}/{total}] {} seed 0x{:016x} FAILED: {error}",
+                    unit.condition, unit.seed
+                ),
+            }
+        },
+    );
+
+    let started = Instant::now();
+    let results = sim_experiment::run_campaign(
+        &campaign,
+        &sim_experiment::SchedulerOptions {
+            workers: campaign.workers,
+            output_dir: Some(output.clone()),
+            progress: Some(progress),
+        },
+    );
+    let elapsed = started.elapsed();
+
+    let units = sim_experiment::enumerate_units(&campaign);
+    let mut runs = Vec::new();
+    let mut failed = Vec::new();
+    for (unit, result) in units.iter().zip(results) {
+        match result {
+            Ok(run) => runs.push(run),
+            Err(reason) => failed.push(sim_experiment::FailedRun {
+                index: unit.index,
+                condition: unit.condition.clone(),
+                seed: unit.seed,
+                reason,
+            }),
+        }
+    }
+
+    let workers = campaign.workers;
+    let manifest = sim_experiment::Manifest {
+        campaign,
+        campaign_source: source,
+        build_version: sim_persist::BUILD_VERSION.to_owned(),
+        behavior_policy_versions: vec![
+            BEHAVIOR_POLICY_VERSION.to_owned(),
+            PHASE2_BEHAVIOR_POLICY_VERSION.to_owned(),
+        ],
+        rng_algorithm_version: RNG_ALGORITHM_VERSION.to_owned(),
+        worldgen_version: WORLDGEN_VERSION.to_owned(),
+        genome_schema_version: GENOME_SCHEMA_VERSION,
+        event_schema_version: sim_core::EVENT_SCHEMA_VERSION,
+        analysis_versions: vec![sim_core::SIMILARITY_ALGORITHM_VERSION.to_owned()],
+        workers,
+        runs,
+        failed,
+    };
+    let manifest_path = output.join("manifest.txt");
+    fs::write(&manifest_path, manifest.render()).map_err(|error| error.to_string())?;
+
+    let total_ticks = manifest.campaign.ticks * manifest.runs.len() as u64;
+    let seconds = elapsed.as_secs_f64().max(f64::MIN_POSITIVE);
+    println!(
+        concat!(
+            "{{\"batch_schema_version\":1,\"campaign\":\"{}\",",
+            "\"campaign_hash\":\"0x{:016x}\",\"worlds\":{},\"failed\":{},",
+            "\"ticks_per_world\":{},\"workers\":{},",
+            "\"wall_seconds\":{:.3},\"aggregate_ticks_per_second\":{:.1},",
+            "\"manifest\":\"{}\"}}"
+        ),
+        manifest.campaign.id,
+        manifest.campaign.stable_hash(),
+        manifest.runs.len(),
+        manifest.failed.len(),
+        manifest.campaign.ticks,
+        workers,
+        elapsed.as_secs_f64(),
+        total_ticks as f64 / seconds,
+        manifest_path.display()
+    );
+    if !manifest.failed.is_empty() {
+        // A failed world is reported, never silently dropped.
+        for failure in &manifest.failed {
+            eprintln!(
+                "failed: {} seed 0x{:016x}: {}",
+                failure.condition, failure.seed, failure.reason
+            );
+        }
+        return Err(format!("{} worlds failed", manifest.failed.len()));
+    }
+    Ok(())
+}
+
+/// Compare conditions in a manifest, or refuse with the reason.
+fn command_report(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("report requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let report = sim_experiment::compare(&manifest, options.baseline.as_deref())
+        .map_err(|refusal| refusal.to_string())?;
+    print!("{}", report.render());
+    Ok(())
+}
+
+/// List every config field a campaign may set.
+fn command_fields() -> Result<(), String> {
+    let config = SimConfig::phase2_default(0);
+    for name in sim_experiment::FIELD_NAMES {
+        let value = sim_experiment::read_field(&config, name)
+            .map(|value| value.to_string())
+            .unwrap_or_default();
+        println!("{name}\t{value}");
+    }
+    Ok(())
+}
+
+/// Replay an event log and report what it contains. A torn tail is reported
+/// with the size of the trustworthy prefix, never repaired.
+fn command_verify_events(args: Vec<String>) -> Result<(), String> {
+    let path = args
+        .first()
+        .ok_or_else(|| format!("verify-events requires a path\n{}", usage()))?;
+    let bytes = fs::read(path).map_err(|error| format!("{path}: {error}"))?;
+    let (scan, error) =
+        sim_persist::decode_log_prefix(&bytes).map_err(|error| error.to_string())?;
+    println!(
+        concat!(
+            "{{\"event_log_schema_version\":1,\"path\":\"{}\",",
+            "\"format_version\":{},\"world_id\":{},\"seed\":\"0x{:016x}\",",
+            "\"config_hash\":\"0x{:016x}\",\"event_schema_version\":{},",
+            "\"build\":\"{}\",\"segments\":{},\"events\":{},\"dropped\":{},",
+            "\"first_tick\":{},\"last_tick\":{},\"bytes_valid\":{},\"bytes_total\":{},",
+            "\"births_total\":{},\"deaths_starvation_total\":{},",
+            "\"deaths_old_age_total\":{},\"capacity_rejections_total\":{},",
+            "\"paired_births_total\":{},\"controller_faults_total\":{},",
+            "\"status\":\"{}\"}}"
+        ),
+        path,
+        scan.info.format_version,
+        scan.info.world_id,
+        scan.info.seed,
+        scan.info.config_hash,
+        scan.info.event_schema_version,
+        scan.info.build_version,
+        scan.segments,
+        scan.events,
+        scan.dropped,
+        scan.first_tick.map_or(-1_i64, |tick| tick as i64),
+        scan.last_tick.map_or(-1_i64, |tick| tick as i64),
+        scan.bytes_consumed,
+        bytes.len(),
+        scan.counters.births_total,
+        scan.counters.deaths_starvation_total,
+        scan.counters.deaths_old_age_total,
+        scan.counters.capacity_rejections_total,
+        scan.counters.paired_births_total,
+        scan.counters.controller_faults_total,
+        match &error {
+            None => "complete".to_owned(),
+            Some(error) => format!("truncated: {error}"),
+        }
+    );
+    match error {
+        Some(error) => Err(format!("event log is not fully valid: {error}")),
+        None => Ok(()),
+    }
 }
 
 /// Verify a snapshot file through an isolated restore. Never modifies

@@ -6,12 +6,26 @@
 //! only (`sim_core::SaveState`) and never alters meaning during load;
 //! the kernel stays free of files and clocks.
 
+mod checkpoint;
 mod codec;
+mod eventlog;
+mod founders;
 mod store;
+
+pub use checkpoint::{AsyncCheckpointer, CheckpointOutcome, CheckpointRequest, SubmitResult};
 
 pub use codec::{
     CodecError, FLAG_ZSTD, FORMAT_VERSION, MAX_STORED_LEN, MAX_UNCOMPRESSED_LEN, SNAPSHOT_MAGIC,
     SnapshotInfo, crc32, decode_snapshot, encode_snapshot, read_info,
+};
+pub use eventlog::{
+    EVENT_LOG_FORMAT_VERSION, EVENT_LOG_MAGIC, EventLogError, EventLogInfo, EventLogRecorder,
+    EventLogScan, EventLogWriter, MAX_SEGMENT_BODY_LEN, ReconcileError, ReconstructedCounters,
+    decode_log, decode_log_events, decode_log_prefix, encode_segment, read_log_info,
+};
+pub use founders::{
+    FOUNDER_FORMAT_VERSION, FOUNDER_MAGIC, FounderError, FounderProvenance, FounderSet,
+    MAX_FOUNDERS, decode_founders, encode_founders,
 };
 pub use store::{
     BUILD_VERSION, RecoveryReport, SaveRecord, SnapshotStore, StoreError, VerifyReport,

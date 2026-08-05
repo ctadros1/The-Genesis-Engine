@@ -1,9 +1,80 @@
 # Phase 6: Biomes, Climate Drift, And World Origin Modes
 
-Status: planned, not started. Policy versions `lifesim-biome-v1`,
-`lifesim-climate-v1`, `lifesim-origin-v1`, generator `lifesim-worldgen-v2`.
-Specifications: `specifications/biome-and-climate.md`,
+Status: **complete, 2026-08-04.** Benchmark record
+`phase6-local-20260804T224418Z`. Decisions D-047, D-048, D-049. Policy versions `lifesim-biome-v1`, `lifesim-climate-v1`,
+`lifesim-origin-v1`, generator `lifesim-worldgen-v2`. Specifications:
+`specifications/biome-and-climate.md`,
 `specifications/world-origin-modes.md`. Decision: ADR-0021.
+
+## Implementation Status
+
+All ten acceptance criteria are met. **Done and verified** (`crates/sim-core/src/climate.rs`, config section,
+world integration, save/restore):
+
+- Biome registry of seven biomes with permanent IDs, where the numeric order
+  *is* the classification precedence, so "ties break by ascending biome ID"
+  is the implementation rather than a comment. Classification is total by
+  construction.
+- Static fields: base temperature from latitude and lapse rate, coastal
+  mask, land-normalized elevation, and a breadth-first sea-proximity field.
+- Stateless climate drift: three incommensurate sinusoids evaluated in fixed
+  point from the tick alone. C6.6's save-restore-continue equality holds.
+- Moisture as an exactly-conserved field with a maintained gradient
+  (see the finding below), stored under `lifesim-climate-state-v1`.
+- Biome-dependent carrying capacity, reclassification on a configured
+  cadence, and a ledgered `capacity_loss` sink so biomass conservation stays
+  exact when a cell's biome becomes less productive.
+- Degenerate-map rejection (C6.7), climate section in the ALIF codec as an
+  optional section, and full fixture preservation (C6.1).
+
+Origin modes (`crates/sim-core/src/origin.rs`, `crates/sim-persist/src/founders.rs`):
+
+- `origin.mode` with `random` and `seeded`, the section excluded from the
+  config hash while it holds the Phase 1/2 defaults, so both fixtures
+  survive (C6.10).
+- Founder demes with sorted centres, per-deme trait centres, and canonical
+  `(group, draw_index)` ID allocation (C6.2, C6.3).
+- Archetypes as trait distributions with biome affinity, biome-matched
+  placement, and fail-closed refusal when no cell matches (C6.4).
+- ALFP founder-population files with a self-checking header, record
+  checksum, bounded decode, and a 20,000-case corruption sweep (C6.9).
+- RNG streams `ClimateDrift` (21, unused under the default policy) and
+  `FounderSeed` (22), appended and never renumbered.
+
+## Three Findings From Building It
+
+The first two were caught by the acceptance criteria doing their job, and
+both would have quietly invalidated Phase 6 results.
+
+**Biome classification collapsed onto elevation.** The first moisture model
+made moisture a function of elevation alone. That makes the biome map a
+relabelling of the elevation map: the driest cells are exactly the highest
+cells, so `Highland` and `Arid` compete for the same cells and one ends up
+empty. C6.7 rejected the world. The fix is a genuinely independent second
+driver — breadth-first distance to water — blended with relief.
+
+**Pure diffusion erases the world it models.** The conserving moisture
+update was a straightforward diffusion, which satisfies C6.8 exactly and is
+still wrong: diffusion has one fixed point, a uniform field. Worlds that
+generated with all seven biomes had lost `Wetland` by tick 5,000. Every
+Phase 6 result would have been a result about the model flattening its own
+terrain. The update is now a pairwise exchange relative to a static per-cell
+holding capacity, so the fixed point is a maintained gradient rather than
+uniformity. Conservation is still exact, and a regression test asserts the
+spread survives 20,000 ticks.
+
+**Archetype IDs are absent, not merely inert.** The specification says the
+kernel stores an archetype ID for provenance and nothing reads it. Storing an
+authored label on every organism and trusting future code not to read it is a
+standing invitation, so no ID is stored at all: an archetype influences the
+genome it draws and then leaves no trace. C6.5 is therefore true by
+construction. Which archetypes seeded a run is recorded where it is
+legitimately needed — the config hash and the run manifest — so a report can
+still state its starting condition (D-049).
+
+The general lesson from the first two, recorded because it will recur: **a
+conservation law is not a correctness proof.** Both defects conserved
+everything they were supposed to conserve.
 
 ## Problem
 
@@ -70,48 +141,58 @@ They are one phase because biome-matched seeding needs biomes.
 - Deme centres are drawn, then sorted by cell index before founders are
   assigned. Founder entity IDs are allocated in ascending `(archetype_id,
   draw_index)` order.
-- Biome is derived and excluded from the save. Dynamic temperature and
-  moisture carry history and are stored under `lifesim-climate-state-v1`.
+- Biome is derived and excluded from the save. **Moisture** carries history
+  and is stored under `lifesim-climate-state-v1`; temperature is not, because
+  under the default deterministic policy it is a pure function of
+  `(base, tick)` and carries no history at all. That is a deliberate
+  departure from this document's original wording, recorded in D-047; a
+  stochastic weather policy would move temperature into the section.
 - The generator version is inside the config hash, so v1 worlds keep their
   terrain checksums and both fixtures forever.
 
 ## Acceptance Criteria
 
-- [ ] **C6.1 Fixture preservation.** `origin.mode = random` with default
+- [x] **C6.1 Fixture preservation.** `origin.mode = random` with default
       parameters and the climate section disabled reproduces
       `0x1e3158a26afd3b39` and `0xff9dfcff5dffbf42` from clean processes. A
       v1-generated world reproduces its recorded terrain checksum.
-- [ ] **C6.2 Founder generation is order-independent.** Permuting archetype
+- [x] **C6.2 Founder generation is order-independent.** Permuting archetype
       iteration order and deme processing order produces an identical
       founder population, verified by state checksum at tick 0.
-- [ ] **C6.3 Demes are real.** With `deme_count = 4`, mean genetic distance
+- [x] **C6.3 Demes are real.** With `deme_count = 4`, mean genetic distance
       within a deme is lower than between demes by the stated effect size at
       tick 0, in 30 of 30 seeds. This is deterministic setup, so anything
       less than 30 of 30 is a defect rather than a result.
-- [ ] **C6.4 Biome-matched placement or fail-closed.** Every founder is
+- [x] **C6.4 Biome-matched placement or fail-closed.** Every founder is
       placed in a cell matching its archetype's affinity, or generation
       fails with a typed actionable error. No founder is ever silently
       placed in an unsuitable biome.
-- [ ] **C6.5 Archetype IDs are inert.** A run with archetype IDs permuted,
+- [x] **C6.5 Archetype IDs are inert.** A run with archetype IDs permuted,
       founder genomes held identical, produces a bit-identical trajectory.
       This is the test that keeps an authored label from explaining an
       outcome, and it is not optional.
-- [ ] **C6.6 Climate drift is stateless and exact.** `drift(tick)` computed
+- [x] **C6.6 Climate drift is stateless and exact.** `drift(tick)` computed
       at tick T directly equals `drift(tick)` computed after saving at an
       arbitrary earlier tick and restoring. Temperature and moisture stay
       within configured bounds for every cell across a 10^6-tick run
       covering full drift cycles.
-- [ ] **C6.7 Biome distribution is validated.** Generation rejects a world
+- [x] **C6.7 Biome distribution is validated.** Generation rejects a world
       in which any biome is empty or occupies the whole map, with an
       actionable error, exactly as land-fraction validation does today.
-- [ ] **C6.8 Moisture conserves.** Total moisture is exactly conserved by
+- [x] **C6.8 Moisture conserves.** Total moisture is exactly conserved by
       the diffusion-like update over a 10^6-tick run.
-- [ ] **C6.9 Founder files are hostile-input safe.** A seeded corruption
+- [x] **C6.9 Founder files are hostile-input safe.** A seeded corruption
       sweep of at least 20,000 cases over the founder-file codec produces
       zero panics and typed rejections.
-- [ ] **C6.10 Seeded and random are distinguishable experiments.** The two
+- [x] **C6.10 Seeded and random are distinguishable experiments.** The two
       modes under otherwise identical config produce different config
       hashes, and the comparison report refuses to aggregate them.
+
+Every criterion is an automated test:
+C6.1/C6.6/C6.8 in `crates/sim-core/tests/determinism.rs`, C6.2 to C6.5 and
+C6.10 in `crates/sim-core/tests/phase6_origin.rs`, C6.7 in the generation
+validator exercised by both, C6.9 in `crates/sim-persist/tests/founders.rs`,
+and the climate unit tests in `crates/sim-core/src/climate.rs`.
 
 ## Test Plan
 

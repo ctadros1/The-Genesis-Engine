@@ -19,9 +19,12 @@
 //! and `docs/08-genetics-and-evolution.md`.
 
 mod checksum;
+mod climate;
 mod config;
+mod contest;
 mod controller;
 mod genome;
+mod origin;
 mod phase2;
 mod rng;
 mod save;
@@ -29,10 +32,17 @@ mod similarity;
 mod world;
 mod worldgen;
 
-pub use checksum::fnv1a64;
+pub use checksum::{Fnv1a64, fnv1a64};
+pub use climate::{
+    BIOME_COUNT, BIOME_POLICY_VERSION, Biome, CLIMATE_POLICY_VERSION, ClimateBase, ClimateError,
+    ClimateState, classify as classify_biome, drift_milli, season_milli,
+};
 pub use config::{
-    BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ConfigError, PHASE2_BEHAVIOR_POLICY_VERSION,
-    Phase2Config, SimConfig,
+    BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
+    OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, SimConfig, WorldgenVersion,
+};
+pub use contest::{
+    CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
 };
 pub use controller::{
     CONTROLLER_POLICY_VERSION, ControllerOutput, OUT_ATTACK, OUT_AVOID, OUT_EAT, OUT_FOLLOW,
@@ -49,14 +59,21 @@ pub use genome::{
     MEMORY_VALUES, NEURAL_COUNT, Phenotype, TOPOLOGY_ID, TRAIT_COUNT, VariationPolicy,
     VariationSummary, WEIGHT_LIMIT, recombine,
 };
+pub use origin::{
+    Archetype, Founder, MAX_ARCHETYPES, MAX_DEMES, ORIGIN_POLICY_VERSION, OriginError, OriginMode,
+    affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
+};
 pub use phase2::{PairRejectReason, Phase2Counters, SENSOR_RANGE_MAX_M};
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
-pub use save::{Phase2SaveState, RestoreError, SAVE_STATE_VERSION, SaveState};
+pub use save::{
+    ClimateSaveState, ContestSaveState, Phase2SaveState, RestoreError, SAVE_STATE_VERSION,
+    SaveState,
+};
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use world::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation, Ledger,
-    MetricsSnapshot, NewWorldError, NoopObserver, OrganismDetail, Phase2Detail, RenderEntity,
-    TickObserver, TickPhase, World,
+    MAX_EVENTS_PER_TICK, MetricsSnapshot, NewWorldError, NoopObserver, OrganismDetail,
+    Phase2Detail, RenderEntity, TickObserver, TickPhase, World,
 };
 pub use worldgen::{Terrain, WORLDGEN_VERSION, WorldGenError};
 

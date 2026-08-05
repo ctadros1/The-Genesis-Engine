@@ -1,7 +1,9 @@
 # Phase 5: Headless Scale And Multi-World Experiments
 
-Status: planned, not started. Supersedes the headless-throughput and
-independent-world parts of `planning/superseded/phase-5-performance-optimization.md`.
+Status: **complete, 2026-08-04.** Benchmark record
+`phase5-local-20260804T210059Z`. Decisions D-045 and D-046. Supersedes the
+headless-throughput and independent-world parts of
+`planning/superseded/phase-5-performance-optimization.md`.
 
 ## Problem
 
@@ -68,38 +70,86 @@ This phase builds the instrument. It adds no organism behavior at all.
 
 ## Acceptance Criteria
 
-- [ ] **A5.1 Acceleration is result-neutral.** For a fixed seed and config,
+All seven are met. Evidence is named per criterion; every item is an
+automated test, not a procedure.
+
+- [x] **A5.1 Acceleration is result-neutral.** For a fixed seed and config,
       the final state checksum after T ticks is identical when run at 1x
       pacing, at maximum headless speed, with an observer attached, and with
       an observer attached and then detached mid-run. Four executions, one
       checksum.
-- [ ] **A5.2 Scheduling is result-neutral.** For a fixed set of 30 seeds and
+      *Evidence:* `crates/sim-server/tests/phase5_acceleration.rs`. Four real
+      server processes on real sockets. The test also asserts the headless
+      execution was actually faster than the 1x one, so the equality cannot
+      pass by the two modes being secretly identical.
+- [x] **A5.2 Scheduling is result-neutral.** For a fixed set of 30 seeds and
       one config, per-world final state checksums are identical at scheduler
       concurrency 1, 2, and C (the configured maximum), and identical to
       running each world alone. Any work-stealing, thread-count, or
       completion-order dependency shows up here as a checksum difference.
       This is the determinism criterion that makes every later multi-seed
       claim trustworthy.
-- [ ] **A5.3 The event log is complete and replayable.** For a run of at
+      *Evidence:* `crates/sim-experiment/tests/phase5_determinism.rs`, at
+      worker counts 1, 2, 4, 8, 16, and 64, plus a solo run of every world,
+      plus a repeat at the highest-contention setting so an intermittent
+      dependency is likelier to surface, plus a check that the 30 worlds are
+      not accidentally identical. Also verified across clean processes by
+      `scripts/verify-phase5-determinism.sh`.
+- [x] **A5.3 The event log is complete and replayable.** For a run of at
       least 10^6 ticks, the event log contains every event the kernel
       emitted with zero drops, or, if the bounded per-tick buffer dropped
       events, the recorded drop counter matches the gap exactly. Reading the
       log back reconstructs the counters in the final snapshot exactly.
-- [ ] **A5.4 The event log decoder is hostile-input safe.** A seeded
+      *Evidence:* `crates/sim-persist/tests/eventlog.rs`, 10^6 ticks,
+      ~4.5 million events, zero drops, exact equality against both the live
+      world's counters and the encoded snapshot's. **The first version of
+      this test was wrong and is worth recording**: it used a small phase2
+      world that goes extinct after a few hundred ticks, so the criterion
+      passed on a log of 62 events. The test now refuses a run that goes
+      extinct, produces fewer than one event per four ticks, or whose last
+      event falls outside the final 1 percent of the run.
+- [x] **A5.4 The event log decoder is hostile-input safe.** A seeded
       corruption sweep of at least 20,000 cases produces zero panics and
       typed rejections, matching the discipline of the existing protocol and
       snapshot sweeps.
-- [ ] **A5.5 Checkpoints no longer stall the tick thread beyond budget.**
+      *Evidence:* `crates/sim-persist/tests/eventlog.rs`, 20,000 seeded cases
+      mixing bit flips, byte stomps, multi-byte corruption, and truncation,
+      through both the strict and prefix decoders. Zero panics; over 99
+      percent typed rejections.
+- [x] **A5.5 Checkpoints no longer stall the tick thread beyond budget.**
       Measured tick p95 during checkpointing is within the configured tick
       interval at both supported tiers, with before and after numbers
       recorded against the Phase 4 record `phase4-local-20260804T141013Z`.
-- [ ] **A5.6 Conditions are distinguishable by construction.** Two
+      *Evidence:* `crates/sim-experiment/tests/bench_phase5.rs` and
+      `research/performance-notes.md`. The tick-thread stall falls from
+      26.2 ms to 1.4 ms (500 tier) and from 68.0 ms to 4.7 ms (2,000 tier)
+      against a 100 ms budget. Note recorded there and repeated here because
+      it changes how the criterion must be read: **p95 over all ticks cannot
+      see this effect**, since only 0.5 percent of ticks carry a checkpoint,
+      so the checkpoint ticks are measured as their own population and the
+      benchmark asserts on both.
+- [x] **A5.6 Conditions are distinguishable by construction.** Two
       conditions of the same experiment produce different config hashes, and
       the comparison report refuses to aggregate runs whose hashes differ in
       any field the report does not explicitly name as the varied field.
-- [ ] **A5.7 Fixtures preserved.** `0x1e3158a26afd3b39` and
+      *Evidence:* `crates/sim-experiment/src/campaign.rs` (load-time
+      rejection of indistinguishable conditions and undeclared variation),
+      `crates/sim-experiment/src/report.rs` (five distinct refusals), and
+      `crates/sim-cli/tests/phase5_cli.rs` end to end. The report does not
+      use config hashes for this check: a hash says *that* two configs
+      differ, never *where*, and every run differs anyway because the seed is
+      in it. It recomputes each run's effective config from the manifest's
+      embedded campaign and compares field by field.
+- [x] **A5.7 Fixtures preserved.** `0x1e3158a26afd3b39` and
       `0xff9dfcff5dffbf42` reproduce from clean processes under the new
       execution paths.
+      *Evidence:* `scripts/verify-phase5-determinism.sh` (both fixtures with
+      the event log enabled, from clean processes) and
+      `crates/sim-cli/tests/phase5_cli.rs` (both fixtures reproduced through
+      the scheduler, and the server reproduces the phase 2 fixture under
+      headless and 64x realtime pacing). The fixture tests also verify the
+      log is a complete valid log, so the equality cannot hold because
+      logging silently did nothing.
 
 Note on what is deliberately absent: there is no acceptance criterion of the
 form "achieves X worlds at Y ticks per second". Throughput is measured and

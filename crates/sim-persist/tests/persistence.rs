@@ -337,3 +337,71 @@ fn verify_detects_checksum_forgery() {
         Err(StoreError::ChecksumMismatch { .. })
     ));
 }
+
+#[test]
+fn asynchronous_checkpoints_survive_an_interrupted_write_the_same_way() {
+    // Phase 5 extension of `store_saves_atomically_and_interrupted_writes_
+    // never_win` to the asynchronous write path. The durability ordering
+    // inside `SnapshotStore` is unchanged by the asynchronous writer, so an
+    // interrupted asynchronous write must leave exactly the same evidence
+    // an interrupted synchronous one did: a stray temp file that recovery
+    // removes, and the previous checkpoint still authoritative.
+    use sim_persist::{AsyncCheckpointer, CheckpointRequest, SubmitResult};
+    use std::sync::{Arc, Mutex};
+
+    let directory = scratch_dir("async-crash");
+    let (store, _) = SnapshotStore::open(&directory).unwrap();
+    let store = Arc::new(Mutex::new(store));
+    let world = phase2_world(200);
+    let checksum = world.state_checksum();
+
+    let request = |name: &str| CheckpointRequest {
+        state: world.export_state(),
+        state_checksum: checksum,
+        world_id: 1,
+        parent_world_id: 0,
+        name: name.to_owned(),
+        kind: "checkpoint".to_owned(),
+        event_log_offset: 0,
+        compression_level: Some(3),
+        prune_keep: None,
+    };
+
+    // Checkpoint 1, written asynchronously and allowed to complete.
+    let checkpointer = AsyncCheckpointer::spawn(Arc::clone(&store));
+    assert_eq!(
+        checkpointer.submit(request("first")),
+        SubmitResult::Accepted
+    );
+    checkpointer.wait_idle();
+    let outcomes = checkpointer.shutdown();
+    let record = outcomes[0]
+        .record
+        .as_ref()
+        .expect("first checkpoint")
+        .clone();
+
+    // Simulate a process killed mid-write on the asynchronous path: the
+    // writer thread had produced a partial temp file and never renamed it.
+    let partial = snapshot_bytes(&world, Some(3));
+    fs::write(
+        directory.join("world1-tick999999999999-asynccrash.alif.tmp"),
+        &partial[..partial.len() / 3],
+    )
+    .unwrap();
+
+    // Recovery: reopen the store.
+    drop(store);
+    let (store, report) = SnapshotStore::open(&directory).unwrap();
+    assert_eq!(report.removed_temp_files, 1);
+    assert_eq!(report.broken_saves, 0);
+    assert_eq!(report.valid_saves, 1);
+
+    // The completed asynchronous checkpoint is still authoritative and
+    // verifies through an isolated restore.
+    let latest = store.latest_checkpoint().unwrap().expect("checkpoint");
+    assert_eq!(latest.save_id, record.save_id);
+    let verify = store.verify(latest.save_id).unwrap();
+    assert_eq!(verify.state_checksum, checksum);
+    assert_eq!(verify.tick, world.tick_number());
+}

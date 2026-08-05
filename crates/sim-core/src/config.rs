@@ -87,6 +87,263 @@ pub struct SimConfig {
     /// behaves bit-identically to Phase 1 and this section is excluded from
     /// the config hash, preserving Phase 1 fixtures and replay lineages.
     pub phase2: Phase2Config,
+
+    /// Phase 6 climate and biome section, disabled by default. Follows the
+    /// same D-014 rule: excluded from the config hash and behaviorally inert
+    /// when disabled, so a disabled world takes the exact Phase 1/2 code
+    /// paths and reproduces both fixtures.
+    pub climate: ClimateConfig,
+
+    /// Phase 6 origin section. Excluded from the config hash while it holds
+    /// its documented defaults, which are exactly the Phase 1/2 founder
+    /// behavior, so both fixtures are preserved.
+    pub origin: OriginConfig,
+
+    /// Phase 7 contest section, disabled by default. Same D-014 rule: a
+    /// disabled section is behaviorally inert, excluded from the config
+    /// hash, and appends nothing to the checksum, so both fixtures survive.
+    pub contest: ContestConfig,
+}
+
+/// Versioned Phase 7 contest policy (`contest-behavior-v1`). Every value is
+/// experimental policy, hashed only when `enabled` is true.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ContestConfig {
+    pub enabled: bool,
+    /// Health of a body-scale-1.0 organism, milli-units.
+    pub base_health_milli: i64,
+    /// Damage one landed attack does before body-scale scaling and variance.
+    /// Zero is condition C of the phase design: the action fires and costs
+    /// energy without consequence.
+    pub damage_base_milli: i64,
+    /// Half-width of the damage draw, Q16.
+    pub damage_variance_q16: u32,
+    /// Energy an attack costs its attacker, whether or not it lands.
+    pub attack_cost_milli: i64,
+    /// Maximum distance at which an attack can land, meters.
+    pub attack_range_m: u32,
+    /// Controller output above which the attack intent fires, Q16 signed.
+    pub attack_threshold_q16: i32,
+    /// Ticks an organism must wait between attacks.
+    pub attack_cooldown_ticks: u64,
+
+    /// Health restored per second while healing.
+    pub heal_milli_per_s: i64,
+    /// Energy spent per milli-unit of health restored, Q16.
+    pub heal_energy_cost_q16: u32,
+    /// Healing only happens above this energy fraction, Q16.
+    pub heal_energy_floor_q16: u32,
+    /// Q16 fraction of accumulated recent damage that decays each second.
+    pub damage_decay_q16_per_s: u32,
+
+    /// Q16 fraction of a dead organism's energy that becomes a carcass.
+    pub carcass_energy_q16: u32,
+    /// Q16 fraction of a carcass's energy that decays each second.
+    pub carcass_decay_q16_per_s: u32,
+    /// Maximum distance at which a carcass can be eaten, meters.
+    pub carcass_reach_m: u32,
+    /// Maximum carcasses retained; the oldest are dropped beyond it, with
+    /// the loss ledgered as decay rather than silently discarded.
+    pub max_carcasses: u32,
+    /// Extra biomass a feeding organism removes from its own cell, sharpening
+    /// local resource contention so a patch is worth defending.
+    pub local_depletion_milli: i64,
+}
+
+impl ContestConfig {
+    /// Documented conservative Phase 7 defaults (disabled by default).
+    pub fn contest_default() -> Self {
+        Self {
+            enabled: false,
+            base_health_milli: 10_000,
+            damage_base_milli: 1_200,
+            damage_variance_q16: 16_384, // +/- 0.25
+            attack_cost_milli: 120,
+            attack_range_m: 3,
+            attack_threshold_q16: 32_768, // 0.5
+            attack_cooldown_ticks: 10,
+            heal_milli_per_s: 60,
+            heal_energy_cost_q16: 131_072,  // 2.0 energy per health
+            heal_energy_floor_q16: 32_768,  // heal only above half energy
+            damage_decay_q16_per_s: 6_554,  // 0.10 per second
+            carcass_energy_q16: 45_875,     // 0.70 of remaining energy
+            carcass_decay_q16_per_s: 3_277, // 0.05 per second
+            carcass_reach_m: 2,
+            max_carcasses: 4_096,
+            local_depletion_milli: 0,
+        }
+    }
+}
+
+/// Versioned Phase 6 origin policy (`lifesim-origin-v1`).
+///
+/// The `random` defaults below are the constants Phase 1 and Phase 2 had
+/// hard-coded, lifted into config without changing them: founder traits land
+/// in `0.25 + u * 0.5` and founder neural weights in `+/- 0.5`.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct OriginConfig {
+    pub mode: crate::origin::OriginMode,
+    pub trait_low_q16: u32,
+    pub trait_span_q16: u32,
+    pub neural_span_q16: u32,
+    /// Number of separated founder groups. `1` is the Phase 1/2 behavior.
+    pub deme_count: u32,
+    pub deme_radius_m: u32,
+    pub deme_min_separation_m: u32,
+    /// Half-width of a founder's draw around its deme's trait centre. Small
+    /// relative to `trait_span_q16`, which is what makes within-deme genetic
+    /// distance smaller than between-deme distance.
+    pub deme_trait_spread_q16: u32,
+    pub archetype_count: u32,
+    pub archetypes: [crate::origin::Archetype; crate::origin::MAX_ARCHETYPES],
+}
+
+impl OriginConfig {
+    /// Defaults reproducing the Phase 1/2 founder behavior exactly.
+    pub fn origin_default() -> Self {
+        Self {
+            mode: crate::origin::OriginMode::Random,
+            trait_low_q16: 16_384,  // 0.25
+            trait_span_q16: 32_768, // 0.5
+            neural_span_q16: Q16_ONE,
+            deme_count: 1,
+            deme_radius_m: 128,
+            deme_min_separation_m: 192,
+            deme_trait_spread_q16: 6_554, // 0.10
+            archetype_count: 0,
+            archetypes: [crate::origin::Archetype::neutral(0); crate::origin::MAX_ARCHETYPES],
+        }
+    }
+}
+
+/// Which world generator produced (and will regenerate) a world's terrain.
+///
+/// The selected version is folded into the config hash in place of a
+/// constant, so a v1 world keeps its terrain checksum and both fixtures
+/// **forever**: adding v2 cannot change what v1 hashes to. v1 stays in the
+/// build permanently and v1 worlds never see v2.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum WorldgenVersion {
+    #[default]
+    V1,
+    /// Adds moisture, temperature, and biome fields (Phase 6).
+    V2,
+}
+
+impl WorldgenVersion {
+    pub fn tag(self) -> &'static str {
+        match self {
+            WorldgenVersion::V1 => "lifesim-worldgen-v1",
+            WorldgenVersion::V2 => "lifesim-worldgen-v2",
+        }
+    }
+}
+
+/// Versioned Phase 6 climate, biome, and generator policy. Every value is
+/// experimental policy, hashed only when `enabled` is true.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ClimateConfig {
+    pub enabled: bool,
+    /// Generator selection. `enabled` implies v2; a disabled section leaves
+    /// this at v1 and validation enforces the pairing.
+    pub worldgen_version: WorldgenVersion,
+
+    // Static base temperature, milli-degrees.
+    pub base_temperature_milli: i32,
+    /// Temperature drop across the full Q16 elevation range.
+    pub lapse_milli_per_full_elevation: i32,
+    /// Pole-to-equator temperature difference.
+    pub latitude_amplitude_milli: i32,
+
+    // Stateless time terms.
+    pub season_period_ticks: u64,
+    pub season_amplitude_milli: i32,
+    /// Three incommensurate drift periods, all far longer than the season.
+    pub drift_period_ticks: [u64; 3],
+    pub drift_amplitude_milli: [i32; 3],
+
+    pub temperature_min_milli: i32,
+    pub temperature_max_milli: i32,
+
+    // Moisture, milli-units. The field is conserved: these values set the
+    // initial distribution and how it redistributes, never a source or sink.
+    pub initial_moisture_milli: i64,
+    pub coastal_moisture_bonus_milli: i64,
+    pub moisture_max_milli: i64,
+    /// Absolute ceiling any cell may reach; validation, not a clamp.
+    pub moisture_ceiling_milli: i64,
+    /// How much of the initial moisture blend comes from sea proximity
+    /// rather than low ground, Q16. Zero makes moisture a pure function of
+    /// elevation, which collapses the biome map onto elevation bands.
+    pub sea_proximity_weight_q16: u32,
+    /// Fraction of a cell's moisture that leaves it each step, Q16.
+    pub moisture_diffusion_q16: u32,
+    /// Extra share a downhill neighbour receives (drainage).
+    pub moisture_drain_weight: u32,
+
+    // Biome thresholds (`lifesim-biome-v1`).
+    pub highland_elevation_q16: u32,
+    pub wetland_moisture_milli: i64,
+    pub arid_moisture_milli: i64,
+    pub forest_moisture_milli: i64,
+    pub forest_min_temperature_milli: i32,
+    /// Per-biome carrying-capacity multiplier, Q16, indexed by biome ID.
+    pub biome_capacity_q16: [u32; crate::climate::BIOME_COUNT],
+    /// Ticks between reclassifications. Climate moves on timescales far
+    /// longer than a tick, so reclassifying every tick would be pure cost;
+    /// the cadence is versioned policy like any other formula constant.
+    pub reclassify_interval_ticks: u64,
+}
+
+impl ClimateConfig {
+    /// Documented conservative Phase 6 defaults (disabled by default).
+    pub fn climate_default() -> Self {
+        Self {
+            enabled: false,
+            worldgen_version: WorldgenVersion::V1,
+            base_temperature_milli: 22_000,
+            lapse_milli_per_full_elevation: 30_000,
+            latitude_amplitude_milli: 28_000,
+            season_period_ticks: 36_000,
+            season_amplitude_milli: 6_000,
+            // Pairwise-coprime primes: the sum is quasi-periodic rather than
+            // repeating on any short cycle.
+            drift_period_ticks: [1_000_003, 410_009, 173_021],
+            drift_amplitude_milli: [7_000, 3_000, 1_500],
+            temperature_min_milli: -60_000,
+            temperature_max_milli: 60_000,
+            initial_moisture_milli: 120_000,
+            coastal_moisture_bonus_milli: 40_000,
+            moisture_max_milli: 200_000,
+            moisture_ceiling_milli: 4_000_000,
+            sea_proximity_weight_q16: 39_322, // 0.60 sea proximity, 0.40 relief
+            moisture_diffusion_q16: 3_277,    // 0.05 of a cell per step
+            moisture_drain_weight: 2,
+            // Calibrated against measured field distributions rather than
+            // guessed: across seven seeds at 96x96, land elevation spans
+            // roughly p0 17,000 to p100 35,500-53,300, and inland moisture
+            // spans p0 18,500-37,000 to p100 111,500-115,600. Each threshold
+            // sits inside the range every seed reaches, so no biome is
+            // unreachable by construction.
+            highland_elevation_q16: 30_000,
+            wetland_moisture_milli: 105_000,
+            arid_moisture_milli: 55_000,
+            forest_moisture_milli: 90_000,
+            forest_min_temperature_milli: 4_000,
+            // Water contributes nothing; wetland and forest are the most
+            // productive; arid and highland the least.
+            biome_capacity_q16: [
+                0,      // water
+                72_000, // coast
+                26_214, // highland  (0.40)
+                98_304, // wetland   (1.50)
+                19_661, // arid      (0.30)
+                85_197, // forest    (1.30)
+                65_536, // grassland (1.00)
+            ],
+            reclassify_interval_ticks: 100,
+        }
+    }
 }
 
 /// Versioned Phase 2 policy: inherited controllers, paired-parent
@@ -185,7 +442,26 @@ impl SimConfig {
             min_land_fraction_q16: 6_554,  // 0.10
             max_land_fraction_q16: 58_982, // 0.90
             phase2: Phase2Config::phase2_default(),
+            climate: ClimateConfig::climate_default(),
+            origin: OriginConfig::origin_default(),
+            contest: ContestConfig::contest_default(),
         }
+    }
+
+    /// Phase 7 defaults: the Phase 2 world with contest enabled.
+    pub fn phase7_default(world_seed: u64) -> Self {
+        let mut config = Self::phase2_default(world_seed);
+        config.contest.enabled = true;
+        config
+    }
+
+    /// Phase 6 defaults: the Phase 2 world with climate, biomes, and the
+    /// `lifesim-worldgen-v2` generator enabled.
+    pub fn phase6_default(world_seed: u64) -> Self {
+        let mut config = Self::phase2_default(world_seed);
+        config.climate.enabled = true;
+        config.climate.worldgen_version = WorldgenVersion::V2;
+        config
     }
 
     /// Phase 2 defaults: the Phase 1 world with inherited controllers and
@@ -304,6 +580,194 @@ impl SimConfig {
         if self.phase2.enabled {
             self.validate_phase2()?;
         }
+        self.validate_climate()?;
+        self.validate_origin()?;
+        self.validate_contest()?;
+        Ok(())
+    }
+
+    fn validate_contest(&self) -> Result<(), ConfigError> {
+        let contest = &self.contest;
+        if !contest.enabled {
+            return Ok(());
+        }
+        // Contest is a Phase 2 mechanism: it wires reserved controller
+        // channels, which only exist when a controller does.
+        if !self.phase2.enabled {
+            return Err(ConfigError::ContestRequiresPhase2);
+        }
+        if contest.base_health_milli <= 0 {
+            return Err(ConfigError::NonPositive("base_health_milli"));
+        }
+        if contest.damage_base_milli < 0 {
+            return Err(ConfigError::Negative("damage_base_milli"));
+        }
+        if contest.attack_cost_milli < 0 {
+            return Err(ConfigError::Negative("attack_cost_milli"));
+        }
+        if contest.local_depletion_milli < 0 {
+            return Err(ConfigError::Negative("local_depletion_milli"));
+        }
+        if contest.attack_range_m == 0 || contest.attack_range_m > 32 {
+            return Err(ConfigError::AttackRange(contest.attack_range_m));
+        }
+        if contest.carcass_reach_m == 0 || contest.carcass_reach_m > 32 {
+            return Err(ConfigError::AttackRange(contest.carcass_reach_m));
+        }
+        if contest.max_carcasses == 0 || contest.max_carcasses > 200_000 {
+            return Err(ConfigError::MaxCarcasses(contest.max_carcasses));
+        }
+        for (name, value) in [
+            ("damage_variance_q16", contest.damage_variance_q16),
+            ("heal_energy_floor_q16", contest.heal_energy_floor_q16),
+            ("damage_decay_q16_per_s", contest.damage_decay_q16_per_s),
+            ("carcass_energy_q16", contest.carcass_energy_q16),
+            ("carcass_decay_q16_per_s", contest.carcass_decay_q16_per_s),
+        ] {
+            if value > Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(name, value));
+            }
+        }
+        if !(-(Q16_ONE as i32)..=Q16_ONE as i32).contains(&contest.attack_threshold_q16) {
+            return Err(ConfigError::ControllerThreshold(
+                "attack_threshold_q16",
+                contest.attack_threshold_q16,
+            ));
+        }
+        Ok(())
+    }
+
+    fn validate_origin(&self) -> Result<(), ConfigError> {
+        let origin = &self.origin;
+        if origin.deme_count == 0 || origin.deme_count > crate::origin::MAX_DEMES {
+            return Err(ConfigError::DemeCount(origin.deme_count));
+        }
+        if origin.archetype_count as usize > crate::origin::MAX_ARCHETYPES {
+            return Err(ConfigError::ArchetypeCount(origin.archetype_count));
+        }
+        for field in [
+            ("trait_low_q16", origin.trait_low_q16),
+            ("trait_span_q16", origin.trait_span_q16),
+            ("neural_span_q16", origin.neural_span_q16),
+            ("deme_trait_spread_q16", origin.deme_trait_spread_q16),
+        ] {
+            if field.1 > Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(field.0, field.1));
+            }
+        }
+        if origin.mode == crate::origin::OriginMode::Seeded {
+            if origin.archetype_count == 0 {
+                return Err(ConfigError::ArchetypeCount(0));
+            }
+            // Seeded placement matches against biomes, which the climate
+            // section owns.
+            if !self.climate.enabled {
+                return Err(ConfigError::SeededRequiresClimate);
+            }
+            // Archetypes are sorted by ascending ID so that "allocate
+            // founder IDs in ascending (archetype_id, draw_index) order" and
+            // "key draws on array position" are the same ordering.
+            for index in 1..origin.archetype_count as usize {
+                if origin.archetypes[index].id <= origin.archetypes[index - 1].id {
+                    return Err(ConfigError::ArchetypeOrder {
+                        index,
+                        id: origin.archetypes[index].id,
+                    });
+                }
+            }
+            for index in 0..origin.archetype_count as usize {
+                if origin.archetypes[index].biome_affinity == 0 {
+                    return Err(ConfigError::EmptyArchetypeAffinity {
+                        id: origin.archetypes[index].id,
+                    });
+                }
+            }
+        }
+        Ok(())
+    }
+
+    fn validate_climate(&self) -> Result<(), ConfigError> {
+        let climate = &self.climate;
+        // The generator and the climate section move together. A v2 world
+        // without climate fields, or climate fields on a v1 world, would
+        // both be worlds whose terrain and whose rules disagree.
+        if climate.enabled != (climate.worldgen_version == WorldgenVersion::V2) {
+            return Err(ConfigError::ClimateGeneratorMismatch {
+                enabled: climate.enabled,
+                generator: climate.worldgen_version.tag(),
+            });
+        }
+        if !climate.enabled {
+            return Ok(());
+        }
+        if climate.temperature_min_milli >= climate.temperature_max_milli {
+            return Err(ConfigError::TemperatureBounds {
+                min: climate.temperature_min_milli,
+                max: climate.temperature_max_milli,
+            });
+        }
+        for period in climate.drift_period_ticks {
+            if period == 0 {
+                return Err(ConfigError::NonPositive("drift_period_ticks"));
+            }
+        }
+        if climate.season_period_ticks == 0 {
+            return Err(ConfigError::NonPositive("season_period_ticks"));
+        }
+        // Drift must be slow relative to the season, or it is a second
+        // season rather than a long-timescale term.
+        for period in climate.drift_period_ticks {
+            if period <= climate.season_period_ticks {
+                return Err(ConfigError::DriftPeriodTooShort {
+                    period,
+                    season: climate.season_period_ticks,
+                });
+            }
+        }
+        if climate.sea_proximity_weight_q16 > Q16_ONE {
+            return Err(ConfigError::FractionOutOfRange(
+                "sea_proximity_weight_q16",
+                climate.sea_proximity_weight_q16,
+            ));
+        }
+        if climate.moisture_diffusion_q16 == 0 || climate.moisture_diffusion_q16 > Q16_ONE / 2 {
+            return Err(ConfigError::FractionOutOfRange(
+                "moisture_diffusion_q16",
+                climate.moisture_diffusion_q16,
+            ));
+        }
+        if climate.initial_moisture_milli <= 0 || climate.moisture_max_milli <= 0 {
+            return Err(ConfigError::NonPositive("initial_moisture_milli"));
+        }
+        if climate.moisture_ceiling_milli < climate.moisture_max_milli {
+            return Err(ConfigError::NonPositive("moisture_ceiling_milli"));
+        }
+        if climate.coastal_moisture_bonus_milli < 0 {
+            return Err(ConfigError::Negative("coastal_moisture_bonus_milli"));
+        }
+        // Biome thresholds must be ordered, or a biome is unreachable by
+        // construction and C6.7 would fail for a reason config caused.
+        if !(climate.arid_moisture_milli < climate.forest_moisture_milli
+            && climate.forest_moisture_milli < climate.wetland_moisture_milli)
+        {
+            return Err(ConfigError::BiomeThresholdOrder {
+                arid: climate.arid_moisture_milli,
+                forest: climate.forest_moisture_milli,
+                wetland: climate.wetland_moisture_milli,
+            });
+        }
+        if climate.highland_elevation_q16 > Q16_ONE {
+            return Err(ConfigError::FractionOutOfRange(
+                "highland_elevation_q16",
+                climate.highland_elevation_q16,
+            ));
+        }
+        if climate.reclassify_interval_ticks == 0 {
+            return Err(ConfigError::NonPositive("reclassify_interval_ticks"));
+        }
+        if climate.biome_capacity_q16[crate::climate::Biome::Water as usize] != 0 {
+            return Err(ConfigError::NonPositive("biome_capacity_q16[water]"));
+        }
         Ok(())
     }
 
@@ -377,7 +841,10 @@ impl SimConfig {
         hasher.update_u32(CONFIG_SCHEMA_VERSION);
         hasher.update(BEHAVIOR_POLICY_VERSION.as_bytes());
         hasher.update(crate::rng::RNG_ALGORITHM_VERSION.as_bytes());
-        hasher.update(crate::worldgen::WORLDGEN_VERSION.as_bytes());
+        // The *selected* generator, not a constant. With the default V1 this
+        // hashes exactly the byte string it always did, so adding V2 cannot
+        // move any existing world's config hash.
+        hasher.update(self.climate.worldgen_version.tag().as_bytes());
         hasher.update_u64(self.world_seed);
         hasher.update_u32(self.cells_x);
         hasher.update_u32(self.cells_y);
@@ -436,6 +903,72 @@ impl SimConfig {
             hasher.update_u32(self.phase2.cluster_sample_max);
             hasher.update_u32(self.phase2.cluster_neural_weight_q16);
         }
+        // The Phase 6 section participates only when enabled, so a
+        // climate-disabled config hashes exactly as it did before Phase 6
+        // existed and both fixtures are preserved.
+        if self.climate.enabled {
+            hasher.update(b"lifesim-climate-config");
+            hasher.update(crate::climate::BIOME_POLICY_VERSION.as_bytes());
+            hasher.update(crate::climate::CLIMATE_POLICY_VERSION.as_bytes());
+            hasher.update_i32(self.climate.base_temperature_milli);
+            hasher.update_i32(self.climate.lapse_milli_per_full_elevation);
+            hasher.update_i32(self.climate.latitude_amplitude_milli);
+            hasher.update_u64(self.climate.season_period_ticks);
+            hasher.update_i32(self.climate.season_amplitude_milli);
+            for period in self.climate.drift_period_ticks {
+                hasher.update_u64(period);
+            }
+            for amplitude in self.climate.drift_amplitude_milli {
+                hasher.update_i32(amplitude);
+            }
+            hasher.update_i32(self.climate.temperature_min_milli);
+            hasher.update_i32(self.climate.temperature_max_milli);
+            hasher.update_i64(self.climate.initial_moisture_milli);
+            hasher.update_i64(self.climate.coastal_moisture_bonus_milli);
+            hasher.update_i64(self.climate.moisture_max_milli);
+            hasher.update_i64(self.climate.moisture_ceiling_milli);
+            hasher.update_u32(self.climate.sea_proximity_weight_q16);
+            hasher.update_u32(self.climate.moisture_diffusion_q16);
+            hasher.update_u32(self.climate.moisture_drain_weight);
+            hasher.update_u32(self.climate.highland_elevation_q16);
+            hasher.update_i64(self.climate.wetland_moisture_milli);
+            hasher.update_i64(self.climate.arid_moisture_milli);
+            hasher.update_i64(self.climate.forest_moisture_milli);
+            hasher.update_i32(self.climate.forest_min_temperature_milli);
+            for multiplier in self.climate.biome_capacity_q16 {
+                hasher.update_u32(multiplier);
+            }
+            hasher.update_u64(self.climate.reclassify_interval_ticks);
+        }
+        // The origin section participates only when it differs from the
+        // Phase 1/2 founder behavior, so a default-origin config hashes
+        // exactly as it did before Phase 6 existed.
+        if !crate::origin::is_default_origin(&self.origin) {
+            crate::origin::hash_origin_into(&mut hasher, &self.origin);
+        }
+        // Phase 7 section: hashed only when enabled, so a contest-disabled
+        // config hashes exactly as it did before Phase 7 existed.
+        if self.contest.enabled {
+            hasher.update(b"lifesim-contest-config");
+            hasher.update(crate::contest::CONTEST_POLICY_VERSION.as_bytes());
+            hasher.update(crate::contest::PAIR_KEY_POLICY_VERSION.as_bytes());
+            hasher.update_i64(self.contest.base_health_milli);
+            hasher.update_i64(self.contest.damage_base_milli);
+            hasher.update_u32(self.contest.damage_variance_q16);
+            hasher.update_i64(self.contest.attack_cost_milli);
+            hasher.update_u32(self.contest.attack_range_m);
+            hasher.update_i32(self.contest.attack_threshold_q16);
+            hasher.update_u64(self.contest.attack_cooldown_ticks);
+            hasher.update_i64(self.contest.heal_milli_per_s);
+            hasher.update_u32(self.contest.heal_energy_cost_q16);
+            hasher.update_u32(self.contest.heal_energy_floor_q16);
+            hasher.update_u32(self.contest.damage_decay_q16_per_s);
+            hasher.update_u32(self.contest.carcass_energy_q16);
+            hasher.update_u32(self.contest.carcass_decay_q16_per_s);
+            hasher.update_u32(self.contest.carcass_reach_m);
+            hasher.update_u32(self.contest.max_carcasses);
+            hasher.update_i64(self.contest.local_depletion_milli);
+        }
         hasher.finish()
     }
 
@@ -465,14 +998,53 @@ pub enum ConfigError {
     InitialEnergy(i64),
     Speed(u32),
     CrowdingRadius(u32),
-    AgePolicy { maturity: u64, max_age: u64 },
-    ReproductionEnergy { threshold: i64, total_cost: i64 },
-    LandFractionBounds { min: u32, max: u32 },
+    AgePolicy {
+        maturity: u64,
+        max_age: u64,
+    },
+    ReproductionEnergy {
+        threshold: i64,
+        total_cost: i64,
+    },
+    LandFractionBounds {
+        min: u32,
+        max: u32,
+    },
     PairingRange(u32),
     PairingEnergy(i64),
     ControllerThreshold(&'static str, i32),
     TurnRate(u32),
     ClusterSample(u32),
+    ClimateGeneratorMismatch {
+        enabled: bool,
+        generator: &'static str,
+    },
+    TemperatureBounds {
+        min: i32,
+        max: i32,
+    },
+    DriftPeriodTooShort {
+        period: u64,
+        season: u64,
+    },
+    BiomeThresholdOrder {
+        arid: i64,
+        forest: i64,
+        wetland: i64,
+    },
+    DemeCount(u32),
+    ArchetypeCount(u32),
+    ArchetypeOrder {
+        index: usize,
+        id: u16,
+    },
+    EmptyArchetypeAffinity {
+        id: u16,
+    },
+    SeededRequiresClimate,
+    ContestRequiresPhase2,
+    AttackRange(u32),
+    MaxCarcasses(u32),
 }
 
 impl fmt::Display for ConfigError {
@@ -522,6 +1094,53 @@ impl fmt::Display for ConfigError {
             }
             Self::TurnRate(value) => write!(formatter, "invalid max_turn_per_tick_bam {value}"),
             Self::ClusterSample(value) => write!(formatter, "invalid cluster_sample_max {value}"),
+            Self::ClimateGeneratorMismatch { enabled, generator } => write!(
+                formatter,
+                "climate.enabled is {enabled} but the generator is {generator}; the climate \
+                 section and lifesim-worldgen-v2 must be enabled together"
+            ),
+            Self::TemperatureBounds { min, max } => write!(
+                formatter,
+                "temperature_min_milli {min} must be below temperature_max_milli {max}"
+            ),
+            Self::DriftPeriodTooShort { period, season } => write!(
+                formatter,
+                "drift period {period} must exceed the season period {season}; a drift term \
+                 on a seasonal timescale is a second season, not a long-timescale term"
+            ),
+            Self::BiomeThresholdOrder {
+                arid,
+                forest,
+                wetland,
+            } => write!(
+                formatter,
+                "biome moisture thresholds must ascend: arid {arid} < forest {forest} < \
+                 wetland {wetland}, or a biome is unreachable by construction"
+            ),
+            Self::DemeCount(value) => write!(formatter, "invalid deme_count {value}"),
+            Self::ArchetypeCount(value) => write!(
+                formatter,
+                "invalid archetype_count {value}; seeded origin needs at least one"
+            ),
+            Self::ArchetypeOrder { index, id } => write!(
+                formatter,
+                "archetype {index} has id {id}, which does not ascend; archetypes are sorted \
+                 by id so founder allocation order is a function of the set, not the array"
+            ),
+            Self::EmptyArchetypeAffinity { id } => write!(
+                formatter,
+                "archetype {id} has an empty biome affinity, so no cell could ever match it"
+            ),
+            Self::SeededRequiresClimate => formatter.write_str(
+                "origin.mode = seeded needs biomes to match against, so the climate section \
+                 must be enabled",
+            ),
+            Self::ContestRequiresPhase2 => formatter.write_str(
+                "the contest section wires reserved controller channels, so phase2 must be \
+                 enabled",
+            ),
+            Self::AttackRange(value) => write!(formatter, "invalid reach {value} m"),
+            Self::MaxCarcasses(value) => write!(formatter, "invalid max_carcasses {value}"),
         }
     }
 }

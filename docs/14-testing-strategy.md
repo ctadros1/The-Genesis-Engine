@@ -192,6 +192,50 @@ release-mode test executed explicitly:
 
 Phase 4 requires a repeatable isolated restore test. It must start from a completed backup set containing snapshot, event data, configuration, catalog, and checksum manifest; validate the set before loading; restore into a non-live destination; compare world ID, tick, configuration hash, and documented state checksum; and prove that the original world was unchanged. A VM snapshot alone does not satisfy this test.
 
+## Ablation Discipline (Phase 5 onward)
+
+From Phase 5 onward a behavioral claim is a multi-seed, multi-condition
+claim, and the tooling enforces what used to be operator discipline.
+
+- **A condition is a named config delta with its own hash.** A control and a
+  treatment cannot be the same experiment under two names: a campaign whose
+  conditions produce identical effective config hashes is refused at load.
+- **Every difference between conditions must be declared.** A field two
+  conditions differ in that no `vary` directive names is refused, and a
+  `vary` that nothing varies is refused too.
+- **The whole declared design must be runnable.** Preflight builds every
+  declared world before any ticks run and refuses a campaign that cannot
+  build them all, because a 30-seed design silently executing as 27 seeds is
+  a different experiment, and the missing seeds were chosen by terrain
+  rather than at random.
+- **A failed world is reported, never dropped**, and the comparison report
+  refuses to aggregate a campaign containing one.
+- **The report infers nothing.** It produces counts, ranges, medians, and
+  paired per-seed sign counts, and states in its own output that no
+  significance test, effect size, or threshold has been applied. A phase
+  that states a hypothesis states its own prespecified threshold and seed
+  count before its campaign runs; a threshold weakened after seeing the data
+  is a different experiment.
+
+### Two Ways A Green Test Can Mean Nothing
+
+Both of these happened during Phase 5 implementation and both are recorded
+because the fix is a habit, not a patch.
+
+**A criterion satisfied by an empty run.** The first A5.3 test ran 10^6
+ticks on a world that went extinct after a few hundred, and verified
+completeness against a log of 62 events. Every assertion passed. Long-run
+tests now assert the world survived, that the log is not trivially thin, and
+that events span the run rather than stopping early.
+
+**A checksum difference that proves nothing.** `World::state_checksum`
+hashes the config hash into its preamble, so two conditions *always* produce
+different checksums, including when the treatment is behaviorally inert. A
+test asserting "the conditions differ" via checksums passes for an inert
+condition. Behavioral difference must be asserted on a measured quantity,
+and there is now a test that pins this down by varying an analysis-only
+parameter and asserting the checksums differ while the simulation does not.
+
 ## Failure Handling
 
 A flaky deterministic test is a correctness failure, not a retry candidate. A performance regression requires a baseline comparison, profiler evidence, and an explicit decision to fix, accept, or revert. Fuzz failures become minimized corpus inputs before the issue closes.

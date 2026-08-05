@@ -6,6 +6,7 @@ members = [
     "crates/sim-protocol",
     "crates/sim-server",
     "crates/sim-persist",
+    "crates/sim-experiment",
 ]
 resolver = "2"
 

@@ -98,6 +98,44 @@ fixed-population scenarios and only with the added work qualified: Phase 2
 adds per-organism sensing and a 20-16-12-12 controller evaluation that
 Phase 1 does not perform.
 
+## Phase 5: Two Scale Axes, And Which One Is Measured Here
+
+Phase 5 makes explicit that this project has two scale axes and that the
+second now matters more. Organism count is the familiar one. The other is
+**generations reached, multiplied by seeds, multiplied by ablation
+conditions**, and it is what an open-ended-evolution question actually
+consumes.
+
+Headless execution and the independent-world scheduler exist to move the
+second axis. Measured on the development host
+(`phase5-local-20260804T210059Z`): 8,805 ticks/s per world at the 500 tier
+and 1,653 ticks/s at the 2,000 tier; 16 independent worlds reach 3.67x
+aggregate throughput at 4 workers with 8.4 percent per-world degradation,
+and 4.96x at 8 workers with 38 percent degradation, on a 12-core machine
+with 4 performance cores.
+
+**No supported campaign size is claimed from those numbers.** They are one
+host and one filesystem, and the deployment-VM measurement is still an open
+Phase 0 gate. The plan deliberately contains no acceptance criterion of the
+form "achieves X worlds at Y ticks per second", because declaring a target
+before measuring is the unmeasured scale claim `AGENTS.md` forbids.
+
+Two methodological notes worth carrying forward, both learned by getting
+them wrong first:
+
+- **A percentile can be blind to the thing you are measuring.** With a
+  checkpoint every 200 ticks, checkpoint ticks are 0.5 percent of the
+  sample, so p95 over all ticks cannot see a checkpoint stall at all. The
+  affected ticks have to be measured as their own population.
+- **Report the noise floor, not just the effect.** A single with-versus-
+  without comparison of event-log cost produced a negative overhead. The
+  measurement is now five alternating repetitions reporting the median of
+  each side and the observed spread, and the honest conclusion is that the
+  cost is below the noise floor rather than that it is one percent.
+
+Intra-world parallelism remains closed. Nothing in Phase 5 opens it; it
+stays gated on ADR-0010's ordering and reduction evidence.
+
 ## Current Evidence Boundary
 
 The first local record is `phase0-local-20260804T030100Z`, summarized in

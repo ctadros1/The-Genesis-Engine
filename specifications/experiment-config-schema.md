@@ -21,7 +21,63 @@ genome schema/topology IDs. A disabled section is behaviorally inert by
 construction, so phase2-disabled configs hash and replay identically to
 Phase 1 configs; enabling Phase 2 always starts a new replay lineage.
 
-## Planned Additions: Conditions And Campaigns (Phase 5)
+## Phase 5 Implementation Notes: Conditions And Campaigns
+
+Implemented in `crates/sim-experiment`. A campaign file is line-oriented and
+hand-parsed, matching this repository's policy of hand-written codecs with
+typed rejections rather than a serialization dependency. Every directive is
+a whole line, so there is no indentation semantics and no ambiguity about
+which condition a `set` belongs to:
+
+~~~
+campaign contest-pilot
+ticks 20000
+workers 4
+seeds 1..23 25..28 30..32
+base preset phase2
+base cells_x 128
+condition control
+condition treatment
+set treatment basal_cost_milli_per_s 160
+vary basal_cost_milli_per_s
+output events on
+output snapshots on
+~~~
+
+Four things are validated at **load** time, before any compute is spent,
+because a campaign that is wrong is far cheaper to reject than to run:
+
+1. Every condition's effective config validates.
+2. All conditions produce pairwise-distinct effective config hashes. Two
+   conditions that hash the same are one experiment under two names, and a
+   `set` that assigns a field the value it already had is that defect
+   wearing a delta.
+3. Every field on which two conditions actually differ is declared by a
+   `vary` directive, and every `vary` names a field something actually
+   varies. This is what lets the comparison report check its aggregation
+   precondition against a declaration the author wrote down rather than
+   against whatever the data happens to show.
+4. **Preflight** (D-046): every declared world is constructed at tick 0. World
+   generation rejects seeds whose land fraction falls outside bounds, so a
+   declared 30-seed design would otherwise execute as a 27-seed one — and the
+   dropped seeds are not dropped at random, they are dropped by a terrain
+   property that may correlate with whatever is being measured. A campaign
+   that cannot build all of its declared worlds is refused.
+
+`world_seed` is deliberately **not** a settable field. Seeds are the
+replicate axis, declared by the `seeds` directive; letting a condition set
+one would let a treatment and its control run different worlds.
+
+Worker count is execution policy, not experiment identity, and is excluded
+from the campaign hash. A5.2 asserts that results do not depend on it, so
+folding it into the hash would assert the opposite.
+
+The manifest embeds the campaign source **verbatim** and records its hash. A
+manifest pointing at an external campaign file would silently change meaning
+when that file was edited, which is exactly the failure the config-hash
+discipline exists to prevent; an edited manifest is refused on load.
+
+## Original Plan: Conditions And Campaigns (Phase 5)
 
 Every acceptance criterion from Phase 7 onward is a multi-seed,
 multi-condition claim, so conditions become a first-class config concept

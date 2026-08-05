@@ -26,6 +26,48 @@ pub struct Control {
     pub speed_q16: u32,
 }
 
+/// How the tick thread paces itself.
+///
+/// Acceleration is a host concern only. The kernel reads no clock, so
+/// pacing cannot reach a result; A5.1 is the test that proves the claim
+/// rather than asserting it.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum Pacing {
+    /// Sleep so one tick takes `dt / speed` of wall-clock time.
+    Realtime,
+    /// Never sleep. The speed multiplier becomes meaningless and is
+    /// ignored; pause still works, because pausing is world state.
+    Headless,
+}
+
+impl Pacing {
+    pub fn name(self) -> &'static str {
+        match self {
+            Pacing::Realtime => "realtime",
+            Pacing::Headless => "headless",
+        }
+    }
+}
+
+/// Whether a checkpoint blocks the tick thread.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum CheckpointMode {
+    /// Phase 4 behavior: encode, compress, and fsync on the tick thread.
+    /// Kept available so the Phase 4 path can be measured and rolled back to.
+    Sync,
+    /// Phase 5 behavior: capture on the tick thread, write on another.
+    Async,
+}
+
+impl CheckpointMode {
+    pub fn name(self) -> &'static str {
+        match self {
+            CheckpointMode::Sync => "sync",
+            CheckpointMode::Async => "async",
+        }
+    }
+}
+
 #[derive(Clone, Debug)]
 pub struct AuditRecord {
     pub id: u64,
@@ -121,14 +163,26 @@ pub struct Shared {
     pub tick_samples_us: Mutex<VecDeque<f64>>,
     pub ticks_total: AtomicU64,
     /// Snapshot store (None disables persistence endpoints/checkpoints).
-    pub store: Option<Mutex<sim_persist::SnapshotStore>>,
+    /// Shared rather than owned so the asynchronous checkpoint writer and
+    /// the REST save endpoints can hold the same catalog.
+    pub store: Option<Arc<Mutex<sim_persist::SnapshotStore>>>,
     /// Wall-clock seconds between automatic checkpoints (0 disables).
     pub checkpoint_interval_secs: u64,
     pub checkpoint_keep: usize,
+    pub checkpoint_mode: CheckpointMode,
+    pub pacing: Pacing,
     pub saves_total: AtomicU64,
     pub save_failures_total: AtomicU64,
     pub last_save_duration_us: AtomicU64,
     pub last_save_bytes: AtomicU64,
+    /// Automatic checkpoints refused because the previous one was still
+    /// being written. Reported, never hidden: a nonzero value means the
+    /// configured interval is shorter than a checkpoint takes.
+    pub checkpoints_skipped: AtomicU64,
+    /// Wall-clock cost of the last state capture on the tick thread. This
+    /// is the only part of a checkpoint the tick thread pays for in
+    /// asynchronous mode, and A5.5 measures it directly.
+    pub last_capture_us: AtomicU64,
 }
 
 pub fn now_unix_ms() -> u64 {

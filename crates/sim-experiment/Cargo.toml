@@ -1,0 +1,19 @@
+[package]
+name = "sim-experiment"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "sim_experiment"
+path = "src/lib.rs"
+
+# Experiment harness: campaigns, conditions, the independent-world
+# scheduler, manifests, and comparison reports. It observes worlds and never
+# instructs them (ADR-0016), so it depends on the kernel and the persistence
+# adapter and on nothing else. Concurrency uses std threads only; there is
+# no async runtime and no work-stealing library, because A5.2 requires the
+# scheduling policy to be simple enough to reason about as well as to test.
+[dependencies]
+sim-core = { path = "../sim-core" }
+sim-persist = { path = "../sim-persist" }
