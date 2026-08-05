@@ -1,6 +1,11 @@
 # Phase 9: Evolvable Genome, Diploid Genetics And Variable Topology
 
-Status: planned, not started. Policy versions `lifesim-genome-v2`,
+Status: **in progress. 2026-08-05.** First slice landed: channel and
+activation registries, the schema 2 genome model and derived identity, the
+ALG2 bounded fail-closed codec with every structural invariant, and diploid
+expression with evolvable dominance. **Not implemented**: meiosis,
+structural mutation, controller v2 evaluation, world integration, and every
+campaign criterion. Decisions D-066, D-067. Policy versions `lifesim-genome-v2`,
 `lifesim-controller-v2`, `lifesim-meiosis-v1`, `lifesim-structmut-v1`.
 Specification: `specifications/genome-schema-2.md`.
 
@@ -37,8 +42,11 @@ blast radius. Everything after it depends on it.
 - Structural mutation: duplication, deletion, insertion, transposition, plus
   generalized point mutation.
 - World-global innovation ID counter as saved world state.
-- Controller v2: synchronous update over an arbitrary graph, activations as
-  world state, edges summed in `homology_id` order.
+- Controller v2: **hybrid** update over an arbitrary graph (ADR-0022 A9,
+  D-043, D-066) - zero-delay edges in canonical topological order over the
+  acyclic subgraph, delayed and recurrent edges from prior-state buffers -
+  with activations and prior-state buffers as world state and edges summed
+  in `homology_id` order.
 - A versioned input/output channel registry replacing the hard-coded 20 and
   12, so future capabilities are registry entries rather than schema bumps.
 - Structural caps with deterministic rejection and counting.
@@ -74,10 +82,13 @@ blast radius. Everything after it depends on it.
   This is the single most easily overlooked determinism requirement in the
   phase: float addition is not associative, so a storage-order sum is a
   latent replay bug that only appears after a compaction changes layout.
-- Synchronous network update makes node evaluation order irrelevant and
-  removes any need for topological sorting or cycle handling. Activations
-  become world state and enter the checksum under
-  `lifesim-activation-state-v1`.
+- The hybrid update needs a **canonical topological order** over the
+  zero-delay subgraph, canonicalized by `homology_id` with ties broken by it,
+  so node evaluation order is a pure function of the genome. Delayed and
+  recurrent edges read prior-state buffers, so no cycle handling is needed
+  and a cycle among zero-delay edges is a decode-time error rather than a
+  runtime condition. Activations and prior-state buffers are both world state
+  and enter the checksum under `lifesim-activation-state-v1`.
 - Checksum sections `lifesim-genome2-state-v1` and
   `lifesim-activation-state-v1`, present only under schema 2.
 
@@ -125,12 +136,20 @@ Criteria:
       making rather than asserting. If duplication alone is too slow to
       produce C9.1 within the run budget, that is a finding and the
       insertion operator becomes the default with the reason recorded.
-- [ ] **C9.6 Bounded and fail-closed.** A seeded malformed-input harness of
+- [~] **C9.6 Bounded and fail-closed. Codec half met**: 100,000 seeded
+      malformed cases produced zero panics and zero invalid admissions, with
+      every accept re-validated and round-tripped (4,777 accepts, so the
+      structural validation is genuinely exercised rather than everything
+      dying at the checksum). The cap-rejection half needs the mutation
+      operators, which are not implemented. A seeded malformed-input harness of
       at least 100,000 cases over the schema 2 codec produces zero panics
       and zero invalid admissions, every accept re-validated and
       round-tripped. Every structural cap rejects deterministically, counts,
       and events; no cap is ever silently exceeded.
-- [ ] **C9.7 Determinism and fixtures.** Clean-process replay of the Phase 9
+- [~] **C9.7 Determinism and fixtures. Fixture half met**: a schema-1
+      configured world still reproduces `0xff9dfcff5dffbf42` with schema 2 in
+      the build. Replay, storage permutation, and the compaction test need
+      world integration. Clean-process replay of the Phase 9
       fixture; storage-permutation equality; edge-summation order
       independence from storage layout proven by a compaction test; schema 1
       configured worlds still reproduce `0xff9dfcff5dffbf42` exactly.
@@ -154,7 +173,9 @@ Criteria:
 - Structural operators: duplication produces valid fresh innovation IDs;
   deletion guards reject orphaning; transposition preserves content; every
   operator output re-validates.
-- Evaluation: synchronous update equality under node storage permutation;
+- Evaluation: hybrid update equality under node storage permutation;
+  zero-delay propagation crosses more than one edge in a tick; a zero-delay
+  cycle is rejected at decode;
   edge summation order pinned; recurrent topologies evaluate without special
   handling; non-finite neutralization counted and evented.
 - Genetics validation: C9.3 and C9.4 as automated statistical tests with

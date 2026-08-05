@@ -82,8 +82,8 @@ impl PhysiologyState {
 
     pub fn retain(&mut self, remove: &[bool]) {
         let mut write = 0_usize;
-        for read in 0..self.cumulative_hazard_q16.len() {
-            if !remove[read] {
+        for (read, removed) in remove.iter().enumerate() {
+            if !removed {
                 self.cumulative_hazard_q16[write] = self.cumulative_hazard_q16[read];
                 write += 1;
             }

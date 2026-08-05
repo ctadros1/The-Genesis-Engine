@@ -24,9 +24,11 @@ mod config;
 mod contest;
 mod controller;
 mod genome;
+mod genome2;
 mod origin;
 mod phase2;
 mod physiology;
+mod registry;
 mod rng;
 mod save;
 mod similarity;
@@ -61,6 +63,14 @@ pub use genome::{
     MEMORY_VALUES, NEURAL_COUNT, Phenotype, TOPOLOGY_ID, TRAIT_COUNT, VariationPolicy,
     VariationSummary, WEIGHT_LIMIT, recombine,
 };
+pub use genome2::{
+    EDGE_FLAG_DELAYED, EDGE_FLAG_DISABLED, EDGE_FLAG_PLASTIC, ExpressedBinding, ExpressedEdge,
+    ExpressedNetwork, ExpressedNode, GENOME2_MAGIC, GENOME2_POLICY_VERSION, GENOME2_SCHEMA_VERSION,
+    Genome2, Genome2Error, GenomeCaps, Haplotype, Locus, LocusKind, PLOIDY, PlasticityGenes,
+    STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE, TRAIT_HOMOLOGY_LIMIT, VALUE_LIMIT,
+    blend_by_dominance, derive_gene_lineage_id, derive_homology_id, derive_mutation_event_id,
+    registry_versions,
+};
 pub use origin::{
     Archetype, Founder, MAX_ARCHETYPES, MAX_DEMES, ORIGIN_POLICY_VERSION, OriginError, OriginMode,
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
@@ -70,6 +80,11 @@ pub use physiology::{
     HazardOutcome, PHYSIOLOGY_POLICY_VERSION, PhysiologyState, allometry_multiplier_milli,
     hazard_draw, pow_quarter_milli, preferred_temperature_milli, senescence_hazard_q16_per_s,
     thermal_cost_milli,
+};
+pub use registry::{
+    ACTIVATION_LINEAR, ACTIVATION_REGISTRY_VERSION, ACTIVATION_TANH, Activation,
+    CHANNEL_REGISTRY_VERSION, CHANNELS, ChannelDirection, ChannelEntry, NodeRole, channel,
+    channel_exists, input_channels, output_channels,
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{

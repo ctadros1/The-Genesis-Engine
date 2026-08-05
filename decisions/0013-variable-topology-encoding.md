@@ -66,10 +66,15 @@ Key elements:
 - A versioned input/output channel registry replaces hard-coded channel
   counts, so a new world capability is a registry entry rather than a genome
   schema bump.
-- Evaluation is synchronous: every node computes from the previous tick's
-  activations. This removes topological sorting and cycle handling entirely
-  and makes node evaluation order irrelevant. Activations become world
-  state.
+- ~~Evaluation is synchronous: every node computes from the previous tick's
+  activations.~~ **Superseded by ADR-0022 A9 (D-043), and again by D-066
+  which found this text still standing.** Evaluation is **hybrid**: zero-delay
+  edges evaluate in a canonical topological order over the acyclic subgraph
+  so information can cross several edges in one tick, while delayed and
+  recurrent edges read prior-state buffers, which breaks every cycle by
+  construction. A cycle among zero-delay edges is a decode-time error.
+  Activations and prior-state buffers are both world state.
+  `specifications/neural-network-schema.md` is normative.
 - Hard structural caps with deterministic rejection and counting.
 
 ## Consequences

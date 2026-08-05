@@ -1,10 +1,12 @@
 # Genome Schema 2: Diploid Variable-Topology Genome
 
-Status: design specification, not implemented. Genome schema 1
+Status: **partially implemented (Phase 9 in progress).** Registries, the
+genome model, the ALG2 codec, and expression are implemented; meiosis,
+structural mutation, controller v2, and world integration are not. Genome schema 1
 (`lifesim-genome-v1`) remains the only implemented schema and stays readable
 forever; its fixtures are load-bearing evidence.
 
-Phase: 7. Policy versions: `lifesim-genome-v2`, `lifesim-meiosis-v1`,
+Phase: 9. Policy versions: `lifesim-genome-v2`, `lifesim-meiosis-v1`,
 `lifesim-structmut-v1`, `lifesim-controller-v2`.
 
 ## Problem With Schema 1
@@ -57,6 +59,13 @@ four separate fields.
 | `gene_lineage_id` | Persistent identity of a heritable gene lineage | Ancestry and provenance analysis |
 | `homology_id` | The structural slot two loci share | **Alignment during meiosis** |
 | `structural_signature` | Canonical phenotype-relevant fields: source, target, role, activation, delay | Detecting genuinely equivalent structure |
+
+**Bit 2 of `Edge.flags` is the delay bit**, added by D-066. The hybrid
+evaluation ADR-0022 A9 adopted requires every edge to be typed zero-delay or
+delayed, and this table's own `structural_signature` row already lists delay
+as a phenotype-relevant field; the flags byte simply had nowhere to put it.
+Delay is therefore an evolvable per-edge property, and whether a mutation may
+flip it is a versioned policy.
 | `mutation_event_id` | Identity of the reproduction/mutation event that created the locus | Audit and event-log joins |
 
 Loci are sorted within a chromosome by `homology_id`, and it is
@@ -111,7 +120,7 @@ config; decode validates every one before construction.
 |---:|---|---|
 | 1 `Trait` | `trait_id: u16`, `value: f32`, `dominance: f32` | value in [0,1]; dominance in [0,1]; `trait_id` in the versioned trait registry |
 | 2 `Node` | `innovation_id: u32`, `role: u8`, `activation_id: u8`, `bias: f32`, `time_constant: u16` | bias in [-8,8]; `role` in {Input, Hidden, Output, Modulatory}; `activation_id` in the versioned activation registry |
-| 3 `Edge` | `innovation_id: u32`, `source: u32`, `target: u32`, `weight: f32`, `flags: u8`, `plasticity: PlasticityGenes` | weight in [-8,8]; `flags` bit 0 = plastic, bit 1 = disabled |
+| 3 `Edge` | `innovation_id: u32`, `source: u32`, `target: u32`, `weight: f32`, `flags: u8`, `plasticity: PlasticityGenes` | weight in [-8,8]; `flags` bit 0 = plastic, bit 1 = disabled, **bit 2 = delayed**; bits 3-7 reserved and must be zero |
 | 4 `IoBinding` | `innovation_id: u32`, `node: u32`, `channel_id: u16`, `gain: f32` | `channel_id` in the versioned input/output channel registry |
 
 `PlasticityGenes` is specified in

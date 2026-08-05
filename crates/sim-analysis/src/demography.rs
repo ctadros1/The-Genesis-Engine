@@ -197,6 +197,42 @@ pub fn spearman_milli(points: &[(i64, i64)]) -> i64 {
     ((numerator / (sx * sy).sqrt()) * 1_000.0) as i64
 }
 
+/// Thermal-matching statistic for C8.7.
+///
+/// For every living organism at the snapshot tick, pair the temperature its
+/// thermal-preference gene prefers with the temperature of the cell it is
+/// actually standing in, and reduce the pairing to one rank correlation.
+///
+/// The control that makes this measurable is that under a
+/// thermoregulation-disabled condition the gene is inert, so the same
+/// statistic computed there must show no correlation. A positive number
+/// with no control attached would be indistinguishable from the terrain
+/// happening to correlate with wherever organisms end up.
+pub fn thermal_match_rho_milli(world: &sim_core::World) -> Option<(i64, u64)> {
+    let cells_x = world.terrain().cells_x;
+    let cell_fp = i64::from(world.config().cell_size_m) * i64::from(sim_core::FP_PER_METER);
+    let physiology = world.config().physiology;
+    let mut points = Vec::new();
+    for id in world.organism_ids_view() {
+        let Some(phase2) = world.organism_detail(*id).and_then(|detail| detail.phase2) else {
+            continue;
+        };
+        let detail = world.organism_detail(*id).expect("detail exists");
+        let cell_x = (i64::from(detail.x_fp) / cell_fp).max(0) as u32;
+        let cell_y = (i64::from(detail.y_fp) / cell_fp).max(0) as u32;
+        let cell = (cell_y as usize) * (cells_x as usize) + cell_x as usize;
+        // `None` here means the world has no temperature field at all, in
+        // which case the statistic is undefined rather than zero -- so the
+        // whole call returns `None` and the caller reports it as absent.
+        let actual = world.temperature_milli(cell)?;
+        let preferred =
+            crate::preferred_temperature_milli(&physiology, phase2.phenotype.thermal_pref_milli);
+        points.push((i64::from(preferred), i64::from(actual)));
+    }
+    let observed = points.len() as u64;
+    Some((spearman_milli(&points), observed))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -312,41 +348,4 @@ mod tests {
         let rho = spearman_milli(&[(1, 5), (2, 4), (3, 3), (4, 2), (5, 1)]);
         assert!((rho + 1_000).abs() <= 1, "got {rho}");
     }
-}
-
-/// Thermal-matching statistic for C8.7.
-///
-/// For every living organism at the snapshot tick, pair the temperature its
-/// thermal-preference gene prefers with the temperature of the cell it is
-/// actually standing in, and reduce the pairing to one rank correlation.
-///
-/// The control that makes this measurable is that under a
-/// thermoregulation-disabled condition the gene is inert, so the same
-/// statistic computed there must show no correlation. A positive number
-/// with no control attached would be indistinguishable from the terrain
-/// happening to correlate with wherever organisms end up.
-pub fn thermal_match_rho_milli(world: &sim_core::World) -> Option<(i64, u64)> {
-    let cells_x = world.terrain().cells_x;
-    let cell_fp = i64::from(world.config().cell_size_m) * i64::from(sim_core::FP_PER_METER);
-    let physiology = world.config().physiology;
-    let mut points = Vec::new();
-    for id in world.organism_ids_view() {
-        let Some(detail) = world.organism_detail(*id) else {
-            continue;
-        };
-        let Some(phase2) = detail.phase2.as_ref() else {
-            continue;
-        };
-        let cell_x = (i64::from(detail.x_fp) / cell_fp).max(0) as u32;
-        let cell_y = (i64::from(detail.y_fp) / cell_fp).max(0) as u32;
-        let cell = (cell_y as usize) * (cells_x as usize) + cell_x as usize;
-        let Some(actual) = world.temperature_milli(cell) else {
-            return None;
-        };
-        let preferred =
-            crate::preferred_temperature_milli(&physiology, phase2.phenotype.thermal_pref_milli);
-        points.push((i64::from(preferred), i64::from(actual)));
-    }
-    let observed = points.len() as u64;
-    Some((spearman_milli(&points), observed))
 }
