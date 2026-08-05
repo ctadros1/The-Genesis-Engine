@@ -17,7 +17,7 @@ tick). These arrays exist only when Phase 2 is enabled and compact with the
 same removal flags as the primary arrays. Carcass components remain
 unimplemented.
 
-## Planned Successors (Phases 7 To 11)
+## Planned Successors (Phases 7 To 14)
 
 **One shared object ID space.** Organisms and artifacts draw from a single
 monotonic `next_object_id` with a type tag, so there is one total order over
@@ -35,14 +35,16 @@ compacting with the same removal flags as the primary arrays:
 
 | Component | Fields | Phase |
 |---|---|---|
-| Health | health, accumulated damage (fixed point) | 6 |
-| Carcass | remaining energy, decay state, source entity ID (the entry below, finally implemented) | 6 |
-| Genome2 | diploid chromosomal genome, canonical hash; expression recomputed on load | 7 |
-| Activation | per-node activation vector (world state under synchronous evaluation) | 7 |
-| Learned | sparse `(edge_homology_id, learned_q16, trace_q16)` for plastic edges only, sorted by innovation ID | 8 |
-| Inventory | held object IDs, carried mass | 10 |
-| Object | material, position, integrity, holder, composition list, depth, creator, created tick | 10 |
-| Physiology | developmental stage, accumulated hazard, disease load (fixed point) | 11 |
+| Health | health, accumulated damage (fixed point) | 7 |
+| Carcass | remaining energy, decay state, source entity ID (the entry below, finally implemented) | 7 |
+| Genome2 | diploid chromosomal genome, canonical hash; expression recomputed on load | 9 |
+| Activation | per-node activation vector (world state under synchronous evaluation) | 9 |
+| Learned | sparse `(edge_homology_id, learned_q16, trace_q16)` for plastic edges only, sorted by `homology_id` | 11 |
+| Modules | typed modules on a lattice; the body is derived from the genome and never stored | 10 |
+| Inventory | held object IDs, carried mass | 12 |
+| Object | material, position, integrity, holder, composition list, depth, creator, created tick | 12 |
+| Demography | accumulated hazard (fixed point) | 8 |
+| Development | developmental clock, disease load (fixed point) | 14 |
 
 Learned state is stored sparsely rather than densely because the Phase 4
 record already shows snapshot size dominated by per-organism genome arrays;

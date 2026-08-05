@@ -21,7 +21,7 @@ The second question contains a false premise, and unpicking it answers both.
 exists; the renderer derives an appearance from it. A renderer that needs a
 pre-made asset per organism is a symptom of a simulation that does not carry
 enough structure to draw from. This project's simulation does carry it, and
-after Phase 9 it carries it in a form that is already volumetric: an
+after Phase 10 it carries it in a form that is already volumetric: an
 organism is a set of typed modules at integer lattice positions with a
 scale and inherited pigmentation. That is a voxel model sitting in the
 genome.
@@ -33,7 +33,7 @@ genome.
   visual vocabulary caps the expressible vocabulary. This is the outcome the
   question was worried about, and the worry is correct.
 - **2D with procedurally composed sprites.** Better, and it still fights the
-  representation: Phase 9 bodies are three-dimensional arrangements and a 2D
+  representation: Phase 10 bodies are three-dimensional arrangements and a 2D
   projection discards the structure that makes them interpretable.
 - **Generative models (image or 3D) producing assets at runtime.** Rejected;
   reasons below.
@@ -76,7 +76,7 @@ standing on it, under a free camera.
   height-and-support subset deferred in ADR-0022 D2.
 - A world rendered in 3D where objects visibly cannot stack will read as a
   limitation. That makes the D2 subset more attractive than it was, and it
-  remains gated on the Phase 11 cost measurement rather than promoted here.
+  remains gated on the Phase 12 cost measurement rather than promoted here.
 - Full volumetric terrain (caves, overhangs) would be a simulation change
   and is not proposed.
 
@@ -117,7 +117,7 @@ property this project needs from its renderer.
 
 ## Consequences
 
-Positive: the asset-library ceiling disappears; Phase 9 morphology becomes
+Positive: the asset-library ceiling disappears; Phase 10 morphology becomes
 directly visible, which makes selection on body plan observable rather than
 inferred; the primitive palette is small enough to author once.
 
@@ -165,7 +165,7 @@ physical-device gate that was already open now covers more.
   entity tier, in which case the 2D path returns and the appearance
   derivation is projected rather than abandoned, since the derivation is
   representation-independent.
-- The Phase 11 cost measurement leaves room for the height-and-support
+- The Phase 12 cost measurement leaves room for the height-and-support
   subset, at which point stacked construction becomes renderable and this
   ADR's main visible limitation lifts.
 - Sphere-world geometry or off-planet environments are adopted, which would
@@ -179,5 +179,5 @@ physical-device gate that was already open now covers more.
   and distribution of module count.
 - Terrain mesh rebuild cost under a realistic modification rate.
 - Physical desktop and mobile device evidence, not viewport emulation.
-- A rendered Phase 9 organism whose module structure is readable from the
+- A rendered Phase 10 organism whose module structure is readable from the
   image, since that is the property motivating the change.

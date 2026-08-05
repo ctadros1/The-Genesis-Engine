@@ -1,4 +1,4 @@
-# Phase 10: Lifetime Learning
+# Phase 11: Lifetime Learning
 
 Status: planned, not started. Policy version `lifesim-plasticity-v1`.
 Specification: `specifications/plasticity-and-learning.md`.
@@ -8,13 +8,13 @@ Specification: `specifications/plasticity-and-learning.md`.
 Controller weights are fixed at birth, so behavior can only change across
 generations. Technology is cumulative culture, transmitted far faster than
 genes can move. Without within-lifetime plasticity, any "discovery" collapses
-into just another inherited trait, and Phase 12's transmission question
+into just another inherited trait, and Phase 13's transmission question
 cannot even be posed: there would be nothing an organism could acquire that
 it was not born with.
 
 ## Scope
 
-- Per-edge plasticity genes, already carried inert since Phase 8, become
+- Per-edge plasticity genes, already carried inert since Phase 9, become
   live.
 - A bounded versioned registry of plasticity rule forms; coefficients are
   genes under selection.
@@ -35,14 +35,14 @@ it was not born with.
   `docs/02-scope-and-non-goals.md` survives intact and is sharpened rather
   than relaxed. See ADR-0014.
 - No Lamarckian inheritance by default. Learned state resets at birth.
-- No observational learning. Rule form 5 requires the Phase 12 social channel
+- No observational learning. Rule form 5 requires the Phase 13 social channel
   and is not in the registry yet.
 - No backpropagation, no error signal, no supervised target.
 - No claim that any observed change constitutes cognition.
 
 ## Prerequisites
 
-- Phase 8 (schema 2 carries the plasticity genes; variable topology makes
+- Phase 9 (schema 2 carries the plasticity genes; variable topology makes
   modulatory nodes expressible).
 - Phase 5's asynchronous checkpointing, because learned state increases
   snapshot size.
@@ -77,7 +77,7 @@ Conditions, matched on seeds (30), config, and run length:
 
 Criteria:
 
-- [ ] **C10.1 Within-lifetime behavioral change.** In a controlled reversal
+- [ ] **C11.1 Within-lifetime behavioral change.** In a controlled reversal
       probe (a resource patch is relocated at tick t), individual organisms
       alive both before and after the relocation show a measurable shift in
       their own action distribution within their own lifetime under A, and
@@ -87,7 +87,7 @@ Criteria:
       replicate** (ADR-0022 A5). Individuals are nested observations, not
       sample size. Required in at least 20 of 30 worlds under `E-variable`.
       This is the phase's designated primary endpoint.
-- [ ] **C10.2 Learning is under selection.** The distribution of `eta` and
+- [ ] **C11.2 Learning is under selection.** The distribution of `eta` and
       plastic-edge-fraction at tick T differs from the founder distribution
       by more than the drift expectation, measured against a neutral marker
       locus in the same run as the drift control, in at least 20 of 30 seeds
@@ -96,29 +96,29 @@ Criteria:
       does not pay. A result showing plasticity increasing in a stationary
       world would indicate the cost model is wrong, and would be reported as
       such.
-- [ ] **C10.3 Learned state is world state.** Save, restore, and continue is
+- [ ] **C11.3 Learned state is world state.** Save, restore, and continue is
       bit-identical with plastic edges carrying nonzero learned deltas.
       Learned state cannot be recomputed from the genome and its presence in
       the snapshot is verified by a test that corrupts it and observes a
       trajectory divergence.
-- [ ] **C10.4 No Lamarckian leakage.** Children of parents with large learned
+- [ ] **C11.4 No Lamarckian leakage.** Children of parents with large learned
       deltas start at exactly zero on every plastic edge. Asserted directly,
       not inferred.
-- [ ] **C10.5 Numeric safety.** A 10^6-tick single-organism plasticity trace
+- [ ] **C11.5 Numeric safety.** A 10^6-tick single-organism plasticity trace
       reproduces bit-identically across clean processes; `learned_q16` never
       leaves its clamp; effective weight never leaves [-8, 8]; injected
       non-finite activations are neutralized, counted, and evented with no
       panic.
-- [ ] **C10.6 Cost accounting.** The energy ledger stays exact to the
+- [ ] **C11.6 Cost accounting.** The energy ledger stays exact to the
       milli-unit with plasticity costs flowing through it over a 10^6-tick
       run.
-- [ ] **C10.7 Snapshot and checkpoint budget.** Snapshot size and checkpoint
+- [ ] **C11.7 Snapshot and checkpoint budget.** Snapshot size and checkpoint
       stall are measured at both tiers with realistic evolved plasticity
-      levels, against the Phase 8 record. If sparse learned-state storage
+      levels, against the Phase 9 record. If sparse learned-state storage
       does not hold the budget, the phase reports that and the plastic-edge
       cap is set from the measurement.
-- [ ] **C10.8 Determinism and fixtures.** Plasticity-disabled configs
-      reproduce the Phase 8 fixture exactly; storage-permutation equality
+- [ ] **C11.8 Determinism and fixtures.** Plasticity-disabled configs
+      reproduce the Phase 9 fixture exactly; storage-permutation equality
       holds.
 
 ## Test Plan
@@ -160,8 +160,8 @@ decision log, ADR-0014.
 
 | Risk | Mitigation |
 |---|---|
-| **Plasticity is selected to zero and the phase returns a null result.** The single most likely failure in this phase | The `E-variable` sweep is the mitigation and is mandatory. If plasticity is still selected to zero under environmental variability, that is a real and reportable finding about this world's structure, and it is a strong signal that Phase 12 will also return null |
-| Learned state doubles snapshot size and breaks the checkpoint budget | Sparse storage (plastic edges only); C10.7 measures it; asynchronous checkpointing from Phase 5 is a prerequisite for exactly this reason |
+| **Plasticity is selected to zero and the phase returns a null result.** The single most likely failure in this phase | The `E-variable` sweep is the mitigation and is mandatory. If plasticity is still selected to zero under environmental variability, that is a real and reportable finding about this world's structure, and it is a strong signal that Phase 13 will also return null |
+| Learned state doubles snapshot size and breaks the checkpoint budget | Sparse storage (plastic edges only); C11.7 measures it; asynchronous checkpointing from Phase 5 is a prerequisite for exactly this reason |
 | Runaway plasticity destabilizes controllers into noise | Hard clamps on learned delta and effective weight; decay term; energy cost; fault counting |
 | Float-to-fixed conversion introduces a subtle asymmetry that biases learning | The rounding rule is specified exactly and unit-tested at ties and sign boundaries |
 | The modulatory design is too indirect for evolution to find | Recorded as an honest concern. A partial mitigation is that rules 1 and 2 are ungated and can produce unsupervised change without any modulator, so the search has a gradient toward useful plasticity before it has to discover modulation |
@@ -169,6 +169,6 @@ decision log, ADR-0014.
 ## Rollback
 
 One config section. Disabled, `eta` is zero everywhere, the `learn` phase is
-empty, no learned state is stored or checksummed, and the Phase 8 fixture
+empty, no learned state is stored or checksummed, and the Phase 9 fixture
 reproduces exactly. Plasticity genes remain inherited and inert, exactly as
-they were between Phase 8 and Phase 10.
+they were between Phase 9 and Phase 11.

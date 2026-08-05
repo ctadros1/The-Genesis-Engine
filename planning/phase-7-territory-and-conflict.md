@@ -120,11 +120,11 @@ social-organization review explicitly rejects that shortcut
 persistent interaction communities, recognition, target discrimination,
 coalition recruitment, numerical-advantage assessment, spatial memory,
 free-rider suppression, and value that can be captured rather than merely
-destroyed. Almost all of them land in Phases 10 to 12.
+destroyed. Almost all of them land in Phases 11 to 13.
 
 So Phase 7 delivers the **physics of damage and contest** and measures only
 what that physics can establish on its own. The organized-conflict claims
-move to Phase 12, where recognition, memory, and transmission exist. See
+move to Phase 13, where recognition, memory, and transmission exist. See
 ADR-0022 A1.
 
 ## Problem
@@ -234,9 +234,9 @@ Criteria:
 Kin-biased grouping, directed inter-group violence, territoriality, and
 coalition formation are **not** Phase 7 criteria. They require recognition
 from perceptible cues, associative memory, and spatial memory, none of which
-exist until Phases 10 to 12. Measuring them here would produce either a
+exist until Phases 11 to 13. Measuring them here would produce either a
 null that says nothing or an artifact of the demes the world was seeded
-with. They are Phase 12 criteria.
+with. They are Phase 13 criteria.
 
 Kin structure that arises purely from limited dispersal is measured and
 reported as a **descriptive observation** of the seeded population
@@ -277,7 +277,7 @@ proposed to implemented), `docs/06-organism-model.md`,
 |---|---|
 | Contest collapses populations and produces an uninformative extinction | C7.3 exists precisely to detect this; damage parameters are config and swept before the campaign |
 | Attack evolves to always-on because it is cheap | Attack carries an explicit energy cost and a retaliation risk; if it still saturates, that is a reportable finding about the cost structure |
-| Kin structure is read as kin *recognition* | Phase 7 has no recognition mechanism and claims none. Limited-dispersal kin structure is reported descriptively; recognition is a Phase 12 question with perceptible cues only |
+| Kin structure is read as kin *recognition* | Phase 7 has no recognition mechanism and claims none. Limited-dispersal kin structure is reported descriptively; recognition is a Phase 13 question with perceptible cues only |
 | Cluster labels leak into behavior through the C7.2 statistic | Structural: the statistic is computed in the analysis crate over the event log, after the run |
 
 ## Rollback

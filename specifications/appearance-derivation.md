@@ -46,7 +46,7 @@ kernel.
     height(cell)  = elevation field, quantised to integer height steps
     tint(cell)    = biome primitive, modulated by moisture and temperature
     surface(cell) = biomass density selects a surface treatment
-    overrides     = terrain modification deltas (Phase 11) replace the above
+    overrides     = terrain modification deltas (Phase 12) replace the above
 
 Rendered as a greedy-meshed heightmap. Terrain modification invalidates only
 the affected chunk, so the mesh rebuild is bounded by modification rate
@@ -55,7 +55,7 @@ requires before acceptance.
 
 ## Layer 2: Organisms
 
-### With morphology (Phase 9 onward)
+### With morphology (Phase 10 onward)
 
 The body **is** the model. For each module:
 
@@ -166,7 +166,7 @@ genome.
 - Emission order is canonical (ascending lattice index) and independent of
   storage layout.
 - A one-module body renders correctly, since that is the unicellular case
-  and Phase 15 depends on it.
+  and Phase 16 depends on it.
 - A schema 1 organism renders through the parametric path with no module
   data present.
 - Palette version mismatch between a report and a renderer is detected and

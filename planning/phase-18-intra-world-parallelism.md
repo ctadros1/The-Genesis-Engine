@@ -1,9 +1,9 @@
-# Phase 17: Intra-World Parallelism
+# Phase 18: Intra-World Parallelism
 
-**Cross-cutting infrastructure, not a behavioral phase.** Numbered 17 to
-avoid renumbering; it does not execute last. Recommended execution: **after
-Phase 13a (demography), before Phase 12 (social)**  -  see Execution Position
-below. Numbering is provisional; see Numbering below.
+**Cross-cutting infrastructure, not a behavioral phase.** It carries the
+highest number but does not execute last. Recommended execution: **after
+Phase 8 (demography), before Phase 13 (social)**  -  see Execution Position
+below.
 
 Status: planned, not started. Policy version `lifesim-parallel-v1`.
 Decision: ADR-0026, which amends
@@ -29,15 +29,15 @@ Rule 10 currently forbids this outright, and ADR-0026 amends it.
 This phase has no behavioral dependency, so its position is a judgment about
 when the ceiling starts to bind rather than a dependency argument.
 
-- **After Phase 13a (demography).** Raising the population ceiling before
+- **After Phase 8 (demography).** Raising the population ceiling before
   the population is demographically regulated would scale a world that is
   99.9 percent starvation mortality. More organisms starving is not more
-  science. 13a also raises `max_entities` above the ecological equilibrium,
-  which is what makes a higher ceiling meaningful.
-- **Before Phase 12 (social).** Phase 12's criteria are the ones that need
+  science. Phase 8 also raises `max_entities` above the ecological
+  equilibrium, which is what makes a higher ceiling meaningful.
+- **Before Phase 13 (social).** Phase 13's criteria are the ones that need
   population most, and running them under a ceiling that is itself the
   suspected blocker would confound a null.
-- **Interacts badly with Phases 7, 11, and 12**, which each add interaction
+- **Interacts badly with Phases 7, 12, and 13**, which each add interaction
   resolution to `apply`, the serial part. That interaction is measured here
   and re-measured after each of them; see Risks.
 
@@ -81,7 +81,7 @@ sooner. Doing it later wastes the culture-stack campaigns.
 
 - **Phase 5**, for the benchmark harness, the manifest fields, and the
   comparison report that must learn to refuse across execution classes.
-- **Phase 13a**, for the reasons in Execution Position.
+- **Phase 8**, for the reasons in Execution Position.
 
 ## Determinism Notes
 
@@ -116,7 +116,7 @@ requirements rather than notes.
 
 ## Acceptance Criteria
 
-**Primary endpoint: C17.1.** Acceptance is conjunctive; a good speedup
+**Primary endpoint: C18.1.** Acceptance is conjunctive; a good speedup
 number does not rescue a determinism failure. Seed floor 30 worlds for the
 statistical criteria; the determinism criteria are exact and need no seed
 count beyond the fixtures.
@@ -128,55 +128,55 @@ Conditions:
 
 Criteria:
 
-- [ ] **C17.1 Determinism per thread count (primary).** For each of T1, T4,
+- [ ] **C18.1 Determinism per thread count (primary).** For each of T1, T4,
       and T12, two clean processes at that thread count produce identical
       final state checksums, over a run long enough to expose drift  -  at
       minimum the 864,000-tick release horizon, and at Soak-7 if that tier
       exists by then. A failure here fails the phase regardless of speedup.
-- [ ] **C17.2 Thread-count invariance (the Tier 1 claim).** T1, T4, and T12
+- [ ] **C18.2 Thread-count invariance (the Tier 1 claim).** T1, T4, and T12
       produce identical final state checksums to each other **and to S**. If
       this passes, thread count is a scheduling detail and stays out of the
       config hash. If it fails, the phase falls back to Tier 2: thread count
       enters the config hash, a different thread count becomes a different
       replay lineage, and that degradation is recorded in the decision log
       rather than absorbed.
-- [ ] **C17.3 Fixtures preserved.** With parallelism disabled,
+- [ ] **C18.3 Fixtures preserved.** With parallelism disabled,
       `0x1e3158a26afd3b39` and `0xff9dfcff5dffbf42` reproduce from clean
       processes.
-- [ ] **C17.4 Partition-count invariance is explicitly *not* claimed.**
+- [ ] **C18.4 Partition-count invariance is explicitly *not* claimed.**
       Changing `P` may change results, because it changes reduction tree
       topology. `P` is therefore in the config hash and a different `P` is a
       different lineage. Verify that two different `P` values produce
       different config hashes, so this can never happen silently.
-- [ ] **C17.5 The comparison report refuses across execution classes.**
+- [ ] **C18.5 The comparison report refuses across execution classes.**
       Under the Tier 2 fallback, runs at different thread counts are
       different experiments and the report refuses to aggregate them, using
       the same mechanism that already refuses two conditions that are
       secretly the same experiment (D-046). Under Tier 1 the report may
       aggregate across thread counts and must still record them.
-- [ ] **C17.6 Serial fraction and speedup measured, not assumed.** Report
+- [ ] **C18.6 Serial fraction and speedup measured, not assumed.** Report
       the per-phase parallel and serial split at the supported tiers, the
       speedup curve across 1, 2, 4, 8, and 12 threads, and the population
       **crossover below which parallelism is a net loss**. A speedup number
       without the crossover is incomplete, because the default must be
       "disabled" and the operator needs to know when to turn it on.
-- [ ] **C17.7 No behavioral change.** Beyond checksum equality, event
+- [ ] **C18.7 No behavioral change.** Beyond checksum equality, event
       streams from S and T12 are compared and must be identical in content
       and order. Checksums could in principle agree while event ordering
-      differed, and the event log is what Phase 16 analysis reads.
-- [ ] **C17.8 Conflict resolution is order-independent.** Contested
+      differed, and the event log is what Phase 17 analysis reads.
+- [ ] **C18.8 Conflict resolution is order-independent.** Contested
       acquisition, contested pairing, and simultaneous damage produce
       identical outcomes under S and T12, and under a deliberately perturbed
       thread schedule. This is tested directly rather than inferred from
       aggregate checksums, because a rare contention path may not appear in
       a fixture run.
-- [ ] **C17.9 Memory and peak RSS bounded.** Per-partition intent buffers
+- [ ] **C18.9 Memory and peak RSS bounded.** Per-partition intent buffers
       add peak memory; report it, and confirm it does not break the
       checkpoint budget at the supported tier.
 
 ## Test Plan
 
-- **Determinism**: C17.1, C17.2, C17.3 as automated clean-process tests, not
+- **Determinism**: C18.1, C18.2, C18.3 as automated clean-process tests, not
   manual procedures. These are the phase.
 - **Adversarial scheduling**: run with a deliberately perturbed or
   randomized thread schedule and require identical results. A test that only
@@ -208,7 +208,7 @@ likely phase to stop scaling.
 
 Also record the **serial fraction attributable to `apply`**, separately,
 because that is the number that later phases will grow and it is the leading
-indicator for how much of this phase's benefit survives Phases 11 and 12.
+indicator for how much of this phase's benefit survives Phases 12 and 13.
 
 Benchmark schema increments; earlier records stay valid and are comparable
 only within their own schema version.
@@ -227,19 +227,19 @@ only within their own schema version.
 
 | Risk | Mitigation |
 |---|---|
-| **Tier 1 fails and the fallback costs a lineage variable.** Thread count in the config hash means hardware changes break a months-long flagship world's lineage | C17.2 determines this before anything depends on it. The fallback is defined rather than improvised, and its cost is recorded in the decision log. Tier 3 is explicitly not available (ADR-0026) |
-| **A rare contention path is order-dependent and no fixture exercises it** | C17.8 tests contention directly with scripted high-density scenarios rather than inferring safety from checksum equality on a typical run |
-| **The serial fraction grows until the speedup does not justify the complexity.** Phases 7, 11, and 12 all add conflict resolution to `apply`  -  the phases this work enables are the ones that erode it | Measure `apply` separately (Benchmark Impact) and re-measure after each. If the ceiling falls below a stated threshold, the honest response is to disable parallelism rather than defend it |
+| **Tier 1 fails and the fallback costs a lineage variable.** Thread count in the config hash means hardware changes break a months-long flagship world's lineage | C18.2 determines this before anything depends on it. The fallback is defined rather than improvised, and its cost is recorded in the decision log. Tier 3 is explicitly not available (ADR-0026) |
+| **A rare contention path is order-dependent and no fixture exercises it** | C18.8 tests contention directly with scripted high-density scenarios rather than inferring safety from checksum equality on a typical run |
+| **The serial fraction grows until the speedup does not justify the complexity.** Phases 7, 12, and 13 all add conflict resolution to `apply`  -  the phases this work enables are the ones that erode it | Measure `apply` separately (Benchmark Impact) and re-measure after each. If the ceiling falls below a stated threshold, the honest response is to disable parallelism rather than defend it |
 | Memory bandwidth binds before core count, so environment does not scale | Measured explicitly; if confirmed, environment stays serial or gets a dirty-cell strategy and the achievable speedup is restated |
-| **Parallelism is a net loss at small populations** and gets enabled by default anyway | Default is disabled; C17.6 requires the crossover to be reported, not just the peak speedup |
+| **Parallelism is a net loss at small populations** and gets enabled by default anyway | Default is disabled; C18.6 requires the crossover to be reported, not just the peak speedup |
 | A future phase adds a cross-organism float reduction and silently degrades Tier 1 | Recorded as a standing obligation in the amended Rule 10: any new cross-organism reduction is integer or uses a fixed-topology tree |
-| Event ordering differs while checksums agree, corrupting Phase 16 analysis | C17.7 compares event streams directly, not just checksums |
-| The complexity introduces a defect in the single-threaded path | Parallelism is config-gated and inert when disabled; C17.3 proves the disabled path is byte-identical to today |
+| Event ordering differs while checksums agree, corrupting Phase 17 analysis | C18.7 compares event streams directly, not just checksums |
+| The complexity introduces a defect in the single-threaded path | Parallelism is config-gated and inert when disabled; C18.3 proves the disabled path is byte-identical to today |
 
 ## Rollback
 
 One config section. Disabled, the kernel takes the existing single-threaded
 path and both fixtures reproduce exactly. The parallel path can be removed
-entirely without touching any behavioral rule, because by C17.7 it produces
+entirely without touching any behavioral rule, because by C18.7 it produces
 identical results  -  that is the property that makes rollback safe and is
 worth preserving deliberately rather than as a side effect.

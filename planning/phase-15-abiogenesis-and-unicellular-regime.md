@@ -1,4 +1,4 @@
-# Phase 14: Abiogenesis And The Unicellular Regime
+# Phase 15: Abiogenesis And The Unicellular Regime
 
 Status: planned, not started. Policy versions `lifesim-chemistry-v1`,
 `lifesim-microbial-v1`. Specification:
@@ -20,7 +20,7 @@ dependency order.
 
 - **Nothing depends on it.** Phases 6 through 13 all work from existing
   organisms. If this phase never lands, everything else still stands.
-- **It depends on Phase 9.** The transition materializes one-module
+- **It depends on Phase 10.** The transition materializes one-module
   organisms, which requires the morphology representation to exist.
 - **It is the least tractable work in the programme** and the most likely to
   return null. Placing the riskiest, least-depended-on work last is what
@@ -46,13 +46,13 @@ dependency order.
 - No open-ended microbial genome evolution. Genotype classes are a bounded
   discretization, and ADR-0020 records this as a deliberate realism loss.
   Only the individual regime can demonstrate open-ended evolution.
-- No multicellularity. That is Phase 15.
+- No multicellularity. That is Phase 16.
 - No claim that `field_steps_per_tick` relates two real timescales
   correctly. It is the knob that makes the phase reachable.
 
 ## Prerequisites
 
-- Phase 9 (morphology, for the one-module bodies Phase 15 will materialize).
+- Phase 10 (morphology, for the one-module bodies Phase 16 will materialize).
 - Phase 6 (origin modes framework and biome/climate fields, which the
   chemistry and abiogenesis rate functions read).
 - Phase 5's throughput measurements, because this phase's affordability is
@@ -87,45 +87,45 @@ scaffolded condition runs its unscaffolded control on the same seeds.
 
 Criteria:
 
-- [ ] **C14.1 Exact conservation.** Total mass and energy across chemistry,
+- [ ] **C15.1 Exact conservation.** Total mass and energy across chemistry,
       field populations, and individuals is invariant to the milli-unit over
       a 10^6-tick run. Diffusion conserves exactly under adversarial
       gradients. This is the most important criterion in the phase: a
       conservation defect here corrupts every result downstream and is the
       classic failure mode of a two-representation design.
-- [ ] **C14.2 Field cost is independent of individual population.** Measured
+- [ ] **C15.2 Field cost is independent of individual population.** Measured
       across population tiers with the field regime active. If field cost
       scales with population, the regime separation has leaked and the
       design is wrong.
-- [ ] **C14.3 Abiogenesis occurs and persists, or is reported as not
+- [ ] **C15.3 Abiogenesis occurs and persists, or is reported as not
       occurring.** Report the rate of protocell formation and the fraction
       of formations producing a population that persists beyond a stated
       window, for **N and every S condition**, as a curve against scaffold
       intensity. The reportable result is the difference between conditions,
       never the scaffolded number alone.
-- [ ] **C14.4 The scaffold is described without naming its target.** Every
+- [ ] **C15.4 The scaffold is described without naming its target.** Every
       scaffold config carries a plain-language description that passes
       ADR-0018's naming test under review. A config describable only as
       "conditions that favor life" is withdrawn.
-- [ ] **C14.5 Abiogenesis disabled produces a valid empty world** that
+- [ ] **C15.5 Abiogenesis disabled produces a valid empty world** that
       remains savable, observable, and invariant-clean, exactly as an
       extinct world does today.
-- [ ] **C14.6 Reverse coupling balances.** Organism consumption and death
+- [ ] **C15.6 Reverse coupling balances.** Organism consumption and death
       return exactly what they took, verified by ledger over a long run with
       heavy field-organism exchange.
-- [ ] **C14.7 Determinism.** Clean-process fixture replay; field update
+- [ ] **C15.7 Determinism.** Clean-process fixture replay; field update
       order independence from storage layout; save round trip with a
       populated field.
-- [ ] **C14.8 Snapshot growth is measured.** Per-cell field state adds a new
+- [ ] **C15.8 Snapshot growth is measured.** Per-cell field state adds a new
       growth term to a snapshot already carrying schema-3 genomes, learned
       state, objects, and terrain deltas. Measured against the Phase 13
       record, with the checkpoint budget re-verified rather than assumed.
-- [ ] **C14.9 Fixtures preserved.** Field regime disabled reproduces the
+- [ ] **C15.9 Fixtures preserved.** Field regime disabled reproduces the
       Phase 13 fixture exactly.
 
 **Recorded in advance:** under condition N, abiogenesis is expected either
 never to fire at a useful rate or to produce populations that do not
-persist. That is the predicted outcome, not a failure, and C14.3 is written
+persist. That is the predicted outcome, not a failure, and C15.3 is written
 so the negative is a measurement.
 
 ## Test Plan
@@ -166,12 +166,12 @@ log, ADR-0020.
 
 | Risk | Mitigation |
 |---|---|
-| **Conservation defect across the two representations.** The classic failure of this design shape: passes casual testing, corrupts long runs | C14.1 is the phase's weightiest criterion; conservation is by construction rather than by tolerance; checked at intervals over 10^6 ticks |
-| Field cost dominates the tick | C14.2 plus the same dirty-cell strategy the environment phase already needs |
+| **Conservation defect across the two representations.** The classic failure of this design shape: passes casual testing, corrupts long runs | C15.1 is the phase's weightiest criterion; conservation is by construction rather than by tolerance; checked at intervals over 10^6 ticks |
+| Field cost dominates the tick | C15.2 plus the same dirty-cell strategy the environment phase already needs |
 | Compute cost makes the campaign infeasible, worsened by ADR-0018's mandatory controls doubling every claim | Real and unresolved. Phase 5 measures the ceiling; if the campaign does not fit, the phase reports as underpowered rather than negative |
 | Genotype-class discretization is too coarse for anything interesting to happen | Class count is config and swept; recorded in ADR-0020 as a deliberate realism loss |
 | Scaffolding does more work than intended | ADR-0018's naming test plus review; a config granting an effective advantage to the target is a defect and is withdrawn |
-| Snapshot growth breaks the checkpoint budget | C14.8 measures it; field state is the fifth growth term and the budget has been re-verified at each of the previous four |
+| Snapshot growth breaks the checkpoint budget | C15.8 measures it; field state is the fifth growth term and the budget has been re-verified at each of the previous four |
 
 ## Rollback
 

@@ -1,4 +1,4 @@
-# Phase 12: Social Channel
+# Phase 13: Social Channel
 
 Status: planned, not started. Policy version `lifesim-social-v1`.
 Specification: `specifications/social-signal-channel.md`.
@@ -45,15 +45,15 @@ return a null result.
 
 ## Prerequisites
 
-- Phase 10 (plasticity: without within-lifetime change there is nothing to
+- Phase 11 (plasticity: without within-lifetime change there is nothing to
   transmit).
 - Phase 7 (contest: threat is the information most likely to be worth
   signalling, and it is the reason contest was moved earlier in the order).
-- Phase 8 (channel registry).
+- Phase 9 (channel registry).
 
 ## Determinism Notes
 
-- New streams: `Signal` (11), `Perception` (30).
+- New streams: `Signal` (11), `Perception` (12).
 - Emission accumulates during `apply` and commits at `finalize`; perception
   reads the committed prior-tick field. Two-phase commit makes emission and
   perception order irrelevant.
@@ -104,21 +104,21 @@ every other condition.
 
 ## Acceptance Criteria
 
-**Primary endpoint: C12.1**, and specifically the A-versus-D comparison.
+**Primary endpoint: C13.1**, and specifically the A-versus-D comparison.
 Secondary criteria do not rescue a failed primary (ADR-0022 A7). The world
 is the replicate; per-individual quantities are aggregated to a world-level
 statistic before analysis (ADR-0022 A5). Seed counts are floors set by
-pilot-driven power analysis, and 50 rather than 30 applies to C12.9 and
-C12.10 because the outcomes are rare and heavy-tailed.
+pilot-driven power analysis, and 50 rather than 30 applies to C13.9 and
+C13.10 because the outcomes are rare and heavy-tailed.
 
 
-- [ ] **C12.1 Transmission occurs.** Naive individuals (born after tick t and
+- [ ] **C13.1 Transmission occurs.** Naive individuals (born after tick t and
       never personally present at resource patch P) reach P measurably
       faster under A than under C, in at least 20 of 30 seeds, with the
       stated effect size. The same difference must hold for **A versus D**.
       An A-versus-C difference without an A-versus-D difference is not
       transmission and is reported as a negative result.
-- [ ] **C12.2 Fidelity clears the accumulation threshold.** Measure
+- [ ] **C13.2 Fidelity clears the accumulation threshold.** Measure
       transmission fidelity F as the correlation between a demonstrator's
       action policy and an observer's post-exposure policy, controlled for
       their genetic similarity. Report F against the threshold at which a
@@ -126,7 +126,7 @@ C12.10 because the outcomes are rare and heavy-tailed.
       which is the condition under which improvements accumulate rather than
       decay. Report F across the corruption sweep, so the result is a curve
       rather than a single number.
-- [ ] **C12.3 Traditions outlive individuals.** A behavioral variant present
+- [ ] **C13.3 Traditions outlive individuals.** A behavioral variant present
       in a local neighbourhood at tick t is present at tick t + L, where L
       exceeds three times that run's median lifespan and no individual is
       present at both endpoints, in at least 15 of 30 seeds under A and 0 of
@@ -136,25 +136,25 @@ C12.10 because the outcomes are rare and heavy-tailed.
       distance to the neighbourhood's genotype distribution. Without that
       control, an inherited trait is indistinguishable from a tradition. See
       `specifications/era-and-tradition-detection.md`.
-- [ ] **C12.4 Scaffolding requirement measured.** Report C12.1 and C12.3
+- [ ] **C13.4 Scaffolding requirement measured.** Report C13.1 and C13.3
       separately for conditions A and S. Three outcomes, all publishable:
       S succeeds (the observational rule was unnecessary and should be
       dropped); S fails and A succeeds (a specific, quantified statement
       about how much scaffolding observational learning needs in this
       world); both fail (a clean null with the scaffolding question already
       controlled for).
-- [ ] **C12.5 Payoff-sensitive variant competition.** When two arbitrary
+- [ ] **C13.5 Payoff-sensitive variant competition.** When two arbitrary
       behavioral variants with different payoffs are both present, the
       higher-payoff variant increases in relative frequency faster under A
       than under C, in at least 20 of 30 worlds. This is the rung between
       "something spreads" and "something useful spreads", and the plan
       previously skipped it (ADR-0022 A12).
-- [ ] **C12.6 Retention of one socially acquired improvement.** At least one
+- [ ] **C13.6 Retention of one socially acquired improvement.** At least one
       performance improvement is acquired socially by an individual that did
       not discover it, and is retained through that individual's remaining
       lifetime. Measured per individual, aggregated to a world-level rate,
       with the world as the replicate. This is the minimum unit of
-      accumulation and must pass before any cumulative claim in Phase 11 or
+      accumulation and must pass before any cumulative claim in Phase 12 or
       16 is interpretable.
 
 ### Organized conflict, relocated from Phase 7
@@ -163,33 +163,33 @@ These moved here because they need recognition, memory, and transmission,
 none of which exist at Phase 7 (ADR-0022 A1). They remain the plan's most
 demanding behavioral criteria.
 
-- [ ] **C12.7 Recognition from cues.** Organisms discriminate between
+- [ ] **C13.7 Recognition from cues.** Organisms discriminate between
       conspecifics in a way that correlates with phenotype similarity, with
       no genotype-distance channel available. Under a cue-scrambled control
       the discrimination disappears. Absent this, nothing below is
       interpretable as group-structured.
-- [ ] **C12.8 Persistent interaction communities.** Repeated-association
+- [ ] **C13.8 Persistent interaction communities.** Repeated-association
       networks built from the event log show communities that persist beyond
       the stated window, and are not explained by spatial proximity alone
       (tested against a proximity-matched null).
-- [ ] **C12.9 Directed rather than indiscriminate aggression.** The rate of
+- [ ] **C13.9 Directed rather than indiscriminate aggression.** The rate of
       damage between communities exceeds the rate within them by at least
       factor f, in at least 20 of 30 worlds, with communities defined
       offline from the interaction network and never entering the
       simulation. Under the cue-scrambled control the rates do not differ.
-- [ ] **C12.10 Coalition and asymmetry, or a measured null.** Report whether
+- [ ] **C13.10 Coalition and asymmetry, or a measured null.** Report whether
       aggression rate depends on local numerical advantage, and whether
       multiple aggressors act on one target more often than chance. **Both
       are expected to return null** and are stated so in advance; a null
       here is a measurement about what this physics supports.
 
-- [ ] **C12.11 Energy accounting.** The ledger stays exact to the milli-unit
+- [ ] **C13.11 Energy accounting.** The ledger stays exact to the milli-unit
       with signalling costs flowing through it over a 10^6-tick run.
-- [ ] **C12.12 Determinism.** Storage-permutation equality over N ticks;
+- [ ] **C13.12 Determinism.** Storage-permutation equality over N ticks;
       committed signal field identical under permutation; clean-process
-      fixture replay; social-disabled configs reproduce the Phase 10 fixture
+      fixture replay; social-disabled configs reproduce the Phase 11 fixture
       exactly.
-- [ ] **C12.13 Perception is causally clean.** A test that mutates an
+- [ ] **C13.13 Perception is causally clean.** A test that mutates an
       organism's state mid-phase must not be observable by any other
       organism in the same tick.
 
@@ -234,15 +234,15 @@ this phase), `docs/21-open-questions.md`,
 
 | Risk | Mitigation |
 |---|---|
-| **Null result: no transmission in any seed under any condition.** The most likely single outcome of this phase | The design makes the null informative. Conditions B, C, D, and S plus the fidelity curve mean a null answers *why*, not just *whether*. This is the intended value of the phase even if C12.1 fails |
+| **Null result: no transmission in any seed under any condition.** The most likely single outcome of this phase | The design makes the null informative. Conditions B, C, D, and S plus the fidelity curve mean a null answers *why*, not just *whether*. This is the intended value of the phase even if C13.1 fails |
 | Signals evolve into noise because they are costly and uninformative | Expected under many parameter settings; the corruption sweep and the contest-derived threat information are the conditions under which it is least likely |
-| A-versus-C difference is claimed as transmission without running D | D is an acceptance criterion, not an optional extra. C12.1 explicitly fails without it |
-| A tradition claim is made without the genotype control | C12.3 is invalid without it, and the report format in `specifications/era-and-tradition-detection.md` requires the control statistic in every finding |
+| A-versus-C difference is claimed as transmission without running D | D is an acceptance criterion, not an optional extra. C13.1 explicitly fails without it |
+| A tradition claim is made without the genotype control | C13.3 is invalid without it, and the report format in `specifications/era-and-tradition-detection.md` requires the control statistic in every finding |
 | Condition S is unfalsifiable in practice: the search never finds it regardless of run length | Real and unresolved. The seed count and run length that would make an S null meaningful may exceed the compute budget. If so, the phase reports S as underpowered rather than as negative. That distinction must survive into every downstream summary |
 | Perception cost dominates the tick at high density | Bounded K, sorted truncation, and a measured density sweep |
 
 ## Rollback
 
 One config section. Disabled, no perception channels are gathered, no signal
-field exists, rule form 5 is absent from the registry, and the Phase 10
+field exists, rule form 5 is absent from the registry, and the Phase 11
 fixture reproduces exactly.

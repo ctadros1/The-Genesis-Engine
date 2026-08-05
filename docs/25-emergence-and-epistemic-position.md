@@ -146,7 +146,7 @@ In rough order of decreasing plausibility:
 - Organized inter-group conflict. Note the correction in ADR-0022 A1: the
   shortcut "scarcity plus kin bias plus damage implies war" is withdrawn.
   Organized conflict needs recognition, memory, coalition recruitment, and
-  capturable value, so it is a Phase 12 question rather than a Phase 7 one.
+  capturable value, so it is a Phase 13 question rather than a Phase 7 one.
 - Tool use: an object acquired, retained, and applied to a task with a
   measurable fitness effect.
 - Persistent structures: placed objects that outlast their makers and change
@@ -171,12 +171,12 @@ Given that, our predictions:
 
 | Outcome | Prediction |
 |---|---|
-| Territoriality and organized inter-group conflict | Plausible, and **downgraded from "likely"**. The commissioned review rejects the scarcity-plus-kin-bias shortcut and lists roughly eleven further dependencies, most of which are Phase 10 to 12 machinery. It is no longer the cheap early win the plan assumed (ADR-0022 A1). |
+| Territoriality and organized inter-group conflict | Plausible, and **downgraded from "likely"**. The commissioned review rejects the scarcity-plus-kin-bias shortcut and lists roughly eleven further dependencies, most of which are Phase 11 to 13 machinery. It is no longer the cheap early win the plan assumed (ADR-0022 A1). |
 | Tool use in the weak sense (carry and apply an object) | Plausible. Requires only that carrying pay off somewhere in the physics. |
 | Persistent structures that alter the landscape | Plausible. |
 | Behavioral traditions outliving individuals | Plausible to remarkable. Depends entirely on whether transmission fidelity clears the accumulation threshold. This is the single most likely place for a null result. |
 | Cumulative technological accumulation | Remarkable if observed. We do not plan around it. |
-| Morphological change under selection | Plausible. Phase 9 gives structure a real morphospace, and whether selection can act across a discontinuous developmental encoding is itself measured (C9.4). |
+| Morphological change under selection | Plausible. Phase 10 gives structure a real morphospace, and whether selection can act across a discontinuous developmental encoding is itself measured (C10.4). |
 | Abiogenesis producing a persistent population | Remarkable if observed unscaffolded; expected to require scaffolding, and expected to return null under a neutral chemistry. Recorded in advance. |
 | A unicell-to-differentiated-multicell transition | **Remarkable.** This is one of the least tractable problems in artificial life. The plan is built so a null here is a measurement rather than a surprise. |
 | A microbes-to-fish-to-reptiles progression | **Not promised, and not a sequence the simulation contains.** There is no ladder, no grade, and no stage. The arrow in that phrase is a hypothesis being tested, never a mechanism being executed. Reaching anything fish-like is not planned around. |

@@ -6,7 +6,7 @@ Author: Scale revision
 
 **Amends ADR-0010** (determinism policy) and
 `specifications/determinism-extensions.md` Rule 10, which currently states
-that nothing in Phases 5 through 16 authorizes intra-world parallelism.
+that nothing in Phases 5 through 18 authorizes intra-world parallelism.
 ADR-0010 keeps its status; its requirement that parallelism prove an
 ordering and reduction policy plus equality tests is satisfied rather than
 waived.
@@ -165,11 +165,10 @@ Four caveats, and they matter more than the headline:
 1. **The table mixes benchmark records.** `sense` and `controllers` come
    from the Phase 2 record; `environment` and `spatial` from Phase 1 at the
    same tier. The project's own discipline forbids comparing records without
-   qualification, so this is an orientation for design, not evidence. Phase
-   17 measures the real split.
+   qualification, so this is an orientation for design, not evidence. Phase 18 measures the real split.
 2. **The serial fraction grows with every interaction phase.** `apply` is
    currently tiny because Phase 2 has few interactions. Phase 7 contest,
-   Phase 11 artifacts, and Phase 12 social all add conflict resolution to
+   Phase 12 artifacts, and Phase 13 social all add conflict resolution to
    exactly the serial part. If `apply` reaches 20 percent of tick, the
    ceiling falls to about 3.7x. **The phases this work exists to enable are
    the same phases that erode its benefit.**
@@ -223,7 +222,7 @@ that was never evidence costs nothing scientifically.
 
 ## Evidence Required To Accept
 
-- Phase 17's primary endpoint: two clean processes at the same thread count
+- Phase 18's primary endpoint: two clean processes at the same thread count
   producing identical final state checksums over a run long enough to expose
   drift.
 - The Tier 1 claim specifically: identical checksums across 1, 4, and 12

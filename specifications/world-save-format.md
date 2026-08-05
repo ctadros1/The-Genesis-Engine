@@ -25,7 +25,7 @@ ordering, recovery, and restore-verification behavior follow the Write
 Contract and Restore Test sections below and are covered by the
 `sim-persist` test suite.
 
-## Planned Successor: ALIF Format 2 (Phase 11)
+## Planned Successor: ALIF Format 2 (Phase 12)
 
 Design: `specifications/mutable-world-state.md`. Decision: ADR-0015.
 

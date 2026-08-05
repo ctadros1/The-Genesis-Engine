@@ -1,7 +1,7 @@
 # Deep Research Index
 
 Six commissioned engineering-scientific reviews, delivered 2026-08-04. They
-are the primary evidence base for the Phase 5 to 16 design and are the first
+are the primary evidence base for the Phase 5 to 18 design and are the first
 thing to consult before designing any complex part of the engine.
 
 **Read these before designing, not after.** ADR-0022 exists because the plan

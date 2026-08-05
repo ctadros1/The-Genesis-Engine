@@ -1,6 +1,6 @@
 # Plasticity And Learning Specification
 
-Status: design specification, not implemented. Phase 10. Policy version
+Status: design specification, not implemented. Phase 11. Policy version
 `lifesim-plasticity-v1`. Depends on genome schema 2
 (`specifications/genome-schema-2.md`).
 
@@ -10,7 +10,7 @@ Controller weights are fixed at birth. Any behavioral improvement must
 therefore wait for a mutation and a generation. Cumulative culture requires
 change that propagates faster than genes, which requires change within a
 lifetime. Without it, every "discovery" is just another inherited trait and
-Phase 12's transmission question is unaskable.
+Phase 13's transmission question is unaskable.
 
 ## What Is Authored And What Is Evolved
 
@@ -71,14 +71,14 @@ Bounded and versioned. Registry version enters the config hash. Rules are
 `x` is the presynaptic activation, `y` the postsynaptic activation, `w_eff`
 the current effective weight.
 
-Rules 0 through 4 are available from Phase 10. **Rule 5 requires the Phase 12
+Rules 0 through 4 are available from Phase 11. **Rule 5 requires the Phase 13
 social channel and is not available before it.** Its inclusion is the
 largest philosophical judgment call in the plan and is argued explicitly in
-`planning/phase-12-social-channel.md`: it authors the *capacity* for a
+`planning/phase-13-social-channel.md`: it authors the *capacity* for a
 synapse to be driven by an observed conspecific action, not the content of
 what is learned. The alternative, requiring imitation to be discovered from
 generic plasticity plus perception alone, is more philosophically pure and
-substantially more likely to make Phase 12 unfalsifiable. Phase 12's design
+substantially more likely to make Phase 13 unfalsifiable. Phase 13's design
 runs both as conditions rather than picking one by assertion.
 
 ## Update Arithmetic
@@ -152,7 +152,7 @@ environment pay for" becomes a measurable result.
 ## Reset At Birth: No Lamarckian Inheritance
 
 `learned_q16` and `trace_q16` are zero at birth. This is an invariant, not a
-default, and it is the property that keeps Phase 12's question meaningful: if
+default, and it is the property that keeps Phase 13's question meaningful: if
 learned state were inherited, a discovery would become a heritable trait and
 transmission would be indistinguishable from inheritance.
 
@@ -178,12 +178,12 @@ put the checkpoint stall at risk of exceeding the tick interval at the upper
 supported tier. Storing only plastic edges keeps the cost proportional to
 the plasticity that actually evolved.
 
-Two obligations follow, and both are Phase 10 acceptance criteria:
+Two obligations follow, and both are Phase 11 acceptance criteria:
 
 - Snapshot size and checkpoint stall are measured at both supported tiers
   with plasticity active, against the Phase 4 record.
 - Asynchronous or double-buffered checkpointing (the deferred item behind
-  D-019) is a Phase 5 prerequisite, not a Phase 10 discovery.
+  D-019) is a Phase 5 prerequisite, not a Phase 11 discovery.
 
 Checksum section tag: `lifesim-learn-state-v1`, appended only when the
 plasticity section is enabled, so all earlier fixtures are unaffected.
@@ -227,7 +227,7 @@ reconcile, because it starts empty.
   edges carrying nonzero learned state.
 - Birth reset: a child of two parents with large learned deltas starts at
   zero on every plastic edge.
-- Disabled-section equality: plasticity disabled reproduces the Phase 8
+- Disabled-section equality: plasticity disabled reproduces the Phase 9
   fixture exactly.
 - Cost accounting: the energy ledger stays exact to the milli-unit with
   plasticity costs flowing through it.

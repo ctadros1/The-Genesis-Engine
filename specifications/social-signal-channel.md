@@ -1,6 +1,6 @@
 # Social Signal Channel Specification
 
-Status: design specification, not implemented. Phase 12. Policy version
+Status: design specification, not implemented. Phase 13. Policy version
 `lifesim-social-v1`. Depends on genome schema 2 (channel registry) and
 plasticity (`specifications/plasticity-and-learning.md`).
 
@@ -104,7 +104,7 @@ Propagation:
 - The field decays per tick by a configured factor, so a signal is a
   transient local event and not a permanent world marking. Permanent
   marking is what artifacts are for, and conflating the two would blur the
-  Phase 12 and Phase 11 results.
+  Phase 13 and Phase 12 results.
 
 Reception:
 
@@ -138,7 +138,7 @@ conspecific action. A stricter reading of the project philosophy would omit
 it and require imitation to be discovered from generic plasticity plus
 perception alone.
 
-We do not resolve this by assertion. Phase 12 runs both as experimental
+We do not resolve this by assertion. Phase 13 runs both as experimental
 conditions:
 
 - **Condition P (permissive):** rule 5 available in the registry.
@@ -194,7 +194,7 @@ none.
 - Energy ledger stays exact with signalling costs flowing through it.
 - Perception reads only committed prior state: a test that mutates an
   organism mid-phase must not be observable by any other organism that tick.
-- Disabled-section equality: social disabled reproduces the Phase 10 fixture
+- Disabled-section equality: social disabled reproduces the Phase 11 fixture
   exactly.
 - Non-finite neutralization on every input and output path, counted and
   evented, no panic.

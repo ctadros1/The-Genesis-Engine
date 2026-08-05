@@ -27,7 +27,7 @@ The project tests the kernel first, persistence/protocol boundaries second, and 
 - Save/restore preserves the documented state and replay provenance.
 - Strict mode repeats a compatible run according to its declared checksum/tolerance policy.
 
-## Experiment Discipline (Phases 5 To 16)
+## Experiment Discipline (Phases 5 To 18)
 
 Behavioral phases produce claims about observed behavior, which need a
 different kind of rigor than a unit test. These rules are as binding as the
@@ -74,7 +74,7 @@ testing pyramid above.
   run long enough or across enough seeds for a null to be meaningful, it is
   reported as underpowered, and that distinction must survive into every
   downstream summary.
-- **Confounds get their own condition.** The canonical case is Phase 12's
+- **Confounds get their own condition.** The canonical case is Phase 13's
   condition D, where signals are delivered to a random unrelated receiver:
   it preserves the behavior, the energy cost, and the receipt, and destroys
   only the information. A difference against the do-nothing control without
@@ -116,7 +116,7 @@ Phase 1 requires unit, deterministic, and CLI integration tests. Phase 2 adds pr
 
 Phase 5 adds scheduler-determinism and event-log tests and makes benchmark
 regressions a release gate. Phases 7 through 13 each add the six determinism
-obligations above plus their own behavioral campaign. Phase 16 adds
+obligations above plus their own behavioral campaign. Phase 17 adds
 analysis-neutrality, synthetic-ground-truth, and null-control tests.
 
 ### Phase 4 Gate Status

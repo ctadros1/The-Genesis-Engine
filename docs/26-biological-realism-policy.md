@@ -58,23 +58,23 @@ Realism is bounded, in this order of precedence:
 
 | Area | Current (Phase 2) | Successor | Phase |
 |---|---|---|---|
-| Ploidy | Haploid; a single flat gene vector | Diploid, chromosomes, dominance | 8 |
-| Recombination | Per-gene independent parent choice | Meiosis with crossover points and linkage | 8 |
-| Mutation classes | Point mutation only | Point, duplication, deletion, insertion, transposition | 8 |
-| Network structure | Fixed 20-16-12-12, human-authored | Grows and shrinks by gene duplication and deletion | 8 |
-| Within-lifetime change | None; weights fixed at birth | Genome-encoded synaptic plasticity with neuromodulation | 10 |
-| Reinforcement | None | Evolved neuromodulatory signal, never an authored reward | 10 |
-| Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 13a (early) |
-| Ontogeny | None; organisms are born adult-shaped | Juvenile constraint and maturation (13a); developmental growth of a module body (13b) | 13a / 13b |
-| Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 13a (early) |
-| Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 13b (late) |
-| Body structure | Small fixed parameter set, identical for every organism | Typed modules on a lattice, grown by a developmental genome | 9 |
-| Morphogenesis | No developmental stage at all | A growth program executed from a single origin module | 9 |
+| Ploidy | Haploid; a single flat gene vector | Diploid, chromosomes, dominance | 9 |
+| Recombination | Per-gene independent parent choice | Meiosis with crossover points and linkage | 9 |
+| Mutation classes | Point mutation only | Point, duplication, deletion, insertion, transposition | 9 |
+| Network structure | Fixed 20-16-12-12, human-authored | Grows and shrinks by gene duplication and deletion | 9 |
+| Within-lifetime change | None; weights fixed at birth | Genome-encoded synaptic plasticity with neuromodulation | 11 |
+| Reinforcement | None | Evolved neuromodulatory signal, never an authored reward | 11 |
+| Metabolism | Linear basal cost with a body-scale multiplier | Allometric scaling with a configured exponent, thermoregulation | 8 (early) |
+| Ontogeny | None; organisms are born adult-shaped | Juvenile constraint and maturation (8); developmental growth of a module body (14) | 8 / 14 |
+| Senescence | Hard `max_age_ticks` cutoff | Age-dependent hazard; evolvable lifespan | 8 (early) |
+| Sexual selection | Compatibility threshold only | Mate choice from perceived phenotype, costly signals | 14 (late) |
+| Body structure | Small fixed parameter set, identical for every organism | Typed modules on a lattice, grown by a developmental genome | 10 |
+| Morphogenesis | No developmental stage at all | A growth program executed from a single origin module | 10 |
 | Climate | Seasons only; temperature field unimplemented | Moisture and temperature fields, biomes, long-timescale drift | 6 |
-| Origin of life | Organisms exist at tick 0 by construction | Optional abiogenesis from a chemistry field | 14 |
-| Major transitions | None | Unicell to differentiated multicell as ordinary morphological evolution | 15 |
-| Disease | None | Transmissible load with contact-structured spread | 13b (optional slice) |
-| Population regulation | Reproduction gated on energy alone; 99.9 percent starvation mortality | Non-food extrinsic mortality, senescence, juvenile mortality, life-history tradeoff | 13a (early) |
+| Origin of life | Organisms exist at tick 0 by construction | Optional abiogenesis from a chemistry field | 15 |
+| Major transitions | None | Unicell to differentiated multicell as ordinary morphological evolution | 16 |
+| Disease | None | Transmissible load with contact-structured spread | 14 (optional slice) |
+| Population regulation | Reproduction gated on energy alone; 99.9 percent starvation mortality | Non-food extrinsic mortality, senescence, juvenile mortality, life-history tradeoff | 8 (early) |
 
 **Ordering note (ADR-0025).** The demographic half of physiology executes
 *before* the culture stack rather than after it. Surplus does not come from
@@ -86,7 +86,7 @@ by the ecology rather than by anything about transmission.
 
 ## Structural Change By Duplication, Not By Graph Editing
 
-The single most consequential application of this policy is in Phase 8. The
+The single most consequential application of this policy is in Phase 9. The
 obvious way to make a network topology evolvable is a NEAT-style pair of
 graph-editing operators: "add a node", "add a connection". That is an
 authored editing scheme imposed on a graph.
@@ -105,14 +105,14 @@ literature does not establish that indirect or duplication-based encodings
 outperform direct ones at this scale. The mitigation is that both operator
 sets act on the same variable-length locus list, so the explicit-insertion
 operator remains available as a configured variation policy if duplication
-alone proves too slow. That comparison is itself a Phase 8 experiment.
+alone proves too slow. That comparison is itself a Phase 9 experiment.
 
 ## No Lamarckian Inheritance By Default
 
 Learned state is reset at birth. This is not an optimization; it is the
 property that makes the project's central question meaningful. If learned
 weights were inherited, a "discovery" would become a heritable trait, culture
-would collapse into genetics, and Phase 12 would be unable to distinguish
+would collapse into genetics, and Phase 13 would be unable to distinguish
 transmission from inheritance. A `lamarckian_fraction` config field exists,
 defaults to zero, and enabling it is an explicit experimental condition that
 must be reported, never a default.
@@ -128,7 +128,7 @@ Recorded so nobody has to rediscover the reasoning:
   regulatory locus type is an open question for a later schema, not a
   commitment.
 - **Physical body simulation.** Morphology evolves as typed modules on a
-  discrete lattice (Phase 9, ADR-0019), which is a real structural
+  discrete lattice (Phase 10, ADR-0019), which is a real structural
   morphospace. It is deliberately **not** rigid-body or soft-body dynamics:
   modules confer capability and cost, and they do not swing, bend, or
   collide with each other. Full biomechanics would dominate the compute
@@ -155,6 +155,6 @@ Recorded so nobody has to rediscover the reasoning:
 - Genetics: `08-genetics-and-evolution.md`,
   `specifications/genome-schema-2.md`
 - Learning: `specifications/plasticity-and-learning.md`
-- Demography and life history: `planning/phase-13a-demography-and-life-history.md`
-- Ontogeny and sexual selection: `planning/phase-13b-ontogeny-and-sexual-selection.md`
+- Demography and life history: `planning/phase-8-demography-and-life-history.md`
+- Ontogeny and sexual selection: `planning/phase-14-ontogeny-and-sexual-selection.md`
 - ADR-0013 (encoding), ADR-0014 (learning), ADR-0017 (this policy)

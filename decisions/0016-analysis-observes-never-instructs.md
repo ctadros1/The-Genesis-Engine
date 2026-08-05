@@ -71,7 +71,7 @@ Two boundary clarifications:
 
 Positive: results stay interpretable; the ADR-0012 boundary cannot be
 eroded through the analysis side door; the least risky phase in the plan
-(Phase 16) is least risky by construction.
+(Phase 17) is least risky by construction.
 
 Negative and accepted:
 
@@ -110,7 +110,7 @@ guarantee must replace it before the separation is dropped.
 
 ## Evidence Required To Accept
 
-- Phase 16 criteria C16.1 (checksum equality at every cadence) and C16.2
+- Phase 17 criteria C17.1 (checksum equality at every cadence) and C17.2
   (build-enforced dependency direction).
 - `lifesim-similarity-v1` relocated to `sim-analysis` with its reports
   unchanged and its existing neutrality test still passing.

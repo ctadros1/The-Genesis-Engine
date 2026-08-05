@@ -13,25 +13,28 @@ preference, and defense tendency are stored and inherited for analysis but
 behaviorally inert in Phase 2. Health, combat, and carcasses remain
 unimplemented; the health input channel reads a neutral 1.0.
 
-## Planned Successors (Phases 7 To 11)
+## Planned Successors (Phases 7 To 14)
 
 The state table below gains entries, each config-gated and absent when its
 section is disabled:
 
 | Category | Added state | Phase |
 |---|---|---|
-| Life | Health, accumulated damage (fixed point) | 6 |
-| Genetics | Diploid chromosomal genome; expression recomputed, never persisted as truth | 7 |
-| Controller | Per-node activation vector (world state under synchronous evaluation), replacing the fixed 4-value memory vector | 7 |
-| Learning | Per-plastic-edge Q16 learned delta and eligibility trace; **reset to zero at birth** | 8 |
-| Perception | Nothing persistent; perception reads the previous tick's committed state | 9 |
-| Inventory | Held object IDs, carried mass | 10 |
-| Physiology | Developmental stage, accumulated hazard, disease load (all fixed point) | 11 |
+| Life | Health, accumulated damage (fixed point) | 7 |
+| Genetics | Diploid chromosomal genome; expression recomputed, never persisted as truth | 9 |
+| Controller | Per-node activation vector (world state under synchronous evaluation), replacing the fixed 4-value memory vector | 9 |
+| Learning | Per-plastic-edge Q16 learned delta and eligibility trace; **reset to zero at birth** | 11 |
+| Perception | Nothing persistent; perception reads the previous tick's committed state | 13 |
+| Morphology | Module lattice; body derived from the genome, never stored | 10 |
+| Inventory | Held object IDs, carried mass | 12 |
+| Demography | Accumulated hazard (fixed point) | 8 |
+| Development | Developmental clock, disease load (fixed point) | 14 |
 
 Three documented gaps in this file close: health and carcasses become real
 in Phase 7, and the "health input channel reads a neutral 1.0" note stops
 being true in the same phase. Ontogeny replaces the age-threshold maturity
-model and senescence replaces the hard `max_age_ticks` cutoff in Phase 13.
+model and senescence replaces the hard `max_age_ticks` cutoff in Phase 8,
+with developmental growth of a module body following in Phase 14.
 
 Carrying is a genuine tradeoff rather than a free ability: capacity scales
 with body scale, and carried mass adds to movement cost through the existing

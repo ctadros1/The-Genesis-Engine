@@ -24,7 +24,7 @@ Each organism has a stable ID, up to two immutable parent IDs, birth tick, genom
 
 The rule this document has held for similarity clustering since Phase 2 is
 now a project-wide principle with structural enforcement (ADR-0016). Era
-detection and tradition detection (Phase 16,
+detection and tradition detection (Phase 17,
 `specifications/era-and-tradition-detection.md`) obey it identically:
 
 - Analysis lives in a separate `sim-analysis` crate that `sim-core` does not
@@ -69,7 +69,7 @@ The observer should show direct parents, offspring count, known descendants at a
 
 ## Traditions Require A Genetic Control
 
-From Phase 12, a claim that a behavior is a transmitted tradition rather than
+From Phase 13, a claim that a behavior is a transmitted tradition rather than
 an inherited trait requires a genotype-matched control: the variant's
 frequency in the local group must exceed its frequency in a cohort of
 organisms elsewhere matched on genetic distance to that group's genotype
@@ -81,7 +81,7 @@ fails report validation.
 
 ## Genetic Distance Across Variable Structures
 
-From Phase 8 genomes have different structures, so the existing normalized
+From Phase 9 genomes have different structures, so the existing normalized
 gene-vector distance is not defined between them. Distance becomes
 
     distance = w_t * trait_distance + w_s * structural_distance

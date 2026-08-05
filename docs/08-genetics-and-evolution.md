@@ -20,14 +20,14 @@ and inherited but behaviorally inert until their mechanics exist
 (analysis-only, documented). Founders derive from named `GenomeInit`
 streams; all child-keyed draws use the prospective child entity ID.
 
-## Planned Successor: `lifesim-genome-v2` (Phase 8)
+## Planned Successor: `lifesim-genome-v2` (Phase 9)
 
 Schema 1 is a flat haploid vector: no chromosomes, no linkage, no dominance,
 and point mutation only. Inheritance is per-gene independent parent choice,
 which is free recombination, so linkage disequilibrium decays instantly and
 a co-adapted gene set cannot be held together.
 
-Phase 8 replaces it with a diploid chromosomal genome. The full design is
+Phase 9 replaces it with a diploid chromosomal genome. The full design is
 `specifications/genome-schema-2.md`; the decision is ADR-0013 and the
 realism policy behind it is `docs/26-biological-realism-policy.md`.
 
@@ -47,8 +47,8 @@ answer.** Gene duplication followed by divergence is the principal mechanism
 by which real regulatory and neural complexity increased, so adopting it
 gives both properties from one mechanism instead of bolting a graph-editing
 scheme onto a flat vector. The honest cost is that duplication-driven growth
-is slower and less directed than explicit add-node mutation, and Phase 8
-measures the comparison (C8.5) rather than asserting an answer.
+is slower and less directed than explicit add-node mutation, and Phase 9
+measures the comparison (C9.5) rather than asserting an answer.
 
 Schema 1 decode, evaluation, fixtures, and tests stay in the build
 permanently. There is no schema 1 to schema 2 migration: converting a
@@ -59,7 +59,7 @@ that cannot be replayed.
 
 Genomes encode bounded trait and controller parameters, not a hand-authored fitness score. Survival and reproduction under the world rules create selection pressure. Genetic changes are experimental mechanisms; modelling a mechanism faithfully is a claim about the model, never about real biology.
 
-From Phase 10 the genome also encodes **how learning works**: which edges are
+From Phase 11 the genome also encodes **how learning works**: which edges are
 plastic, which rule form each uses, its coefficients, and which nodes gate
 it. There is still no fitness score and no reward function anywhere. The
 signal that gates plasticity is an ordinary output of the organism's own
@@ -69,7 +69,7 @@ history rather than of our specification. See ADR-0014.
 Learned state is **not** inherited. That is an invariant, not a default: if
 learned weights passed to offspring, a discovery would become a heritable
 trait and transmitted knowledge would be indistinguishable from genetics,
-which would make the Phase 12 question unanswerable.
+which would make the Phase 13 question unanswerable.
 
 ## Genome Sections
 

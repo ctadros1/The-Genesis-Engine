@@ -19,7 +19,7 @@ hostile-count, and a 20,000-case seeded corruption sweep cover the codec;
 sequence-gap/lag resync and slow-client collapse are covered by server
 integration tests.
 
-## Planned Successor: `ALSP` 1.1 (Phase 11)
+## Planned Successor: `ALSP` 1.1 (Phase 12)
 
 Objects and organism-modified terrain must reach the observer, and neither
 fits the current frame set. The protocol version increments; frames are
@@ -36,7 +36,7 @@ never silently extended.
   before allocation like every existing count.
 
 Unchanged and non-negotiable: genome and controller matrices never appear in
-state frames, which matters more after Phase 8 because variable-topology
+state frames, which matters more after Phase 9 because variable-topology
 genomes are larger and more variable in size than schema 1's fixed 2,862
 bytes. Health, learned weights, and signal-field values likewise stay out of
 state frames; the observer gets bounded summaries and uses HTTP for detail.

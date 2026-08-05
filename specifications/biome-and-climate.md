@@ -31,7 +31,7 @@ format 2 baseline-plus-delta save contract is unaffected.
 | Temperature | Dynamic | Base plus season plus drift plus bounded weather |
 | Biome | Dynamic, derived | Classified from elevation, temperature, moisture |
 | Food capacity | Dynamic | Biome-dependent, replacing the current elevation-only field |
-| Material yield | Dynamic | Biome-dependent (Phase 11) |
+| Material yield | Dynamic | Biome-dependent (Phase 12) |
 
 Moisture uses the deliberately simplified model `docs/04` already describes.
 The project labels this ecological simulation, not weather forecasting, and
@@ -83,7 +83,7 @@ Consequences that matter:
   age transition, no era field, and nothing spawned or swapped because of
   one. `drift(tick)` is a temperature term, nothing more.
 - An observer may look at the event log afterwards and call a sustained cold
-  stretch an ice age. That is Phase 16's segmentation over recorded history,
+  stretch an ice age. That is Phase 17's segmentation over recorded history,
   a label applied to the past, never a state the simulation entered. See
   `docs/25-emergence-and-epistemic-position.md`.
 

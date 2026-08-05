@@ -1,6 +1,6 @@
 # Era And Tradition Detection Specification
 
-Status: design specification, not implemented. Phase 16. Analysis versions
+Status: design specification, not implemented. Phase 17. Analysis versions
 `lifesim-era-v1`, `lifesim-tradition-v1`. These are **not** in the config
 hash, because an analysis version can never affect a world.
 
@@ -36,7 +36,7 @@ rule.
 
 Detection reads the event log file. That file does not exist yet: it is the
 Phase 4 item deferred under D-019, with snapshots currently carrying a zero
-event-log reference. It is therefore in **Phase 5's** scope, not Phase 16's,
+event-log reference. It is therefore in **Phase 5's** scope, not Phase 17's,
 because multi-seed experiment analysis needs it long before era detection
 does.
 

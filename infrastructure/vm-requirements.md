@@ -30,7 +30,7 @@ Three consequences for the audit, none of which authorizes any access:
   worlds concurrently and per-world throughput degrades with contention.
   Measure that degradation curve rather than assuming linear scaling.
 - Disk grows faster than the current plan assumes. Each world writes
-  snapshots and an append-only event log, and Phases 7, 8, and 10 each add a
+  snapshots and an append-only event log, and Phases 7, 9, and 11 each add a
   snapshot growth term to a payload already dominated by per-organism genome
   arrays. Campaign disk budget is a per-run measurement, not an estimate.
 - Memory scales with concurrent worlds, not with one world.

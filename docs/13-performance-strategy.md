@@ -39,15 +39,17 @@ interactions are visible in one place, because they stack:
 | Phase | Cost added | Where it lands |
 |---|---|---|
 | 7 | Contest resolution, threat sensing, carcass entities | `sense`, `apply`, entity count |
-| 8 | Variable per-organism evaluation; batching by topology ID no longer works; diploid genomes roughly double genome storage | `controllers`, snapshot size, memory |
-| 10 | New `learn` phase scaling with plastic edge count; learned state in snapshots | `learn`, snapshot size, checkpoint stall |
-| 12 | K-nearest gathering and sorting; signal field accumulation and decay | `sense`, `apply`, `finalize` |
-| 11 | Objects in the spatial index; decay; object table and terrain deltas in snapshots | all phases, snapshot size, restore time |
-| 13 | Allometry, thermoregulation, growth, hazard draws per organism per tick | `environment`, `apply`, `lifecycle` |
+| 9 | Variable per-organism evaluation; batching by topology ID no longer works; diploid genomes roughly double genome storage | `controllers`, snapshot size, memory |
+| 11 | New `learn` phase scaling with plastic edge count; learned state in snapshots | `learn`, snapshot size, checkpoint stall |
+| 13 | K-nearest gathering and sorting; signal field accumulation and decay | `sense`, `apply`, `finalize` |
+| 12 | Objects in the spatial index; decay; object table and terrain deltas in snapshots | all phases, snapshot size, restore time |
+| 8 | Allometry, thermoregulation, hazard draws per organism per tick | `environment`, `apply`, `lifecycle` |
+| 10 | Developmental growth per birth; per-organism cost becomes module-count dependent | `lifecycle`, `controllers` |
+| 14 | Incremental ontogeny per tick; disease load | `apply`, `lifecycle` |
 
 The snapshot budget is the one to watch. The Phase 4 record already shows
 size dominated by per-organism genome arrays at roughly 2.8 KB each, and
-Phases 8, 10, and 11 each add a growth term on top. The checkpoint budget is
+Phases 9, 11, and 12 each add a growth term on top. The checkpoint budget is
 re-verified in each of those phases rather than assumed to carry forward.
 
 ## Staged Plan
@@ -57,7 +59,7 @@ re-verified in each of those phases rather than assumed to carry forward.
 3. Profile CPU and memory under fixed seeds and representative map/resource settings.
 4. Adopt SoA/dense loops and spatial buckets where traces show cost.
 5. Batch neural inputs/outputs and eliminate per-organism allocation.
-6. Parallelize only systems with deterministic ordering/reduction policy and equality tests. **Now specified rather than aspirational**: intra-world parallelism has ADR-0026 and Phase 17. Estimated serial fraction near 3.1 percent and a ceiling near 9x at 12 threads, but that estimate mixes the Phase 1 and Phase 2 records and is an orientation, not evidence; Phase 17 measures the real split. The serial part is `apply`, which Phases 7, 11, and 12 each grow.
+6. Parallelize only systems with deterministic ordering/reduction policy and equality tests. **Now specified rather than aspirational**: intra-world parallelism has ADR-0026 and Phase 18. Estimated serial fraction near 3.1 percent and a ceiling near 9x at 12 threads, but that estimate mixes the Phase 1 and Phase 2 records and is an orientation, not evidence; Phase 18 measures the real split. The serial part is `apply`, which Phases 7, 12, and 13 each grow.
 7. Evaluate SIMD after data layout is stable.
 8. Compare GPU inference against CPU batching with end-to-end timing, not kernel-only claims.
 9. Run independent experiment worlds on spare capacity only after one world is stable. Promoted from a late optimization to Phase 5 enabling work, because multi-seed experiment design depends on it.

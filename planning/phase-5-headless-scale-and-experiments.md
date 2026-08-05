@@ -21,7 +21,7 @@ Three concrete blockers:
 - There is no independent-world scheduler. It has sat in the deferred
   backlog since Phase 0 and every multi-seed design needs it.
 - There is no append-only event log file. Snapshots carry a zero event-log
-  reference (D-019). Every later analysis, and all of Phase 16, reads that
+  reference (D-019). Every later analysis, and all of Phase 17, reads that
   file.
 
 This phase builds the instrument. It adds no organism behavior at all.

@@ -1,4 +1,4 @@
-# Phase 8: Evolvable Genome, Diploid Genetics And Variable Topology
+# Phase 9: Evolvable Genome, Diploid Genetics And Variable Topology
 
 Status: planned, not started. Policy versions `lifesim-genome-v2`,
 `lifesim-controller-v2`, `lifesim-meiosis-v1`, `lifesim-structmut-v1`.
@@ -46,7 +46,7 @@ blast radius. Everything after it depends on it.
 ## Non-Goals
 
 - No plasticity. `PlasticityGenes` are carried, inherited, validated, and
-  behaviorally inert until Phase 10, following exactly the precedent set by
+  behaviorally inert until Phase 11, following exactly the precedent set by
   thermal preference and defense tendency in Phase 2.
 - No new sensory or action capability. The registry is populated with
   exactly the channels that exist after Phase 7, so the phase measures the
@@ -57,7 +57,7 @@ blast radius. Everything after it depends on it.
   forever.
 - No SIMD or batching rework. Variable topology makes the existing batching
   assumption invalid; the replacement strategy is a measurement question for
-  a later performance slice, not a Phase 8 deliverable.
+  a later performance slice, not a Phase 9 deliverable.
 
 ## Prerequisites
 
@@ -96,45 +96,45 @@ Conditions, matched on seeds (30), config, and run length:
 
 Criteria:
 
-- [ ] **C8.1 Structural evolution actually occurs.** Under A, the median
+- [ ] **C9.1 Structural evolution actually occurs.** Under A, the median
       expressed node count and edge count among living organisms at tick T
       differ from the founder median by at least the stated amount in at
       least 20 of 30 seeds, and the population contains more than one distinct
       (node count, edge count) pair in at least 25 of 30 seeds. Under B both
       are invariant by construction, which is the control confirming the
       measurement instrument.
-- [ ] **C8.2 Structural freedom does not destabilize the ecology.** Median
+- [ ] **C9.2 Structural freedom does not destabilize the ecology.** Median
       population and median lifespan under A are within the stated tolerance
       of B, or better, in at least 20 of 30 seeds. A topology system that
       simply kills worlds has not delivered evolvability.
-- [ ] **C8.3 Mendelian validation.** Under condition C, at a marked neutral
+- [ ] **C9.3 Mendelian validation.** Under condition C, at a marked neutral
       biallelic locus under random mating with selection disabled, observed
       genotype frequencies match Hardy-Weinberg expectation within sampling
       error across at least 30 generations, in at least 25 of 30 seeds. This
       is the check that meiosis is unbiased and that dominance expression is
       not silently distorting allele transmission.
-- [ ] **C8.4 Linkage validation.** Under condition C, the association
+- [ ] **C9.4 Linkage validation.** Under condition C, the association
       between alleles at two marked loci decays with their map distance at
       the rate the configured crossover model predicts, within stated
       tolerance. This is the check that crossover does what the spec says
       and that linkage exists at all.
-- [ ] **C8.5 Duplication versus explicit insertion.** Report the structural
-      growth rate and the C8.2 stability outcome separately for a
+- [ ] **C9.5 Duplication versus explicit insertion.** Report the structural
+      growth rate and the C9.2 stability outcome separately for a
       duplication-only variation policy and an insertion-enabled one. This
       is not pass or fail; it is the measurement that ADR-0013 commits to
       making rather than asserting. If duplication alone is too slow to
-      produce C8.1 within the run budget, that is a finding and the
+      produce C9.1 within the run budget, that is a finding and the
       insertion operator becomes the default with the reason recorded.
-- [ ] **C8.6 Bounded and fail-closed.** A seeded malformed-input harness of
+- [ ] **C9.6 Bounded and fail-closed.** A seeded malformed-input harness of
       at least 100,000 cases over the schema 2 codec produces zero panics
       and zero invalid admissions, every accept re-validated and
       round-tripped. Every structural cap rejects deterministically, counts,
       and events; no cap is ever silently exceeded.
-- [ ] **C8.7 Determinism and fixtures.** Clean-process replay of the Phase 8
+- [ ] **C9.7 Determinism and fixtures.** Clean-process replay of the Phase 9
       fixture; storage-permutation equality; edge-summation order
       independence from storage layout proven by a compaction test; schema 1
       configured worlds still reproduce `0xff9dfcff5dffbf42` exactly.
-- [ ] **C8.8 Snapshot budget.** Snapshot size per organism and checkpoint
+- [ ] **C9.8 Snapshot budget.** Snapshot size per organism and checkpoint
       cost are measured at both tiers under a realistic evolved topology
       distribution, and the structural caps are set from that measurement.
       Caps chosen before the measurement are provisional and must be
@@ -157,7 +157,7 @@ Criteria:
 - Evaluation: synchronous update equality under node storage permutation;
   edge summation order pinned; recurrent topologies evaluate without special
   handling; non-finite neutralization counted and evented.
-- Genetics validation: C8.3 and C8.4 as automated statistical tests with
+- Genetics validation: C9.3 and C9.4 as automated statistical tests with
   recorded tolerances and seeds, not as manual analyses.
 - Long run: multi-generation stability with structural churn, exact ledgers,
   bounded genome sizes.
@@ -193,10 +193,10 @@ structures), `specifications/organism-genome.md`,
 
 | Risk | Mitigation |
 |---|---|
-| Genome bloat: duplication grows genomes until snapshots and memory become unmanageable | Hard caps with deterministic rejection; caps set from the C8.8 measurement; deletion rate configured to be non-negligible; genome size is a reported metric with an alert threshold |
+| Genome bloat: duplication grows genomes until snapshots and memory become unmanageable | Hard caps with deterministic rejection; caps set from the C9.8 measurement; deletion rate configured to be non-negligible; genome size is a reported metric with an alert threshold |
 | Per-organism cost variance makes tick time unpredictable | Measure the distribution; cap per-organism edge count; a bounded evaluation budget per organism per tick is available as a fallback policy and would itself be a selection pressure toward small networks, which must be reported if used |
 | Loss of batching regresses performance badly | Measured, not assumed. If severe, the fallback is grouping by structural signature rather than exact topology, which is a later performance slice |
-| Duplication-driven growth is too slow to show C8.1 in the run budget | C8.5 makes this an explicit measured comparison with a defined fallback rather than a discovered failure |
+| Duplication-driven growth is too slow to show C9.1 in the run budget | C9.5 makes this an explicit measured comparison with a defined fallback rather than a discovered failure |
 | Diploidy doubles genome storage | Real and accepted. It is the direct cost of the realism policy and is recorded in ADR-0017 |
 | Structural distance for mating compatibility creates instant reproductive isolation and fragments the population | Compatibility weights are config; sweep before the campaign; monitor population fragmentation as a reported metric |
 

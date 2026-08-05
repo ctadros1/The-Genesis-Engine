@@ -1,13 +1,12 @@
-# Phase 13a: Demography And Life History
+# Phase 8: Demography And Life History
 
-**Executes after Phase 7 (contest), before Phase 8 (genome successor).**
-Numbering is provisional: the file keeps a 13a label because a full
-monotonic renumber is deferred; see ADR-0025 and `docs/19-implementation-roadmap.md`,
-which carries the authoritative execution order.
+**Executes after Phase 7 (contest), before Phase 9 (genome successor).**
+`docs/19-implementation-roadmap.md` carries the authoritative execution
+order.
 
 Status: planned, not started. Policy version `lifesim-demography-v1`.
 Split from the former Phase 13 by ADR-0025; the remainder is
-`planning/phase-13b-ontogeny-and-sexual-selection.md`.
+`planning/phase-14-ontogeny-and-sexual-selection.md`.
 
 ## Problem
 
@@ -31,7 +30,7 @@ Three consequences, and the third is why this phase moved:
    dynamic measured is an artifact of it.
 3. **The culture stack cannot be measured in such a world.** Costly
    signalling, object manipulation, and social learning all cost energy that
-   nobody has. Running Phases 10 to 12 here would produce nulls caused by
+   nobody has. Running Phases 11 to 13 here would produce nulls caused by
    starvation rather than by anything about culture, and an underpowered
    null is worse than a negative result because the two cannot be
    distinguished.
@@ -66,17 +65,17 @@ Phase 7.
   *below* its food ceiling, which is the only way per-capita surplus exists.
 - **Juvenile mortality and a maturation constraint**: a scalar
   pre-reproductive penalty. Not developmental growth, which needs morphology
-  and is 13b.
+  and is 14.
 - **Life-history tradeoff**: per-offspring investment and offspring number
   as an evolvable axis.
 - **Death-cause accounting** as a first-class reported distribution.
 
 ## Non-Goals
 
-- **No developmental ontogeny.** Growth of a module body is Phase 13b and
+- **No developmental ontogeny.** Growth of a module body is Phase 14 and
   needs morphology.
-- **No sexual selection or mate choice.** Needs perception; Phase 13b.
-- **No disease.** Optional slice, better with contact structure; Phase 13b.
+- **No sexual selection or mate choice.** Needs perception; Phase 14.
+- **No disease.** Optional slice, better with contact structure; Phase 14.
 - No claim that any parameter corresponds to a real organism.
 - No population cap used as an ecological mechanism. `max_entities` remains
   a process-safety guard and this phase's whole point is that ecology should
@@ -99,7 +98,7 @@ Phase 7.
 
 ## Acceptance Criteria
 
-**Primary endpoint: C13a.1.** Acceptance is conjunctive; secondary criteria
+**Primary endpoint: C8.1.** Acceptance is conjunctive; secondary criteria
 do not rescue a failed primary. The world is the replicate; per-organism
 quantities aggregate to a world-level statistic before analysis. Seed floor
 30 independent worlds, with pilot-driven power analysis setting the final
@@ -115,42 +114,42 @@ Conditions, matched on seeds and run length:
 
 Criteria:
 
-- [ ] **C13a.1 The population stops being starvation-dominated (primary).**
+- [ ] **C8.1 The population stops being starvation-dominated (primary).**
       Under A with `K-head`, the fraction of deaths attributable to
       starvation falls below a prespecified threshold, and the death-cause
       distribution is mixed across starvation, age, damage, and extrinsic
       hazard, in at least 20 of 30 worlds. Under B it remains
       starvation-dominated. This is the criterion that determines whether
       any later phase is measurable at all.
-- [ ] **C13a.2 Population sits below carrying capacity.** Under A with
+- [ ] **C8.2 Population sits below carrying capacity.** Under A with
       `K-head`, realized population divided by environmental carrying
       capacity is sustained below 1 by a prespecified margin, rather than
       tracking it exactly. Report per-capita energy above subsistence as the
       surplus measure. Under B the ratio pins at or near 1.
-- [ ] **C13a.3 Ecology binds, not the guard.** Under `K-head`, population
+- [ ] **C8.3 Ecology binds, not the guard.** Under `K-head`, population
       equilibrium is strictly below `max_entities` in at least 25 of 30
       worlds. A run whose population touches the ceiling is excluded from
       analysis and reported as excluded, because its dynamics are an
       artifact.
-- [ ] **C13a.4 Allometry is what it claims.** Measured basal metabolic rate
+- [ ] **C8.4 Allometry is what it claims.** Measured basal metabolic rate
       against body mass fits a power law whose exponent matches the
       configured exponent within stated tolerance. Verifies the
       implementation before anything downstream is interpretable.
-- [ ] **C13a.5 Senescence responds to extrinsic mortality.** Under `M-low`,
+- [ ] **C8.5 Senescence responds to extrinsic mortality.** Under `M-low`,
       evolved median lifespan is higher than under `M-high`, in at least 20
       of 30 worlds. A directional, falsifiable prediction from evolutionary
       theory that the model was not tuned to produce, and the strongest
       realism test available at this stage.
-- [ ] **C13a.6 Life-history tradeoff emerges.** A negative correlation
+- [ ] **C8.6 Life-history tradeoff emerges.** A negative correlation
       between per-offspring investment and offspring number appears across
       the evolved population in at least 20 of 30 worlds. Not authored
       anywhere; it must fall out of the energy budget.
-- [ ] **C13a.7 Thermal preference becomes load-bearing.** The distribution
+- [ ] **C8.7 Thermal preference becomes load-bearing.** The distribution
       of the thermal-preference gene correlates with the thermal
       distribution of the cells its carriers occupy, in at least 20 of 30
       worlds. Under B the gene is inert and the correlation is absent, which
       is the control confirming the measurement.
-- [ ] **C13a.8 Exactness and determinism.** Ledger exact to the milli-unit
+- [ ] **C8.8 Exactness and determinism.** Ledger exact to the milli-unit
       over a 10^6-tick run with thermoregulation, hazard, and allometry
       active; clean-process fixture replay; storage-permutation equality;
       demography-disabled configs reproduce the Phase 7 fixture exactly.
@@ -162,7 +161,7 @@ Criteria:
   penalty at the maturation boundary.
 - Property: no state leaves bounds; hazard probability stays in range under
   adversarial configs.
-- Statistical: C13a.4 through C13a.7 as automated tests with recorded
+- Statistical: C8.4 through C8.7 as automated tests with recorded
   tolerances, seeds, and sample sizes. A statistical criterion checked by a
   human reading a chart is not a test.
 - Determinism: clean-process fixture; storage permutation; disabled-section
@@ -199,8 +198,8 @@ ADR-0025.
 | **Extrinsic mortality is tuned until surplus appears**, which would author the answer to the surplus question | Mortality regime is a swept environmental condition with a stated range, reported as a curve, not a value chosen for its result. ADR-0018's naming test applies: "a mortality regime" is an environment, "conditions producing surplus" is an outcome |
 | Raising `max_entities` blows the memory or tick budget | The `K-head` value comes from the Phase 5 throughput measurement and this phase's own benchmark, not from optimism. If ecology cannot bind below the affordable ceiling, that is a reportable finding about the world size |
 | Per-organism cost now applies to every later phase rather than only the last | Real and accepted. It is the price of measuring the culture stack in a world where measurement is possible, and ADR-0025 records it |
-| Senescence plus extrinsic mortality collapses populations | C13a.2 and the sweep detect it; the hazard model is config and swept before any campaign |
-| Prior Phase 7 results do not transfer across this phase | True and much cheaper than it would have been after Phase 12. Phase 7 is one phase of results, not four |
+| Senescence plus extrinsic mortality collapses populations | C8.2 and the sweep detect it; the hazard model is config and swept before any campaign |
+| Prior Phase 7 results do not transfer across this phase | True and much cheaper than it would have been after Phase 13. Phase 7 is one phase of results, not four |
 
 ## Rollback
 

@@ -73,7 +73,7 @@ The user-facing intuition of an ice age is delivered by biome structure at
 generation plus climate drift during the run
 (`specifications/biome-and-climate.md`). There is no age state, no age
 transition, and nothing spawned or swapped because of one. An observer may
-call a sustained cold stretch an ice age afterwards; that is Phase 16
+call a sustained cold stretch an ice age afterwards; that is Phase 17
 segmentation over recorded history, a label applied to the past.
 
 Had this been implemented as a world phase that triggers and populates, it

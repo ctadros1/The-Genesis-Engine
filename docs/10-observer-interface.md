@@ -78,7 +78,7 @@ Consequences for this document's design direction:
 
 - **Legibility is preserved and strengthened.** The scientific-overlay
   principle is unchanged, and structure becomes directly readable: after
-  Phase 9 an organism with three motor modules visibly has three motor
+  Phase 10 an organism with three motor modules visibly has three motor
   modules, so selection on body plan is observed rather than inferred.
 - **Rendering dimensionality is not simulation dimensionality.** The
   simulation stays 2D. The 3D view is a presentation of a 2D world with an

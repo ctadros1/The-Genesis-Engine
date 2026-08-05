@@ -56,7 +56,7 @@ Load-bearing elements:
   assigned to the lowest new entity ID per the existing convention.
 - **The threshold is a representation change, not an achievement.** Crossing
   it means the field representation is no longer adequate for what is there.
-  The organism gains nothing, and Phase 15 tests transition neutrality
+  The organism gains nothing, and Phase 16 tests transition neutrality
   directly by comparing a materialized organism against an otherwise
   identical normally-born one.
 - **Materialized organisms are one-module bodies** (ADR-0019), so a unicell
@@ -74,7 +74,7 @@ Negative and accepted:
 - **The handoff is the most likely place in the entire programme for a
   determinism or conservation defect.** Two representations of the same
   matter, converting under a threshold, is exactly the shape of bug that
-  passes casual testing and corrupts a long run. Phase 15's criteria are
+  passes casual testing and corrupts a long run. Phase 16's criteria are
   weighted heavily toward it.
 - **Genotype classes are a discretization.** Microbial evolution in the
   field regime is movement between a bounded set of classes, not open-ended
@@ -96,8 +96,7 @@ regime's rules.
 ## Performance Implications
 
 Field cost is proportional to cells times classes and independent of
-organism population, verified by benchmark across population tiers in Phase
-14. Snapshot growth from stored field state is measured there too.
+organism population, verified by benchmark across population tiers in Phase 15. Snapshot growth from stored field state is measured there too.
 
 The compute-cost risk in `docs/20-risk-register.md` is made materially worse
 by this mode, and ADR-0018's mandatory unscaffolded control doubles the seed
@@ -119,7 +118,7 @@ Snapshot growth. Nothing else.
 
 ## Evidence Required To Accept
 
-- Phase 14 and 15 acceptance criteria, in particular exact conservation over
+- Phase 15 and 16 acceptance criteria, in particular exact conservation over
   a 10^6-tick run including many transitions, transition neutrality, and
   field cost independence from population.
 - Snapshot size and restore time with a populated field.

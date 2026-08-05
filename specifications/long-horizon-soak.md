@@ -130,8 +130,8 @@ Campaigns are unaffected, because campaign runs are short by construction.
   which it stresses harder than any campaign will.
 - **Extends** the existing 864,000-tick release test rather than replacing
   it. That test stays as the fast gate.
-- **Must be re-run** after any phase that adds a growth term. Phases 8, 9,
-  10, 11, and 13 each add at least one, so each re-runs at least Soak-7 and
+- **Must be re-run** after any phase that adds a growth term. Phases 9, 10,
+  11, 12, and 13 each add at least one, so each re-runs at least Soak-7 and
   restates the numbers. A soak result is valid only for the policy versions
   it ran under.
 

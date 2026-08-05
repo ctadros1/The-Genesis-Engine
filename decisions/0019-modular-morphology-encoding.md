@@ -27,7 +27,7 @@ object.
   modules on a discrete lattice, grown by a genome-encoded growth program.
 - **Full physical body simulation.** Rigid or soft body dynamics. Would
   dominate the compute budget and displace the culture and cognition work
-  that Phases 8 through 16 are built around.
+  that Phases 9 through 17 are built around.
 
 ## Proposed Decision
 
@@ -81,7 +81,7 @@ Negative and accepted:
 
 - **Indirect encodings are hard to analyze.** The genotype-phenotype map is
   many-to-one and discontinuous, and a single-locus mutation can produce a
-  large phenotypic jump. Phase 9 measures that discontinuity distribution
+  large phenotypic jump. Phase 10 measures that discontinuity distribution
   rather than assuming it is tolerable.
 - Development runs per organism per birth, and per tick under incremental
   ontogeny. Per-organism cost becomes module-count dependent, so tick time
@@ -91,7 +91,7 @@ Negative and accepted:
   their roles now derived. Retired trait IDs are never reused.
 - An invalid body is a non-viable organism whose birth is rejected. If the
   growth-program search produces a high non-viability rate, effective
-  fecundity drops and the ecology shifts; Phase 9 reports the rate as a
+  fecundity drops and the ecology shifts; Phase 10 reports the rate as a
   first-class metric.
 
 Compatibility: genome schema 3 is config-selected. Schema 1 and schema 2
@@ -102,7 +102,7 @@ records: a converted genome would be a record that never existed.
 ## Performance Implications
 
 Unmeasured, and the largest single unknown in the programme after ADR-0013.
-Phase 9 records development cost per birth, per-organism cost against module
+Phase 10 records development cost per birth, per-organism cost against module
 count as a distribution, the interaction with controller cost, and the
 non-viability rate. Caps are set from that measurement rather than guessed.
 
@@ -125,9 +125,9 @@ morphology on the HTTP detail path. Observer work to render variable bodies.
 
 ## Evidence Required To Accept
 
-- Phase 9 acceptance criteria, in particular development purity and order
+- Phase 10 acceptance criteria, in particular development purity and order
   independence, the discontinuity measurement, the non-viability rate, and
   the per-organism cost distribution.
 - A one-module body producing sane derived attributes, since the
   unicellular case depends on it.
-- Phase 8 fixture reproduced exactly with morphology disabled.
+- Phase 9 fixture reproduced exactly with morphology disabled.

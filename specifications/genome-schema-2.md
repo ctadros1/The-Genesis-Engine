@@ -166,7 +166,7 @@ rejected at `max_entities`.
 Snapshot budget is the real limit. The Phase 4 benchmark records that
 snapshot size is already dominated by per-organism genome arrays at roughly
 2.8 KB each. Caps must be chosen against a measured checkpoint budget, not
-guessed, and Phase 8's benchmark requirements say so explicitly.
+guessed, and Phase 9's benchmark requirements say so explicitly.
 
 ## Encoding
 
@@ -282,7 +282,7 @@ disequilibrium decays instantly and a co-adapted set of loci cannot be held
 together. That removes one of the main forces the model is meant to be able
 to exhibit. Meiosis with a small number of crossovers per chromosome
 preserves linkage, and linkage decay with map distance becomes a testable
-prediction (Phase 8 acceptance criterion C8.5).
+prediction (Phase 9 acceptance criterion C9.5).
 
 `uniform-bounded-v1` remains valid and unchanged for schema-1 worlds.
 

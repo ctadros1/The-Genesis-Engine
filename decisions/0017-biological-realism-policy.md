@@ -52,8 +52,8 @@ a cited model or a validation experiment.
 textbook result it was not tuned to produce. A mechanism that cannot be
 checked against any known result is decoration, not realism. This turns the
 policy into acceptance criteria rather than an aesthetic: Hardy-Weinberg
-equilibrium at a neutral locus (C8.3), linkage decay with map distance
-(C8.4), the allometric exponent (C13.1), the investment-versus-number
+equilibrium at a neutral locus (C9.3), linkage decay with map distance
+(C9.4), the allometric exponent (C13.1), the investment-versus-number
 tradeoff (C13.2), and lifespan responding to extrinsic mortality (C13.3).
 
 **Three hard constraints, in precedence order.**
@@ -76,7 +76,7 @@ ADR-0014, because it is as much a realism decision as a learning one, and
 because it is the property that keeps the culture question distinguishable
 from the genetics question.
 
-**Placement.** Genetics realism goes in Phase 8, because the genome is being
+**Placement.** Genetics realism goes in Phase 9, because the genome is being
 rewritten anyway and doing it twice is strictly worse.
 
 Physiology placement is **amended by ADR-0025**. This ADR originally placed
@@ -89,16 +89,16 @@ roughly 99.9 percent of mortality was starvation and population sat on the
 have returned a null caused by starvation rather than by anything about
 transmission.
 
-The phase is therefore split along its dependency line. **Phase 13a**
+The phase is therefore split along its dependency line. **Phase 8**
 (allometry, thermoregulation, senescence, extrinsic mortality, life-history
 tradeoff) executes after Phase 7, because it has no unmet prerequisites and
 because non-food mortality is the mechanism that produces the per-capita
-surplus the culture stack needs. **Phase 13b** (developmental ontogeny,
-sexual selection, disease) stays late, because ontogeny needs the Phase 9
-module body and mate choice needs the Phase 12 perception channels.
+surplus the culture stack needs. **Phase 14** (developmental ontogeny,
+sexual selection, disease) stays late, because ontogeny needs the Phase 10
+module body and mate choice needs the Phase 13 perception channels.
 
 The non-transfer rule is unchanged and now applies in two smaller pieces:
-Phase 7 results do not transfer across 13a, and campaigns that matter are
+Phase 7 results do not transfer across 8, and campaigns that matter are
 re-run under `lifesim-physiology-v2` before becoming standing findings.
 
 ## Consequences
@@ -124,7 +124,7 @@ replay lineage when enabled, exactly as every other behavior policy does.
 
 ## Performance Implications
 
-Negative and measured rather than estimated. Phase 8 and Phase 13 both
+Negative and measured rather than estimated. Phase 9 and Phase 13 both
 record the per-organism cost delta and the resulting change in ticks per
 second per world.
 
@@ -145,7 +145,7 @@ same checkpoint budget work ADR-0013, ADR-0014, and ADR-0015 depend on.
 
 ## Evidence Required To Accept
 
-- The realism validation criteria across Phases 8 and 13: C8.3, C8.4,
+- The realism validation criteria across Phases 9 and 13: C9.3, C9.4,
   C13.1, C13.2, C13.3.
 - Measured per-organism cost and throughput deltas at both supported tiers.
 - Fixture preservation with every realism section disabled.

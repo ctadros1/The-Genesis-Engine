@@ -11,7 +11,7 @@ weights/biases in [-8, 8]. Policy specifics recorded for replay:
   add/multiply/divide (no libm), so results are reproducible bit-for-bit on
   the recorded build/platform; cross-platform equality is not claimed.
 - Inputs 1-9 and 13-15 plus memory are live; threat (10), temperature
-  comfort (11), moisture comfort (30), and recent damage (16) are documented
+  comfort (11), moisture comfort (12), and recent damage (16) are documented
   neutral zeros until their mechanics exist. Health (2) is neutral 1.0.
 - Output mapping (config-thresholded, Q16-versioned): turn combines the
   turn channel with `(follow - avoid) * approach_tendency * relative
@@ -23,12 +23,12 @@ weights/biases in [-8, 8]. Policy specifics recorded for replay:
   as `ControllerFault` events; with validated genomes the count stays zero.
 - Evaluation allocates nothing per organism per tick (stack buffers only).
 
-## Planned Successor: `lifesim-controller-v2` (Phase 8)
+## Planned Successor: `lifesim-controller-v2` (Phase 9)
 
 Topology 1 is frozen at 20 inputs, 16 and 12 hidden units, 12 outputs, and
 4 memory values, so every new capability is a new channel and a schema bump
 performed by a human. Open-ended complexity cannot come from a structure
-only we can change. Phase 8 replaces it; the design is
+only we can change. Phase 9 replaces it; the design is
 `specifications/genome-schema-2.md` and the decision is ADR-0013.
 
 What changes:
@@ -54,7 +54,7 @@ What changes:
   Float addition is not associative, so this is a policy requirement, not an
   implementation detail: a storage-order sum is a latent replay bug that
   only appears after a compaction changes layout.
-- Plasticity (Phase 10) makes weights change within a lifetime under a
+- Plasticity (Phase 11) makes weights change within a lifetime under a
   genome-encoded rule. See `specifications/plasticity-and-learning.md`.
 
 What does not change: the custom evaluator with no ML framework and no GPU
@@ -68,7 +68,7 @@ There is no schema 1 to schema 2 genome migration.
 
 Implement a custom compact feed-forward f32 network with a fixed topology and a bounded internal memory vector. This keeps each controller genome serializable, inspectable, and cheap enough for batch evaluation. Do not begin with ONNX Runtime, Candle, Burn, LibTorch, or CUDA.
 
-The "no evolving topology" part of this recommendation was correct for Phase 2 and is reversed for Phase 8 by ADR-0013, with the costs it identified
+The "no evolving topology" part of this recommendation was correct for Phase 2 and is reversed for Phase 9 by ADR-0013, with the costs it identified
 (batching, explainability, migration) accepted and measured rather than
 dismissed.
 
@@ -132,16 +132,16 @@ Neural weights and biases are genome segments. Reproduction combines parent gene
 
 Structural mutation was deferred through Phase 2 because it complicates
 batching, migration, species distance, and explainability. Those costs are
-real and are accepted, measured, and mitigated in Phase 8 rather than
+real and are accepted, measured, and mitigated in Phase 9 rather than
 denied. See ADR-0013 and `specifications/genome-schema-2.md`.
 
 ## Batch Strategy
 
 Store topology-equal organisms in contiguous batches. Gather normalized inputs into SoA buffers, evaluate dense layers, scatter bounded outputs, and retain no per-tick activation history except selected debug samples. CPU scalar correctness precedes SIMD. GPU is viable only if measured compute savings exceed packing, transfer, synchronization, and operational complexity.
 
-This strategy assumes shared topologies and does not survive Phase 8, where
+This strategy assumes shared topologies and does not survive Phase 9, where
 topologies are per-organism. The replacement is a measurement question for a
-later performance slice, not a Phase 8 deliverable. If the current
+later performance slice, not a Phase 9 deliverable. If the current
 zero-per-organism-per-tick allocation property is lost, that loss is
 recorded in the benchmark record rather than absorbed silently.
 

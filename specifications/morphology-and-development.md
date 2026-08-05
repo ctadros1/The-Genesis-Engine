@@ -1,6 +1,6 @@
 # Modular Morphology And Development Specification
 
-Status: design specification, not implemented. Phase 9. Policy versions
+Status: design specification, not implemented. Phase 10. Policy versions
 `lifesim-morphology-v1`, `lifesim-develop-v1`; genome schema 3. Decision:
 ADR-0019.
 
@@ -84,7 +84,7 @@ body is good.
 Morphology is not stored directly in the genome. The genome stores a
 **growth program** that is executed to produce the body. This is the
 developmental encoding that genome schema 2 reserved as locus type tag 5 and
-deferred; Phase 9 allocates it.
+deferred; Phase 10 allocates it.
 
 ### Regulatory loci
 
@@ -140,7 +140,7 @@ adopted elsewhere, and what it costs:
   that generated it.
 - The **direct parameterized body plan is retained as a specified
   fallback**, not a hypothetical one.
-- Phase 9's discontinuity measurement is a **gate**, not a metric. If a
+- Phase 10's discontinuity measurement is a **gate**, not a metric. If a
   typical single-locus mutation produces an unrelated body, the encoding has
   failed its own premise and the fallback is taken.
 
@@ -188,7 +188,7 @@ successor.
   design choice made specifically to avoid stacking a fourth growth term on
   the snapshot budget already strained by ADR-0013, ADR-0014, and ADR-0015.
 
-Phase 9 measures all of it before the caps are fixed.
+Phase 10 measures all of it before the caps are fixed.
 
 ## Test Requirements
 
@@ -207,4 +207,4 @@ Phase 9 measures all of it before the caps are fixed.
 - Ledger exactness with growth energy flowing through it.
 - Genotype-phenotype discontinuity is measured and reported: the
   distribution of phenotypic distance produced by single-locus mutations.
-- Morphology disabled reproduces the Phase 8 fixture exactly.
+- Morphology disabled reproduces the Phase 9 fixture exactly.

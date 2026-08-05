@@ -25,8 +25,9 @@ this work. Infrastructure and physical-device gates remain open; see
 
 **The project goal changed on 2026-08-04** (see Purpose below). Phases 0
 through 4 are unchanged and their records, fixtures, and benchmarks are
-preserved exactly. Phase 5 is complete. Phases 6 through 16 are planned and
-none has started. All ADRs remain Proposed.
+preserved exactly. Phases 5 and 6 are complete. Phase 7's physics is
+implemented but its primary endpoint C7.1 is unmeasured. Phases 8 through 18
+are planned and none has started. All ADRs remain Proposed.
 
 Run it locally:
 

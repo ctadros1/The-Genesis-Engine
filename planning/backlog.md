@@ -17,24 +17,24 @@ ADRs remain Proposed.
 
 Phase 5 is complete (2026-08-04). Phase 6 is partially implemented: its
 climate and biome half is built and verified, its origin-modes half has not
-been started. Phases 7 to 16 are planned and none has started:
+been started. Phases 7 to 17 are planned and none has started:
 
 | Phase | Subject | Plan |
 |---|---|---|
 | 5 | Headless scale and multi-world experiments - **done** | `phase-5-headless-scale-and-experiments.md` |
 | 6 | Biomes, climate drift, and world origin modes - **done** | `phase-6-biomes-climate-and-origins.md` |
 | 7 | Territory, contest, and damage - **physics done, primary endpoint C7.1 unmeasured** | `phase-7-territory-and-conflict.md` |
-| 8 | Evolvable genome: diploid genetics and variable topology | `phase-8-evolvable-genome.md` |
-| 9 | Modular morphology and development | `phase-9-modular-morphology.md` |
-| 10 | Lifetime learning | `phase-10-lifetime-learning.md` |
-| 11 | Mutable world and artifacts | `phase-11-mutable-world-and-artifacts.md` |
-| 12 | Social channel | `phase-12-social-channel.md` |
-| 13a | Demography and life history - **executes after 7** | `phase-13a-demography-and-life-history.md` |
-| 14 | Abiogenesis and the unicellular regime | `phase-14-abiogenesis-and-unicellular-regime.md` |
-| 15 | The multicellularity transition | `phase-15-multicellularity-transition.md` |
-| 13b | Ontogeny and sexual selection - **executes after 12** | `phase-13b-ontogeny-and-sexual-selection.md` |
-| 16 | Offline era and tradition detection | `phase-16-era-and-tradition-detection.md` |
-| 17 | Intra-world parallelism - **cross-cutting; after 13a, before 12** | `phase-17-intra-world-parallelism.md` |
+| 8 | Demography and life history | `phase-8-demography-and-life-history.md` |
+| 9 | Evolvable genome: diploid genetics and variable topology | `phase-9-evolvable-genome.md` |
+| 10 | Modular morphology and development | `phase-10-modular-morphology.md` |
+| 11 | Lifetime learning | `phase-11-lifetime-learning.md` |
+| 12 | Mutable world and artifacts | `phase-12-mutable-world-and-artifacts.md` |
+| 13 | Social channel | `phase-13-social-channel.md` |
+| 14 | Ontogeny and sexual selection | `phase-14-ontogeny-and-sexual-selection.md` |
+| 15 | Abiogenesis and the unicellular regime | `phase-15-abiogenesis-and-unicellular-regime.md` |
+| 16 | The multicellularity transition | `phase-16-multicellularity-transition.md` |
+| 17 | Offline era and tradition detection | `phase-17-era-and-tradition-detection.md` |
+| 18 | Intra-world parallelism - **cross-cutting; after 8, before 13** | `phase-18-intra-world-parallelism.md` |
 
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under
@@ -125,7 +125,7 @@ phase is not, because its primary endpoint was not measured.
    is a small, well-scoped piece of analysis work rather than a research
    question. C7.2's tolerance clause and C7.3 stay recorded as unmet rather
    than adjusted.
-4. **Phase 13a, demography and life history.** Now the next behavioral
+4. **Phase 8, demography and life history.** Now the next behavioral
    phase, ahead of the genome successor, because the culture stack cannot be
    measured in a world where 99.9 percent of deaths are starvation
    (ADR-0025, D-057). Includes raising `max_entities` above the ecological
@@ -140,8 +140,8 @@ phase is not, because its primary endpoint was not measured.
    server; do not treat viewport emulation as device evidence. Note that
    ADR-0024's voxel path reopens this gate with a different rendering
    technique, so sprite-path device evidence will not transfer.
-8. Phase 17, intra-world parallelism, when the single-world population
-   ceiling starts to bind. Scheduled after 13a and before Phase 12.
+8. Phase 18, intra-world parallelism, when the single-world population
+   ceiling starts to bind. Scheduled after 8 and before Phase 13.
 
 ## Deferred Backlog
 
@@ -150,20 +150,20 @@ Carried forward unchanged unless noted:
 - Visual palette/sprite identity system.
 - Secure observer/admin authentication mechanism.
 - Exact disaster catalog.
-- Genome topology/trait range exploration. Partly absorbed by Phase 8.
+- Genome topology/trait range exploration. Partly absorbed by Phase 9.
 - GPU experiment design.
 - ~~Independent-world scheduler.~~ **Delivered in Phase 5**
   (`crates/sim-experiment/src/scheduler.rs`).
 - Parquet export (deferred Phase 4 item, still deferred).
 - Profiling and SIMD work from the superseded Phase 5 plan. Each still
   requires its own profiler evidence. **Intra-world parallelism is no
-  longer a backlog item**: it has ADR-0026 and Phase 17.
+  longer a backlog item**: it has ADR-0026 and Phase 18.
 - **Raise `max_entities` above the ecological equilibrium** so ecology binds
   instead of a memory guard. Population sat on the guard for the entire
   Phase 2 long run, which means the guard was the carrying capacity and
   every dynamic measured under it is an artifact. Config change, gated on
-  the Phase 13a benchmark.
-- Re-measure the `apply` serial fraction after Phases 7, 11, and 12. Each
+  the Phase 8 benchmark.
+- Re-measure the `apply` serial fraction after Phases 7, 12, and 13. Each
   adds conflict resolution to exactly the part that caps parallel speedup
   (ADR-0026).
 - Implement the voxel observer. Reuses protocol handling, selection,
@@ -180,7 +180,7 @@ Carried forward unchanged unless noted:
   world has received any intervention.
 - Raise or confirm the observer speed cap (clamped to 64) for flagship
   catch-up. Headless is uncapped, so this may not be needed.
-- Controller batching strategy for variable topologies (Phase 8 makes
+- Controller batching strategy for variable topologies (Phase 9 makes
   grouping by topology ID obsolete; the replacement is a later performance
   slice).
 - A phenotype-only kin-inference condition, as an alternative to providing

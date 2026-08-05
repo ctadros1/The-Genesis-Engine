@@ -6,7 +6,7 @@ Author: Long-horizon scope revision
 
 ## Context
 
-The plan built through Phases 5 to 16 optimizes for one thing: a research
+The plan built through Phases 5 to 18 optimizes for one thing: a research
 instrument. Thirty to fifty short independent worlds per condition, run
 headless as fast as the host allows, answering falsifiable questions with
 controls and stated effect sizes. Phase 5 delivered exactly that.
@@ -67,7 +67,7 @@ analysis. The concrete rules:
   flagship excluded from it so the observation that motivated the design is
   not also its evidence.
 - Reports from the two modes use different templates and are not merged.
-- The era and tradition detection of Phase 16 is available in both modes,
+- The era and tradition detection of Phase 17 is available in both modes,
   but a tradition finding in a flagship world is a candidate, not a
   finding, and its report says so.
 
@@ -95,7 +95,7 @@ shortened flagship.
   received any intervention, so its checkpoint chain is the artifact.
 - **A check-in report**: what changed since the last observation, derived
   from the event log, so the operator can be away for a week and still
-  follow the world. This is Phase 16 machinery pointed at a different
+  follow the world. This is Phase 17 machinery pointed at a different
   question.
 - **An intervention log with the same audit discipline as Phase 3
   controls**, because a flagship world is the one most likely to be poked.

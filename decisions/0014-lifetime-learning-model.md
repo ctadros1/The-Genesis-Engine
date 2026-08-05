@@ -66,7 +66,7 @@ covers the accumulation.
 **No Lamarckian inheritance by default.** Learned state resets at birth.
 This is an invariant, not an optimization: if learned weights were
 inherited, a discovery would become a heritable trait and transmission would
-be indistinguishable from inheritance, which would make Phase 12
+be indistinguishable from inheritance, which would make Phase 13
 unanswerable. A `lamarckian_fraction_q16` config field exists, defaults to
 zero, and any nonzero value is an experimental condition that must be
 reported.
@@ -86,11 +86,11 @@ be.
 Negative and accepted:
 
 - **Plasticity may simply be selected to zero.** This is the most likely
-  failure mode of Phase 10. Learning pays only when the environment varies
-  within a lifetime and is predictable within it, so Phase 10 makes an
+  failure mode of Phase 11. Learning pays only when the environment varies
+  within a lifetime and is predictable within it, so Phase 11 makes an
   environmental-variability sweep mandatory rather than optional. If
   plasticity is still selected down under variability, that is a real
-  finding about this world and a strong predictor that Phase 12 will also
+  finding about this world and a strong predictor that Phase 13 will also
   return null.
 - The modulatory design is indirect, and evolution may not find it. Partial
   mitigation: rule forms 1 and 2 are ungated and produce unsupervised change
@@ -98,19 +98,19 @@ Negative and accepted:
   before modulation has to be discovered.
 - Learned state is world state that cannot be recomputed from the genome. It
   must be saved and checksummed, which grows snapshots. Sparse storage
-  (plastic edges only) bounds the growth; Phase 10 measures it.
+  (plastic edges only) bounds the growth; Phase 11 measures it.
 
 Compatibility: plasticity is one config section, inert when disabled.
-`PlasticityGenes` are carried, inherited, and validated from Phase 8 onward
+`PlasticityGenes` are carried, inherited, and validated from Phase 9 onward
 whether or not plasticity is enabled, following the precedent set by thermal
 preference and defense tendency in Phase 2. Disabled configs reproduce the
-Phase 8 fixture exactly.
+Phase 9 fixture exactly.
 
 ## Performance Implications
 
 A new `learn` tick phase whose cost scales with plastic edge count rather
 than organism count. Snapshot growth proportional to evolved plasticity.
-Both measured in Phase 10 against the Phase 8 record. No claim is made in
+Both measured in Phase 11 against the Phase 9 record. No claim is made in
 advance.
 
 Asynchronous checkpointing (Phase 5) is a prerequisite specifically because
@@ -131,11 +131,11 @@ Snapshot and checkpoint budget. Nothing else.
 
 ## Evidence Required To Accept
 
-- Phase 10 acceptance criteria, in particular C10.1 (per-individual
-  within-lifetime change, not a population-level shift), C10.2 (learning
+- Phase 11 acceptance criteria, in particular C11.1 (per-individual
+  within-lifetime change, not a population-level shift), C11.2 (learning
   under selection, measured against a neutral-marker drift control), and
-  C10.5 (bit-identical 10^6-tick trace across clean processes).
+  C11.5 (bit-identical 10^6-tick trace across clean processes).
 - Snapshot size and checkpoint stall measured at both supported tiers.
 - Ledger exactness with plasticity costs flowing through it.
-- Compatibility and rollback impact: Phase 8 fixture reproduces exactly with
+- Compatibility and rollback impact: Phase 9 fixture reproduces exactly with
   plasticity disabled.

@@ -52,7 +52,7 @@ Every one of these makes the table optimistic, and none is yet measured:
 - **Later phases cost more per tick.** The 49x measurement is Phase 2
   complexity. Variable topology (8), morphology (9), plasticity (10),
   objects (11), perception (12), and physiology (13) each add per-organism
-  work, and Phase 9's cost is a distribution rather than a constant. Ticks
+  work, and Phase 10's cost is a distribution rather than a constant. Ticks
   per second will fall, possibly by a large factor.
 - **Generation length itself changes.** Phase 13 replaces the age threshold
   with an evolvable life history, so ticks per generation stops being
@@ -93,7 +93,7 @@ places they differ concretely:
   The operator's unit of attention is a **week**, not a session.
 - Check-in reporting therefore matters more than live watching: over a week
   at 1x a world passes about 3,800 generations, which nobody watches
-  continuously. Phase 16's segmentation over the event log is the right tool
+  continuously. Phase 17's segmentation over the event log is the right tool
   pointed at "what changed since Tuesday".
 - A campaign world runs at maximum and is never watched at all.
 
@@ -101,7 +101,7 @@ places they differ concretely:
 
 | Question | Deadline | Default |
 |---|---|---|
-| How far does ticks-per-second actually fall through Phases 8 to 13? | Measured per phase | Unknown. Each phase's Benchmark Impact section records it, and this table is restated when it does |
+| How far does ticks-per-second actually fall through Phases 9 to 13? | Measured per phase | Unknown. Each phase's Benchmark Impact section records it, and this table is restated when it does |
 | Should the observer speed cap rise above 64 for flagship use? | Flagship mode adoption | Leave at 64; headless is uncapped and is the right tool for catching up |
 | What is the right check-in cadence and report window? | With the first flagship run | One week, adjustable, derived from the event log |
 | Does evolvable life history (Phase 13) destabilize the generational clock enough to make pacing unpredictable? | Phase 13 | Unknown, and it is a reportable finding either way |

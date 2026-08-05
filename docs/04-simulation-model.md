@@ -46,9 +46,9 @@ genome values and controller evaluation with add/multiply/divide and a
 rational tanh approximation only; world positions, energy, and biomass stay
 fixed-point integers.
 
-## Planned Successors (Phases 5 To 16)
+## Planned Successors (Phases 5 To 18)
 
-The model below is unchanged for Phases 1 and 2. Phases 5 through 16 add
+The model below is unchanged for Phases 1 and 2. Phases 5 through 18 add
 mechanisms whose designs live in `specifications/`; each is a config-gated
 section, folded into the config hash only when enabled, and behaviorally
 inert when disabled so all earlier fixtures reproduce exactly. The extended
@@ -59,18 +59,19 @@ precedence over anything in this document that contradicts it.
 | Addition | Policy version | Phase | Design |
 |---|---|---|---|
 | Health, damage, contest, carcasses | `contest-behavior-v1` | 7 | `planning/phase-7-territory-and-conflict.md` |
-| Diploid variable-topology genome | `lifesim-genome-v2` | 8 | `specifications/genome-schema-2.md` |
-| Synaptic plasticity | `lifesim-plasticity-v1` | 10 | `specifications/plasticity-and-learning.md` |
-| Perception and signalling | `lifesim-social-v1` | 11 | `specifications/social-signal-channel.md` |
+| Diploid variable-topology genome | `lifesim-genome-v2` | 9 | `specifications/genome-schema-2.md` |
+| Modular morphology and development | `lifesim-morphology-v1` | 10 | `specifications/morphology-and-development.md` |
+| Synaptic plasticity | `lifesim-plasticity-v1` | 11 | `specifications/plasticity-and-learning.md` |
+| Perception and signalling | `lifesim-social-v1` | 13 | `specifications/social-signal-channel.md` |
 | Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v1`, `lifesim-worldmod-v1` | 12 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
-| Allometry, thermoregulation, senescence, extrinsic mortality | `lifesim-demography-v1` | 13a (executes after 7) | `planning/phase-13a-demography-and-life-history.md` |
-| Developmental ontogeny, sexual selection, disease | `lifesim-physiology-v2` | 13b (executes after 12) | `planning/phase-13b-ontogeny-and-sexual-selection.md` |
+| Allometry, thermoregulation, senescence, extrinsic mortality | `lifesim-demography-v1` | 8 (executes after 7) | `planning/phase-8-demography-and-life-history.md` |
+| Developmental ontogeny, sexual selection, disease | `lifesim-physiology-v2` | 14 (executes after 13) | `planning/phase-14-ontogeny-and-sexual-selection.md` |
 
 Three sections below become live rather than documented placeholders:
-combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 13a, and carcasses in Phase 7.
+combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 8, and carcasses in Phase 7.
 
-The tick order gains phases: `learn` after `apply` (Phase 10), and object
-decay plus terrain-modification application inside `lifecycle` (Phase 11).
+The tick order gains phases: `learn` after `apply` (Phase 11), and object
+decay plus terrain-modification application inside `lifecycle` (Phase 12).
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

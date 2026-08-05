@@ -111,12 +111,12 @@ They are one phase because biome-matched seeding needs biomes.
 - **No age, era, or world-phase state.** Climate drift is a temperature
   term. No code reads "the world is in an ice age", nothing is spawned or
   swapped because of one, and there is no age field anywhere. An observer
-  may label a cold stretch afterwards; that is Phase 16.
+  may label a cold stretch afterwards; that is Phase 17.
 - No archetype named after a real species, and no document describing a
   seeded run as containing real animals.
 - No archetype ID readable by any rule, input channel, mating gate, or
   analysis grouping.
-- No `scratch` mode; that is Phases 14 and 15.
+- No `scratch` mode; that is Phases 15 and 16.
 - No weather forecasting. The moisture model stays the deliberately
   simplified one `docs/04` describes.
 - No disasters.
@@ -236,7 +236,7 @@ Benchmark schema 4.
 | Environment phase cost grows past the tick budget on the already-dominant hot path | Measured per field; dirty-cell or region tracking is the known first optimization and was already the Phase 5 hypothesis in the superseded plan |
 | Archetype authoring quietly encodes expectations about what should evolve | C6.5 inertness test; archetypes are distributions not organisms; no real-species names; every seeded result reports its archetype set |
 | A seeded result is read as a reachability claim | Recorded in ADR-0021: a seeded run is a weaker basis for "behavior X evolved" than a random one, and reports must say which mode produced them |
-| Climate drift is described as an era somewhere downstream | No age state exists to describe. `docs/25` governs the vocabulary and Phase 16 owns post-hoc labelling |
+| Climate drift is described as an era somewhere downstream | No age state exists to describe. `docs/25` governs the vocabulary and Phase 17 owns post-hoc labelling |
 | Biome thresholds produce a degenerate map | C6.7 fails generation closed rather than producing a one-biome world |
 
 ## Rollback

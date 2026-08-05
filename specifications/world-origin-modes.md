@@ -59,7 +59,7 @@ This gives Phase 7 the population structure its criteria need.
 ## Mode `seeded`: The Head Start
 
 Founders are drawn from **archetypes**: named founder distributions with a
-trait profile, a morphology profile (Phase 9 onward), and a biome affinity.
+trait profile, a morphology profile (Phase 10 onward), and a biome affinity.
 
 An archetype is a *distribution*, not an organism. It is a set of trait
 means and variances plus a module layout template, and every founder is an
@@ -116,7 +116,7 @@ things, neither of which is an era:
 No code ever reads "the world is in an ice age." There is no age state, no
 age transition, and nothing is spawned or swapped because of one. An
 observer may look at the event log afterwards and call a cold stretch an ice
-age; that is Phase 16's job and it is a label applied to history, never a
+age; that is Phase 17's job and it is a label applied to history, never a
 state the simulation entered. See `docs/25-emergence-and-epistemic-position.md`.
 
 ## Mode `scratch`
@@ -127,8 +127,8 @@ organisms may arise from unicells. Each step is physics with a probability,
 not a scheduled event.
 
 Specified in `specifications/unicellular-regime.md` and
-`specifications/morphology-and-development.md`. Delivered in Phases 14 and
-15, which are placed late for reasons stated in
+`specifications/morphology-and-development.md`. Delivered in Phases 15 and
+16, which are placed late for reasons stated in
 `docs/19-implementation-roadmap.md`: nothing else depends on them, and they
 are the least tractable work in the programme.
 

@@ -15,7 +15,7 @@ explicitly deferred (decision log D-019); snapshots carry a zero
 event-log reference until it exists. Restore-from-backup evidence lives
 in the `sim-persist` test suite per the backup runbook.
 
-## Planned Successor: ALIF Format 2 (Phase 11)
+## Planned Successor: ALIF Format 2 (Phase 12)
 
 Design in `specifications/mutable-world-state.md` and
 `specifications/world-save-format.md`; decision in ADR-0015.
@@ -39,7 +39,7 @@ Two other storage-relevant changes:
   scope.** Every multi-seed experiment needs it long before era detection
   does, and snapshots carry a zero event-log reference until it exists.
 - **Checkpointing moves off the tick thread** in Phase 5. It is currently
-  synchronous, and Phases 8, 10, and 11 each add a snapshot growth term to a
+  synchronous, and Phases 9, 11, and 12 each add a snapshot growth term to a
   payload already dominated by per-organism genome arrays at roughly 2.8 KB
   each. The checkpoint budget is re-verified in each of those phases rather
   than assumed to carry forward.

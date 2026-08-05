@@ -1,6 +1,6 @@
 # Abiogenesis And The Unicellular Regime Specification
 
-Status: design specification, not implemented. Phases 14 and 15. Policy
+Status: design specification, not implemented. Phases 15 and 16. Policy
 versions `lifesim-chemistry-v1`, `lifesim-microbial-v1`,
 `lifesim-transition-v1`. Decision: ADR-0020.
 
@@ -103,7 +103,7 @@ The threshold is a physical condition, not a detector of success. Nothing
 reads "this lineage has become multicellular" and grants anything. Crossing
 the threshold means the field representation is no longer adequate for what
 is there, so the representation changes. The organism gains nothing by
-crossing it, and Phase 15's acceptance criteria are written to detect it if
+crossing it, and Phase 16's acceptance criteria are written to detect it if
 it accidentally does.
 
 ### Materialization
@@ -132,7 +132,7 @@ which is the payoff of the unified representation.
 Organisms consume field chemistry and excrete into it, and their remains
 return to it. Both directions run through the same exact ledger, so total
 mass and energy are conserved across the regime boundary. This is the
-invariant most at risk and Phase 15 tests it directly.
+invariant most at risk and Phase 16 tests it directly.
 
 ## Time Scaling
 
@@ -161,7 +161,7 @@ makes a microbial phase reachable in a finite campaign.
   `lifesim-microbial-state-v1`, present only when the regime is enabled.
 - Field state is **stored** in the save, unlike derived bodies: it cannot be
   recomputed from anything. This adds a per-cell growth term to the snapshot
-  and Phase 14 measures it.
+  and Phase 15 measures it.
 
 ## Test Requirements
 

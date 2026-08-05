@@ -32,13 +32,13 @@ further dependencies for organized inter-group conflict: persistent
 interaction communities, recognition, target discrimination, coalition
 recruitment, numerical-advantage assessment, spatial memory, free-rider
 suppression, and capturable rather than merely destroyable value. Most land
-in Phases 10 to 12 in this plan. The claim was load-bearing in the roadmap's
+in Phases 11 to 13 in this plan. The claim was load-bearing in the roadmap's
 justification for scheduling contest early, and it was wrong.
 
 Phase 7 keeps its position, because health and damage as *physics* still
 need no schema change and still make threat information real. Its behavioral
 criteria are rewritten down to what is reachable without recognition or
-memory, and the organized-conflict criteria move to Phase 12 where their
+memory, and the organized-conflict criteria move to Phase 13 where their
 prerequisites exist.
 
 **A2. Artifact-mediated transmission precedes signalling.** Triple-sourced:
@@ -50,8 +50,8 @@ communication.
 
 The plan's prior justification assumed transmission means signalling. It
 does not: **an artifact left behind is a transmission channel that requires
-no perception of conspecifics at all**, and it is the easier one. Phases 11
-and 12 swap, so artifacts land first and stigmergy becomes the first
+no perception of conspecifics at all**, and it is the easier one. Phases 12
+and 13 swap, so artifacts land first and stigmergy becomes the first
 transmission mechanism tested.
 
 **A3. No direct genotype-distance perception.** `social_organization` section 1.1:
@@ -69,7 +69,7 @@ events, object-state change, and carried-object cues.
 
 **A5. The world is the experimental unit.** `oee_methodology` section 1.1 and section 5.2.
 Organisms, births, encounters, and ticks are nested observations, and
-counting them as replicates is pseudoreplication. Phase 10's C10.1 said
+counting them as replicates is pseudoreplication. Phase 11's C11.1 said
 "measured per individual"  -  correct science, wrong statistical unit. Per
 -individual quantities are computed then aggregated to a world-level
 statistic, and the world remains the replicate.
@@ -141,7 +141,7 @@ What is adopted from the finding: the controller itself stays directly
 encoded (it already was), the developmental program is scoped to morphology
 only, it is declared as a bounded versioned module with every field
 `genetics` section 1.6 requires, and the direct parameterized body plan is retained
-as a specified fallback. Phase 9's genotype-phenotype discontinuity
+as a specified fallback. Phase 10's genotype-phenotype discontinuity
 measurement is promoted from a reported metric to a **gate**: if a typical
 single-locus mutation produces an unrelated body, the encoding has failed
 and the fallback is taken.
@@ -154,7 +154,7 @@ without height. It is also a change to collision, movement, perception,
 rendering, and the save format simultaneously, arriving in a plan that
 already has four unmeasured cost multipliers. A single height-interval field
 per object plus a support relation is recorded as the minimum viable subset
-and scheduled as a Phase 11 stretch item gated on the Phase 11 cost
+and scheduled as a Phase 12 stretch item gated on the Phase 12 cost
 measurement. Until it lands, the plan does not claim stacked construction.
 
 **D3. Preregistration infrastructure in full** (`oee_methodology` section 1.3).
@@ -179,7 +179,7 @@ Negative and accepted:
   not more compute, and the roadmap now says so.
 - Phase 7 becomes a smaller phase than advertised. That is the correct size
   for what it can actually establish.
-- Phase 12 becomes the largest behavioral phase, carrying both transmission
+- Phase 13 becomes the largest behavioral phase, carrying both transmission
   and organized conflict.
 
 Compatibility: no code, schema, protocol, or fixture impact. This is a
@@ -188,7 +188,7 @@ planning-document change.
 ## Revisit Conditions
 
 - A declined finding is shown to matter by a measurement, in particular D1
-  if Phase 9's discontinuity gate fails.
+  if Phase 10's discontinuity gate fails.
 - A further review contradicts an adoption here.
 
 ## Evidence Required To Accept

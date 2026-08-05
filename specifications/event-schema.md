@@ -90,16 +90,18 @@ New bounded payloads, grouped by the phase that adds them:
 | 7 | `Damage` | attacker, target, raw and applied damage, resulting health |
 | 7 | `DeathByDamage` | organism, attacker, final state summary |
 | 7 | `CarcassCreated` / `CarcassConsumed` | source organism, object ID, transferable energy |
-| 8 | `StructuralMutation` | child, operator class, locus count affected, new homology-ID range |
-| 8 | `StructuralRejected` | child, cap class that rejected it |
-| 10 | `PlasticityFault` | organism, neutralized non-finite count |
-| 12 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
-| 12 | `PerceptionFault` | organism, neutralized count |
-| 11 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
-| 11 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
-| 11 | `ObjectActionRejected` | actor, action, typed reason |
-| 11 | `TerrainModified` | actor, layer, cell, old and new value |
-| 13 | `DiseaseTransmitted` | source, target, load |
+| 9 | `StructuralMutation` | child, operator class, locus count affected, new homology-ID range |
+| 9 | `StructuralRejected` | child, cap class that rejected it |
+| 11 | `PlasticityFault` | organism, neutralized non-finite count |
+| 13 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
+| 13 | `PerceptionFault` | organism, neutralized count |
+| 12 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
+| 12 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
+| 12 | `ObjectActionRejected` | actor, action, typed reason |
+| 12 | `TerrainModified` | actor, layer, cell, old and new value |
+| 8 | `DeathByHazard` / `DeathBySenescence` | organism, cause, age, accumulated hazard |
+| 10 | `NonViableBody` | child, failed validation reason |
+| 14 | `DiseaseTransmitted` | source, target, load |
 
 Rules that do not change: events are append-only logical facts; they carry
 no secrets, no unbounded activation history, and no arbitrary payload;
@@ -111,7 +113,7 @@ Two additions specific to the new goal:
 - **Signal content is never an event label or a metric label.** It would be
   unbounded cardinality, and it would encourage reading meaning into
   channels that have none.
-- **The event log is the substrate for Phase 16 analysis.** The append-only
+- **The event log is the substrate for Phase 17 analysis.** The append-only
   event-log *file* deferred under D-019 moved into Phase 5's scope, because
   every multi-seed experiment needs it long before era detection does. It is
   implemented; see the Phase 5 notes above. Snapshots taken without a log
