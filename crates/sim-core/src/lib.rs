@@ -23,6 +23,7 @@ mod climate;
 mod config;
 mod contest;
 mod controller;
+mod controller2;
 mod genome;
 mod genome2;
 mod meiosis;
@@ -55,6 +56,11 @@ pub use controller::{
     OUT_MATE, OUT_MEMORY_BASE, OUT_REST, OUT_THROTTLE, OUT_TURN, cos_bam_q15,
     evaluate as evaluate_controller, next_memory as controller_next_memory, sin_bam_q15,
     tanh_approx,
+};
+pub use controller2::{
+    ActionRequests, ActivationState, CONTROLLER2_POLICY_VERSION, CompileError, CompiledNetwork,
+    IncomingEdge, commit as commit_activations, compile as compile_network,
+    evaluate as evaluate_network, output_of,
 };
 pub use genome::{
     CONTROLLER_INPUTS, CONTROLLER_OUTPUTS, ENCODED_LEN as GENOME_ENCODED_LEN,

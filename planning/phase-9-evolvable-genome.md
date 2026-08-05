@@ -4,10 +4,11 @@ Status: **in progress. 2026-08-05.** Landed: channel and activation
 registries, the schema 2 genome model and derived identity, the ALG2
 bounded fail-closed codec with every structural invariant, diploid
 expression with evolvable dominance, meiosis with all four inheritance
-modes, and the five mutation operators with typed counted rejection.
-**Not implemented**: controller v2 evaluation, world integration, and the
-campaign criteria C9.1, C9.2, C9.5, C9.8. Decisions D-066 to D-069. Policy
-versions `lifesim-genome-v2`,
+modes, the five mutation operators with typed counted rejection, and
+controller v2's hybrid evaluator.
+**Not implemented**: world integration, and the campaign criteria C9.1,
+C9.2, C9.5, C9.8. Decisions D-066 to D-071. Policy versions
+`lifesim-genome-v2`,
 `lifesim-controller-v2`, `lifesim-meiosis-v1`, `lifesim-structmut-v1`.
 Specification: `specifications/genome-schema-2.md`.
 
