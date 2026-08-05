@@ -169,6 +169,25 @@ fn phase9_cap_worst_case() {
         caps.min_nodes,
         intercept + bytes_per_locus * loci_needed_by_node_edge_caps,
     );
+    // Whether the caps actually bound, which is the question the
+    // restatement rests on. Reported from the same world the distribution
+    // above came from, at the campaign's most aggressive duplication rate.
+    let counters = world.mutation_counters().expect("schema 2 is enabled");
+    println!(
+        "PHASE9-BENCH cap-binding rejected_cap={} rejected_inapplicable={} \
+         rejected_cycle={} rejected_invalid={} rejected_orphaned={} \
+         total_applied={} max_nodes_observed={} max_edges_observed={} \
+         max_genome_bytes_observed={}",
+        counters.rejected_cap,
+        counters.rejected_inapplicable,
+        counters.rejected_cycle,
+        counters.rejected_invalid,
+        counters.rejected_orphaned,
+        counters.total_applied(),
+        census.iter().map(|s| s.nodes).max().unwrap_or(0),
+        census.iter().map(|s| s.edges).max().unwrap_or(0),
+        census.iter().map(|s| s.genome_bytes).max().unwrap_or(0),
+    );
     for tier in TIERS {
         println!(
             "PHASE9-BENCH cap-budget tier={tier} \

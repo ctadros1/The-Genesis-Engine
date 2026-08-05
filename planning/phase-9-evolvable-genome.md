@@ -1,18 +1,29 @@
 # Phase 9: Evolvable Genome, Diploid Genetics And Variable Topology
 
-Status: **in progress. 2026-08-05.** Landed: channel and activation
-registries, the schema 2 genome model and derived identity, the ALG2
-bounded fail-closed codec with every structural invariant, diploid
-expression with evolvable dominance, meiosis with all four inheritance
-modes, the five mutation operators with typed counted rejection, and
-controller v2's hybrid evaluator, and world integration (config-gated
-schema choice, founders, the controller seam, meiosis-based reproduction,
-save/restore, snapshot codec, checksum, invariants, and campaign metrics).
-**Not implemented**: the campaign criteria C9.1, C9.2, C9.5, C9.8, which
-now have everything they need. Decisions D-066 to D-073. Policy versions
-`lifesim-genome-v2`,
-`lifesim-controller-v2`, `lifesim-meiosis-v1`, `lifesim-structmut-v1`.
-Specification: `specifications/genome-schema-2.md`.
+Status: **complete, with one criterion partial. 2026-08-05.** Landed:
+channel and activation registries, the schema 2 genome model and derived
+identity, the ALG2 bounded fail-closed codec with every structural
+invariant, diploid expression with evolvable dominance, meiosis with all
+four inheritance modes, the five mutation operators with typed counted
+rejection, controller v2's hybrid evaluator, world integration, and the
+C9.1/C9.2/C9.5/C9.8 campaigns. **C9.1, C9.2, C9.3, C9.4, C9.5, C9.6 and
+C9.8 are met; C9.7 is partial** - a Phase 9 fixture, storage-permutation
+equality, and the compaction test are unwritten. Decisions D-066 to D-079. Policy versions
+`lifesim-genome-v2`, `lifesim-controller-v2`, `lifesim-meiosis-v1`,
+`lifesim-structmut-v1`, `lifesim-structure-analysis-v1`. Specification:
+`specifications/genome-schema-2.md`.
+
+**The two results worth carrying forward.** First, **at the documented
+default mutation rates structural evolution does not reach the population
+median at all** - 0 of 30 worlds - because duplication and deletion ship at
+the same rate, which puts genome size at mutation-deletion equilibrium with
+no expected growth. It takes ten times the default duplication rate, or
+insertion enabled at the default rate, to move the median. Standing
+structural variation is present and substantial at every rate. Second,
+**the structural caps were mutually inconsistent**: three of the four could
+never bind, because the byte cap ran out at ~341 loci while the node and
+edge caps needed 58 KB. Both were found by measurement rather than by
+inspection, and neither would have announced itself.
 
 ## Problem
 
@@ -99,30 +110,111 @@ blast radius. Everything after it depends on it.
 
 ## Acceptance Criteria
 
-Conditions, matched on seeds (30), config, and run length:
+**Provenance note, stated once because it applies to every number below.**
+The archived manifest (`experiments/results/phase9-c91-confirmatory-manifest.txt`)
+was produced at commit `0dc7794`, *before* C9.8 restated the structural caps.
+The caps are hashed into the config, so re-running the campaign file today
+reproduces the design and the results but not the config hashes. This is
+harmless and it is checkable: the caps demonstrably never bound - measured
+`rejected_cap` is 0 and the largest genome reached a tenth of the byte cap -
+so no run outcome can have depended on them. The campaign file has since been
+amended to **pin the caps explicitly**, so this coupling cannot recur; that
+amendment is why the file on disk differs from the copy embedded in the
+manifest, which is preserved verbatim as what actually ran.
 
-- **A**: structural mutation enabled (duplication, deletion, insertion,
-  transposition at configured rates).
+Conditions, matched on seeds (30), config, and run length. As run:
+`experiments/phase9-c91-confirmatory.campaign`, 60,000 ticks, seeds
+3001..3030 (disjoint from the ecology sweep's 1..8 and the climate probe's
+2002..2011), 128x128 at `cell_capacity_milli` 240,000 with extrinsic hazard
+13 and climate off - the regime the ecology sweep selected by a rule fixed
+before it ran.
+
+- **A**: structural mutation enabled. Split into five arms, because the
+  duplication rate turned out to be the variable that decides the result:
+  **A1** (shipped defaults, duplication:deletion 1:1), **A3** (3:1),
+  **A10** (10:1), and **A1i** / **A10i**, which add insertion at the same
+  rate as duplication. Transposition is 0 everywhere: with single-chromosome
+  founders it is provably inert (D-074).
 - **B**: structural mutation disabled; point mutation only, at a rate
   adjusted so total expected value-change per genome per generation matches
   A. Matching the total mutational input is what makes the comparison about
   *structure* rather than about *mutation load*.
+
+  That phrase has two defensible readings and both were run rather than one
+  being picked silently. **B** holds the point rate identical to the A arms
+  (same value mutation, no structural mutation); **Bload** raises it to
+  A10's total operator rate (same total mutational input). The two agree on
+  every criterion - both structurally invariant in 30 of 30, both within
+  tolerance of each other - so the choice turned out not to matter, which is
+  worth knowing rather than assuming.
 - **C**: a neutral-marker control config with selection disabled, used only
-  for the genetics-validation criteria.
+  for the genetics-validation criteria. Met in `phase9_genetics.rs` as
+  automated statistical tests rather than as a campaign.
 
 Criteria:
 
-- [ ] **C9.1 Structural evolution actually occurs.** Under A, the median
-      expressed node count and edge count among living organisms at tick T
-      differ from the founder median by at least the stated amount in at
-      least 20 of 30 seeds, and the population contains more than one distinct
-      (node count, edge count) pair in at least 25 of 30 seeds. Under B both
-      are invariant by construction, which is the control confirming the
-      measurement instrument.
-- [ ] **C9.2 Structural freedom does not destabilize the ecology.** Median
-      population and median lifespan under A are within the stated tolerance
-      of B, or better, in at least 20 of 30 seeds. A topology system that
-      simply kills worlds has not delivered evolvability.
+- [x] **C9.1 Structural evolution actually occurs. Met, and the rate at
+      which it is met is the result.** The stated amount was never stated, so
+      it was fixed before the run at **founder + 1** - median node count >= 4
+      or median edge count >= 3, the smallest shift a median of integers can
+      express - in at least 20 of 30 seeds. The duplication rate was swept at
+      1x, 3x, and 10x its documented default with deletion held at default,
+      and **every rate is reported**, so there is no primary arm to select
+      within after the fact.
+
+      | condition | dup:del | median shift | diversity | median nodes | median edges | distinct |
+      |---|---|---|---|---|---|---|
+      | A1 (default) | 1:1 | **0/30** | 30/30 | 3 | 2 | 9 |
+      | A3 | 3:1 | **0/30** | 30/30 | 3 | 2 | 13 |
+      | A10 | 10:1 | **29/30** | 30/30 | 4 | 2 | 21 |
+      | A1i (+insertion) | 1:1 | **30/30** | 30/30 | 3 | 3 | 18 |
+      | A10i (+insertion) | 10:1 | **30/30** | 30/30 | 4 | 5 | 58 |
+      | B (control) | - | 0/30 | 0/30 | 3 | 2 | 1 |
+      | Bload (control) | - | 0/30 | 0/30 | 3 | 2 | 1 |
+
+      **At the documented default rates, structural evolution does not reach
+      the population median at all - 0 of 30 - and this is not a null
+      result about the mechanism.** Duplication and deletion ship at the same
+      rate, so genome size is at mutation-deletion equilibrium and has no
+      expected growth; the standing variation is real and substantial (nine
+      distinct structures, mean node count 3.094 against a founder's 3.000)
+      and simply never fixes. The median is a fixation-scale statistic and the
+      criterion asks a fixation-scale question.
+
+      The diversity clause is met at **30/30 under every treatment condition**
+      and **0/30 under both controls**, which is the cleanest separation in
+      the phase. Both controls are structurally invariant in 30 of 30 - median,
+      mean, and distinct count all exactly at the founding values - so the
+      instrument is confirmed.
+
+      What this establishes is narrower than "structure evolves": given a
+      per-birth rate and a generation count, *some* structural change is
+      arithmetic. What is not arithmetic is that the changes are viable and
+      spread, and that is what the diversity and median columns measure.
+- [x] **C9.2 Structural freedom does not destabilize the ecology. Met at
+      every rate, on both quantities, and by the stronger test as well.** The
+      tolerance was fixed before the run at 25 percent **or better** - one
+      sided by design, because a treatment that raises population has not
+      destabilized anything - with a bar of 20 of 30 seed-paired worlds.
+
+      | condition | population | median lifespan | population TOST |
+      |---|---|---|---|
+      | A1 | 29/30 | 30/30 | equivalent |
+      | A3 | 27/30 | 30/30 | equivalent |
+      | A10 | 26/30 | 30/30 | equivalent |
+      | A1i | 25/30 | 30/30 | equivalent |
+      | A10i | 21/30 | 30/30 | equivalent |
+      | Bload | 28/30 | 30/30 | equivalent |
+
+      Every contrast also passes **TOST equivalence** on the relative scale
+      against the same bound, which is a stronger statement than the count:
+      the whole bootstrap interval sits inside +/-25 percent rather than
+      merely most worlds doing so. **Zero extinctions in 210 worlds.**
+
+      The cost is monotone in structural freedom and worth stating plainly:
+      population falls a median 4.7 percent under A10 and 5.2 percent under
+      A10i, and A10i is the only condition that comes near the bar at 21 of
+      30. Structural freedom is not free; it is affordable.
 - [x] **C9.3 Mendelian validation. Met** (`phase9_genetics.rs`), and it
       **found two real defects first** (D-068): transmission of a
       heterozygote's second allele measured 0.14 rather than 0.5. After the
@@ -143,13 +235,40 @@ Criteria:
       the rate the configured crossover model predicts, within stated
       tolerance. This is the check that crossover does what the spec says
       and that linkage exists at all.
-- [ ] **C9.5 Duplication versus explicit insertion.** Report the structural
-      growth rate and the C9.2 stability outcome separately for a
-      duplication-only variation policy and an insertion-enabled one. This
-      is not pass or fail; it is the measurement that ADR-0013 commits to
-      making rather than asserting. If duplication alone is too slow to
-      produce C9.1 within the run budget, that is a finding and the
-      insertion operator becomes the default with the reason recorded.
+- [x] **C9.5 Duplication versus explicit insertion. Measured, and the
+      answer is that duplication alone is too slow at its documented rate.**
+      Reported, not pass/fail, as the criterion specifies.
+
+      **Insertion at the default rate does what duplication needs ten times
+      its default rate to do.** A1i reaches the median shift in 30 of 30 at a
+      1:1 duplication-deletion balance; A1, identical but for insertion being
+      off, reaches it in 0 of 30. The two operators also grow different
+      things - duplication moves node count (A10: mean 3.000 to 4.084, edges
+      barely at 2.067) and insertion moves edge count (A1i: edges 2.000 to
+      3.197, nodes barely at 3.120) - so they are complements rather than
+      substitutes, and A10i moves both (nodes 4.307, edges 5.227, 58 distinct
+      structures against A10's 21).
+
+      **Insertion's price is inviable recombinants, and it is real but
+      small.** Insertion adds edges between nodes drawn at random, and
+      crossover can then separate an edge from the node it references, so the
+      zygote has a dangling reference and no network. Per world: A10i wastes
+      about 2,091 matings against roughly 84,500 births (2.5 percent), A1i
+      about 26 (0.03 percent), A10 four in total across all thirty worlds.
+      Rejection rates follow the same order - 19 percent of attempted
+      mutations under A10i against 3.3 percent under A10 - and much of the
+      remainder is the self-loop draw, which a three-node founder produces
+      about a third of the time.
+
+      **Consequence, recorded as the criterion requires:** the ADR-0013
+      duplication-only baseline is retained as the *default*, because it is
+      the biologically motivated mechanism and it does work - at 10x the
+      shipped rate. Insertion is not made the default; it is recorded as the
+      cheaper route to structural change and as the operator a phase should
+      enable when it needs edge growth specifically. What is changed is the
+      documentation of the shipped rates, which are now known to sit below
+      the threshold at which duplication produces population-level structural
+      change in 60,000 ticks.
 - [~] **C9.6 Bounded and fail-closed. Codec half met**: 100,000 seeded
       malformed cases produced zero panics and zero invalid admissions, with
       every accept re-validated and round-tripped (4,777 accepts, so the
@@ -160,19 +279,83 @@ Criteria:
       and zero invalid admissions, every accept re-validated and
       round-tripped. Every structural cap rejects deterministically, counts,
       and events; no cap is ever silently exceeded.
-- [~] **C9.7 Determinism and fixtures. Fixture half met**: a schema-1
-      configured world still reproduces `0xff9dfcff5dffbf42` with schema 2 in
-      the build. Replay, storage permutation, and the compaction test need
-      world integration. Clean-process replay of the Phase 9
-      fixture; storage-permutation equality; edge-summation order
-      independence from storage layout proven by a compaction test; schema 1
-      configured worlds still reproduce `0xff9dfcff5dffbf42` exactly.
-- [ ] **C9.8 Snapshot budget.** Snapshot size per organism and checkpoint
-      cost are measured at both tiers under a realistic evolved topology
-      distribution, and the structural caps are set from that measurement.
-      Caps chosen before the measurement are provisional and must be
-      restated afterward.
+- [~] **C9.7 Determinism and fixtures. Fixture half met; the rest is
+      unwritten and is not claimed.** A schema-1 configured world still
+      reproduces `0xff9dfcff5dffbf42` and a Phase 1 world still reproduces
+      `0x1e3158a26afd3b39`, with schema 2 in the build and the caps restated;
+      all three determinism scripts pass. Schema-2 determinism and
+      save/restore identity are covered by tests, including through the real
+      codec.
 
+      Still unwritten: a **Phase 9 fixture** and its clean-process replay,
+      storage-permutation equality, and the compaction test that would show
+      edge-summation order is independent of storage layout. The
+      canonical-order code exists and is unit-tested, but the compaction test
+      is the one that would catch a *future* layout change, and it is the
+      test this criterion actually asks for.
+
+      One thing that is **not** evidence here, recorded because it was nearly
+      claimed as such: the confirmatory campaign was run twice, and the two
+      runs' per-world state checksums cannot be compared, because
+      `World::state_checksum` hashes the config hash into its preamble and
+      the two runs used different structural caps. Cross-run agreement was
+      instead checked on behavioural quantities - population, births,
+      generations, and every structure metric - which is what shows the cap
+      restatement changed nothing.
+- [x] **C9.8 Snapshot budget. Measured; caps restated.** Measured under the
+      confirmatory campaign's own mutation regime after 30,000 ticks, at both
+      documented tiers, with the entity guard deliberately binding so the
+      tiers are populations rather than labels on one measurement.
+
+      | tier | population | snapshot | bytes/organism | genome share | encode | decode | restore |
+      |---|---|---|---|---|---|---|---|
+      | 500 | 500 | 937 KB | 1,875 | 77.9% | 17.2 ms | 16.0 ms | 13.9 ms |
+      | 2,000 | 1,999 | 3.35 MB | 1,676 | 87.2% | 52.8 ms | 54.0 ms | 62.1 ms |
+
+      Evolved topology distribution: nodes p50 3, p90 4, p99 5-6, **max 7**;
+      edges p50 2, p90 2, p99 4, **max 4**; genome bytes p50 1,450, p99
+      1,605, **max 1,692**. Marginal cost of a structural locus is **44.4
+      bytes**, against a **1,229-byte** fixed cost for a founder's header and
+      trait block.
+
+      **Schema 2 snapshots are smaller than schema 1's, not larger.** Phase 4
+      recorded roughly 2.8 KB per organism for the flat genome; an evolved
+      schema-2 genome is 1.68 to 1.88 KB, because a minimal evolved topology
+      is smaller than a fixed 20-16-12-12 one. Diploidy doubles the genome and
+      variable topology more than pays it back at the sizes that evolved.
+
+      **The provisional caps were mutually inconsistent, and that is what
+      forced a real restatement rather than a confirmation.**
+      `max_genome_bytes` of 16,384 admits about 341 structural loci; the node
+      cap (256, checked across both haplotypes, so 512 node loci) and the edge
+      cap (1,024, so 2,048) would have needed 58 KB, and
+      `max_loci_per_chromosome` of 512 exceeded the byte budget on its own.
+      **Three of the four caps could never bind.** The rule adopted is that
+      every cap must be individually reachable within `max_genome_bytes`,
+      which stays the joint budget:
+
+      | cap | was | now | basis |
+      |---|---|---|---|
+      | `max_genome_bytes` | 16,384 | **16,384** | 32.8 MB worst case at tier 2,000 against 3.35 MB actual; affordable, unchanged |
+      | `max_nodes` | 256 | **160** | reachable inside the byte budget; 23x the observed maximum of 7 |
+      | `max_edges` | 1,024 | **160** | reachable; 40x the observed maximum of 4 |
+      | `max_edges_per_node` | 64 | **32** | reachable given `max_edges`; 32x observed |
+      | `max_loci_per_chromosome` | 512 | **160** | reachable inside the byte budget |
+      | `max_chromosomes`, `min_nodes` | 4, 2 | **4, 2** | unchanged |
+
+      **The restated caps are jointly reachable, not merely individually
+      so**, which is stronger than the rule required: the node and edge caps
+      together need 15,426 bytes against the 16,384 budget. And they do not
+      bind - `rejected_cap` is **0** over 30,000 ticks at the campaign's most
+      aggressive duplication rate, with the largest genome reaching 1,668
+      bytes and 6 nodes. The campaign now pins the caps explicitly, so its
+      effective config cannot move when a default is revised.
+
+      **Not validated for flagship scale, and that is a stated limit.**
+      Soak-30 is roughly 16,500 generations against the 61 measured here, and
+      duplication above the deletion rate is a growth process with that much
+      longer to act. Genome size is now a structural quantity that Soak-30's
+      stationarity criterion (D-055) has to watch.
 ## Test Plan
 
 - Codec: bounded fail-closed decode of every header field, per-chromosome
@@ -212,7 +395,35 @@ preserved or its loss explicitly recorded); snapshot size per organism
 versus topology size; memory per organism. Record the distribution, not just
 the mean, because evolved topology sizes will be skewed.
 
-Benchmark schema 4.
+Benchmark schema 4. Run by `scripts/run-phase9-benchmarks.sh`, split across
+two crates because the snapshot half needs the codec and `sim-core` is
+dependency-free.
+
+**Measured, and the direction is the opposite of what this section
+predicted.** Schema 2 is *faster* than schema 1 and its snapshots are
+*smaller*:
+
+| tier | schema 1 | schema 2 | ratio |
+|---|---|---|---|
+| 500 | 274.7 us/tick (3,640 t/s) | 190.3 us/tick (5,255 t/s) | **1.44x faster** |
+| 2,000 | 1,692.5 us/tick (591 t/s) | 1,056.6 us/tick (946 t/s) | **1.60x faster** |
+
+Snapshot: 1.68 to 1.88 KB per organism against Phase 4's roughly 2.8 KB for
+the flat genome.
+
+**This is a statement about how little structure evolved, not about the
+evaluator being efficient, and it must not be read as the latter.** A
+schema-1 controller is a fixed 20-16-12-12 network on every organism; an
+evolved schema-2 controller has a median of three nodes and two edges. The
+comparison is between a large fixed network and a small evolved one, and the
+small one wins on both cost and size for exactly that reason. The batching
+loss the section anticipated is real and is simply dominated by the size
+difference at the topologies that evolved. At the caps - 160 nodes and 160
+edges - the ordering would reverse, which is why the caps are set from a
+budget rather than from the observed distribution alone.
+
+The zero-per-tick-allocation property is preserved, asserted by a
+capacity-watching test rather than by inspection (D-071).
 
 ## Documentation Updates
 
@@ -226,14 +437,17 @@ structures), `specifications/organism-genome.md`,
 
 ## Risks
 
-| Risk | Mitigation |
-|---|---|
-| Genome bloat: duplication grows genomes until snapshots and memory become unmanageable | Hard caps with deterministic rejection; caps set from the C9.8 measurement; deletion rate configured to be non-negligible; genome size is a reported metric with an alert threshold |
-| Per-organism cost variance makes tick time unpredictable | Measure the distribution; cap per-organism edge count; a bounded evaluation budget per organism per tick is available as a fallback policy and would itself be a selection pressure toward small networks, which must be reported if used |
-| Loss of batching regresses performance badly | Measured, not assumed. If severe, the fallback is grouping by structural signature rather than exact topology, which is a later performance slice |
-| Duplication-driven growth is too slow to show C9.1 in the run budget | C9.5 makes this an explicit measured comparison with a defined fallback rather than a discovered failure |
-| Diploidy doubles genome storage | Real and accepted. It is the direct cost of the realism policy and is recorded in ADR-0017 |
-| Structural distance for mating compatibility creates instant reproductive isolation and fragments the population | Compatibility weights are config; sweep before the campaign; monitor population fragmentation as a reported metric |
+Every risk below now carries its measured outcome. Four of the six did not
+materialize; one materialized exactly as written; one is untested.
+
+| Risk | Mitigation | Outcome |
+|---|---|---|
+| Genome bloat: duplication grows genomes until snapshots and memory become unmanageable | Hard caps with deterministic rejection; caps set from the C9.8 measurement; deletion rate configured to be non-negligible; genome size is a reported metric with an alert threshold | **Did not materialize at campaign scale, and is untested at flagship scale.** Largest evolved genome 1,692 bytes against a 16,384 cap; `rejected_cap` zero in 210 worlds. But 61 generations is not 16,500, and duplication above the deletion rate is a growth process - carried to Soak-30 (D-055, D-078) |
+| Per-organism cost variance makes tick time unpredictable | Measure the distribution; cap per-organism edge count; a bounded evaluation budget per organism per tick is available as a fallback policy and would itself be a selection pressure toward small networks, which must be reported if used | **Did not materialize.** The distribution is tight - nodes p50 3, p99 6, max 7 - so the bounded-evaluation fallback was not needed and no selection pressure toward small networks was introduced |
+| Loss of batching regresses performance badly | Measured, not assumed. If severe, the fallback is grouping by structural signature rather than exact topology, which is a later performance slice | **Did not materialize, and the sign is inverted:** schema 2 runs 1.4x to 1.6x *faster* than schema 1. The batching loss is real and is dominated by evolved topologies being far smaller than the fixed 20-16-12-12 one. This would reverse near the caps |
+| Duplication-driven growth is too slow to show C9.1 in the run budget | C9.5 makes this an explicit measured comparison with a defined fallback rather than a discovered failure | **Materialized exactly as written, at the shipped rates.** Duplication at its default rate moves the median in 0 of 30 worlds; it needs 10x, or insertion at 1x. Because C9.5 existed, this arrived as a measurement with a stated fallback rather than as a failed campaign |
+| Diploidy doubles genome storage | Real and accepted. It is the direct cost of the realism policy and is recorded in ADR-0017 | **Repaid.** Per-organism snapshot cost is 1.68 to 1.88 KB against schema 1's roughly 2.8 KB: the doubling is smaller than what variable topology saves |
+| Structural distance for mating compatibility creates instant reproductive isolation and fragments the population | Compatibility weights are config; sweep before the campaign; monitor population fragmentation as a reported metric | **Untested.** No fragmentation appeared - zero extinctions, populations within 25 percent of control at every rate - but compatibility weights were not swept, and at a median of 3 nodes there is little structural distance for the metric to act on. Revisit when evolved structures diverge further |
 
 ## Rollback
 

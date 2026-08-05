@@ -29,6 +29,7 @@
 
 use crate::demography::world_demography;
 use crate::paired::{Direction, Pair, PairedResult, compare, median_milli};
+use sim_core::MutationCounters;
 use sim_experiment::{Manifest, RunResult};
 use std::fmt::Write as _;
 
@@ -91,10 +92,26 @@ pub struct WorldStructure {
     pub nonviable_recombinants: u64,
     /// Median completed lifespan, ticks. Zero when no event log was read.
     pub median_lifespan_ticks: u64,
+    /// Structural mutations refused because a cap would have been exceeded.
+    ///
+    /// C9.8 restates the caps from a measurement, and the restatement is
+    /// only meaningful if the campaign can say whether the caps ever bound.
+    /// The manifest carries a total rejection count, which cannot answer
+    /// that: a cap rejection and a self-loop draw both land in it. Read from
+    /// the snapshot, which carries the per-class counters. `None` when no
+    /// snapshot was read, and reported as absent rather than as zero -
+    /// "no snapshot" and "no cap rejections" are opposite conclusions.
+    pub rejected_cap: Option<u64>,
+    pub rejected_inapplicable: Option<u64>,
+    pub rejected_invalid: Option<u64>,
 }
 
 impl WorldStructure {
-    fn from_run(run: &RunResult, median_lifespan_ticks: u64) -> Self {
+    fn from_run(
+        run: &RunResult,
+        median_lifespan_ticks: u64,
+        counters: Option<MutationCounters>,
+    ) -> Self {
         Self {
             seed: run.seed,
             population: run.population,
@@ -112,6 +129,9 @@ impl WorldStructure {
                 .phase2
                 .map_or(0, |phase2| phase2.pair_rejected_nonviable_total),
             median_lifespan_ticks,
+            rejected_cap: counters.map(|counters| counters.rejected_cap),
+            rejected_inapplicable: counters.map(|counters| counters.rejected_inapplicable),
+            rejected_invalid: counters.map(|counters| counters.rejected_invalid),
         }
     }
 
@@ -161,6 +181,12 @@ pub struct StructureOutcome {
     pub total_applied: u64,
     pub total_rejected: u64,
     pub total_nonviable: u64,
+    /// Summed across worlds that had a readable snapshot, and the count of
+    /// those worlds, so a zero can be told apart from an absence.
+    pub total_rejected_cap: u64,
+    pub total_rejected_inapplicable: u64,
+    pub total_rejected_invalid: u64,
+    pub worlds_with_counters: usize,
 }
 
 pub fn summarise(
@@ -192,6 +218,10 @@ pub fn summarise(
         total_applied: worlds.iter().map(|w| w.applied).sum(),
         total_rejected: worlds.iter().map(|w| w.rejected).sum(),
         total_nonviable: worlds.iter().map(|w| w.nonviable_recombinants).sum(),
+        total_rejected_cap: worlds.iter().filter_map(|w| w.rejected_cap).sum(),
+        total_rejected_inapplicable: worlds.iter().filter_map(|w| w.rejected_inapplicable).sum(),
+        total_rejected_invalid: worlds.iter().filter_map(|w| w.rejected_invalid).sum(),
+        worlds_with_counters: worlds.iter().filter(|w| w.rejected_cap.is_some()).count(),
     }
 }
 
@@ -294,7 +324,12 @@ pub fn worlds_for(
                 .and_then(|bytes| sim_persist::decode_log_events(&bytes).ok())
                 .map(|(_, events)| world_demography(&events).median_lifespan_ticks)
                 .unwrap_or(0);
-            WorldStructure::from_run(run, lifespan)
+            let counters = std::fs::read(directory.join(format!("{stem}.alif")))
+                .ok()
+                .and_then(|bytes| sim_persist::decode_snapshot(&bytes).ok())
+                .and_then(|(_, state)| sim_core::World::from_state(state).ok())
+                .and_then(|world| world.mutation_counters());
+            WorldStructure::from_run(run, lifespan, counters)
         })
         .collect()
 }
@@ -355,7 +390,8 @@ pub fn render(
             "condition {} worlds={} extinct={} median_shifted={} diversified={} invariant={} \
              med_generations={} med_births={} med_population={} med_nodes={} med_edges={} \
              med_mean_nodes_milli={} med_mean_edges_milli={} med_distinct={} \
-             applied={} rejected={} nonviable={}",
+             applied={} rejected={} nonviable={} rejected_cap={} \
+             rejected_inapplicable={} rejected_invalid={} worlds_with_counters={}",
             outcome.condition,
             outcome.worlds,
             outcome.extinct,
@@ -373,6 +409,10 @@ pub fn render(
             outcome.total_applied,
             outcome.total_rejected,
             outcome.total_nonviable,
+            outcome.total_rejected_cap,
+            outcome.total_rejected_inapplicable,
+            outcome.total_rejected_invalid,
+            outcome.worlds_with_counters,
         );
     }
     for report in stabilities {
@@ -416,6 +456,9 @@ mod tests {
             rejected: 10,
             nonviable_recombinants: 0,
             median_lifespan_ticks: 1_000,
+            rejected_cap: Some(0),
+            rejected_inapplicable: Some(0),
+            rejected_invalid: Some(0),
         }
     }
 

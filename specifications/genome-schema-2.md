@@ -164,18 +164,35 @@ Every cap is versioned config; a mutation that would exceed one is rejected
 deterministically and counted, with a typed event, exactly as births are
 rejected at `max_entities`.
 
-| Cap | Purpose |
-|---|---|
-| `max_chromosomes` | Fixed per world; meiosis pairs by index |
-| `max_loci_per_chromosome` | Bounds decode allocation |
-| `max_nodes`, `max_edges` | Bounds evaluation cost per organism per tick |
-| `max_genome_bytes` | Bounds snapshot growth; the binding constraint in practice |
-| `max_edges_per_node` | Bounds the per-node summation loop |
+| Cap | Purpose | Value |
+|---|---|---|
+| `max_chromosomes` | Fixed per world; meiosis pairs by index | 4 |
+| `max_loci_per_chromosome` | Bounds decode allocation | 160 |
+| `max_nodes`, `max_edges` | Bounds evaluation cost per organism per tick | 160, 160 |
+| `max_genome_bytes` | Bounds snapshot growth; the binding constraint in practice | 16,384 |
+| `max_edges_per_node` | Bounds the per-node summation loop | 32 |
+| `min_nodes` | Floor; deletion below it is refused | 2 |
 
-Snapshot budget is the real limit. The Phase 4 benchmark records that
-snapshot size is already dominated by per-organism genome arrays at roughly
-2.8 KB each. Caps must be chosen against a measured checkpoint budget, not
-guessed, and Phase 9's benchmark requirements say so explicitly.
+Snapshot budget is the real limit, and the values above are **set from the
+C9.8 measurement** (D-078) rather than guessed. Measured: a structural locus
+costs 44.4 bytes at the margin against a 1,229-byte fixed cost for a
+founder's header and trait block, so `max_genome_bytes` admits about 341
+structural loci; the evolved distribution reached a maximum of 7 nodes,
+4 edges, and 1,692 bytes; and the worst case at the byte cap is 32.8 MB of
+genome at the 2,000-organism tier against 3.35 MB actual.
+
+**Every cap must be individually reachable within `max_genome_bytes`.** This
+rule exists because the first set of values violated it: three of the four
+could never bind, since the byte cap ran out at ~341 loci while `max_nodes`
+(256, checked across both haplotypes) and `max_edges` (1,024) would have
+needed 58 KB. A cap that cannot be reached is not a guard. The byte cap
+remains the joint budget and is the only one expected to bind first.
+
+The Phase 4 benchmark recorded snapshot size as already dominated by
+per-organism genome arrays at roughly 2.8 KB each. Schema 2 measured
+**smaller** than that, at 1.68 to 1.88 KB per organism, because an evolved
+topology is smaller than a fixed 20-16-12-12 one - so diploidy's doubling is
+repaid by variable topology at the sizes that actually evolved.
 
 ## Encoding
 

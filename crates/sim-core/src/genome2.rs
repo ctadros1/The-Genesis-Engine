@@ -79,10 +79,40 @@ pub const STRUCTURAL_HOMOLOGY_BASE: u32 = TRAIT_HOMOLOGY_LIMIT;
 /// Structural caps. Every one rejects deterministically and is counted;
 /// none is ever silently exceeded.
 ///
-/// **These values are provisional** and C9.8 says so explicitly: they must
-/// be restated against a measured snapshot budget under a realistic evolved
-/// topology distribution. They are recorded here as the starting point that
-/// measurement will replace, not as settled policy.
+/// **Restated from measurement (C9.8, D-078); no longer provisional.** The
+/// measurement is `scripts/run-phase9-benchmarks.sh`, taken under the
+/// confirmatory campaign's own mutation regime after 30,000 ticks:
+///
+/// - marginal cost of one structural locus: **44.4 bytes**; fixed cost of a
+///   founder genome (header plus the trait block on both haplotypes):
+///   **1,229 bytes**;
+/// - `max_genome_bytes` of 16,384 therefore admits about **341 structural
+///   loci** across both haplotypes;
+/// - the evolved distribution never came close: median 3 nodes and 2 edges,
+///   p99 of 6 nodes and 4 edges, maximum 7 nodes and 4 edges, largest genome
+///   1,692 bytes - about a tenth of the byte cap;
+/// - worst case at the byte cap is 32.8 MB of genome at the 2,000-organism
+///   tier, against a measured 3.35 MB actual, and the format's own
+///   256 MB stored cap.
+///
+/// **The provisional values were mutually inconsistent, which is the finding
+/// that forced this restatement.** They were chosen one at a time, and three
+/// of the four could never bind: `max_genome_bytes` runs out at ~341 loci,
+/// while `max_nodes` (256, checked against both haplotypes so 512 node loci)
+/// and `max_edges` (1,024, so 2,048 edge loci) would need 58 KB, and
+/// `max_loci_per_chromosome` (512) exceeded the byte budget on its own. A
+/// cap that cannot be reached is not a guard; it is a number that reads like
+/// one. The rule adopted here is that **every cap must be individually
+/// reachable within `max_genome_bytes`**, so each one is a real limit, while
+/// the byte cap remains the joint budget.
+///
+/// The caps are still far above anything evolution produced - 160 nodes
+/// against an observed maximum of 7 - so they are guards rather than a
+/// selection pressure at campaign scale. **They are not validated for
+/// flagship-scale runs**: Soak-30 is roughly 16,500 generations against the
+/// 61 measured here, and duplication above the deletion rate is a growth
+/// process with that much longer to act. Genome size is a structural
+/// quantity Soak-30's stationarity criterion (D-055) must watch.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct GenomeCaps {
     pub max_chromosomes: u8,
@@ -95,16 +125,28 @@ pub struct GenomeCaps {
 }
 
 impl GenomeCaps {
+    /// The measured caps. Kept under the name `provisional` deliberately:
+    /// every call site and every campaign that referenced it still does, and
+    /// renaming it would make the restatement look like a new knob rather
+    /// than a revision of the same one. See the type's documentation for the
+    /// measurement each value comes from.
     pub fn provisional() -> Self {
         Self {
             max_chromosomes: 4,
-            max_loci_per_chromosome: 512,
-            max_nodes: 256,
-            max_edges: 1_024,
-            max_edges_per_node: 64,
-            // Phase 4 recorded snapshot size already dominated by
-            // per-organism genome arrays at roughly 2.8 KB each; 16 KB is
-            // deliberately generous and deliberately provisional.
+            // Each reachable on its own within the 16,384-byte budget, which
+            // admits ~341 structural loci across both haplotypes. `max_nodes`
+            // and `max_edges` are checked against the total across both, so
+            // 160 permits 320 loci of that kind - inside the budget, and 23x
+            // and 40x the largest evolved value measured.
+            max_loci_per_chromosome: 160,
+            max_nodes: 160,
+            max_edges: 160,
+            // Reachable given `max_edges`, and 32x the observed maximum
+            // in-degree.
+            max_edges_per_node: 32,
+            // The joint budget, and the only cap that binds first. Measured
+            // affordable: 32.8 MB of genome at the 2,000-organism tier in the
+            // worst case, against 3.35 MB actual and a 256 MB format cap.
             max_genome_bytes: 16_384,
             min_nodes: 2,
         }

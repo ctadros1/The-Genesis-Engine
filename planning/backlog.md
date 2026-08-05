@@ -43,6 +43,46 @@ every phase's Benchmark Impact section.
 
 ## Current Status
 
+**Phase 9 is complete except one criterion** (2026-08-05). C9.1 through C9.6
+and C9.8 are met; **C9.7 is partial** - a Phase 9 fixture, storage-permutation
+equality, and the compaction test are unwritten and are the first item in the
+deferred backlog. Phase 10 has not been started.
+
+Two results carry forward, and both were found by measurement rather than by
+inspection.
+
+**At the shipped default mutation rates, structural evolution never reaches
+the population median - 0 of 30 worlds.** Duplication and deletion ship at
+the *same* rate, so genome size sits at mutation-deletion equilibrium with no
+expected growth. It takes ten times the duplication rate (29 of 30) or
+insertion enabled at its default rate (30 of 30). Standing structural
+variation is real at every rate - nine distinct structures per world even at
+the defaults, against exactly one under both controls - it simply never
+fixes. The median is a fixation-scale statistic and C9.1 asks a
+fixation-scale question. C9.2 passes at every rate on both population and
+lifespan, by TOST equivalence as well as by count, with zero extinctions in
+210 worlds; the cost of structural freedom is monotone and small, about 5
+percent of population at the highest rate (D-079).
+
+**The structural caps were mutually inconsistent and three of the four could
+never bind.** `max_genome_bytes` ran out at ~341 loci while `max_nodes` and
+`max_edges` would have needed 58 KB. Restated from the C9.8 measurement to
+160/160/160/32 with the byte cap unchanged, under the rule that every cap
+must be individually reachable within the byte budget (D-078). Two related
+findings invert the plan's stated risks: schema-2 snapshots are **smaller**
+than schema-1's (1.7-1.9 KB per organism against ~2.8 KB) and the tick is
+**1.4x to 1.6x faster** - both because evolved topologies are tiny next to a
+fixed 20-16-12-12 network, which is a statement about how little structure
+evolved rather than about the evaluator.
+
+Four defects were found along the way, all in paths the campaign would have
+exercised: a merged-network zero-delay cycle that validation could not see
+and that crashed the sense phase (D-074), meiotic recombinants that were
+never validated, a snapshot section that made schema-2 worlds
+**uncheckpointable** while its round-trip test passed by never touching the
+codec (D-076), and a counter list maintained by hand that silently changed
+restored checksums (D-077).
+
 **Phase 7 is complete** (2026-08-05), benchmark
 `phase7-local-20260805T025643Z`. The primary endpoint C7.1 is measured and
 met: 52 of 60 worlds on the aggregation index and 44 of 60 on the encounter
@@ -115,7 +155,18 @@ ADRs remain proposed.
 
 ## Ordered Next Work
 
-Phases 5, 6, and 7 are complete.
+Phases 5, 6, 7, 8 and 9 are done, Phase 9 bar one criterion. **The next
+implementation phase is 10, modular morphology and development**, which has
+not been started. Before it starts, two Phase 9 items are worth closing
+because they are cheap and they protect everything after: C9.7's compaction
+test, and the per-class rejection counters the manifest still lacks (both in
+the deferred backlog).
+
+Phase 10 inherits a warning from Phase 9 worth stating here rather than
+rediscovering: **a criterion phrased on a population median is a
+fixation-scale question**, and at realistic mutation rates most variants
+never fix. Phase 10's acceptance criteria should say which scale they mean
+and set the rate accordingly, or they will measure the mutation rate.
 
 1. Review the Phase 5, 6, and 7 implementations and their benchmark
    evidence (D-045 through D-052), in particular the two Phase 6 modelling
@@ -134,22 +185,50 @@ Phases 5, 6, and 7 are complete.
    the culture stack is now measurable. Three secondary criteria are unmet
    and stay unmet; C8.7's control failure in particular is worth revisiting
    before any claim about thermoregulation.
-5. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
+5. ~~**Phase 9, evolvable genome, diploid genetics, variable topology.**~~
+   **Complete bar C9.7** (D-066 to D-079). Campaigns measured across 210
+   worlds; caps restated from measurement; four defects found and fixed in
+   the schema-2 birth and persistence paths.
+6. **Phase 10, modular morphology and development.** Not started.
+7. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
    benchmark). This bounds the compute-cost risk recorded as unresolved in
    `docs/20-risk-register.md`. Phase 5 measured the development host only;
    no supported campaign size is claimed.
-6. If separately approved, run a read-only servernode3/monitoring/backup
+8. If separately approved, run a read-only servernode3/monitoring/backup
    audit and record live facts.
-7. Test physical target desktop, mobile, and kiosk browsers against the live
+9. Test physical target desktop, mobile, and kiosk browsers against the live
    server; do not treat viewport emulation as device evidence. Note that
    ADR-0024's voxel path reopens this gate with a different rendering
    technique, so sprite-path device evidence will not transfer.
-8. Phase 18, intra-world parallelism, when the single-world population
+10. Phase 18, intra-world parallelism, when the single-world population
    ceiling starts to bind. Scheduled after 8 and before Phase 13.
 
 ## Deferred Backlog
 
 Carried forward unchanged unless noted:
+
+- **Finish C9.7: a Phase 9 fixture with clean-process replay, storage
+  permutation equality, and the compaction test.** The canonical
+  topological order and the `homology_id`-ordered edge summation are
+  implemented and unit-tested, but the compaction test is the one that would
+  catch a *future* layout change, which is what the criterion is for. This
+  is the only Phase 9 criterion not met.
+- **The manifest carries no per-class mutation rejection counters.** It has
+  a total, in which a cap rejection and a self-loop draw are the same
+  number. The Phase 9 analysis works around this by reading the counters out
+  of each world's snapshot, which works but means a campaign run with
+  `output snapshots off` cannot answer "did a cap bind". Add the per-class
+  columns to `RunResult`.
+- **Sweep the mating compatibility weights.** Phase 9's risk table listed
+  reproductive isolation as a risk and the campaign did not test it: at a
+  median of three nodes there is almost no structural distance for the
+  metric to act on. It becomes testable once evolved structures diverge
+  further, and it should be swept before any phase relies on it.
+- **Audit every remaining hand-maintained field list in a codec.** D-075 and
+  D-077 are the same defect twice: a decode length check that encoded a
+  field count, and a serializer that listed fields by hand. Both were found
+  by accident. Destructuring makes the compiler enforce the second; the
+  first needs each exact-equality length check replaced by a bound.
 
 - Visual palette/sprite identity system.
 - Secure observer/admin authentication mechanism.

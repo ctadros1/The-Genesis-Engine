@@ -104,6 +104,22 @@ base genome2.enabled true
 base physiology.enabled true
 base physiology.extrinsic_hazard_q16_per_s 13
 base genome2.mutation.transposition_q16 0
+# STRUCTURAL CAPS PINNED EXPLICITLY, at the values C9.8's measurement
+# restated them to (D-078). Pinned rather than inherited from
+# `GenomeCaps::provisional()` so this campaign's effective config - and
+# therefore its config hash - does not move when a default is revised. An
+# earlier run of this campaign inherited the pre-restatement defaults, which
+# is exactly the coupling this removes.
+#
+# The caps are guards here, not parameters: the largest evolved genome
+# measured is 7 nodes and 4 edges against caps of 160, and the report's
+# `rejected_cap` column is what proves they never bound rather than an
+# assumption that they did not.
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
 condition B
 condition Bload
 condition A1
