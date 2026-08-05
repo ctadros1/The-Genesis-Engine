@@ -1,0 +1,21 @@
+campaign phase8-extrinsic-sweep
+ticks 20000
+workers 8
+seeds 1..8
+base preset phase2
+base climate.enabled true
+base max_entities 40000
+base cell_capacity_milli 120000
+base physiology.enabled true
+condition m013
+condition m065
+condition m200
+condition m655
+condition m2000
+set m065 physiology.extrinsic_hazard_q16_per_s 65
+set m200 physiology.extrinsic_hazard_q16_per_s 200
+set m655 physiology.extrinsic_hazard_q16_per_s 655
+set m2000 physiology.extrinsic_hazard_q16_per_s 2000
+vary physiology.extrinsic_hazard_q16_per_s
+output events off
+output snapshots off

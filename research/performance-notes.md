@@ -482,6 +482,57 @@ producing 198 MB of `.alss` sample files. The same campaign without spatial
 sampling ran at 69,102 aggregate ticks/s, so sampling costs roughly 30
 percent of campaign throughput at this cadence and population.
 
+## Phase 8 Local Record
+
+Benchmark ID: `phase8-local-20260805T035043Z`, benchmark schema 4, baseline
+`phase7-local-20260805T025643Z`. macOS 26.5 arm64, Apple M3 Pro, Rust 1.97.1
+release with thin LTO. Measured at the Phase 8 campaign's own configuration
+(256x256, climate on, `cell_capacity_milli` 120,000), 2,000 ticks after 300
+warm-up, so the numbers are the ones that actually applied.
+
+ADR-0025 moved this phase ahead of the culture stack, so its cost now
+applies to every campaign that follows. The plan asks for that price
+explicitly, and it is smaller than the per-phase figures suggest.
+
+### Per-organism cost by mechanism, microseconds per 1,000 organisms
+
+| Phase | Baseline | Allometry only | Thermoregulation only | Hazard only |
+|---|---:|---:|---:|---:|
+| environment | 1,492.5 | 1,515.4 | 1,593.4 | 1,500.5 |
+| spatial_index | 6.4 | 6.5 | 6.9 | 6.4 |
+| sense | 55.8 | 54.6 | 54.7 | 55.8 |
+| controllers | 231.9 | 235.0 | 232.8 | 235.5 |
+| **apply** | **24.5** | **89.5** | **37.2** | **34.3** |
+| **lifecycle** | **2.6** | **5.7** | **5.6** | **5.4** |
+
+### Whole-tick throughput
+
+| Condition | Whole tick p50 (us) | Ticks/s | Mean population |
+|---|---:|---:|---:|
+| Phase 7 baseline | 709.2 | 1,413 | 391 |
+| Allometry only | 736.0 | 1,356 | 386 |
+| Thermoregulation only | 702.8 | 1,414 | 364 |
+| Hazard draws only | 718.7 | 1,395 | 391 |
+| Campaign condition A | 698.5 | 1,431 | 295 |
+
+Two things, and the second is the useful one.
+
+**Allometry is by far the most expensive mechanism per organism** - it
+triples the `apply` phase, because `pow_quarter_milli` runs two
+Newton-iteration integer square roots per organism per tick. Body scale does
+not change during an organism's life, so this is cacheable; that is now a
+backlog item with the profiler evidence the project requires before any such
+change.
+
+**It costs 4 percent of whole-tick throughput anyway**, because at this
+population the tick is dominated by the Phase 6 moisture exchange: 1,492
+microseconds per 1,000 organisms in `environment` against 24.5 in `apply`.
+The honest conclusion is that **the moisture cadence matters far more than
+anything Phase 8 added**, which is the same backlog item D-050 opened and
+which this record now prices against a second phase's worth of work.
+
+Raw records under `benchmarks/raw/phase8-local-20260805T035043Z/`.
+
 ## Required Record Format
 
 | Field | Required Value |

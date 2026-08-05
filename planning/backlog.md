@@ -15,15 +15,16 @@ was modified.** Phases 0 to 4 records, fixtures (`0x1e3158a26afd3b39`,
 `0xff9dfcff5dffbf42`), and every benchmark ID are preserved exactly. All
 ADRs remain Proposed.
 
-Phases 5, 6, and 7 are complete. Phases 8 to 18 are planned and none has
-started:
+Phases 5, 6, and 7 are complete; Phase 8 is implemented with its primary
+endpoint met and three secondary criteria unmet. Phases 9 to 18 are planned
+and none has started:
 
 | Phase | Subject | Plan |
 |---|---|---|
 | 5 | Headless scale and multi-world experiments - **done** | `phase-5-headless-scale-and-experiments.md` |
 | 6 | Biomes, climate drift, and world origin modes - **done** | `phase-6-biomes-climate-and-origins.md` |
 | 7 | Territory, contest, and damage - **done** | `phase-7-territory-and-conflict.md` |
-| 8 | Demography and life history | `phase-8-demography-and-life-history.md` |
+| 8 | Demography and life history - **implemented; C8.1 met, C8.5/C8.6/C8.7 unmet** | `phase-8-demography-and-life-history.md` |
 | 9 | Evolvable genome: diploid genetics and variable topology | `phase-9-evolvable-genome.md` |
 | 10 | Modular morphology and development | `phase-10-modular-morphology.md` |
 | 11 | Lifetime learning | `phase-11-lifetime-learning.md` |
@@ -127,11 +128,12 @@ Phases 5, 6, and 7 are complete.
    (D-057), and intra-world parallelism (D-058).
 3. ~~Build the world-level spatial-aggregation index C7.1 needs, then
    measure C7.1.~~ **Done** (D-060 to D-062).
-4. **Phase 8, demography and life history.** Now the next behavioral
-   phase, ahead of the genome successor, because the culture stack cannot be
-   measured in a world where 99.9 percent of deaths are starvation
-   (ADR-0025, D-057). Includes raising `max_entities` above the ecological
-   equilibrium so ecology binds rather than a memory guard.
+4. ~~**Phase 8, demography and life history.**~~ **Implemented** (D-063 to
+   D-065). Starvation share 494/1000 against a baseline of 1000/1000, food
+   field at 99 percent of capacity, and every world far below the guard, so
+   the culture stack is now measurable. Three secondary criteria are unmet
+   and stay unmet; C8.7's control failure in particular is worth revisiting
+   before any claim about thermoregulation.
 5. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
    benchmark). This bounds the compute-cost risk recorded as unresolved in
    `docs/20-risk-register.md`. Phase 5 measured the development host only;
@@ -165,6 +167,19 @@ Carried forward unchanged unless noted:
   Phase 2 long run, which means the guard was the carrying capacity and
   every dynamic measured under it is an artifact. Config change, gated on
   the Phase 8 benchmark.
+- **Cache the allometric multiplier per organism.** It triples the `apply`
+  phase - two Newton-iteration integer square roots per organism per tick -
+  and body scale never changes during a life. Profiler evidence is in the
+  Phase 8 record; the change is a pure memoization with no behavioral effect.
+- **The moisture-exchange cadence now costs more than two phases of work
+  combined.** The Phase 8 record prices it: 1,492 microseconds per 1,000
+  organisms in `environment` against 24.5 in `apply`. D-050 opened this;
+  it is now the single largest throughput item in the engine.
+- **A control that separates food distribution from temperature**, so C8.7
+  becomes answerable. Biome capacity correlates with temperature, so
+  organisms follow food into thermally non-random cells whether or not they
+  can perceive temperature, and the phase's inert-gene control inherits that
+  correlation.
 - Re-measure the `apply` serial fraction after Phases 7, 12, and 13. Each
   adds conflict resolution to exactly the part that caps parallel speedup
   (ADR-0026).

@@ -1,0 +1,46 @@
+# Phase 8 confirmatory campaign. The seed set is disjoint from the
+# calibration sweeps (seeds 1..8), so the mortality regime that was chosen
+# from a curve is not also the evidence for the claim.
+#
+# The seeds are the first 30 in ascending order from 2001 that world
+# generation accepts. Twenty of 2001..2120 are refused because the map has
+# no `Arid` cells, which the Phase 6 record measured as affecting roughly a
+# quarter of seeds at 256x256. The selection rule is outcome-blind - it
+# depends only on terrain, before any condition is applied - and preflight
+# proves the declared design is the one that runs.
+#
+# The mortality regime is a swept environmental condition with a stated
+# range, reported as a curve (see the plan doc), not a value chosen for its
+# result. ADR-0018's naming test applies: "a mortality regime" is an
+# environment; "conditions producing surplus" would be an outcome.
+#
+# `max_entities 40000` is the K-head condition: the guard is set well above
+# the ecological equilibrium every sweep condition reached, so ecology binds
+# rather than a memory limit (C8.3).
+#
+# `cell_capacity_milli 120000` rather than the 30000 default because at the
+# default, with climate on, three of eight sweep worlds went extinct before
+# any mortality was added. A world that cannot support a population is not a
+# world in which demography can be measured.
+campaign phase8-c81-confirmatory
+ticks 20000
+workers 8
+seeds 2002..2003 2005 2007..2013 2016 2018..2020 2022..2024 2026..2027 2029..2030 2033..2038 2040..2042
+base preset phase2
+base climate.enabled true
+base max_entities 40000
+base cell_capacity_milli 120000
+condition B
+condition A
+condition Mlow
+condition Mhigh
+set A physiology.enabled true
+set A physiology.extrinsic_hazard_q16_per_s 65
+set Mlow physiology.enabled true
+set Mlow physiology.extrinsic_hazard_q16_per_s 30
+set Mhigh physiology.enabled true
+set Mhigh physiology.extrinsic_hazard_q16_per_s 100
+vary physiology.enabled
+vary physiology.extrinsic_hazard_q16_per_s
+output events on
+output snapshots on

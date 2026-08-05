@@ -9,6 +9,18 @@ TypeScript/PixiJS observer (`apps/observer`), versioned persistence
 (`crates/sim-persist`), and the multi-seed experiment harness
 (`crates/sim-experiment`).
 
+Phase 8 removed the reason most later measurements would have been
+meaningless. The Phase 2 long run died 199,871 times of starvation against
+180 of old age, with population pinned on a memory guard; a world like that
+returns nulls about culture that are really nulls about food. With
+allometry, thermoregulation, senescence, and extrinsic mortality live, the
+starvation share falls from 1000/1000 to 494/1000 across 30 seeds, the food
+field sits at 99 percent of capacity instead of 74, and no world comes near
+the guard. Three further predictions it hoped to demonstrate - that evolved
+lifespan responds to extrinsic mortality, that a life-history tradeoff falls
+out of the energy budget, and that thermal preference becomes load-bearing -
+**did not survive their own controls**, and are recorded as unmet.
+
 Phase 7 closed the loop that instrument was built for. Its primary
 endpoint needed a world-level spatial statistic that did not exist; that is
 now `crates/sim-analysis`, computing a two-scale Morisita index offline
@@ -35,8 +47,10 @@ this work. Infrastructure and physical-device gates remain open; see
 
 **The project goal changed on 2026-08-04** (see Purpose below). Phases 0
 through 4 are unchanged and their records, fixtures, and benchmarks are
-preserved exactly. Phases 5, 6, and 7 are complete. Phases 8 through 18 are
-planned and none has started. All ADRs remain Proposed.
+preserved exactly. Phases 5, 6, and 7 are complete. Phase 8 is implemented: its primary
+endpoint is met and three secondary criteria are unmet and recorded as
+unmet. Phases 9 through 18 are planned and none has started. All ADRs
+remain Proposed.
 
 Run it locally:
 

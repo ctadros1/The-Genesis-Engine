@@ -2,8 +2,10 @@
 
 ## Order Of Work
 
-Phases 0 through 7 are complete. Their plan documents, acceptance evidence,
-fixtures, and benchmark records are preserved unchanged.
+Phases 0 through 7 are complete. Phase 8 is implemented and its primary
+endpoint is met, but three secondary criteria are unmet and recorded as
+unmet, so the phase is not fully accepted. Their plan documents, acceptance
+evidence, fixtures, and benchmark records are preserved unchanged.
 
 | Phase | Subject | Status |
 |---:|---|---|
@@ -15,7 +17,7 @@ fixtures, and benchmark records are preserved unchanged.
 | 5 | Headless scale and multi-world experiments | done |
 | 6 | Biomes, climate drift, and world origin modes | done |
 | 7 | Territory, contest, and damage | done |
-| 8 | Demography and life history | planned |
+| 8 | Demography and life history | implemented; C8.1 met, C8.5/C8.6/C8.7 unmet |
 | 9 | Evolvable genome: diploid genetics and variable topology | planned |
 | 10 | Modular morphology and development | planned |
 | 11 | Lifetime learning | planned |
