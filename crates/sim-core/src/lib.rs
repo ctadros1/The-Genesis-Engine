@@ -75,7 +75,7 @@ pub use world::{
     MAX_EVENTS_PER_TICK, MetricsSnapshot, NewWorldError, NoopObserver, OrganismDetail,
     Phase2Detail, RenderEntity, TickObserver, TickPhase, World,
 };
-pub use worldgen::{Terrain, WORLDGEN_VERSION, WorldGenError};
+pub use worldgen::{Terrain, WORLDGEN_VERSION, WorldGenError, generate as generate_terrain};
 
 /// Fixed-point sub-units per simulation meter for continuous positions.
 pub const FP_PER_METER: i32 = 1024;

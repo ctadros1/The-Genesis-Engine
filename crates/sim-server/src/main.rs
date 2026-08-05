@@ -265,8 +265,14 @@ fn run() -> Result<(), String> {
         last_capture_us: AtomicU64::new(0),
     });
 
+    // Both listeners bind before the banner prints. The banner is the
+    // readiness signal every integration test waits on, so printing it
+    // while the REST port is still unbound makes it a lie that fails as an
+    // intermittent connection-refused in whichever test connects fastest.
     let ws_listener = TcpListener::bind(("127.0.0.1", options.ws_port))
         .map_err(|error| format!("ws bind: {error}"))?;
+    let server = tiny_http::Server::http(("127.0.0.1", options.rest_port))
+        .map_err(|error| format!("rest bind: {error}"))?;
     println!(
         "lifesim-server: REST on 127.0.0.1:{} WS on 127.0.0.1:{} (private, loopback only)",
         options.rest_port, options.ws_port
@@ -282,8 +288,6 @@ fn run() -> Result<(), String> {
         std::thread::spawn(move || tick_loop(shared, dt_ms, run_ticks));
     }
 
-    let server = tiny_http::Server::http(("127.0.0.1", options.rest_port))
-        .map_err(|error| format!("rest bind: {error}"))?;
     let idempotency: Mutex<HashMap<String, (u16, String)>> = Mutex::new(HashMap::new());
     let last_control_ms = AtomicU64::new(0);
     for request in server.incoming_requests() {

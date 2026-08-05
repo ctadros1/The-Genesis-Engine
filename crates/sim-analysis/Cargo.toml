@@ -1,0 +1,23 @@
+[package]
+name = "sim-analysis"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[lib]
+name = "sim_analysis"
+path = "src/lib.rs"
+
+# Offline analysis. ADR-0016 is enforced here by dependency direction: this
+# crate depends on the kernel, the persistence adapter, and the experiment
+# harness, and **nothing depends on it except the CLI**. There is no path by
+# which a statistic computed here can reach a rule, an input channel, a
+# config trigger, or an intervention.
+#
+# No numeric or statistics dependency: every index is exact integer
+# arithmetic and every resampling draw comes from the kernel's own named
+# deterministic streams, so a report reproduces bit-for-bit.
+[dependencies]
+sim-core = { path = "../sim-core" }
+sim-persist = { path = "../sim-persist" }
+sim-experiment = { path = "../sim-experiment" }

@@ -15,15 +15,14 @@ was modified.** Phases 0 to 4 records, fixtures (`0x1e3158a26afd3b39`,
 `0xff9dfcff5dffbf42`), and every benchmark ID are preserved exactly. All
 ADRs remain Proposed.
 
-Phase 5 is complete (2026-08-04). Phase 6 is partially implemented: its
-climate and biome half is built and verified, its origin-modes half has not
-been started. Phases 7 to 17 are planned and none has started:
+Phases 5, 6, and 7 are complete. Phases 8 to 18 are planned and none has
+started:
 
 | Phase | Subject | Plan |
 |---|---|---|
 | 5 | Headless scale and multi-world experiments - **done** | `phase-5-headless-scale-and-experiments.md` |
 | 6 | Biomes, climate drift, and world origin modes - **done** | `phase-6-biomes-climate-and-origins.md` |
-| 7 | Territory, contest, and damage - **physics done, primary endpoint C7.1 unmeasured** | `phase-7-territory-and-conflict.md` |
+| 7 | Territory, contest, and damage - **done** | `phase-7-territory-and-conflict.md` |
 | 8 | Demography and life history | `phase-8-demography-and-life-history.md` |
 | 9 | Evolvable genome: diploid genetics and variable topology | `phase-9-evolvable-genome.md` |
 | 10 | Modular morphology and development | `phase-10-modular-morphology.md` |
@@ -43,19 +42,26 @@ every phase's Benchmark Impact section.
 
 ## Current Status
 
-**Phase 7's physics is complete and verified; the phase is not.** Health,
-damage, healing, death by depletion, the attack action and the three
-reserved sensing channels, carcasses with an exact ledger, the canonical
-pair key, RNG stream `Contest` (7), and event schema 3 are all in and
-tested. C7.4 (exact accounting) and C7.5 (determinism) are met. **C7.1, the
-designated primary endpoint, was not measured** - it needs a world-level
-spatial-aggregation index that does not exist - and secondary criteria do
-not rescue a failed primary. The behavioral campaign ran anyway and its
-four-condition decomposition is recorded in
-`planning/phase-7-territory-and-conflict.md` (D-052): perception alone costs
-nothing, the attack action alone costs ~37 percent of the population at zero
-damage, and damage costs a further ~31 percent. C7.2's tolerance clause and
-C7.3 are recorded as **unmet rather than adjusted**.
+**Phase 7 is complete** (2026-08-05), benchmark
+`phase7-local-20260805T025643Z`. The primary endpoint C7.1 is measured and
+met: 52 of 60 worlds on the aggregation index and 44 of 60 on the encounter
+index, against a prespecified bar of 40, conjunctively, with zero worlds
+excluded. The index it needed is new (`crates/sim-analysis`,
+`lifesim-spatial-index-v1`), computed offline from a new versioned
+position-sample artifact, **with no kernel change** - both fixtures are
+untouched.
+
+What the phase established is narrower than the headline. The aggregation
+half of C7.1 is confounded with population and is reproduced by an
+ecological control with no contest in it; the encounter half runs *against*
+its confound and is the load-bearing result: **damage reduces short-range
+co-occurrence, conditional on position, by about a quarter.** Damage rather
+than the attack action does it - condition C fires attacks at thirteen times
+the rate with damage set to zero and moves neither index. C7.2's tolerance
+clause and C7.3 remain **unmet rather than adjusted**; C7.3's failure has
+moved from its saturation clause to its contention-correlation clause, and
+the cost-structure question is settled as **no change**
+(D-060, D-061, D-062).
 
 **Phase 6 is complete** (2026-08-04), benchmark
 `phase6-local-20260804T224418Z`.
@@ -108,8 +114,7 @@ ADRs remain proposed.
 
 ## Ordered Next Work
 
-Phases 5 and 6 are complete. Phase 7's physics is complete and verified; the
-phase is not, because its primary endpoint was not measured.
+Phases 5, 6, and 7 are complete.
 
 1. Review the Phase 5, 6, and 7 implementations and their benchmark
    evidence (D-045 through D-052), in particular the two Phase 6 modelling
@@ -120,11 +125,8 @@ phase is not, because its primary endpoint was not measured.
    time-scale position (D-054), the soak tiers (D-055), 3D voxel rendering
    (D-056), the Phase 13 split moving demography before the culture stack
    (D-057), and intra-world parallelism (D-058).
-3. **Build the world-level spatial-aggregation index C7.1 needs, then
-   measure C7.1.** Its absence is the reason Phase 7 is incomplete, and it
-   is a small, well-scoped piece of analysis work rather than a research
-   question. C7.2's tolerance clause and C7.3 stay recorded as unmet rather
-   than adjusted.
+3. ~~Build the world-level spatial-aggregation index C7.1 needs, then
+   measure C7.1.~~ **Done** (D-060 to D-062).
 4. **Phase 8, demography and life history.** Now the next behavioral
    phase, ahead of the genome successor, because the culture stack cannot be
    measured in a world where 99.9 percent of deaths are starvation
@@ -185,6 +187,16 @@ Carried forward unchanged unless noted:
   slice).
 - A phenotype-only kin-inference condition, as an alternative to providing
   computed genetic distance as a kinship input (Phase 7 follow-up).
+- **Exercise the `max_carcasses` cap.** The Phase 7 benchmark never filled
+  it - the table peaked at 51 against a cap of 64 - so the eviction path and
+  its decay-ledgered loss are unmeasured. Needs a world that generates
+  carcasses faster than the standard tier does.
+- **A cleaner density control than condition E.** E thins the population by
+  cutting carrying capacity, so it changes food availability as well as
+  density and is reported as a supporting comparison rather than a control.
+  Phase 8's non-food extrinsic mortality is the natural instrument for a
+  real one, and re-running the C7.1 contrast against it would sharpen the
+  aggregation half of the result.
 
 ## Repository Hygiene
 

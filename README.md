@@ -9,6 +9,16 @@ TypeScript/PixiJS observer (`apps/observer`), versioned persistence
 (`crates/sim-persist`), and the multi-seed experiment harness
 (`crates/sim-experiment`).
 
+Phase 7 closed the loop that instrument was built for. Its primary
+endpoint needed a world-level spatial statistic that did not exist; that is
+now `crates/sim-analysis`, computing a two-scale Morisita index offline
+from a versioned position-sample artifact, with no kernel change of any
+kind. Measured over 300 worlds, contest reduces short-range co-occurrence
+by about a quarter -- and does so *against* the direction its own
+population decline would push the measure, which is what makes the result
+worth having. The companion result is that the aggregation half of the same
+endpoint is confounded, and it is reported as confounded.
+
 Phase 5 turned the prototype into an instrument: an append-only ALEV event
 log with fail-closed decode, an independent-world scheduler proven not to
 reach a result at any worker count, campaigns whose conditions are named
@@ -25,9 +35,8 @@ this work. Infrastructure and physical-device gates remain open; see
 
 **The project goal changed on 2026-08-04** (see Purpose below). Phases 0
 through 4 are unchanged and their records, fixtures, and benchmarks are
-preserved exactly. Phases 5 and 6 are complete. Phase 7's physics is
-implemented but its primary endpoint C7.1 is unmeasured. Phases 8 through 18
-are planned and none has started. All ADRs remain Proposed.
+preserved exactly. Phases 5, 6, and 7 are complete. Phases 8 through 18 are
+planned and none has started. All ADRs remain Proposed.
 
 Run it locally:
 
@@ -173,6 +182,8 @@ The initial browser observer emphasizes clear top-down pixel art, pan/zoom, terr
 - [Complete file manifest](FILE_MANIFEST.md)
 - [Simulation kernel](crates/sim-core/src/lib.rs)
 - [Experiment harness](crates/sim-experiment/src/lib.rs)
+- [Offline analysis](crates/sim-analysis/src/lib.rs)
+- [Campaign definitions](experiments/)
 - [Event log format](crates/sim-persist/src/eventlog.rs)
 - [Headless CLI](crates/sim-cli/src/main.rs)
 - [Observer protocol](crates/sim-protocol/src/lib.rs)

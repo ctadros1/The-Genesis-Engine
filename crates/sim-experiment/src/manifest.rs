@@ -42,6 +42,9 @@ pub struct RunResult {
     pub phase2: Option<Phase2Counters>,
     pub event_log_offset: u64,
     pub snapshot_bytes: u64,
+    /// Spatial samples written. Recorded so an analysis can prove it read
+    /// the whole series rather than a silently shortened one.
+    pub spatial_samples: u64,
     /// Phase 7 contest outcomes. Zero when the section is disabled.
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
@@ -325,7 +328,7 @@ fn render_run(run: &RunResult) -> String {
          state_checksum={} ticks={} population={} extinct={} energy_milli={} biomass_milli={} \
          max_ancestry_depth={} births={} deaths_starvation={} deaths_old_age={} \
          capacity_rejections={} dropped_events={} event_log_bytes={} snapshot_bytes={} \
-         attacks={} deaths_by_damage={} carcasses={}",
+         attacks={} deaths_by_damage={} carcasses={} spatial_samples={}",
         run.index,
         run.condition,
         hex(run.seed),
@@ -349,6 +352,7 @@ fn render_run(run: &RunResult) -> String {
         run.attacks_total,
         run.deaths_by_damage_total,
         run.carcasses,
+        run.spatial_samples,
     );
     if let Some(phase2) = run.phase2.as_ref() {
         line.push_str(&format!(
@@ -457,6 +461,7 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         attacks_total: number("attacks").unwrap_or(0),
         deaths_by_damage_total: number("deaths_by_damage").unwrap_or(0),
         carcasses: number("carcasses").unwrap_or(0),
+        spatial_samples: number("spatial_samples").unwrap_or(0),
     })
 }
 

@@ -23,6 +23,13 @@ data/
 saves/
 exports/
 benchmarks/raw/
+# Campaign artifacts are large and regenerable from the campaign file plus
+# the recorded seeds. The definitions and the reports under
+# experiments/results/ are tracked; the .alss/.alev/.alif output is not.
+experiments/runs/
+*.alss
+*.alev
+*.alif
 benchmarks/screenshots/
 coverage/
 playwright-report/

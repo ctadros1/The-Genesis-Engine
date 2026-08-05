@@ -10,6 +10,7 @@ mod checkpoint;
 mod codec;
 mod eventlog;
 mod founders;
+mod spatial;
 mod store;
 
 pub use checkpoint::{AsyncCheckpointer, CheckpointOutcome, CheckpointRequest, SubmitResult};
@@ -26,6 +27,11 @@ pub use eventlog::{
 pub use founders::{
     FOUNDER_FORMAT_VERSION, FOUNDER_MAGIC, FounderError, FounderProvenance, FounderSet,
     MAX_FOUNDERS, decode_founders, encode_founders,
+};
+pub use spatial::{
+    MAX_SAMPLE_ORGANISMS, SPATIAL_LOG_FORMAT_VERSION, SPATIAL_LOG_MAGIC, SpatialLogError,
+    SpatialLogInfo, SpatialLogScan, SpatialLogWriter, SpatialSample, decode_spatial,
+    decode_spatial_prefix, read_spatial_info,
 };
 pub use store::{
     BUILD_VERSION, RecoveryReport, SaveRecord, SnapshotStore, StoreError, VerifyReport,

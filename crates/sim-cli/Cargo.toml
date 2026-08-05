@@ -12,3 +12,4 @@ path = "src/main.rs"
 sim-core = { path = "../sim-core" }
 sim-persist = { path = "../sim-persist" }
 sim-experiment = { path = "../sim-experiment" }
+sim-analysis = { path = "../sim-analysis" }

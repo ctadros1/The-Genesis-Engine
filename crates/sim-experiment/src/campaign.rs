@@ -90,6 +90,12 @@ pub struct OutputPolicy {
     pub snapshot: bool,
     /// zstd level for the final snapshot; `None` stores uncompressed.
     pub compression_level: Option<i32>,
+    /// Ticks between spatial position samples; `0` writes no `.alss` file.
+    ///
+    /// Off by default. A spatial sample file is only needed by the analyses
+    /// that measure spatial structure, and a campaign that does not ask for
+    /// one should not pay for it.
+    pub spatial_interval: u64,
 }
 
 impl Default for OutputPolicy {
@@ -98,6 +104,7 @@ impl Default for OutputPolicy {
             events: true,
             snapshot: true,
             compression_level: Some(3),
+            spatial_interval: 0,
         }
     }
 }
@@ -460,9 +467,24 @@ impl Campaign {
                             )
                         };
                     }
+                    ["spatial", value] => {
+                        output.spatial_interval = if *value == "off" {
+                            0
+                        } else {
+                            let interval: u64 = value
+                                .parse()
+                                .map_err(|_| syntax("spatial takes a tick interval or off"))?;
+                            if interval == 0 {
+                                return Err(syntax(
+                                    "spatial interval must be positive; use 'off' to disable",
+                                ));
+                            }
+                            interval
+                        };
+                    }
                     _ => {
                         return Err(syntax(
-                            "usage: output events on|off | output snapshots on|off | output compress <level>|off",
+                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off",
                         ));
                     }
                 },

@@ -139,3 +139,16 @@ Every event has event_id, world_id, parent_world_id if applicable, tick, sequenc
 ## Rules
 
 Events are append-only logical facts. They do not contain secrets, unbounded neural activation history, or arbitrary user payload. Schema additions are versioned and tests prove exporter/replay compatibility.
+
+
+## Positions Are Not Events
+
+Organism positions are deliberately absent from this schema and must stay
+absent. An event records something that happened; a coordinate dump is
+state, and admitting one would break the "one record, one occurrence"
+reading that every counter reconstruction in `eventlog.rs` depends on, as
+well as multiplying log size by three orders of magnitude.
+
+Spatial analysis reads a separate artifact,
+`specifications/spatial-sample-format.md` (ALSS 1), written by the
+experiment harness through the kernel's read-only observer view. See D-060.

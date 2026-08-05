@@ -1,0 +1,36 @@
+# Phase 7 C7.1 pilot. Seeds 1..16 are the PILOT set and are disjoint from
+# the confirmatory set (experiments/phase7-c71-confirmatory.campaign), so
+# the effect size that sets the seed count is not also the evidence.
+#
+# Conditions follow the phase plan plus two additions the plan does not
+# specify, both carried over or added because a condition that changes two
+# things at once cannot isolate either:
+#   D  perception live, attack impossible (isolates the sensing channels)
+#   E  contest disabled at a reduced carrying capacity (approximate
+#      density match for A; see the plan doc for why it is a supporting
+#      comparison and not a criterion)
+campaign phase7-c71-pilot
+ticks 20000
+workers 8
+seeds 1..16
+base preset phase2
+condition B
+condition A
+condition C
+condition D
+condition E
+set A contest.enabled true
+set C contest.enabled true
+set C contest.damage_base_milli 0
+set D contest.enabled true
+# 65536 is Q16 1.0 and the comparison is strict, while the controller's
+# activation is clamped to at most 1.0, so no attack can ever fire.
+set D contest.attack_threshold_q16 65536
+set E cell_capacity_milli 18000
+vary contest.enabled
+vary contest.damage_base_milli
+vary contest.attack_threshold_q16
+vary cell_capacity_milli
+output events off
+output snapshots off
+output spatial 50

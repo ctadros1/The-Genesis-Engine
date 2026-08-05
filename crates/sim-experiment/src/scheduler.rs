@@ -29,8 +29,11 @@
 
 use crate::campaign::{Campaign, Condition};
 use crate::manifest::RunResult;
-use sim_core::{Counters, Phase2Counters, World};
-use sim_persist::{EventLogInfo, EventLogRecorder, EventLogWriter, SnapshotStore, encode_snapshot};
+use sim_core::{Counters, Phase2Counters, RenderEntity, World};
+use sim_persist::{
+    EventLogInfo, EventLogRecorder, EventLogWriter, SnapshotStore, SpatialLogInfo,
+    SpatialLogWriter, encode_snapshot,
+};
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
@@ -241,10 +244,58 @@ fn execute_unit(
         _ => None,
     };
 
+    // Spatial sampling reads positions through the existing read-only
+    // observer view, so the kernel is untouched and both fixtures stay
+    // unmovable by this file's existence.
+    let mut spatial = match (output_dir, campaign.output.spatial_interval) {
+        (Some(directory), interval) if interval > 0 => {
+            let path = directory.join(format!("{stem}.alss"));
+            let writer = SpatialLogWriter::create(
+                &path,
+                &SpatialLogInfo {
+                    format_version: sim_persist::SPATIAL_LOG_FORMAT_VERSION,
+                    world_id: unit.index as u64 + 1,
+                    seed: unit.seed,
+                    config_hash,
+                    terrain_checksum,
+                    cells_x: world.config().cells_x,
+                    cells_y: world.config().cells_y,
+                    cell_size_m: world.config().cell_size_m,
+                    sample_interval_ticks: u32::try_from(interval)
+                        .map_err(|_| "spatial interval exceeds u32".to_owned())?,
+                    max_organisms: world.config().max_entities,
+                    build_version: sim_persist::BUILD_VERSION.to_owned(),
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            Some(writer)
+        }
+        _ => None,
+    };
+    let mut render_buffer: Vec<RenderEntity> = Vec::new();
+    let mut positions: Vec<(i32, i32)> = Vec::new();
+
     for _ in 0..campaign.ticks {
         world.step();
         if let Some(recorder) = recorder.as_mut() {
             recorder.record(&world).map_err(|error| error.to_string())?;
+        }
+        if let Some(writer) = spatial.as_mut()
+            && world.tick_number() % campaign.output.spatial_interval == 0
+        {
+            // Unbounded bounds rather than the computed world extent: an
+            // organism exactly on the far edge must not be dropped by an
+            // off-by-one in a measurement's own framing.
+            world.render_entities_in(i32::MIN, i32::MIN, i32::MAX, i32::MAX, &mut render_buffer);
+            positions.clear();
+            positions.extend(
+                render_buffer
+                    .iter()
+                    .map(|entity| (entity.x_fp, entity.y_fp)),
+            );
+            writer
+                .append(world.tick_number(), &positions)
+                .map_err(|error| error.to_string())?;
         }
         if campaign.check_interval > 0 && world.tick_number() % campaign.check_interval == 0 {
             world
@@ -252,6 +303,13 @@ fn execute_unit(
                 .map_err(|violation| format!("invariant violated: {violation}"))?;
         }
     }
+    let spatial_samples = match spatial.as_mut() {
+        Some(writer) => {
+            writer.sync().map_err(|error| error.to_string())?;
+            writer.samples()
+        }
+        None => 0,
+    };
     world
         .check_invariants()
         .map_err(|violation| format!("invariant violated at end of run: {violation}"))?;
@@ -306,6 +364,7 @@ fn execute_unit(
         phase2,
         event_log_offset,
         snapshot_bytes,
+        spatial_samples,
         attacks_total: metrics.attacks_total,
         deaths_by_damage_total: metrics.deaths_by_damage_total,
         carcasses: metrics.carcasses,

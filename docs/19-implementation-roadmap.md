@@ -2,7 +2,7 @@
 
 ## Order Of Work
 
-Phases 0 through 6 are complete. Phase 7's physics is complete and verified, but its primary endpoint is not yet measured, so the phase is not. Their plan documents, acceptance evidence,
+Phases 0 through 7 are complete. Their plan documents, acceptance evidence,
 fixtures, and benchmark records are preserved unchanged.
 
 | Phase | Subject | Status |
@@ -14,7 +14,7 @@ fixtures, and benchmark records are preserved unchanged.
 | 4 | Versioned persistence and verified restore | done |
 | 5 | Headless scale and multi-world experiments | done |
 | 6 | Biomes, climate drift, and world origin modes | done |
-| 7 | Territory, contest, and damage | physics done; primary endpoint C7.1 unmeasured |
+| 7 | Territory, contest, and damage | done |
 | 8 | Demography and life history | planned |
 | 9 | Evolvable genome: diploid genetics and variable topology | planned |
 | 10 | Modular morphology and development | planned |

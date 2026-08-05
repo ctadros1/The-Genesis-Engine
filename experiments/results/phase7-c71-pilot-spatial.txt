@@ -1,0 +1,165 @@
+spatial-report 1
+campaign phase7-c71-pilot
+index_version lifesim-spatial-index-v1
+stats_version lifesim-paired-stats-v1
+plan burn_in_ticks=5000 fine_scale_cells=2 coarse_scale_cells=16 sesoi_milli=100 null_rate_milli=500 direction=decrease required_worlds=20 analysis_seed=0x5eedcafef00dbeef bootstrap=20000
+world condition=B seed=0x0000000000000001 population=1285 extinct=false samples=300 observations=160652 ordered_pairs=113504502 coarse_pairs=3174950 fine_pairs=122982 aggregation_milli=3944 fine_milli=7202 encounter_milli=1826
+world condition=B seed=0x0000000000000002 population=254 extinct=false samples=300 observations=52885 ordered_pairs=9585606 coarse_pairs=418818 fine_pairs=17260 aggregation_milli=4762 fine_milli=8380 encounter_milli=1759
+world condition=B seed=0x0000000000000003 population=434 extinct=false samples=300 observations=73913 ordered_pairs=19639446 coarse_pairs=751634 fine_pairs=29598 aggregation_milli=6314 fine_milli=11898 encounter_milli=1884
+world condition=B seed=0x0000000000000004 population=269 extinct=false samples=300 observations=48157 ordered_pairs=8494178 coarse_pairs=630212 fine_pairs=24672 aggregation_milli=9719 fine_milli=17645 encounter_milli=1815
+world condition=B seed=0x0000000000000005 population=176 extinct=false samples=300 observations=37287 ordered_pairs=4662310 coarse_pairs=301050 fine_pairs=12300 aggregation_milli=10395 fine_milli=18261 encounter_milli=1756
+world condition=B seed=0x0000000000000006 population=568 extinct=false samples=300 observations=94048 ordered_pairs=32174406 coarse_pairs=741686 fine_pairs=38168 aggregation_milli=3734 fine_milli=9739 encounter_milli=2607
+world condition=B seed=0x0000000000000007 population=107 extinct=false samples=300 observations=29565 ordered_pairs=2900918 coarse_pairs=148784 fine_pairs=6752 aggregation_milli=6564 fine_milli=13674 encounter_milli=2082
+world condition=B seed=0x0000000000000008 population=765 extinct=false samples=300 observations=111299 ordered_pairs=50042882 coarse_pairs=1988788 fine_pairs=69112 aggregation_milli=6318 fine_milli=10668 encounter_milli=1688
+world condition=B seed=0x0000000000000009 population=667 extinct=false samples=300 observations=103205 ordered_pairs=42090688 coarse_pairs=1707220 fine_pairs=69326 aggregation_milli=5556 fine_milli=11198 encounter_milli=2015
+world condition=B seed=0x000000000000000a population=182 extinct=false samples=300 observations=52838 ordered_pairs=9259872 coarse_pairs=238290 fine_pairs=9054 aggregation_milli=4065 fine_milli=7525 encounter_milli=1850
+world condition=B seed=0x000000000000000b population=794 extinct=false samples=300 observations=115337 ordered_pairs=53056290 coarse_pairs=1372394 fine_pairs=65414 aggregation_milli=4319 fine_milli=10516 encounter_milli=2434
+world condition=B seed=0x000000000000000c population=452 extinct=false samples=300 observations=78102 ordered_pairs=22130806 coarse_pairs=579250 fine_pairs=30432 aggregation_milli=3402 fine_milli=8878 encounter_milli=2609
+world condition=B seed=0x000000000000000d population=168 extinct=false samples=300 observations=40108 ordered_pairs=5362046 coarse_pairs=214994 fine_pairs=10328 aggregation_milli=3648 fine_milli=8037 encounter_milli=2202
+world condition=B seed=0x000000000000000e population=374 extinct=false samples=300 observations=73482 ordered_pairs=18657898 coarse_pairs=560842 fine_pairs=28594 aggregation_milli=4418 fine_milli=11178 encounter_milli=2529
+world condition=B seed=0x000000000000000f population=768 extinct=false samples=300 observations=120742 ordered_pairs=57690156 coarse_pairs=2584760 fine_pairs=79990 aggregation_milli=6362 fine_milli=9122 encounter_milli=1433
+world condition=B seed=0x0000000000000010 population=63 extinct=false samples=300 observations=26404 ordered_pairs=2362858 coarse_pairs=45200 fine_pairs=2700 aggregation_milli=2926 fine_milli=8338 encounter_milli=2848
+world condition=A seed=0x0000000000000001 population=88 extinct=false samples=300 observations=31362 ordered_pairs=3300450 coarse_pairs=62522 fine_pairs=2406 aggregation_milli=2671 fine_milli=4845 encounter_milli=1814
+world condition=A seed=0x0000000000000002 population=51 extinct=false samples=300 observations=19667 ordered_pairs=1311330 coarse_pairs=36502 fine_pairs=734 aggregation_milli=3034 fine_milli=2605 encounter_milli=858
+world condition=A seed=0x0000000000000003 population=80 extinct=false samples=300 observations=29748 ordered_pairs=2995974 coarse_pairs=39986 fine_pairs=712 aggregation_milli=2202 fine_milli=1876 encounter_milli=852
+world condition=A seed=0x0000000000000004 population=52 extinct=false samples=300 observations=20381 ordered_pairs=1403268 coarse_pairs=34276 fine_pairs=402 aggregation_milli=3199 fine_milli=1740 encounter_milli=543
+world condition=A seed=0x0000000000000005 population=57 extinct=false samples=300 observations=21108 ordered_pairs=1517446 coarse_pairs=24338 fine_pairs=364 aggregation_milli=2582 fine_milli=1660 encounter_milli=643
+world condition=A seed=0x0000000000000006 population=141 extinct=false samples=300 observations=46483 ordered_pairs=7205804 coarse_pairs=78514 fine_pairs=3240 aggregation_milli=1765 fine_milli=3691 encounter_milli=2091
+world condition=A seed=0x0000000000000007 population=65 extinct=false samples=300 observations=22858 ordered_pairs=1764956 coarse_pairs=73468 fine_pairs=3066 aggregation_milli=5328 fine_milli=10205 encounter_milli=1915
+world condition=A seed=0x0000000000000008 population=108 extinct=false samples=300 observations=35574 ordered_pairs=4243928 coarse_pairs=70692 fine_pairs=2130 aggregation_milli=2648 fine_milli=3877 encounter_milli=1463
+world condition=A seed=0x0000000000000009 population=74 extinct=false samples=300 observations=27826 ordered_pairs=2593426 coarse_pairs=31272 fine_pairs=1262 aggregation_milli=1651 fine_milli=3308 encounter_milli=2002
+world condition=A seed=0x000000000000000a population=95 extinct=false samples=300 observations=36766 ordered_pairs=4540020 coarse_pairs=78564 fine_pairs=4438 aggregation_milli=2734 fine_milli=7524 encounter_milli=2751
+world condition=A seed=0x000000000000000b population=172 extinct=false samples=300 observations=45976 ordered_pairs=7013766 coarse_pairs=218978 fine_pairs=7480 aggregation_milli=5213 fine_milli=9097 encounter_milli=1744
+world condition=A seed=0x000000000000000c population=89 extinct=false samples=300 observations=31658 ordered_pairs=3380808 coarse_pairs=49056 fine_pairs=748 aggregation_milli=1886 fine_milli=1428 encounter_milli=757
+world condition=A seed=0x000000000000000d population=62 extinct=false samples=300 observations=24146 ordered_pairs=1958872 coarse_pairs=46164 fine_pairs=394 aggregation_milli=2144 fine_milli=839 encounter_milli=391
+world condition=A seed=0x000000000000000e population=176 extinct=false samples=300 observations=46029 ordered_pairs=7044128 coarse_pairs=178580 fine_pairs=7126 aggregation_milli=3726 fine_milli=7378 encounter_milli=1979
+world condition=A seed=0x000000000000000f population=90 extinct=false samples=300 observations=34586 ordered_pairs=4043568 coarse_pairs=63470 fine_pairs=1368 aggregation_milli=2228 fine_milli=2225 encounter_milli=998
+world condition=A seed=0x0000000000000010 population=57 extinct=false samples=300 observations=22112 ordered_pairs=1653024 coarse_pairs=23512 fine_pairs=96 aggregation_milli=2176 fine_milli=423 encounter_milli=194
+world condition=C seed=0x0000000000000001 population=356 extinct=false samples=300 observations=56627 ordered_pairs=11436564 coarse_pairs=299770 fine_pairs=15840 aggregation_milli=3695 fine_milli=9206 encounter_milli=2490
+world condition=C seed=0x0000000000000002 population=186 extinct=false samples=300 observations=44380 ordered_pairs=6561928 coarse_pairs=430238 fine_pairs=12604 aggregation_milli=7146 fine_milli=8939 encounter_milli=1250
+world condition=C seed=0x0000000000000003 population=142 extinct=false samples=300 observations=40931 ordered_pairs=5555796 coarse_pairs=126122 fine_pairs=9502 aggregation_milli=3745 fine_milli=13502 encounter_milli=3604
+world condition=C seed=0x0000000000000004 population=200 extinct=false samples=300 observations=42333 ordered_pairs=6155454 coarse_pairs=463756 fine_pairs=25602 aggregation_milli=9869 fine_milli=25267 encounter_milli=2560
+world condition=C seed=0x0000000000000005 population=142 extinct=false samples=300 observations=36276 ordered_pairs=4369630 coarse_pairs=166072 fine_pairs=7744 aggregation_milli=6118 fine_milli=12267 encounter_milli=2004
+world condition=C seed=0x0000000000000006 population=390 extinct=false samples=300 observations=73693 ordered_pairs=18921242 coarse_pairs=456908 fine_pairs=19250 aggregation_milli=3911 fine_milli=8352 encounter_milli=2135
+world condition=C seed=0x0000000000000007 population=41 extinct=false samples=300 observations=19732 ordered_pairs=1367806 coarse_pairs=26674 fine_pairs=1802 aggregation_milli=2496 fine_milli=7739 encounter_milli=3100
+world condition=C seed=0x0000000000000008 population=385 extinct=false samples=300 observations=67120 ordered_pairs=15772656 coarse_pairs=487690 fine_pairs=23212 aggregation_milli=4916 fine_milli=11368 encounter_milli=2312
+world condition=C seed=0x0000000000000009 population=130 extinct=false samples=300 observations=40261 ordered_pairs=5396852 coarse_pairs=105286 fine_pairs=4378 aggregation_milli=2672 fine_milli=5515 encounter_milli=2063
+world condition=C seed=0x000000000000000a population=181 extinct=false samples=300 observations=48719 ordered_pairs=7876154 coarse_pairs=142446 fine_pairs=6496 aggregation_milli=2857 fine_milli=6348 encounter_milli=2221
+world condition=C seed=0x000000000000000b population=238 extinct=false samples=300 observations=55001 ordered_pairs=10139736 coarse_pairs=166334 fine_pairs=8208 aggregation_milli=2739 fine_milli=6904 encounter_milli=2520
+world condition=C seed=0x000000000000000c population=165 extinct=false samples=300 observations=46857 ordered_pairs=7287486 coarse_pairs=138996 fine_pairs=5170 aggregation_milli=2479 fine_milli=4580 encounter_milli=1847
+world condition=C seed=0x000000000000000d population=222 extinct=false samples=300 observations=54695 ordered_pairs=10056028 coarse_pairs=415804 fine_pairs=20600 aggregation_milli=3762 fine_milli=8548 encounter_milli=2271
+world condition=C seed=0x000000000000000e population=197 extinct=false samples=300 observations=52486 ordered_pairs=9152104 coarse_pairs=160790 fine_pairs=8162 aggregation_milli=2582 fine_milli=6504 encounter_milli=2518
+world condition=C seed=0x000000000000000f population=313 extinct=false samples=300 observations=58368 ordered_pairs=11700238 coarse_pairs=366500 fine_pairs=17240 aggregation_milli=4448 fine_milli=9693 encounter_milli=2179
+world condition=C seed=0x0000000000000010 population=74 extinct=false samples=300 observations=27033 ordered_pairs=2477696 coarse_pairs=51926 fine_pairs=2678 aggregation_milli=3206 fine_milli=7886 encounter_milli=2459
+world condition=D seed=0x0000000000000001 population=1148 extinct=false samples=300 observations=154748 ordered_pairs=101820056 coarse_pairs=3747948 fine_pairs=120302 aggregation_milli=5190 fine_milli=7853 encounter_milli=1513
+world condition=D seed=0x0000000000000002 population=409 extinct=false samples=300 observations=72440 ordered_pairs=18765216 coarse_pairs=920206 fine_pairs=38066 aggregation_milli=5345 fine_milli=9440 encounter_milli=1766
+world condition=D seed=0x0000000000000003 population=379 extinct=false samples=300 observations=70998 ordered_pairs=17781784 coarse_pairs=686502 fine_pairs=35236 aggregation_milli=6370 fine_milli=15644 encounter_milli=2455
+world condition=D seed=0x0000000000000004 population=213 extinct=false samples=300 observations=39473 ordered_pairs=5294814 coarse_pairs=259000 fine_pairs=20854 aggregation_milli=6407 fine_milli=23926 encounter_milli=3733
+world condition=D seed=0x0000000000000005 population=700 extinct=false samples=300 observations=87009 ordered_pairs=35635092 coarse_pairs=2060764 fine_pairs=75900 aggregation_milli=9310 fine_milli=14743 encounter_milli=1583
+world condition=D seed=0x0000000000000006 population=309 extinct=false samples=300 observations=68034 ordered_pairs=15514978 coarse_pairs=286986 fine_pairs=14248 aggregation_milli=2996 fine_milli=7539 encounter_milli=2516
+world condition=D seed=0x0000000000000007 population=217 extinct=false samples=300 observations=39124 ordered_pairs=5298964 coarse_pairs=286548 fine_pairs=12308 aggregation_milli=6921 fine_milli=13645 encounter_milli=1971
+world condition=D seed=0x0000000000000008 population=902 extinct=false samples=300 observations=109281 ordered_pairs=50977866 coarse_pairs=1552226 fine_pairs=82196 aggregation_milli=4841 fine_milli=12455 encounter_milli=2572
+world condition=D seed=0x0000000000000009 population=646 extinct=false samples=300 observations=88730 ordered_pairs=30546582 coarse_pairs=1112718 fine_pairs=47194 aggregation_milli=4990 fine_milli=10504 encounter_milli=2104
+world condition=D seed=0x000000000000000a population=502 extinct=false samples=300 observations=77315 ordered_pairs=22037526 coarse_pairs=680184 fine_pairs=37294 aggregation_milli=4876 fine_milli=13025 encounter_milli=2671
+world condition=D seed=0x000000000000000b population=640 extinct=false samples=300 observations=96614 ordered_pairs=34741690 coarse_pairs=957798 fine_pairs=53628 aggregation_milli=4604 fine_milli=13167 encounter_milli=2859
+world condition=D seed=0x000000000000000c population=294 extinct=false samples=300 observations=65376 ordered_pairs=14487498 coarse_pairs=415650 fine_pairs=20050 aggregation_milli=3729 fine_milli=8936 encounter_milli=2395
+world condition=D seed=0x000000000000000d population=269 extinct=false samples=300 observations=53794 ordered_pairs=9878690 coarse_pairs=512376 fine_pairs=20562 aggregation_milli=4719 fine_milli=8685 encounter_milli=1840
+world condition=D seed=0x000000000000000e population=191 extinct=false samples=300 observations=53581 ordered_pairs=9564798 coarse_pairs=182414 fine_pairs=14912 aggregation_milli=2803 fine_milli=11371 encounter_milli=4056
+world condition=D seed=0x000000000000000f population=639 extinct=false samples=300 observations=109891 ordered_pairs=45015452 coarse_pairs=1658676 fine_pairs=60408 aggregation_milli=5232 fine_milli=8828 encounter_milli=1687
+world condition=D seed=0x0000000000000010 population=104 extinct=false samples=300 observations=28168 ordered_pairs=2633740 coarse_pairs=80090 fine_pairs=4588 aggregation_milli=4652 fine_milli=12711 encounter_milli=2732
+world condition=E seed=0x0000000000000001 population=36 extinct=false samples=300 observations=14571 ordered_pairs=735504 coarse_pairs=11816 fine_pairs=460 aggregation_milli=2265 fine_milli=4157 encounter_milli=1835
+world condition=E seed=0x0000000000000002 population=27 extinct=false samples=300 observations=14034 ordered_pairs=720834 coarse_pairs=17320 fine_pairs=740 aggregation_milli=2619 fine_milli=4777 encounter_milli=1824
+world condition=E seed=0x0000000000000003 population=45 extinct=false samples=300 observations=18515 ordered_pairs=1175066 coarse_pairs=30014 fine_pairs=2736 aggregation_milli=4214 fine_milli=18382 encounter_milli=4361
+world condition=E seed=0x0000000000000004 population=18 extinct=false samples=300 observations=8844 ordered_pairs=293322 coarse_pairs=6218 fine_pairs=464 aggregation_milli=2777 fine_milli=9609 encounter_milli=3460
+world condition=E seed=0x0000000000000005 population=21 extinct=false samples=300 observations=9874 ordered_pairs=344790 coarse_pairs=5166 fine_pairs=344 aggregation_milli=2412 fine_milli=6906 encounter_milli=2862
+world condition=E seed=0x0000000000000006 population=64 extinct=false samples=300 observations=20629 ordered_pairs=1429026 coarse_pairs=20882 fine_pairs=1518 aggregation_milli=2367 fine_milli=8721 encounter_milli=3684
+world condition=E seed=0x0000000000000007 population=58 extinct=false samples=300 observations=16157 ordered_pairs=862010 coarse_pairs=45964 fine_pairs=4092 aggregation_milli=6825 fine_milli=27888 encounter_milli=4086
+world condition=E seed=0x0000000000000008 population=76 extinct=false samples=300 observations=25988 ordered_pairs=2274244 coarse_pairs=75788 fine_pairs=3272 aggregation_milli=5298 fine_milli=11114 encounter_milli=2097
+world condition=E seed=0x0000000000000009 population=48 extinct=false samples=300 observations=17935 ordered_pairs=1121068 coarse_pairs=18272 fine_pairs=1244 aggregation_milli=2232 fine_milli=7544 encounter_milli=3378
+world condition=E seed=0x000000000000000a population=59 extinct=false samples=300 observations=22420 ordered_pairs=1689242 coarse_pairs=52880 fine_pairs=2178 aggregation_milli=4946 fine_milli=9924 encounter_milli=2006
+world condition=E seed=0x000000000000000b population=62 extinct=false samples=300 observations=23004 ordered_pairs=1805872 coarse_pairs=33064 fine_pairs=2028 aggregation_milli=3057 fine_milli=9579 encounter_milli=3132
+world condition=E seed=0x000000000000000c population=83 extinct=false samples=300 observations=25913 ordered_pairs=2244768 coarse_pairs=57014 fine_pairs=2704 aggregation_milli=3301 fine_milli=7777 encounter_milli=2355
+world condition=E seed=0x000000000000000d population=35 extinct=false samples=300 observations=16125 ordered_pairs=931170 coarse_pairs=31076 fine_pairs=1372 aggregation_milli=3036 fine_milli=6148 encounter_milli=2024
+world condition=E seed=0x000000000000000e population=44 extinct=false samples=300 observations=18658 ordered_pairs=1195152 coarse_pairs=20968 fine_pairs=1340 aggregation_milli=2578 fine_milli=8178 encounter_milli=3170
+world condition=E seed=0x000000000000000f population=50 extinct=false samples=300 observations=19735 ordered_pairs=1356386 coarse_pairs=29256 fine_pairs=2220 aggregation_milli=3062 fine_milli=10767 encounter_milli=3515
+world condition=E seed=0x0000000000000010 population=18 extinct=false samples=300 observations=10640 ordered_pairs=422790 coarse_pairs=7398 fine_pairs=692 aggregation_milli=2677 fine_milli=11943 encounter_milli=4461
+contrast index=aggregation treatment=A control=B pairs=16 reaching_sesoi_any=16 reaching_sesoi_directed=15 required=11 positive=1 p_milli=0 mean_diff_milli=-2578 median_diff_milli=-1728 ci95_milli=[-3723,-1558] mean_rel_milli=-424 ci90_rel_milli=[-521,-320] equivalent=false passes=true
+contrast index=encounter treatment=A control=B pairs=16 reaching_sesoi_any=13 reaching_sesoi_directed=12 required=11 positive=1 p_milli=38 mean_diff_milli=-771 median_diff_milli=-690 ci95_milli=[-1189,-372] mean_rel_milli=-349 ci90_rel_milli=[-495,-200] equivalent=false passes=true
+contrast index=aggregation treatment=C control=B pairs=16 reaching_sesoi_any=11 reaching_sesoi_directed=10 required=11 positive=5 p_milli=227 mean_diff_milli=-1237 median_diff_milli=-1402 ci95_milli=[-2072,-422] mean_rel_milli=-199 ci90_rel_milli=[-309,-83] equivalent=false passes=false
+contrast index=encounter treatment=C control=B pairs=16 reaching_sesoi_any=12 reaching_sesoi_directed=4 required=11 positive=11 p_milli=989 mean_diff_milli=262 median_diff_milli=86 ci95_milli=[-29,574] mean_rel_milli=161 ci90_rel_milli=[34,293] equivalent=false passes=false
+contrast index=aggregation treatment=D control=B pairs=16 reaching_sesoi_any=12 reaching_sesoi_directed=7 required=11 positive=9 p_milli=772 mean_diff_milli=-216 median_diff_milli=56 ci95_milli=[-859,365] mean_rel_milli=14 ci90_rel_milli=[-86,119] equivalent=false passes=false
+contrast index=encounter treatment=D control=B pairs=16 reaching_sesoi_any=9 reaching_sesoi_directed=2 required=11 positive=9 p_milli=999 mean_diff_milli=319 median_diff_milli=7 ci95_milli=[24,664] mean_rel_milli=167 ci90_rel_milli=[39,308] equivalent=false passes=false
+contrast index=aggregation treatment=E control=B pairs=16 reaching_sesoi_any=13 reaching_sesoi_directed=12 required=11 positive=2 p_milli=38 mean_diff_milli=-2048 median_diff_milli=-1679 ci95_milli=[-3280,-1020] mean_rel_milli=-316 ci90_rel_milli=[-424,-205] equivalent=false passes=true
+contrast index=encounter treatment=E control=B pairs=16 reaching_sesoi_any=11 reaching_sesoi_directed=0 required=11 positive=14 p_milli=1000 mean_diff_milli=932 median_diff_milli=698 ci95_milli=[528,1350] mean_rel_milli=477 ci90_rel_milli=[294,674] equivalent=false passes=false
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=30 required=20 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=40 required=27 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=50 required=34 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=60 required=40 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=80 required=54 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=100 required=67 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=120 required=80 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=150 required=100 power_milli=1000
+power index=aggregation treatment=A control=B pilot_pairs=16 pilot_rate_milli=937 worlds=200 required=134 power_milli=1000
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=30 required=20 power_milli=899
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=40 required=27 power_milli=897
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=50 required=34 power_milli=901
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=60 required=40 power_milli=941
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=80 required=54 power_milli=953
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=100 required=67 power_milli=967
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=120 required=80 power_milli=984
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=150 required=100 power_milli=993
+power index=encounter treatment=A control=B pilot_pairs=16 pilot_rate_milli=750 worlds=200 required=134 power_milli=996
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=30 required=20 power_milli=400
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=40 required=27 power_milli=316
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=50 required=34 power_milli=254
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=60 required=40 power_milli=294
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=80 required=54 power_milli=207
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=100 required=67 power_milli=201
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=120 required=80 power_milli=199
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=150 required=100 power_milli=172
+power index=aggregation treatment=C control=B pilot_pairs=16 pilot_rate_milli=625 worlds=200 required=134 power_milli=108
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=30 required=20 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=40 required=27 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=50 required=34 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=60 required=40 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=80 required=54 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=100 required=67 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=120 required=80 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=150 required=100 power_milli=0
+power index=encounter treatment=C control=B pilot_pairs=16 pilot_rate_milli=250 worlds=200 required=134 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=30 required=20 power_milli=8
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=40 required=27 power_milli=2
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=50 required=34 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=60 required=40 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=80 required=54 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=100 required=67 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=120 required=80 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=150 required=100 power_milli=0
+power index=aggregation treatment=D control=B pilot_pairs=16 pilot_rate_milli=437 worlds=200 required=134 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=30 required=20 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=40 required=27 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=50 required=34 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=60 required=40 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=80 required=54 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=100 required=67 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=120 required=80 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=150 required=100 power_milli=0
+power index=encounter treatment=D control=B pilot_pairs=16 pilot_rate_milli=125 worlds=200 required=134 power_milli=0
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=30 required=20 power_milli=893
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=40 required=27 power_milli=903
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=50 required=34 power_milli=902
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=60 required=40 power_milli=942
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=80 required=54 power_milli=955
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=100 required=67 power_milli=969
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=120 required=80 power_milli=985
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=150 required=100 power_milli=994
+power index=aggregation treatment=E control=B pilot_pairs=16 pilot_rate_milli=750 worlds=200 required=134 power_milli=995
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=30 required=20 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=40 required=27 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=50 required=34 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=60 required=40 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=80 required=54 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=100 required=67 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=120 required=80 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=150 required=100 power_milli=0
+power index=encounter treatment=E control=B pilot_pairs=16 pilot_rate_milli=0 worlds=200 required=134 power_milli=0

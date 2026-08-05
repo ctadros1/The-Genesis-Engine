@@ -74,6 +74,7 @@ fn run() -> Result<(), String> {
         Some("compare") => command_compare(args.collect()),
         Some("batch") => command_batch(parse_options(args.collect())?),
         Some("report") => command_report(parse_options(args.collect())?),
+        Some("spatial") => command_spatial(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -91,6 +92,7 @@ fn usage() -> String {
         "       lifesim compare SUMMARY_A SUMMARY_B\n",
         "       lifesim batch --campaign FILE --output DIR [--workers N] [--no-preflight]\n",
         "       lifesim report --manifest FILE [--baseline CONDITION]\n",
+        "       lifesim spatial --manifest FILE --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX] [--power]\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2\n",
@@ -130,6 +132,10 @@ struct Options {
     manifest: Option<PathBuf>,
     baseline: Option<String>,
     workers: Option<usize>,
+    burn_in: Option<u64>,
+    sesoi: Option<i64>,
+    analysis_seed: Option<u64>,
+    power: bool,
 }
 
 fn parse_options(args: Vec<String>) -> Result<Options, String> {
@@ -149,6 +155,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--no-preflight" {
             options.no_preflight = true;
+            index += 1;
+            continue;
+        }
+        if name == "--power" {
+            options.power = true;
             index += 1;
             continue;
         }
@@ -182,6 +193,9 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--manifest" => options.manifest = Some(PathBuf::from(value)),
             "--baseline" => options.baseline = Some(value.clone()),
             "--workers" => options.workers = Some(parse_number(name, value)?),
+            "--burn-in" => options.burn_in = Some(parse_number(name, value)?),
+            "--sesoi" => options.sesoi = Some(parse_number::<i64>(name, value)?),
+            "--analysis-seed" => options.analysis_seed = Some(parse_seed(value)?),
             _ => return Err(format!("unknown option {name}\n{}", usage())),
         }
         index += 2;
@@ -626,6 +640,111 @@ fn command_report(options: Options) -> Result<(), String> {
     let report = sim_experiment::compare(&manifest, options.baseline.as_deref())
         .map_err(|refusal| refusal.to_string())?;
     print!("{}", report.render());
+    Ok(())
+}
+
+/// Phase 7 C7.1: the world-level spatial-structure indices and their
+/// seed-paired contrasts against a baseline condition.
+///
+/// Every condition other than the baseline is contrasted against it. The
+/// analysis plan (burn-in, scales, SESOI, decision bar, bootstrap seed) is
+/// echoed into the report so a reader can check it was not tuned after the
+/// data was seen.
+fn command_spatial(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("spatial requires --manifest\n{}", usage()))?;
+    let baseline = options
+        .baseline
+        .as_deref()
+        .ok_or_else(|| format!("spatial requires --baseline\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    let mut plan = sim_analysis::SpatialPlan::default();
+    if let Some(burn_in) = options.burn_in {
+        plan.burn_in_ticks = burn_in;
+    }
+    if let Some(sesoi) = options.sesoi {
+        plan.sesoi_milli = sesoi;
+    }
+    if let Some(seed) = options.analysis_seed {
+        plan.analysis_seed = seed;
+    }
+
+    let worlds = sim_analysis::analyse_worlds(&manifest, directory, &plan)
+        .map_err(|error| error.to_string())?;
+    if !manifest
+        .campaign
+        .conditions
+        .iter()
+        .any(|condition| condition.name == baseline)
+    {
+        return Err(format!("no condition named '{baseline}' in this campaign"));
+    }
+
+    let contrasts: Vec<sim_analysis::Contrast> = manifest
+        .campaign
+        .conditions
+        .iter()
+        .filter(|condition| condition.name != baseline)
+        .map(|condition| sim_analysis::contrast(&worlds, &condition.name, baseline, &plan))
+        .collect();
+
+    let report = sim_analysis::SpatialReport {
+        campaign_id: manifest.campaign.id.clone(),
+        plan,
+        index_version: sim_analysis::SPATIAL_INDEX_VERSION.to_owned(),
+        stats_version: sim_analysis::PAIRED_STATS_VERSION.to_owned(),
+        worlds: worlds.clone(),
+        contrasts,
+    };
+    print!("{}", sim_analysis::render(&report));
+
+    if options.power {
+        for condition in manifest
+            .campaign
+            .conditions
+            .iter()
+            .filter(|condition| condition.name != baseline)
+        {
+            for (label, kind) in [
+                ("aggregation", sim_analysis::IndexKind::Aggregation),
+                ("encounter", sim_analysis::IndexKind::Encounter),
+            ] {
+                let pairs = sim_analysis::pairs_for(&worlds, &condition.name, baseline, kind);
+                let rate = sim_analysis::observed_success_rate_milli(
+                    &pairs,
+                    plan.sesoi_milli,
+                    plan.direction,
+                );
+                let curve = sim_analysis::power_curve(
+                    &pairs,
+                    plan.sesoi_milli,
+                    plan.direction,
+                    &[30, 40, 50, 60, 80, 100, 120, 150, 200],
+                    plan.required_worlds,
+                    plan.analysis_seed,
+                );
+                for point in &curve {
+                    println!(
+                        "power index={} treatment={} control={} pilot_pairs={} \
+                         pilot_rate_milli={} worlds={} required={} power_milli={}",
+                        label,
+                        condition.name,
+                        baseline,
+                        pairs.len(),
+                        rate,
+                        point.worlds,
+                        point.required,
+                        point.power_milli,
+                    );
+                }
+            }
+        }
+    }
     Ok(())
 }
 

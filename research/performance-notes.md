@@ -423,6 +423,65 @@ The operational consequence is that a Phase 6 campaign must either use the
 Phase 5's preflight makes that visible before compute is spent rather than
 after, which is exactly what it exists for.
 
+## Phase 7 Local Record
+
+Benchmark ID: `phase7-local-20260805T025643Z`, benchmark schema 4, baseline
+`phase5-local-20260804T210059Z`. macOS 26.5 arm64, Apple M3 Pro, Rust 1.97.1
+release with thin LTO. 256x256, 4,000 measured ticks after 500 warm-up.
+
+The plan's Benchmark Impact section predicted contest would land on exactly
+two phases: `apply` gains intent resolution against neighbours and `sense`
+gains threat estimation. It does, and nothing else moves.
+
+**Contest changes the population, so raw microseconds per phase are not a
+like-for-like comparison** - contest-enabled at the 2,000 tier shows a
+*faster* whole tick (221.9 us against 301.7) purely because it is running
+531 organisms instead of 781. Everything below is therefore normalized per
+1,000 organisms, and the zero-damage condition is included because it does
+contest's work at close to the baseline's population.
+
+### Per-phase cost, microseconds per 1,000 organisms, 500 tier
+
+| Phase | Contest off | Contest on | Zero damage | Change |
+|---|---:|---:|---:|---|
+| spatial_index | 11.67 | 12.58 | 12.16 | flat |
+| **sense** | **44.29** | **60.28** | **62.75** | **+36% to +42%** |
+| controllers | 209.05 | 206.76 | 216.27 | flat |
+| **apply** | **21.43** | **27.78** | **28.77** | **+30% to +34%** |
+| lifecycle | 1.67 | 1.84 | 1.74 | flat |
+
+`environment` is a per-cell scan, not per-organism, so its per-1,000 figure
+moves with population and carries no information here; its absolute p50 is
+49.0, 49.2, and 49.5 us across the three conditions, which is flat.
+
+### Carcass entity-count effect, measured separately
+
+| Decay setting | Carcasses held | Whole tick p50 (us) |
+|---|---:|---:|
+| Fast (0.5/s) | 1 | 96.04 |
+| Default (0.05/s) | 1 | 98.62 |
+| None | 51 | 100.50 |
+
+Roughly 1.9 us for 50 extra carcasses, about 0.04 us each, against a 98 us
+tick. Carcasses are not a cost worth managing at this scale. **The
+`max_carcasses` cap is untested by this benchmark**: the table peaked at 51
+entries, so the small-cap condition (64) never bound and measured the same
+thing as the no-decay condition. Exercising the cap needs a world that
+generates carcasses faster than this one does.
+
+Raw records under `benchmarks/raw/phase7-local-20260805T025643Z/`
+(intentionally ignored).
+
+## Phase 7 Campaign Cost
+
+Not a per-phase benchmark; the wall-clock cost of the C7.1 confirmatory
+campaign, recorded because it sets what a Phase 8 campaign can afford.
+300 worlds (5 conditions x 60 seeds) at 20,000 ticks with spatial sampling
+every 50 ticks: **123.5 s wall at 8 workers, 48,601 aggregate ticks/s**,
+producing 198 MB of `.alss` sample files. The same campaign without spatial
+sampling ran at 69,102 aggregate ticks/s, so sampling costs roughly 30
+percent of campaign throughput at this cadence and population.
+
 ## Required Record Format
 
 | Field | Required Value |

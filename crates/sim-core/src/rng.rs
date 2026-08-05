@@ -33,6 +33,12 @@ pub enum RngSystem {
     /// origin modes cannot shift an existing `random` world's founder
     /// sequence.
     FounderSeed = 22,
+    /// Offline analysis resampling: bootstrap intervals and simulation-based
+    /// power (Phase 7). **No tick ever draws on this stream.** It lives here
+    /// only so that offline resampling uses the same audited derivation as
+    /// everything else and a report reproduces bit-for-bit; ADR-0016 still
+    /// forbids anything computed from it reaching world state.
+    Analysis = 41,
 }
 
 /// Derive one deterministic 64-bit value for a named draw.
