@@ -116,7 +116,7 @@ pub use structmut::{
 pub use world::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation, Ledger,
     MAX_EVENTS_PER_TICK, MetricsSnapshot, NewWorldError, NoopObserver, OrganismDetail,
-    Phase2Detail, RenderEntity, TickObserver, TickPhase, World,
+    Phase2Detail, RenderEntity, StructureSample, TickObserver, TickPhase, World,
 };
 pub use worldgen::{Terrain, WORLDGEN_VERSION, WorldGenError, generate as generate_terrain};
 

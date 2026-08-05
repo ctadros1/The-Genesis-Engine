@@ -54,6 +54,10 @@ pub struct RunResult {
     /// Phase 9 structure metrics. Zero when schema 2 is disabled.
     pub mean_nodes_milli: u64,
     pub mean_edges_milli: u64,
+    /// C9.1's stated quantity: the median, which moves only once half the
+    /// population has diverged from the founding topology.
+    pub median_nodes: u64,
+    pub median_edges: u64,
     pub distinct_structures: u64,
     pub structural_mutations_applied: u64,
     pub structural_mutations_rejected: u64,
@@ -343,7 +347,8 @@ fn render_run(run: &RunResult) -> String {
          attacks={} deaths_by_damage={} carcasses={} spatial_samples={} \
          deaths_senescence={} deaths_extrinsic={} deaths_juvenile={} \
          max_age_observed={} capacity_milli={} mean_nodes_milli={} \
-         mean_edges_milli={} distinct_structures={} structmut_applied={} \
+         mean_edges_milli={} median_nodes={} median_edges={} \
+         distinct_structures={} structmut_applied={} \
          structmut_rejected={}",
         run.index,
         run.condition,
@@ -376,6 +381,8 @@ fn render_run(run: &RunResult) -> String {
         run.total_capacity_milli,
         run.mean_nodes_milli,
         run.mean_edges_milli,
+        run.median_nodes,
+        run.median_edges,
         run.distinct_structures,
         run.structural_mutations_applied,
         run.structural_mutations_rejected,
@@ -383,12 +390,14 @@ fn render_run(run: &RunResult) -> String {
     if let Some(phase2) = run.phase2.as_ref() {
         line.push_str(&format!(
             " paired_births={} pair_rejected_capacity={} pair_rejected_placement={} \
-             pair_rejected_energy={} controller_faults={} mutated_trait_genes={} \
+             pair_rejected_energy={} pair_rejected_nonviable={} controller_faults={} \
+             mutated_trait_genes={} \
              mutated_neural_genes={}",
             phase2.paired_births_total,
             phase2.pair_rejected_capacity_total,
             phase2.pair_rejected_placement_total,
             phase2.pair_rejected_energy_total,
+            phase2.pair_rejected_nonviable_total,
             phase2.controller_faults_total,
             phase2.mutated_trait_genes_total,
             phase2.mutated_neural_genes_total,
@@ -450,6 +459,7 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
             pair_rejected_capacity_total: number("pair_rejected_capacity").unwrap_or(0),
             pair_rejected_placement_total: number("pair_rejected_placement").unwrap_or(0),
             pair_rejected_energy_total: number("pair_rejected_energy").unwrap_or(0),
+            pair_rejected_nonviable_total: number("pair_rejected_nonviable").unwrap_or(0),
             controller_faults_total: number("controller_faults").unwrap_or(0),
             mutated_trait_genes_total: number("mutated_trait_genes").unwrap_or(0),
             mutated_neural_genes_total: number("mutated_neural_genes").unwrap_or(0),
@@ -495,6 +505,8 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         total_capacity_milli: signed("capacity_milli").unwrap_or(0),
         mean_nodes_milli: number("mean_nodes_milli").unwrap_or(0),
         mean_edges_milli: number("mean_edges_milli").unwrap_or(0),
+        median_nodes: number("median_nodes").unwrap_or(0),
+        median_edges: number("median_edges").unwrap_or(0),
         distinct_structures: number("distinct_structures").unwrap_or(0),
         structural_mutations_applied: number("structmut_applied").unwrap_or(0),
         structural_mutations_rejected: number("structmut_rejected").unwrap_or(0),

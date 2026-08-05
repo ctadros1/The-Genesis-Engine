@@ -22,6 +22,7 @@ use crate::phase2::{
 use crate::physiology::{HazardOutcome, PhysiologyState};
 use crate::rng::{RngSystem, named_random};
 use crate::schema2::Schema2State;
+use crate::structmut::MutationCounters;
 use crate::worldgen::{self, Terrain, WorldGenError};
 use std::fmt;
 
@@ -279,6 +280,14 @@ pub struct Phase2Detail {
     pub genome_hash: u64,
 }
 
+/// One organism's expressed structure and encoded genome size.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct StructureSample {
+    pub nodes: u32,
+    pub edges: u32,
+    pub genome_bytes: u32,
+}
+
 /// Point-in-time observable metrics (pure data; no clock). The Phase 2
 /// fields are zero when Phase 2 is disabled.
 #[derive(Clone, Copy, Debug)]
@@ -317,9 +326,15 @@ pub struct MetricsSnapshot {
     pub total_capacity_milli: i64,
     /// Phase 9. Zero when the schema-2 section is disabled.
     pub genome2_enabled: bool,
-    /// Mean expressed node and edge count, milli-units. C9.1's quantity.
+    /// Mean expressed node and edge count, milli-units: the sensitive
+    /// detector of any structural change at all.
     pub mean_nodes_milli: u64,
     pub mean_edges_milli: u64,
+    /// Median expressed node and edge count, whole counts. C9.1's stated
+    /// quantity, which asks the stricter question of whether structural
+    /// change reached half the population.
+    pub median_nodes: u64,
+    pub median_edges: u64,
     /// Distinct `(node count, edge count)` pairs among living organisms.
     pub distinct_structures: u64,
     pub structural_mutations_applied: u64,
@@ -838,6 +853,14 @@ impl World {
                 .schema2
                 .as_ref()
                 .map_or(0, |state| state.mean_structure_milli().1),
+            median_nodes: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.median_structure().0),
+            median_edges: self
+                .schema2
+                .as_ref()
+                .map_or(0, |state| state.median_structure().1),
             distinct_structures: self
                 .schema2
                 .as_ref()
@@ -946,6 +969,42 @@ impl World {
 
     pub fn genome2_enabled(&self) -> bool {
         self.schema2.is_some()
+    }
+
+    /// Per-organism expressed structure and encoded genome size, in entity-ID
+    /// order. Empty when schema 2 is disabled.
+    ///
+    /// The world-level metrics carry a mean, a median, and a distinct count,
+    /// which are three summaries of one distribution; C9.1 asks whether
+    /// structure spread through the population and C9.8 asks what the tail
+    /// costs to store, and neither question can be answered from a summary.
+    /// This is observation, never instruction: it hands out counts and
+    /// returns nothing to the kernel.
+    pub fn structure_census(&self) -> Vec<StructureSample> {
+        let Some(state) = self.schema2.as_ref() else {
+            return Vec::new();
+        };
+        state
+            .plans
+            .iter()
+            .zip(state.genomes.iter())
+            .map(|(plan, genome)| StructureSample {
+                nodes: plan.node_count() as u32,
+                edges: plan.edge_count() as u32,
+                genome_bytes: genome.encode().len() as u32,
+            })
+            .collect()
+    }
+
+    /// Structural-mutation outcomes broken out by operator and by rejection
+    /// reason. `None` when schema 2 is disabled.
+    ///
+    /// The aggregate applied/rejected pair in [`MetricsSnapshot`] cannot
+    /// distinguish "duplication never fired" from "duplication fired and was
+    /// rejected every time", and a null result about structural evolution
+    /// means opposite things in those two worlds.
+    pub fn mutation_counters(&self) -> Option<MutationCounters> {
+        self.schema2.as_ref().map(|state| state.counters)
     }
 
     pub fn physiology_enabled(&self) -> bool {
@@ -2167,15 +2226,29 @@ impl World {
                             next_tick,
                             child_id,
                         );
-                        crate::structmut::mutate(
-                            &mut child,
-                            &self.config.genome2.mutation,
-                            &self.config.genome2.caps,
-                            &mut state.counters,
-                            self.config.world_seed,
-                            next_tick,
-                            child_id,
-                        );
+                        // Mutate only a viable recombinant. The operators
+                        // validate their own output and revert on failure,
+                        // so handing them an already-invalid genome makes
+                        // every one of them report *its input* as invalid -
+                        // which is how `rejected_invalid` filled up with
+                        // dangling references that insertion had not caused.
+                        // An operator's rejection counter is only readable
+                        // if the operator is the one thing that could have
+                        // caused it. Skipping the draws costs nothing:
+                        // streams are keyed by draw index, not consumed in
+                        // sequence, so an unmutated child leaves every other
+                        // organism's draws exactly where they were.
+                        if child.validate_structure(&self.config.genome2.caps).is_ok() {
+                            crate::structmut::mutate(
+                                &mut child,
+                                &self.config.genome2.mutation,
+                                &self.config.genome2.caps,
+                                &mut state.counters,
+                                self.config.world_seed,
+                                next_tick,
+                                child_id,
+                            );
+                        }
                         let hash = crate::checksum::fnv1a64(&child.encode());
                         let traits = resolve_traits(&child.express_traits());
                         (
@@ -2200,6 +2273,29 @@ impl World {
                         (Some(genome), variation, None, hash, phenotype)
                     }
                 };
+            // **Meiosis can produce a genome that is not viable, and nothing
+            // upstream checks.** Crossover cuts at an arbitrary point, so a
+            // gamete can carry an edge whose node stayed on the other side
+            // of the cut; the mutation operators validate their own output
+            // but never the recombinant they were handed. Refused here,
+            // alongside the other pairing rejections and before either
+            // parent pays, so the failure costs a mating opportunity rather
+            // than corrupting the ledger.
+            if let Some(child) = child_genome2.as_ref()
+                && child.validate_structure(&self.config.genome2.caps).is_err()
+            {
+                p2.counters.pair_rejected_nonviable_total += 1;
+                self.push_event(
+                    next_tick,
+                    EventKind::PairRejected {
+                        parent_a,
+                        parent_b,
+                        reason: PairRejectReason::Nonviable,
+                    },
+                );
+                continue;
+            }
+
             let heading = (named_random(
                 self.config.world_seed,
                 next_tick,
@@ -2715,6 +2811,33 @@ impl World {
         if let Some(mut p2) = self.phase2.take() {
             let pending: Vec<PendingChild> = std::mem::take(&mut p2.pending);
             for child in pending {
+                // **Admit the schema-2 organism before anything else is
+                // pushed.** A child whose merged network will not compile is
+                // refused rather than admitted, exactly as a malformed
+                // genome is - but the refusal has to happen before the core
+                // arrays grow, or the refusal is itself the corruption.
+                //
+                // This block used to push `ids`, positions, energy and age
+                // first and `continue` afterwards, under a comment asserting
+                // the arrays stayed in lockstep. They did not: the organism
+                // arrays grew by one and the phase-2 arrays did not, and the
+                // next sense phase indexed `phenotypes` out of bounds. It
+                // took a merged-network zero-delay cycle to reach, which
+                // `validate_structure` now rejects outright, so this path
+                // should be unreachable - which is exactly why it must be
+                // counted rather than trusted.
+                if let (Some(state), Some(genome2)) = (self.schema2.as_mut(), child.genome2.clone())
+                    && !state.push_organism(genome2)
+                {
+                    // The parents already paid at pairing time and the
+                    // investment was riding on this child, so refusing the
+                    // birth without booking that energy would leave the
+                    // ledger short by exactly the child's endowment. A
+                    // failed pregnancy costs what it cost.
+                    self.ledger.spent_milli += i128::from(child.energy_milli);
+                    p2.counters.pair_rejected_nonviable_total += 1;
+                    continue;
+                }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;
                 self.ids.push(id);
@@ -2723,16 +2846,6 @@ impl World {
                 self.energy_milli.push(child.energy_milli);
                 self.age_ticks.push(0);
                 self.cooldown_ticks.push(0);
-                if let (Some(state), Some(genome2)) = (self.schema2.as_mut(), child.genome2.clone())
-                    && !state.push_organism(genome2)
-                {
-                    // A child whose network will not compile is rejected
-                    // rather than admitted, exactly as a malformed genome
-                    // is. The operators cannot produce one, so this is an
-                    // assertion; if it ever fires the birth is dropped and
-                    // the arrays stay in lockstep.
-                    continue;
-                }
                 p2.push_organism(
                     child.genome,
                     child.genome_hash,

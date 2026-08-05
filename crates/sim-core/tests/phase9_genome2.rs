@@ -826,3 +826,73 @@ fn c9_7_a_schema_1_world_still_reproduces_its_fixture() {
     }
     assert_eq!(world.state_checksum(), 0xff9d_fcff_5dff_bf42);
 }
+
+// --- The merged network is what gets compiled ------------------------------
+
+#[test]
+fn a_cycle_that_exists_only_in_the_merged_network_is_rejected() {
+    // Two haplotypes, each acyclic on its own, whose expression is a cycle.
+    // Haplotype 0 keeps the founder's `A -> B -> C`; haplotype 1 carries a
+    // single `C -> A` and nothing else. Neither is a cycle. The expressed
+    // network is the union over homology IDs, so it is `A -> B -> C -> A`,
+    // which under the hybrid update has no fixed point.
+    //
+    // This was a live defect, not a hypothetical. Validation checked each
+    // haplotype separately while `compile` saw the union, so a genome could
+    // validate and then fail to compile - and the birth path admitted a
+    // half-registered organism when it did, panicking in the next sense
+    // phase. Meiosis assembles exactly this combination from two viable
+    // parents whenever a crossover splits a reciprocal edge pair.
+    const EDGE_CA: u32 = STRUCTURAL_HOMOLOGY_BASE + 55;
+    let mut subject = genome();
+    subject.haplotypes[1] = Haplotype {
+        chromosomes: vec![vec![
+            trait_locus(0, 0.5, 1.0),
+            node(NODE_A, NodeRole::Input, 0.0),
+            node(NODE_B, NodeRole::Hidden, 0.25),
+            node(NODE_C, NodeRole::Output, 0.0),
+            edge(EDGE_CA, NODE_C, NODE_A, 1.0, 0),
+            binding(BIND_IN, NODE_A, 1, 1.0),
+            binding(BIND_OUT, NODE_C, 101, 1.0),
+        ]],
+    };
+
+    // Each haplotype alone is acyclic: proved by validating a genome made of
+    // two copies of it, rather than asserted.
+    let only_left = Genome2 {
+        haplotypes: [subject.haplotypes[0].clone(), subject.haplotypes[0].clone()],
+    };
+    let only_right = Genome2 {
+        haplotypes: [subject.haplotypes[1].clone(), subject.haplotypes[1].clone()],
+    };
+    assert!(only_left.validate_structure(&caps()).is_ok());
+    assert!(only_right.validate_structure(&caps()).is_ok());
+
+    expect_error(
+        subject,
+        |error| matches!(error, Genome2Error::ZeroDelayCycle),
+        "merged zero-delay cycle",
+    );
+}
+
+#[test]
+fn a_delayed_edge_still_closes_no_cycle_when_merged() {
+    // The control for the test above: the same reciprocal pair, but the
+    // returning edge is delayed. Delayed edges read prior-state buffers, so
+    // they are exactly what makes recurrence legal, and rejecting this one
+    // would refuse every recurrent topology the phase exists to allow.
+    const EDGE_CA: u32 = STRUCTURAL_HOMOLOGY_BASE + 55;
+    let mut subject = genome();
+    subject.haplotypes[1].chromosomes[0].push(edge(
+        EDGE_CA,
+        NODE_C,
+        NODE_A,
+        1.0,
+        EDGE_FLAG_DELAYED,
+    ));
+    subject.haplotypes[1].chromosomes[0].sort_by_key(|locus| locus.homology_id);
+    assert!(
+        subject.validate_structure(&caps()).is_ok(),
+        "a delayed return edge was refused, which would ban recurrence"
+    );
+}

@@ -757,6 +757,35 @@ impl Genome2 {
         if total_edges > caps.max_edges * 2 {
             return Err(Genome2Error::CapExceeded("max_edges"));
         }
+
+        // **The merged network is the one that gets compiled, so it is the
+        // one that has to be acyclic.** The per-haplotype check above is
+        // necessary and not sufficient: haplotype 0 carrying `A -> B` and
+        // haplotype 1 carrying `B -> A` is two acyclic haplotypes whose
+        // expression is a zero-delay cycle, because expression takes the
+        // union over homology IDs. Meiosis assembles exactly that
+        // combination from two viable parents, and insertion makes it easy
+        // to reach, so this is a routine genetic event rather than a corner
+        // case.
+        //
+        // Found by a campaign-scale run panicking in the sense phase: the
+        // genome validated, `compile` refused it, and the birth path
+        // admitted a half-registered organism. Checked here by expressing
+        // and re-running the same Kahn pass, rather than by a second merge
+        // rule written to match, because two merge rules that must agree
+        // forever is how this bug would come back.
+        let network = self.express_network();
+        let mut nodes: Vec<u32> = network.nodes.iter().map(|node| node.homology_id).collect();
+        nodes.sort_unstable();
+        let edges: Vec<(u32, u32)> = network
+            .edges
+            .iter()
+            .filter(|edge| !edge.delayed && !edge.disabled)
+            .map(|edge| (edge.source, edge.target))
+            .collect();
+        if has_cycle(&nodes, &edges) {
+            return Err(Genome2Error::ZeroDelayCycle);
+        }
         Ok(())
     }
 }

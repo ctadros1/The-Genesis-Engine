@@ -228,3 +228,85 @@ fn a_schema_2_organism_reports_its_expressed_traits() {
         phase2.trait_genes
     );
 }
+
+#[test]
+fn a_nonviable_recombinant_is_refused_at_pairing_rather_than_admitted() {
+    // Crossover cuts a haplotype at an arbitrary point, so a gamete can
+    // carry an edge whose node stayed on the other side of the cut. That is
+    // a real genetic outcome, and the world has to refuse the child without
+    // damaging itself.
+    //
+    // The regression this pins: the birth path used to push `ids`,
+    // positions, energy and age *before* asking whether the schema-2
+    // organism could be admitted, then `continue` on refusal - under a
+    // comment claiming the arrays stayed in lockstep. They did not. The
+    // organism arrays grew by one, the phase-2 arrays did not, and the next
+    // sense phase indexed `phenotypes` out of bounds and panicked. It took a
+    // campaign-scale run to surface, so the assertion below deliberately
+    // uses a configuration where the path is reached within seconds.
+    let mut config = schema2_config(7);
+    config.initial_organisms = 200;
+    config.max_entities = 40_000;
+    config.cell_capacity_milli = 120_000;
+    config.physiology.enabled = true;
+    config.genome2.mutation.duplication_q16 = 6_554;
+    config.genome2.mutation.insertion_q16 = 6_554;
+
+    let world = run(config, 10_000);
+    let counters = world.phase2_counters();
+    assert!(
+        counters.pair_rejected_nonviable_total > 0,
+        "no non-viable recombinant occurred, so this test proved nothing; \
+         it must exercise the refusal path to be a regression test for it"
+    );
+    assert!(world.population() > 0, "the world went extinct");
+    // The refusal must cost a mating opportunity and nothing else: the
+    // energy ledger and population accounting are checked by
+    // `check_invariants` inside `run`, which is the actual assertion here.
+    assert!(world.metrics().births_total > 0);
+}
+
+#[test]
+fn the_invalid_counter_stays_zero_because_it_is_the_bug_signal() {
+    // `RejectReason::Invalid` is documented as "a bug report, not a runtime
+    // condition". That is only true if the expected conditions have their
+    // own reasons, and twice they did not.
+    //
+    // Transposition on a single-chromosome genome - which every founder is -
+    // was counted as `Invalid`, so a clean run reported hundreds of them.
+    // Then the operators were handed recombinants nobody had validated, so
+    // each operator reported *its input* as invalid. Both are now typed:
+    // `Inapplicable` for a precondition that does not hold, and refusal at
+    // pairing for a recombinant that is not viable.
+    let mut config = schema2_config(13);
+    config.cells_x = 64;
+    config.cells_y = 64;
+    config.cell_capacity_milli = 120_000;
+    config.genome2.mutation.duplication_q16 = 6_554;
+    config.genome2.mutation.insertion_q16 = 6_554;
+    config.genome2.mutation.transposition_q16 = 6_554;
+
+    let world = run(config, 10_000);
+    let counters = world.mutation_counters().expect("schema 2 is enabled");
+    assert_eq!(
+        counters.rejected_invalid, 0,
+        "an operator produced a genome that failed validation for a reason \
+         nothing anticipated, which is a bug rather than a run outcome"
+    );
+    // ...and the run must actually have attempted the operators, or a zero
+    // above would only mean nothing happened.
+    assert!(
+        counters.total_applied() > 0,
+        "no mutation was applied, so the zero above is vacuous"
+    );
+    assert!(
+        counters.rejected_inapplicable > 0,
+        "transposition never reported a precondition failure, so the \
+         reason that replaced the miscount is not being exercised"
+    );
+    assert_eq!(
+        counters.transposition_applied, 0,
+        "a single-chromosome founder cannot transpose; if this ever becomes \
+         non-zero the founder layout changed and C9.5's operator set with it"
+    );
+}

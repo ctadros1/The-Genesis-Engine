@@ -623,6 +623,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.u64(phase2.counters.pair_rejected_capacity_total);
         section.u64(phase2.counters.pair_rejected_placement_total);
         section.u64(phase2.counters.pair_rejected_energy_total);
+        section.u64(phase2.counters.pair_rejected_nonviable_total);
         section.u64(phase2.counters.controller_faults_total);
         section.u64(phase2.counters.mutated_trait_genes_total);
         section.u64(phase2.counters.mutated_neural_genes_total);
@@ -859,15 +860,20 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     return Err(CodecError::DuplicateSection(tag));
                 }
                 let count = reader.u64()?;
-                // Exact per-organism record size plus the trailing counters.
+                // Cap the declared count against the body before allocating,
+                // exactly as the climate section does. This was an equality
+                // against `8 + 7 * 8` - the count word plus one word per
+                // Phase 2 counter - and adding an eighth counter broke every
+                // snapshot in the build, which is the same way the climate
+                // check broke when its section grew. A bound is what the
+                // fail-closed rule actually needs; exactness is still
+                // enforced, by the trailing-bytes check every section runs at
+                // the end, and that check needs no editing when a field is
+                // added.
                 let record_len =
                     ((TRAIT_COUNT + sim_core::NEURAL_COUNT + 4) * 4 + 2 + 8 + 4 + 16 + 4 + 4 + 8)
                         as u64;
-                if count
-                    .checked_mul(record_len)
-                    .and_then(|body_len| body_len.checked_add(8 + 7 * 8))
-                    != Some(body.len() as u64)
-                {
+                if count.checked_mul(record_len) > Some(body.len() as u64) {
                     return Err(CodecError::ValueOutOfRange("phase2 count"));
                 }
                 let count = count as usize;
@@ -913,6 +919,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     pair_rejected_capacity_total: reader.u64()?,
                     pair_rejected_placement_total: reader.u64()?,
                     pair_rejected_energy_total: reader.u64()?,
+                    pair_rejected_nonviable_total: reader.u64()?,
                     controller_faults_total: reader.u64()?,
                     mutated_trait_genes_total: reader.u64()?,
                     mutated_neural_genes_total: reader.u64()?,

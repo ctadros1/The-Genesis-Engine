@@ -41,6 +41,17 @@ pub enum PairRejectReason {
     Capacity,
     Placement,
     Energy,
+    /// The schema-2 child genome is not structurally viable.
+    ///
+    /// A real genetic outcome rather than an error. Crossover cuts a
+    /// haplotype at an arbitrary point, so a gamete can carry an edge whose
+    /// source or target node stayed behind on the other side; the zygote
+    /// then has a dangling reference and no network. Recombination in real
+    /// organisms produces inviable products for structurally similar
+    /// reasons, and the honest response is to refuse the child and count it,
+    /// not to repair the genome into something neither parent could have
+    /// produced.
+    Nonviable,
 }
 
 impl PairRejectReason {
@@ -49,6 +60,7 @@ impl PairRejectReason {
             PairRejectReason::Capacity => "capacity",
             PairRejectReason::Placement => "placement",
             PairRejectReason::Energy => "energy",
+            PairRejectReason::Nonviable => "nonviable",
         }
     }
 }
@@ -60,6 +72,13 @@ pub struct Phase2Counters {
     pub pair_rejected_capacity_total: u64,
     pub pair_rejected_placement_total: u64,
     pub pair_rejected_energy_total: u64,
+    /// Schema-2 children whose merged network would not compile, refused at
+    /// admission. Should stay zero: `validate_structure` rejects the only
+    /// known cause (a zero-delay cycle formed by merging two acyclic
+    /// haplotypes) before the genome ever reaches here. Counted anyway,
+    /// because "should stay zero" is a claim a campaign has to be able to
+    /// check rather than assume.
+    pub pair_rejected_nonviable_total: u64,
     pub controller_faults_total: u64,
     pub mutated_trait_genes_total: u64,
     pub mutated_neural_genes_total: u64,

@@ -114,9 +114,14 @@ impl Schema2State {
     /// Mean expressed node and edge count across living organisms, in
     /// milli-units so the figure is exact.
     ///
-    /// This is C9.1's quantity. Reported as a mean rather than a median
-    /// because the world-level statistic is what enters the analysis and a
-    /// mean is exactly reconstructible from counts.
+    /// Reported alongside [`Self::median_structure`], not instead of it. The
+    /// mean is exactly reconstructible from counts and moves continuously,
+    /// so it is the sensitive detector of *any* structural change; the
+    /// median is C9.1's stated quantity and answers the different question
+    /// of whether change reached most of the population. A single duplicate
+    /// carried by three organisms in a thousand moves the mean and not the
+    /// median, and the two disagreeing that way is a finding rather than a
+    /// discrepancy.
     pub fn mean_structure_milli(&self) -> (u64, u64) {
         if self.plans.is_empty() {
             return (0, 0);
@@ -125,6 +130,31 @@ impl Schema2State {
         let edges: u64 = self.plans.iter().map(|plan| plan.edge_count() as u64).sum();
         let count = self.plans.len() as u64;
         (nodes * 1_000 / count, edges * 1_000 / count)
+    }
+
+    /// Median expressed node and edge count across living organisms.
+    ///
+    /// C9.1's stated quantity, and stated for a reason: evolved topology
+    /// sizes are expected to be right-skewed, so one runaway lineage can
+    /// carry a mean that describes no organism actually alive. These are
+    /// whole counts, not milli-units, because a median of integers is an
+    /// integer - the lower of the two middle values at even population,
+    /// which is the same convention `world_demography` uses for lifespan.
+    ///
+    /// Note what a median can and cannot show. Founders are three nodes and
+    /// two edges, so the median moves only once *half* the population has
+    /// diverged from the founding topology. That is a deliberately hard bar
+    /// and it is the bar C9.1 sets.
+    pub fn median_structure(&self) -> (u64, u64) {
+        if self.plans.is_empty() {
+            return (0, 0);
+        }
+        let mut nodes: Vec<usize> = self.plans.iter().map(|plan| plan.node_count()).collect();
+        let mut edges: Vec<usize> = self.plans.iter().map(|plan| plan.edge_count()).collect();
+        nodes.sort_unstable();
+        edges.sort_unstable();
+        let middle = (nodes.len() - 1) / 2;
+        (nodes[middle] as u64, edges[middle] as u64)
     }
 
     /// Distinct `(node count, edge count)` pairs among living organisms.

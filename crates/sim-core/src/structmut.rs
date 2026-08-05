@@ -74,6 +74,29 @@ pub enum RejectReason {
     NoBindings,
     /// Would have exceeded a structural cap.
     Cap,
+    /// The operator's precondition does not hold for this genome, so there
+    /// was nothing to do: transposition on a single-chromosome genome,
+    /// insertion when fewer than two nodes exist to connect, a run drawn
+    /// from an empty chromosome.
+    ///
+    /// Split out from [`Self::Invalid`] because conflating the two made the
+    /// bug-report counter useless. A single-chromosome founder cannot
+    /// transpose - position within a chromosome is determined by homology
+    /// order, so the operator has no meaning until a genome has two linkage
+    /// groups - and counting that expected, permanent condition as a
+    /// validation failure had `rejected_invalid` climbing into the hundreds
+    /// in every run, which is exactly the signal that was supposed to mean
+    /// something had gone wrong.
+    Inapplicable,
+    /// The result would have contained a zero-delay cycle.
+    ///
+    /// Expected, not a bug: insertion adds an edge between two nodes drawn
+    /// at random, and whether that edge closes a cycle is not knowable
+    /// without checking. Duplication can reach it too, by copying an edge
+    /// whose reversed partner is already present on the other haplotype.
+    /// Counted separately for the same reason [`Self::Inapplicable`] is -
+    /// so that [`Self::Invalid`] keeps meaning "something is wrong".
+    Cycle,
     /// The result failed validation for any other reason. This is the
     /// backstop: the operators are written to produce valid records by
     /// construction, so a count here is a bug report, not a runtime
@@ -96,6 +119,8 @@ pub struct MutationCounters {
     pub rejected_min_nodes: u64,
     pub rejected_no_bindings: u64,
     pub rejected_cap: u64,
+    pub rejected_inapplicable: u64,
+    pub rejected_cycle: u64,
     pub rejected_invalid: u64,
 }
 
@@ -114,6 +139,8 @@ impl MutationCounters {
             + self.rejected_min_nodes
             + self.rejected_no_bindings
             + self.rejected_cap
+            + self.rejected_inapplicable
+            + self.rejected_cycle
             + self.rejected_invalid
     }
 
@@ -124,6 +151,8 @@ impl MutationCounters {
             RejectReason::MinNodes => self.rejected_min_nodes += 1,
             RejectReason::NoBindings => self.rejected_no_bindings += 1,
             RejectReason::Cap => self.rejected_cap += 1,
+            RejectReason::Inapplicable => self.rejected_inapplicable += 1,
+            RejectReason::Cycle => self.rejected_cycle += 1,
             RejectReason::Invalid => self.rejected_invalid += 1,
         }
     }
@@ -141,6 +170,8 @@ impl MutationCounters {
             self.rejected_min_nodes,
             self.rejected_no_bindings,
             self.rejected_cap,
+            self.rejected_inapplicable,
+            self.rejected_cycle,
             self.rejected_invalid,
         ] {
             hasher.update_u64(value);
@@ -339,7 +370,7 @@ fn duplicate(
     let (haplotype, chromosome) = chromosome_pick(genome, draw(1));
     let source = genome.haplotypes[haplotype].chromosomes[chromosome].clone();
     if source.is_empty() {
-        return Err(RejectReason::Invalid);
+        return Err(RejectReason::Inapplicable);
     }
     // The run starts among the **structural** loci, never the traits.
     //
@@ -354,7 +385,7 @@ fn duplicate(
     let first_structural = source
         .iter()
         .position(|locus| !matches!(locus.kind, LocusKind::Trait { .. }))
-        .ok_or(RejectReason::Invalid)?;
+        .ok_or(RejectReason::Inapplicable)?;
     let structural_len = source.len() - first_structural;
     let run = 1 + (draw(2) as usize) % config.max_run.max(1) as usize;
     let start = first_structural + (draw(3) as usize) % structural_len;
@@ -403,9 +434,12 @@ fn duplicate(
     let loci = &mut genome.haplotypes[haplotype].chromosomes[chromosome];
     loci.extend(copies);
     loci.sort_unstable_by_key(|locus| locus.homology_id);
-    genome
-        .validate_structure(caps)
-        .map_err(|_| RejectReason::Invalid)
+    match genome.validate_structure(caps) {
+        Ok(()) => Ok(()),
+        Err(crate::genome2::Genome2Error::ZeroDelayCycle) => Err(RejectReason::Cycle),
+        Err(crate::genome2::Genome2Error::CapExceeded(_)) => Err(RejectReason::Cap),
+        Err(_) => Err(RejectReason::Invalid),
+    }
 }
 
 fn delete(
@@ -417,7 +451,7 @@ fn delete(
     let (haplotype, chromosome) = chromosome_pick(genome, draw(17));
     let before = genome.haplotypes[haplotype].chromosomes[chromosome].clone();
     if before.is_empty() {
-        return Err(RejectReason::Invalid);
+        return Err(RejectReason::Inapplicable);
     }
     let run = 1 + (draw(18) as usize) % config.max_run.max(1) as usize;
     let start = (draw(19) as usize) % before.len();
@@ -460,6 +494,7 @@ fn delete(
         // orphaning case, which is what this reason exists to name.
         Err(crate::genome2::Genome2Error::DanglingReference { .. }) => Err(RejectReason::Orphaned),
         Err(crate::genome2::Genome2Error::CapExceeded(_)) => Err(RejectReason::Cap),
+        Err(crate::genome2::Genome2Error::ZeroDelayCycle) => Err(RejectReason::Cycle),
         Err(_) => Err(RejectReason::Invalid),
     }
 }
@@ -481,12 +516,12 @@ fn insert(
         .map(|locus| locus.homology_id)
         .collect();
     if nodes.len() < 2 {
-        return Err(RejectReason::Invalid);
+        return Err(RejectReason::Inapplicable);
     }
     let source = nodes[(draw(34) as usize) % nodes.len()];
     let target = nodes[(draw(35) as usize) % nodes.len()];
     if source == target {
-        return Err(RejectReason::Invalid);
+        return Err(RejectReason::Inapplicable);
     }
     let fresh = derive_homology_id(source ^ target, OP_INSERTION, 0, 0);
     let occupied = genome.haplotypes[haplotype]
@@ -524,6 +559,8 @@ fn insert(
             Ok(())
         }
         Err(crate::genome2::Genome2Error::CapExceeded(_)) => Err(RejectReason::Cap),
+        Err(crate::genome2::Genome2Error::ZeroDelayCycle) => Err(RejectReason::Cycle),
+        Err(crate::genome2::Genome2Error::DanglingReference { .. }) => Err(RejectReason::Orphaned),
         Err(_) => Err(RejectReason::Invalid),
     }
 }
@@ -539,14 +576,14 @@ fn transpose(
     // because position is determined by homology order rather than by array
     // index, so a single-chromosome genome cannot transpose.
     if genome.chromosome_count() < 2 {
-        return Err(RejectReason::Invalid);
+        return Err(RejectReason::Inapplicable);
     }
     let (haplotype, from) = chromosome_pick(genome, draw(49));
     let to = (from + 1 + (draw(50) as usize) % (genome.chromosome_count() - 1))
         % genome.chromosome_count();
     let source = genome.haplotypes[haplotype].chromosomes[from].clone();
     if source.is_empty() {
-        return Err(RejectReason::Invalid);
+        return Err(RejectReason::Inapplicable);
     }
     let run = 1 + (draw(51) as usize) % config.max_run.max(1) as usize;
     let start = (draw(52) as usize) % source.len();
@@ -580,6 +617,7 @@ fn transpose(
         }
         Err(crate::genome2::Genome2Error::DanglingReference { .. }) => Err(RejectReason::Orphaned),
         Err(crate::genome2::Genome2Error::CapExceeded(_)) => Err(RejectReason::Cap),
+        Err(crate::genome2::Genome2Error::ZeroDelayCycle) => Err(RejectReason::Cycle),
         Err(_) => Err(RejectReason::Invalid),
     }
 }

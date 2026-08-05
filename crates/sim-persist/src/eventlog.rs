@@ -158,6 +158,7 @@ pub struct ReconstructedCounters {
     pub pair_rejected_capacity_total: u64,
     pub pair_rejected_placement_total: u64,
     pub pair_rejected_energy_total: u64,
+    pub pair_rejected_nonviable_total: u64,
     pub controller_faults_total: u64,
     pub mutated_trait_genes_total: u64,
     pub mutated_neural_genes_total: u64,
@@ -205,6 +206,7 @@ impl ReconstructedCounters {
                 PairRejectReason::Capacity => self.pair_rejected_capacity_total += 1,
                 PairRejectReason::Placement => self.pair_rejected_placement_total += 1,
                 PairRejectReason::Energy => self.pair_rejected_energy_total += 1,
+                PairRejectReason::Nonviable => self.pair_rejected_nonviable_total += 1,
             },
             // The kernel sums neutralized values, not fault events.
             EventKind::ControllerFault { faults, .. } => {
@@ -328,6 +330,11 @@ impl EventLogScan {
                     phase2.pair_rejected_energy_total,
                 ),
                 (
+                    "pair_rejected_nonviable_total",
+                    reconstructed.pair_rejected_nonviable_total,
+                    phase2.pair_rejected_nonviable_total,
+                ),
+                (
                     "controller_faults_total",
                     reconstructed.controller_faults_total,
                     phase2.controller_faults_total,
@@ -349,6 +356,7 @@ impl EventLogScan {
                     || reconstructed.pair_rejected_capacity_total != 0
                     || reconstructed.pair_rejected_placement_total != 0
                     || reconstructed.pair_rejected_energy_total != 0
+                    || reconstructed.pair_rejected_nonviable_total != 0
                     || reconstructed.controller_faults_total != 0
                 {
                     return Err(ReconcileError::Phase2SectionMismatch);
@@ -471,6 +479,7 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
                 PairRejectReason::Capacity => 0,
                 PairRejectReason::Placement => 1,
                 PairRejectReason::Energy => 2,
+                PairRejectReason::Nonviable => 3,
             });
         }
         EventKind::ControllerFault { id, faults } => {
@@ -716,6 +725,7 @@ fn decode_events_into(
                     0 => PairRejectReason::Capacity,
                     1 => PairRejectReason::Placement,
                     2 => PairRejectReason::Energy,
+                    3 => PairRejectReason::Nonviable,
                     _ => return Err(EventLogError::ValueOutOfRange("pair reject reason")),
                 };
                 EventKind::PairRejected {
@@ -1293,6 +1303,7 @@ mod tests {
             pair_rejected_capacity_total: 0,
             pair_rejected_placement_total: 0,
             pair_rejected_energy_total: 3,
+            pair_rejected_nonviable_total: 0,
             controller_faults_total: 6,
             mutated_trait_genes_total: 9,
             mutated_neural_genes_total: 33,
@@ -1343,6 +1354,7 @@ mod tests {
             pair_rejected_capacity_total: 0,
             pair_rejected_placement_total: 0,
             pair_rejected_energy_total: 1,
+            pair_rejected_nonviable_total: 0,
             controller_faults_total: 2,
             mutated_trait_genes_total: 3,
             mutated_neural_genes_total: 11,

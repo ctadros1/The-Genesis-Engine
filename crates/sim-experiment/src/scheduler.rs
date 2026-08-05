@@ -372,6 +372,8 @@ fn execute_unit(
         total_capacity_milli: metrics.total_capacity_milli,
         mean_nodes_milli: metrics.mean_nodes_milli,
         mean_edges_milli: metrics.mean_edges_milli,
+        median_nodes: metrics.median_nodes,
+        median_edges: metrics.median_edges,
         distinct_structures: metrics.distinct_structures,
         structural_mutations_applied: metrics.structural_mutations_applied,
         structural_mutations_rejected: metrics.structural_mutations_rejected,
