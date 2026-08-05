@@ -25,6 +25,7 @@ mod contest;
 mod controller;
 mod genome;
 mod genome2;
+mod meiosis;
 mod origin;
 mod phase2;
 mod physiology;
@@ -32,6 +33,7 @@ mod registry;
 mod rng;
 mod save;
 mod similarity;
+mod structmut;
 mod world;
 mod worldgen;
 
@@ -71,6 +73,10 @@ pub use genome2::{
     blend_by_dominance, derive_gene_lineage_id, derive_homology_id, derive_mutation_event_id,
     registry_versions,
 };
+pub use meiosis::{
+    Gamete, InheritanceMode, MAX_EXTRA_CROSSOVERS, MEIOSIS_POLICY_VERSION, MeiosisConfig, gamete,
+    recombine as recombine2,
+};
 pub use origin::{
     Archetype, Founder, MAX_ARCHETYPES, MAX_DEMES, ORIGIN_POLICY_VERSION, OriginError, OriginMode,
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
@@ -92,6 +98,10 @@ pub use save::{
     SAVE_STATE_VERSION, SaveState,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
+pub use structmut::{
+    DUPLICATE_SPAN, MutationConfig, MutationCounters, OP_DELETION, OP_DUPLICATION, OP_INSERTION,
+    OP_POINT, OP_TRANSPOSITION, RejectReason, STRUCTMUT_POLICY_VERSION, minimal_founder, mutate,
+};
 pub use world::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation, Ledger,
     MAX_EVENTS_PER_TICK, MetricsSnapshot, NewWorldError, NoopObserver, OrganismDetail,

@@ -1,11 +1,13 @@
 # Phase 9: Evolvable Genome, Diploid Genetics And Variable Topology
 
-Status: **in progress. 2026-08-05.** First slice landed: channel and
-activation registries, the schema 2 genome model and derived identity, the
-ALG2 bounded fail-closed codec with every structural invariant, and diploid
-expression with evolvable dominance. **Not implemented**: meiosis,
-structural mutation, controller v2 evaluation, world integration, and every
-campaign criterion. Decisions D-066, D-067. Policy versions `lifesim-genome-v2`,
+Status: **in progress. 2026-08-05.** Landed: channel and activation
+registries, the schema 2 genome model and derived identity, the ALG2
+bounded fail-closed codec with every structural invariant, diploid
+expression with evolvable dominance, meiosis with all four inheritance
+modes, and the five mutation operators with typed counted rejection.
+**Not implemented**: controller v2 evaluation, world integration, and the
+campaign criteria C9.1, C9.2, C9.5, C9.8. Decisions D-066 to D-069. Policy
+versions `lifesim-genome-v2`,
 `lifesim-controller-v2`, `lifesim-meiosis-v1`, `lifesim-structmut-v1`.
 Specification: `specifications/genome-schema-2.md`.
 
@@ -118,13 +120,22 @@ Criteria:
       population and median lifespan under A are within the stated tolerance
       of B, or better, in at least 20 of 30 seeds. A topology system that
       simply kills worlds has not delivered evolvability.
-- [ ] **C9.3 Mendelian validation.** Under condition C, at a marked neutral
+- [x] **C9.3 Mendelian validation. Met** (`phase9_genetics.rs`), and it
+      **found two real defects first** (D-068): transmission of a
+      heterozygote's second allele measured 0.14 rather than 0.5. After the
+      corrections, Hardy-Weinberg holds across 40 generations of random
+      mating at n=600 with mean deviation under 0.06, and direct
+      measurement puts allele transmission inside 0.47 to 0.53. Under condition C, at a marked neutral
       biallelic locus under random mating with selection disabled, observed
       genotype frequencies match Hardy-Weinberg expectation within sampling
       error across at least 30 generations, in at least 25 of 30 seeds. This
       is the check that meiosis is unbiased and that dominance expression is
       not silently distorting allele transmission.
-- [ ] **C9.4 Linkage validation.** Under condition C, the association
+- [x] **C9.4 Linkage validation. Met** (`phase9_genetics.rs`). The measured
+      map function is 0.016, 0.031, 0.063, 0.117, 0.206, 0.360, 0.493 at
+      distances 1 to 63: monotone, asymptotic to one half, and never above
+      it. Recombination fractions exceeded 0.5 before the four-strand
+      correction (D-068). Under condition C, the association
       between alleles at two marked loci decays with their map distance at
       the rate the configured crossover model predicts, within stated
       tolerance. This is the check that crossover does what the spec says

@@ -24,6 +24,14 @@ pub enum RngSystem {
     /// Contest tie lottery, damage variance, and retreat resolution
     /// (Phase 7). Every draw is keyed on the canonical pair key.
     Contest = 7,
+    /// Crossover counts and positions during gamete formation (Phase 9).
+    /// Keyed on the prospective child and on the parent's haplotype slot, so
+    /// the two parents' gametes are not drawn from the same sequence.
+    Meiosis = 8,
+    /// Structural mutation: duplication, deletion, insertion, transposition
+    /// (Phase 9). Value mutation stays on `Recombination` (6), preserving
+    /// the existing convention.
+    StructuralMutation = 9,
     /// Age-dependent and extrinsic mortality hazard draws (Phase 8).
     /// Senescence uses draw index 0 and extrinsic hazard draw index 1;
     /// those indices are as permanent as the stream value itself, because
