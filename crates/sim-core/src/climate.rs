@@ -345,7 +345,17 @@ fn water_distance(terrain: &Terrain) -> Vec<u32> {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClimateState {
     pub moisture_milli: Vec<i64>,
-    /// Biome per cell, derived. Recomputed on load, never trusted.
+    /// Biome per cell.
+    ///
+    /// **This is stored state, not a derived field**, despite being a
+    /// classification. Reclassification runs on a cadence
+    /// (`reclassify_interval_ticks`), so the map a world holds reflects the
+    /// temperature at the *last* reclassification tick, not the current
+    /// one. Recomputing it on load therefore produces a different map from
+    /// the one the world had, and the restored world diverges on the next
+    /// tick through the biome-dependent carrying capacity. D-047's
+    /// "derived, recomputed on load" category covers pure functions of
+    /// current state; a cached classification on a cadence is not one.
     pub biome: Vec<Biome>,
     /// Static per-cell holding capacity, Q16. Derived from relief and sea
     /// proximity; the fixed point of the exchange below is moisture
@@ -597,13 +607,14 @@ impl ClimateWorld {
         terrain: &Terrain,
         config: &SimConfig,
         moisture_milli: Vec<i64>,
+        biome: Vec<Biome>,
         capacity_loss_milli: i128,
         tick: u64,
     ) -> Result<Self, ClimateError> {
         let climate = &config.climate;
         let base = ClimateBase::derive(terrain, config);
         let mut state = ClimateState::new(terrain, &base, config);
-        if moisture_milli.len() != state.moisture_milli.len() {
+        if moisture_milli.len() != state.moisture_milli.len() || biome.len() != state.biome.len() {
             return Err(ClimateError::MoistureOutOfBounds {
                 cell: moisture_milli.len(),
                 milli: 0,
@@ -611,7 +622,11 @@ impl ClimateWorld {
         }
         state.moisture_milli = moisture_milli;
         state.validate_bounds(climate)?;
-        state.reclassify(terrain, &base, climate, tick);
+        // The biome map is restored, never reclassified here. Reclassifying
+        // at the restore tick would produce the map the world *would* have
+        // had if it had reclassified now, which is not the map it has.
+        state.biome = biome;
+        let _ = tick;
         Ok(Self {
             base,
             state,

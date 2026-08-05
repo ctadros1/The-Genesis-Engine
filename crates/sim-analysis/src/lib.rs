@@ -11,10 +11,15 @@
 //! streams keyed on a recorded analysis seed. A report is a pure function
 //! of the campaign artifacts plus that seed.
 
+mod demography;
 mod paired;
 mod power;
 mod spatial;
 
+pub use demography::{
+    DEMOGRAPHY_INDEX_VERSION, WorldDemography, spearman_milli, thermal_match_rho_milli,
+    world_demography,
+};
 pub use paired::{
     BOOTSTRAP_RESAMPLES, Direction, PAIRED_STATS_VERSION, Pair, PairedResult,
     binomial_upper_tail_milli, compare, median_milli,
@@ -23,6 +28,7 @@ pub use power::{
     POWER_TRIALS, POWER_VERSION, PowerPoint, observed_success_rate_milli, power_curve, required_at,
     smallest_adequate,
 };
+pub use sim_core::preferred_temperature_milli;
 pub use spatial::{
     COARSE_SCALE_CELLS, FINE_SCALE_CELLS, IndexRefusal, QuadratGrid, SPATIAL_INDEX_VERSION,
     WorldIndex, world_index,

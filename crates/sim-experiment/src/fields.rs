@@ -253,6 +253,21 @@ config_fields! {
     "contest.carcass_decay_q16_per_s" => contest.carcass_decay_q16_per_s: u32,
     "contest.carcass_reach_m" => contest.carcass_reach_m: u32,
     "contest.local_depletion_milli" => contest.local_depletion_milli: i64,
+    "physiology.enabled" => physiology.enabled: bool,
+    "physiology.allometry_enabled" => physiology.allometry_enabled: bool,
+    "physiology.basal_exponent_quarters" => physiology.basal_exponent_quarters: u32,
+    "physiology.thermoregulation_enabled" => physiology.thermoregulation_enabled: bool,
+    "physiology.thermal_pref_low_milli" => physiology.thermal_pref_low_milli: i32,
+    "physiology.thermal_pref_high_milli" => physiology.thermal_pref_high_milli: i32,
+    "physiology.thermal_neutral_band_milli" => physiology.thermal_neutral_band_milli: i32,
+    "physiology.thermal_cost_milli_per_s_per_degree" => physiology.thermal_cost_milli_per_s_per_degree: i64,
+    "physiology.senescence_enabled" => physiology.senescence_enabled: bool,
+    "physiology.senescence_onset_ticks" => physiology.senescence_onset_ticks: u64,
+    "physiology.senescence_scale_ticks" => physiology.senescence_scale_ticks: u64,
+    "physiology.senescence_power" => physiology.senescence_power: u32,
+    "physiology.senescence_hazard_q16_per_s" => physiology.senescence_hazard_q16_per_s: u32,
+    "physiology.extrinsic_hazard_q16_per_s" => physiology.extrinsic_hazard_q16_per_s: u32,
+    "physiology.juvenile_hazard_multiplier_q16" => physiology.juvenile_hazard_multiplier_q16: u32,
 }
 
 /// Every field on which two configs disagree, in `FIELD_NAMES` order.

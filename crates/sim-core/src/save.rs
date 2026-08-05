@@ -12,6 +12,7 @@ use crate::config::SimConfig;
 use crate::contest::{Carcass, ContestState};
 use crate::genome::{Genome, MEMORY_VALUES, Phenotype};
 use crate::phase2::{Phase2Counters, Phase2State};
+use crate::physiology::PhysiologyState;
 use crate::world::{Counters, Ledger, World};
 use std::fmt;
 
@@ -45,6 +46,8 @@ pub struct Phase2SaveState {
 #[derive(Clone, Debug, PartialEq)]
 pub struct ClimateSaveState {
     pub moisture_milli: Vec<i64>,
+    /// Stored rather than recomputed: see `ClimateState::biome`.
+    pub biome: Vec<crate::climate::Biome>,
     pub capacity_loss_milli: i128,
 }
 
@@ -61,6 +64,17 @@ pub struct ContestSaveState {
     pub damage_dealt_milli: i128,
     pub deaths_by_damage_total: u64,
     pub healed_milli: i128,
+}
+
+/// Stored Phase 8 physiology state.
+#[derive(Clone, Debug, PartialEq)]
+pub struct PhysiologySaveState {
+    pub cumulative_hazard_q16: Vec<i64>,
+    pub deaths_senescence_total: u64,
+    pub deaths_extrinsic_total: u64,
+    pub deaths_juvenile_total: u64,
+    pub thermal_cost_milli: i128,
+    pub allometric_cost_milli: i128,
 }
 
 /// Complete logical world state in stable field order.
@@ -88,6 +102,8 @@ pub struct SaveState {
     pub climate: Option<ClimateSaveState>,
     /// Present exactly when the config's contest section is enabled.
     pub contest: Option<ContestSaveState>,
+    /// Present exactly when the config's physiology section is enabled.
+    pub physiology: Option<PhysiologySaveState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -152,6 +168,7 @@ impl World {
                 .climate_state()
                 .map(|climate: &ClimateWorld| ClimateSaveState {
                     moisture_milli: climate.state.moisture_milli.clone(),
+                    biome: climate.state.biome.clone(),
                     capacity_loss_milli: climate.capacity_loss_milli,
                 }),
             contest: self
@@ -167,6 +184,16 @@ impl World {
                     damage_dealt_milli: contest.damage_dealt_milli,
                     deaths_by_damage_total: contest.deaths_by_damage_total,
                     healed_milli: contest.healed_milli,
+                }),
+            physiology: self
+                .physiology_state()
+                .map(|physiology| PhysiologySaveState {
+                    cumulative_hazard_q16: physiology.cumulative_hazard_q16.clone(),
+                    deaths_senescence_total: physiology.deaths_senescence_total,
+                    deaths_extrinsic_total: physiology.deaths_extrinsic_total,
+                    deaths_juvenile_total: physiology.deaths_juvenile_total,
+                    thermal_cost_milli: physiology.thermal_cost_milli,
+                    allometric_cost_milli: physiology.allometric_cost_milli,
                 }),
         }
     }
@@ -280,6 +307,7 @@ impl World {
                         world.terrain(),
                         world.config(),
                         climate.moisture_milli,
+                        climate.biome,
                         climate.capacity_loss_milli,
                         state.tick,
                     )
@@ -333,6 +361,31 @@ impl World {
             }
         };
 
+        // Physiology presence must match the configuration too, and the
+        // hazard array is length-checked against the population before use.
+        let rebuilt_physiology = match (world.physiology_enabled(), state.physiology) {
+            (true, Some(physiology)) => {
+                same_length(
+                    physiology.cumulative_hazard_q16.len(),
+                    "physiology.cumulative_hazard_q16",
+                )?;
+                let mut rebuilt = PhysiologyState::with_capacity(population);
+                rebuilt.cumulative_hazard_q16 = physiology.cumulative_hazard_q16;
+                rebuilt.deaths_senescence_total = physiology.deaths_senescence_total;
+                rebuilt.deaths_extrinsic_total = physiology.deaths_extrinsic_total;
+                rebuilt.deaths_juvenile_total = physiology.deaths_juvenile_total;
+                rebuilt.thermal_cost_milli = physiology.thermal_cost_milli;
+                rebuilt.allometric_cost_milli = physiology.allometric_cost_milli;
+                Some(rebuilt)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "physiology section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -350,6 +403,7 @@ impl World {
             rebuilt_phase2,
             rebuilt_climate,
             rebuilt_contest,
+            rebuilt_physiology,
         );
 
         world

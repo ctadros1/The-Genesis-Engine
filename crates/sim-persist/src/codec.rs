@@ -24,7 +24,18 @@ use sim_core::{
 use std::fmt;
 
 pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
-pub const FORMAT_VERSION: u16 = 1;
+/// Format 2 adds the config sections that Phase 6, 7, and 8 introduced.
+///
+/// Format 1 encoded the config only as far as Phase 2, so every section
+/// added afterwards was silently dropped on save and restored at its
+/// default on load. For climate and contest the presence check in
+/// `World::from_state` turned that into a confusing restore failure; for
+/// the origin section, which has no presence check, it would have restored
+/// a *different config* with no error at all. There is no migration from 1:
+/// a format-1 file cannot say what its climate settings were, so inventing
+/// them is exactly the "never alter meaning during load" rule this crate
+/// exists to keep.
+pub const FORMAT_VERSION: u16 = 2;
 pub const FLAG_ZSTD: u32 = 1;
 const HEADER_LEN: usize = 112;
 const MAX_BUILD_LEN: usize = 64;
@@ -46,6 +57,9 @@ const SECTION_PHASE2: u16 = 6;
 const SECTION_CLIMATE: u16 = 7;
 /// Phase 7 contest. Optional on the same terms as Phase 2 and climate.
 const SECTION_CONTEST: u16 = 8;
+/// Phase 8 demography. Optional on the same terms. Tags are permanent and
+/// never reused, so a Phase 7 snapshot decodes unchanged.
+const SECTION_PHYSIOLOGY: u16 = 9;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodecError {
@@ -244,6 +258,107 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u32(phase2.cluster_threshold_q16);
     writer.u32(phase2.cluster_sample_max);
     writer.u32(phase2.cluster_neural_weight_q16);
+
+    // Phase 6 climate. Written unconditionally, unlike the *state*
+    // sections: a config is not optional, and a disabled section still has
+    // parameters that have to survive a round trip.
+    let climate = &config.climate;
+    writer.u8(u8::from(climate.enabled));
+    writer.u8(match climate.worldgen_version {
+        sim_core::WorldgenVersion::V1 => 1,
+        sim_core::WorldgenVersion::V2 => 2,
+    });
+    writer.i32(climate.base_temperature_milli);
+    writer.i32(climate.lapse_milli_per_full_elevation);
+    writer.i32(climate.latitude_amplitude_milli);
+    writer.u64(climate.season_period_ticks);
+    writer.i32(climate.season_amplitude_milli);
+    for value in climate.drift_period_ticks {
+        writer.u64(value);
+    }
+    for value in climate.drift_amplitude_milli {
+        writer.i32(value);
+    }
+    writer.i32(climate.temperature_min_milli);
+    writer.i32(climate.temperature_max_milli);
+    writer.i64(climate.initial_moisture_milli);
+    writer.i64(climate.coastal_moisture_bonus_milli);
+    writer.i64(climate.moisture_max_milli);
+    writer.i64(climate.moisture_ceiling_milli);
+    writer.u32(climate.sea_proximity_weight_q16);
+    writer.u32(climate.moisture_diffusion_q16);
+    writer.u32(climate.moisture_drain_weight);
+    writer.u32(climate.highland_elevation_q16);
+    writer.i64(climate.wetland_moisture_milli);
+    writer.i64(climate.arid_moisture_milli);
+    writer.i64(climate.forest_moisture_milli);
+    writer.i32(climate.forest_min_temperature_milli);
+    for value in climate.biome_capacity_q16 {
+        writer.u32(value);
+    }
+    writer.u64(climate.reclassify_interval_ticks);
+
+    // Phase 6 origin.
+    let origin = &config.origin;
+    writer.u8(match origin.mode {
+        sim_core::OriginMode::Random => 1,
+        sim_core::OriginMode::Seeded => 2,
+    });
+    writer.u32(origin.trait_low_q16);
+    writer.u32(origin.trait_span_q16);
+    writer.u32(origin.neural_span_q16);
+    writer.u32(origin.deme_count);
+    writer.u32(origin.deme_radius_m);
+    writer.u32(origin.deme_min_separation_m);
+    writer.u32(origin.deme_trait_spread_q16);
+    writer.u32(origin.archetype_count);
+    for archetype in &origin.archetypes {
+        writer.u32(u32::from(archetype.id));
+        for mean in archetype.trait_mean_q16 {
+            writer.u32(u32::from(mean));
+        }
+        writer.u32(u32::from(archetype.trait_spread_q16));
+        writer.u32(u32::from(archetype.neural_spread_q16));
+        writer.u32(u32::from(archetype.biome_affinity));
+    }
+
+    // Phase 7 contest.
+    let contest = &config.contest;
+    writer.u8(u8::from(contest.enabled));
+    writer.i64(contest.base_health_milli);
+    writer.i64(contest.damage_base_milli);
+    writer.u32(contest.damage_variance_q16);
+    writer.i64(contest.attack_cost_milli);
+    writer.u32(contest.attack_range_m);
+    writer.i32(contest.attack_threshold_q16);
+    writer.u64(contest.attack_cooldown_ticks);
+    writer.i64(contest.heal_milli_per_s);
+    writer.u32(contest.heal_energy_cost_q16);
+    writer.u32(contest.heal_energy_floor_q16);
+    writer.u32(contest.damage_decay_q16_per_s);
+    writer.u32(contest.carcass_energy_q16);
+    writer.u32(contest.carcass_decay_q16_per_s);
+    writer.u32(contest.carcass_reach_m);
+    writer.u32(contest.max_carcasses);
+    writer.i64(contest.local_depletion_milli);
+
+    // Phase 8 physiology.
+    let physiology = &config.physiology;
+    writer.u8(u8::from(physiology.enabled));
+    writer.u8(u8::from(physiology.allometry_enabled));
+    writer.u32(physiology.basal_exponent_quarters);
+    writer.u8(u8::from(physiology.thermoregulation_enabled));
+    writer.i32(physiology.thermal_pref_low_milli);
+    writer.i32(physiology.thermal_pref_high_milli);
+    writer.i32(physiology.thermal_neutral_band_milli);
+    writer.i64(physiology.thermal_cost_milli_per_s_per_degree);
+    writer.u8(u8::from(physiology.senescence_enabled));
+    writer.u64(physiology.senescence_onset_ticks);
+    writer.u64(physiology.senescence_scale_ticks);
+    writer.u32(physiology.senescence_power);
+    writer.u32(physiology.senescence_hazard_q16_per_s);
+    writer.u32(physiology.extrinsic_hazard_q16_per_s);
+    writer.u32(physiology.juvenile_hazard_multiplier_q16);
     writer.0
 }
 
@@ -293,6 +408,105 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.phase2.cluster_threshold_q16 = reader.u32()?;
     config.phase2.cluster_sample_max = reader.u32()?;
     config.phase2.cluster_neural_weight_q16 = reader.u32()?;
+
+    config.climate.enabled = reader.u8()? != 0;
+    config.climate.worldgen_version = match reader.u8()? {
+        1 => sim_core::WorldgenVersion::V1,
+        2 => sim_core::WorldgenVersion::V2,
+        _ => return Err(CodecError::ValueOutOfRange("worldgen_version")),
+    };
+    config.climate.base_temperature_milli = reader.i32()?;
+    config.climate.lapse_milli_per_full_elevation = reader.i32()?;
+    config.climate.latitude_amplitude_milli = reader.i32()?;
+    config.climate.season_period_ticks = reader.u64()?;
+    config.climate.season_amplitude_milli = reader.i32()?;
+    for index in 0..config.climate.drift_period_ticks.len() {
+        config.climate.drift_period_ticks[index] = reader.u64()?;
+    }
+    for index in 0..config.climate.drift_amplitude_milli.len() {
+        config.climate.drift_amplitude_milli[index] = reader.i32()?;
+    }
+    config.climate.temperature_min_milli = reader.i32()?;
+    config.climate.temperature_max_milli = reader.i32()?;
+    config.climate.initial_moisture_milli = reader.i64()?;
+    config.climate.coastal_moisture_bonus_milli = reader.i64()?;
+    config.climate.moisture_max_milli = reader.i64()?;
+    config.climate.moisture_ceiling_milli = reader.i64()?;
+    config.climate.sea_proximity_weight_q16 = reader.u32()?;
+    config.climate.moisture_diffusion_q16 = reader.u32()?;
+    config.climate.moisture_drain_weight = reader.u32()?;
+    config.climate.highland_elevation_q16 = reader.u32()?;
+    config.climate.wetland_moisture_milli = reader.i64()?;
+    config.climate.arid_moisture_milli = reader.i64()?;
+    config.climate.forest_moisture_milli = reader.i64()?;
+    config.climate.forest_min_temperature_milli = reader.i32()?;
+    for index in 0..config.climate.biome_capacity_q16.len() {
+        config.climate.biome_capacity_q16[index] = reader.u32()?;
+    }
+    config.climate.reclassify_interval_ticks = reader.u64()?;
+
+    config.origin.mode = match reader.u8()? {
+        1 => sim_core::OriginMode::Random,
+        2 => sim_core::OriginMode::Seeded,
+        _ => return Err(CodecError::ValueOutOfRange("origin_mode")),
+    };
+    config.origin.trait_low_q16 = reader.u32()?;
+    config.origin.trait_span_q16 = reader.u32()?;
+    config.origin.neural_span_q16 = reader.u32()?;
+    config.origin.deme_count = reader.u32()?;
+    config.origin.deme_radius_m = reader.u32()?;
+    config.origin.deme_min_separation_m = reader.u32()?;
+    config.origin.deme_trait_spread_q16 = reader.u32()?;
+    config.origin.archetype_count = reader.u32()?;
+    for index in 0..config.origin.archetypes.len() {
+        let archetype = &mut config.origin.archetypes[index];
+        archetype.id = u16::try_from(reader.u32()?)
+            .map_err(|_| CodecError::ValueOutOfRange("archetype id"))?;
+        for gene in 0..archetype.trait_mean_q16.len() {
+            archetype.trait_mean_q16[gene] = u16::try_from(reader.u32()?)
+                .map_err(|_| CodecError::ValueOutOfRange("archetype trait mean"))?;
+        }
+        archetype.trait_spread_q16 = u16::try_from(reader.u32()?)
+            .map_err(|_| CodecError::ValueOutOfRange("archetype trait spread"))?;
+        archetype.neural_spread_q16 = u16::try_from(reader.u32()?)
+            .map_err(|_| CodecError::ValueOutOfRange("archetype neural spread"))?;
+        archetype.biome_affinity = u8::try_from(reader.u32()?)
+            .map_err(|_| CodecError::ValueOutOfRange("archetype biome affinity"))?;
+    }
+
+    config.contest.enabled = reader.u8()? != 0;
+    config.contest.base_health_milli = reader.i64()?;
+    config.contest.damage_base_milli = reader.i64()?;
+    config.contest.damage_variance_q16 = reader.u32()?;
+    config.contest.attack_cost_milli = reader.i64()?;
+    config.contest.attack_range_m = reader.u32()?;
+    config.contest.attack_threshold_q16 = reader.i32()?;
+    config.contest.attack_cooldown_ticks = reader.u64()?;
+    config.contest.heal_milli_per_s = reader.i64()?;
+    config.contest.heal_energy_cost_q16 = reader.u32()?;
+    config.contest.heal_energy_floor_q16 = reader.u32()?;
+    config.contest.damage_decay_q16_per_s = reader.u32()?;
+    config.contest.carcass_energy_q16 = reader.u32()?;
+    config.contest.carcass_decay_q16_per_s = reader.u32()?;
+    config.contest.carcass_reach_m = reader.u32()?;
+    config.contest.max_carcasses = reader.u32()?;
+    config.contest.local_depletion_milli = reader.i64()?;
+
+    config.physiology.enabled = reader.u8()? != 0;
+    config.physiology.allometry_enabled = reader.u8()? != 0;
+    config.physiology.basal_exponent_quarters = reader.u32()?;
+    config.physiology.thermoregulation_enabled = reader.u8()? != 0;
+    config.physiology.thermal_pref_low_milli = reader.i32()?;
+    config.physiology.thermal_pref_high_milli = reader.i32()?;
+    config.physiology.thermal_neutral_band_milli = reader.i32()?;
+    config.physiology.thermal_cost_milli_per_s_per_degree = reader.i64()?;
+    config.physiology.senescence_enabled = reader.u8()? != 0;
+    config.physiology.senescence_onset_ticks = reader.u64()?;
+    config.physiology.senescence_scale_ticks = reader.u64()?;
+    config.physiology.senescence_power = reader.u32()?;
+    config.physiology.senescence_hazard_q16_per_s = reader.u32()?;
+    config.physiology.extrinsic_hazard_q16_per_s = reader.u32()?;
+    config.physiology.juvenile_hazard_multiplier_q16 = reader.u32()?;
     Ok(config)
 }
 
@@ -379,6 +593,13 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         for &value in &climate.moisture_milli {
             section.i64(value);
         }
+        // The biome map is stored state, not a derived field: it is a
+        // classification cached on a cadence, so recomputing it on load
+        // gives a different map and the restored world diverges.
+        section.u64(climate.biome.len() as u64);
+        for biome in &climate.biome {
+            section.u8(*biome as u8);
+        }
         section.i128(climate.capacity_loss_milli);
         write_section(&mut payload, SECTION_CLIMATE, section.0);
     }
@@ -406,6 +627,19 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.i128(contest.healed_milli);
         write_section(&mut payload, SECTION_CONTEST, section.0);
     }
+    if let Some(physiology) = state.physiology.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(physiology.cumulative_hazard_q16.len() as u64);
+        for &hazard in &physiology.cumulative_hazard_q16 {
+            section.i64(hazard);
+        }
+        section.u64(physiology.deaths_senescence_total);
+        section.u64(physiology.deaths_extrinsic_total);
+        section.u64(physiology.deaths_juvenile_total);
+        section.i128(physiology.thermal_cost_milli);
+        section.i128(physiology.allometric_cost_milli);
+        write_section(&mut payload, SECTION_PHYSIOLOGY, section.0);
+    }
     payload
 }
 
@@ -413,6 +647,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
     let mut offset = 0_usize;
     let mut config = None;
     let mut climate: Option<sim_core::ClimateSaveState> = None;
+    let mut physiology: Option<sim_core::PhysiologySaveState> = None;
     let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut meta: Option<(u64, bool, bool, u64, u64)> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -612,18 +847,33 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 }
                 let count = reader.u64()?;
                 // Cap the declared length against the section body before
-                // any allocation, exactly as every other section does.
-                if count.checked_mul(8).and_then(|len| len.checked_add(8 + 16))
-                    != Some(body.len() as u64)
-                {
+                // any allocation. A *cap* rather than an exact-length
+                // equality: the biome map that follows also contributes
+                // bytes, and an exact check here would have to be edited
+                // every time the section gains a field -- which is how it
+                // broke when it did. Exactness is still enforced, by the
+                // trailing-bytes check every section runs at the end.
+                if count.checked_mul(8) > Some(body.len() as u64) {
                     return Err(CodecError::ValueOutOfRange("climate count"));
                 }
                 let mut moisture_milli = Vec::with_capacity(count as usize);
                 for _ in 0..count {
                     moisture_milli.push(reader.i64()?);
                 }
+                let biome_count = reader.u64()?;
+                if biome_count > body.len() as u64 {
+                    return Err(CodecError::ValueOutOfRange("climate biome cells"));
+                }
+                let mut biome = Vec::with_capacity(biome_count as usize);
+                for _ in 0..biome_count {
+                    biome.push(
+                        sim_core::Biome::from_id(reader.u8()?)
+                            .ok_or(CodecError::ValueOutOfRange("climate biome id"))?,
+                    );
+                }
                 climate = Some(sim_core::ClimateSaveState {
                     moisture_milli,
+                    biome,
                     capacity_loss_milli: reader.i128()?,
                 });
             }
@@ -672,6 +922,28 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     healed_milli: reader.i128()?,
                 });
             }
+            SECTION_PHYSIOLOGY => {
+                if physiology.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let organisms = reader.u64()?;
+                // Cap before allocating: 8 bytes per organism.
+                if organisms.checked_mul(8) > Some(body.len() as u64) {
+                    return Err(CodecError::ValueOutOfRange("physiology organisms"));
+                }
+                let mut cumulative_hazard_q16 = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    cumulative_hazard_q16.push(reader.i64()?);
+                }
+                physiology = Some(sim_core::PhysiologySaveState {
+                    cumulative_hazard_q16,
+                    deaths_senescence_total: reader.u64()?,
+                    deaths_extrinsic_total: reader.u64()?,
+                    deaths_juvenile_total: reader.u64()?,
+                    thermal_cost_milli: reader.i128()?,
+                    allometric_cost_milli: reader.i128()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -707,6 +979,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
         phase2,
         climate,
         contest,
+        physiology,
     })
 }
 

@@ -182,6 +182,10 @@ impl ReconstructedCounters {
                 // kernel emits alongside this one, so counting it here too
                 // would double it.
                 DeathCause::Damage => {}
+                // Phase 8 causes live in the physiology section's own
+                // counters, exactly as damage deaths live in the contest
+                // section's, so the Phase 1/2 counter list is untouched.
+                DeathCause::Senescence | DeathCause::Extrinsic => {}
             },
             EventKind::CapacityRejected { .. } => self.capacity_rejections_total += 1,
             EventKind::Extinction => self.extinctions_total += 1,
@@ -424,6 +428,10 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
                 DeathCause::Starvation => 0,
                 DeathCause::OldAge => 1,
                 DeathCause::Damage => 2,
+                // Additive: tags 0..=2 are unchanged, so every Phase 7 log
+                // decodes byte-identically.
+                DeathCause::Senescence => 3,
+                DeathCause::Extrinsic => 4,
             });
         }
         EventKind::CapacityRejected { parent_id } => {
@@ -681,6 +689,8 @@ fn decode_events_into(
                     0 => DeathCause::Starvation,
                     1 => DeathCause::OldAge,
                     2 => DeathCause::Damage,
+                    3 => DeathCause::Senescence,
+                    4 => DeathCause::Extrinsic,
                     _ => return Err(EventLogError::ValueOutOfRange("death cause")),
                 };
                 EventKind::Death { id, cause }

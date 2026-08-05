@@ -26,6 +26,7 @@ mod controller;
 mod genome;
 mod origin;
 mod phase2;
+mod physiology;
 mod rng;
 mod save;
 mod similarity;
@@ -39,7 +40,8 @@ pub use climate::{
 };
 pub use config::{
     BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
-    OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, SimConfig, WorldgenVersion,
+    OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig, SimConfig,
+    WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -64,10 +66,15 @@ pub use origin::{
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
 };
 pub use phase2::{PairRejectReason, Phase2Counters, SENSOR_RANGE_MAX_M};
+pub use physiology::{
+    HazardOutcome, PHYSIOLOGY_POLICY_VERSION, PhysiologyState, allometry_multiplier_milli,
+    hazard_draw, pow_quarter_milli, preferred_temperature_milli, senescence_hazard_q16_per_s,
+    thermal_cost_milli,
+};
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
-    ClimateSaveState, ContestSaveState, Phase2SaveState, RestoreError, SAVE_STATE_VERSION,
-    SaveState,
+    ClimateSaveState, ContestSaveState, Phase2SaveState, PhysiologySaveState, RestoreError,
+    SAVE_STATE_VERSION, SaveState,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use world::{

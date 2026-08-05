@@ -75,6 +75,7 @@ fn run() -> Result<(), String> {
         Some("batch") => command_batch(parse_options(args.collect())?),
         Some("report") => command_report(parse_options(args.collect())?),
         Some("spatial") => command_spatial(parse_options(args.collect())?),
+        Some("demography") => command_demography(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -93,6 +94,7 @@ fn usage() -> String {
         "       lifesim batch --campaign FILE --output DIR [--workers N] [--no-preflight]\n",
         "       lifesim report --manifest FILE [--baseline CONDITION]\n",
         "       lifesim spatial --manifest FILE --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX] [--power]\n",
+        "       lifesim demography --manifest FILE\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2\n",
@@ -744,6 +746,100 @@ fn command_spatial(options: Options) -> Result<(), String> {
                 }
             }
         }
+    }
+    Ok(())
+}
+
+/// Phase 8 C8.1 to C8.7: per-world demography reduced from each run's
+/// event log, plus the snapshot-derived thermal-matching statistic.
+///
+/// One flat line per world. The contrasts are deliberately left to the
+/// reader rather than baked in, because Phase 8's criteria compare
+/// different condition pairs from each other (A vs B for C8.1, M-low vs
+/// M-high for C8.5) and a command that picked one would hide the rest.
+fn command_demography(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("demography requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    println!("demography-report 1 campaign {}", manifest.campaign.id);
+    println!("index_version {}", sim_analysis::DEMOGRAPHY_INDEX_VERSION);
+    for run in &manifest.runs {
+        let stem = sim_experiment::run_stem(&run.condition, run.seed);
+        let log_path = directory.join(format!("{stem}.alev"));
+        let bytes =
+            fs::read(&log_path).map_err(|error| format!("{}: {error}", log_path.display()))?;
+        let (_, events) =
+            sim_persist::decode_log_events(&bytes).map_err(|error| error.to_string())?;
+        let summary = sim_analysis::world_demography(&events);
+
+        // C8.7 needs the phenotype and the position, which only the
+        // snapshot carries. Absent snapshots are reported as absent rather
+        // than defaulted to zero, which would read as "no correlation".
+        let snapshot_path = directory.join(format!("{stem}.alif"));
+        // A failure here is reported with its reason, never as a bare
+        // "absent" that a reader could mistake for "no correlation".
+        let thermal = fs::read(&snapshot_path)
+            .map_err(|error| error.to_string())
+            .and_then(|bytes| {
+                sim_persist::decode_snapshot(&bytes).map_err(|error| error.to_string())
+            })
+            .and_then(|(_, state)| {
+                sim_core::World::from_state(state).map_err(|error| error.to_string())
+            })
+            .map(|world| sim_analysis::thermal_match_rho_milli(&world));
+        let (thermal_rho, thermal_n) = match thermal {
+            Ok(Some((rho, observed))) => (rho.to_string(), observed.to_string()),
+            Ok(None) => ("no-temperature-field".to_owned(), "0".to_owned()),
+            Err(reason) => (
+                format!("error:{}", reason.replace(' ', "_")),
+                "0".to_owned(),
+            ),
+        };
+
+        // C8.2's surplus measures. Population over capacity is not a
+        // ratio -- one is a count and the other is milli-biomass -- so the
+        // saturation of the food field stands in for "how close to
+        // carrying capacity", and per-capita energy is the surplus itself.
+        let biomass_saturation_micro = if run.total_capacity_milli > 0 {
+            i128::from(run.total_biomass_milli) * 1_000_000 / i128::from(run.total_capacity_milli)
+        } else {
+            0
+        };
+        let energy_per_capita_milli = if run.population > 0 {
+            i128::from(run.total_energy_milli) / i128::from(run.population)
+        } else {
+            0
+        };
+        println!(
+            "world condition={} seed={:#018x} population={} capacity_milli={} \
+             biomass_saturation_micro={} energy_per_capita_milli={} \
+             deaths_total={} starvation_share_milli={} \
+             causes_above_5pct={} median_lifespan={} completed={} censored={} \
+             investment_offspring_rho_milli={} parents={} max_age_observed={} \
+             thermal_rho_milli={} thermal_n={}",
+            run.condition,
+            run.seed,
+            run.population,
+            run.total_capacity_milli,
+            biomass_saturation_micro,
+            energy_per_capita_milli,
+            summary.deaths_total,
+            summary.starvation_share_milli,
+            summary.causes_above_five_percent,
+            summary.median_lifespan_ticks,
+            summary.completed_lifespans,
+            summary.censored_individuals,
+            summary.investment_offspring_rho_milli,
+            summary.parents_observed,
+            run.max_age_ticks_observed,
+            thermal_rho,
+            thermal_n,
+        );
     }
     Ok(())
 }

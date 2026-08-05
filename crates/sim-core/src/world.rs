@@ -19,6 +19,7 @@ use crate::origin::{self, OriginError};
 use crate::phase2::{
     PairRejectReason, PendingChild, Phase2Counters, Phase2State, SENSOR_RANGE_MAX_M,
 };
+use crate::physiology::{HazardOutcome, PhysiologyState};
 use crate::rng::{RngSystem, named_random};
 use crate::worldgen::{self, Terrain, WorldGenError};
 use std::fmt;
@@ -120,6 +121,12 @@ pub enum DeathCause {
     /// Health depleted by damage (Phase 7). Terminal and idempotent like
     /// every other cause.
     Damage,
+    /// Age-dependent hazard (Phase 8). Distinct from `OldAge`, which is the
+    /// hard `max_age_ticks` cutoff senescence replaces: one is a hazard an
+    /// organism lost a draw against, the other is a wall.
+    Senescence,
+    /// Non-food extrinsic hazard (Phase 8).
+    Extrinsic,
 }
 
 impl DeathCause {
@@ -128,6 +135,8 @@ impl DeathCause {
             DeathCause::Starvation => "starvation",
             DeathCause::OldAge => "old_age",
             DeathCause::Damage => "damage",
+            DeathCause::Senescence => "senescence",
+            DeathCause::Extrinsic => "extrinsic",
         }
     }
 }
@@ -293,6 +302,18 @@ pub struct MetricsSnapshot {
     pub contest_enabled: bool,
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
+    /// Phase 8. Zero when the physiology section is disabled.
+    pub physiology_enabled: bool,
+    pub deaths_senescence_total: u64,
+    pub deaths_extrinsic_total: u64,
+    pub deaths_juvenile_total: u64,
+    pub mean_cumulative_hazard_q16: i64,
+    pub max_age_ticks_observed: u64,
+    /// Sum of every cell's effective capacity: the environmental carrying
+    /// capacity C8.2 compares realized population against. Reported always,
+    /// because "population divided by the memory guard" is the artifact
+    /// this phase exists to stop measuring.
+    pub total_capacity_milli: i64,
     pub carcasses: u64,
     pub total_carcass_energy_milli: i64,
 }
@@ -300,22 +321,70 @@ pub struct MetricsSnapshot {
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum InvariantViolation {
     EntityOrder,
-    PositionInvalid { id: u64 },
-    EnergyOutOfBounds { id: u64, energy_milli: i64 },
-    AgeOutOfBounds { id: u64, age_ticks: u64 },
-    BiomassOutOfBounds { cell: usize, biomass_milli: i64 },
-    EnergyLedgerMismatch { expected: i128, actual: i128 },
-    BiomassLedgerMismatch { expected: i128, actual: i128 },
-    PopulationAccounting { expected: i128, actual: i128 },
-    EntityIdAllocation { expected: u64, actual: u64 },
-    Phase2Desync { organisms: usize, phase2: usize },
-    InvalidGenome { id: u64 },
-    AncestryInvalid { id: u64 },
-    ControllerStateInvalid { id: u64 },
-    ContestDesync { organisms: usize, contest: usize },
-    ContestStateInvalid { id: u64 },
+    PositionInvalid {
+        id: u64,
+    },
+    EnergyOutOfBounds {
+        id: u64,
+        energy_milli: i64,
+    },
+    AgeOutOfBounds {
+        id: u64,
+        age_ticks: u64,
+    },
+    BiomassOutOfBounds {
+        cell: usize,
+        biomass_milli: i64,
+    },
+    EnergyLedgerMismatch {
+        expected: i128,
+        actual: i128,
+    },
+    BiomassLedgerMismatch {
+        expected: i128,
+        actual: i128,
+    },
+    PopulationAccounting {
+        expected: i128,
+        actual: i128,
+    },
+    EntityIdAllocation {
+        expected: u64,
+        actual: u64,
+    },
+    Phase2Desync {
+        organisms: usize,
+        phase2: usize,
+    },
+    InvalidGenome {
+        id: u64,
+    },
+    AncestryInvalid {
+        id: u64,
+    },
+    ControllerStateInvalid {
+        id: u64,
+    },
+    ContestDesync {
+        organisms: usize,
+        contest: usize,
+    },
+    /// The Phase 8 physiology arrays fell out of lockstep with the organism
+    /// arrays. Every parallel-array subsystem needs this check: a missed
+    /// push on one of the two birth paths is invisible until it panics with
+    /// an index out of bounds several thousand ticks later.
+    PhysiologyDesync {
+        organisms: usize,
+        physiology: usize,
+    },
+    ContestStateInvalid {
+        id: u64,
+    },
     CarcassOrder,
-    CarcassLedgerMismatch { expected: i128, actual: i128 },
+    CarcassLedgerMismatch {
+        expected: i128,
+        actual: i128,
+    },
 }
 
 impl fmt::Display for InvariantViolation {
@@ -407,6 +476,7 @@ pub struct World {
     /// Phase 7 contest; `None` exactly when `config.contest.enabled` is
     /// false, so a disabled world takes the Phase 2 code paths.
     contest: Option<ContestState>,
+    physiology: Option<PhysiologyState>,
 }
 
 impl World {
@@ -478,6 +548,7 @@ impl World {
             climate: None,
             founder_genomes: Vec::new(),
             contest: None,
+            physiology: None,
             config,
         };
 
@@ -539,6 +610,13 @@ impl World {
                 }
             }
             world.contest = Some(contest);
+        }
+        if world.config.physiology.enabled {
+            let mut physiology = PhysiologyState::with_capacity(world.ids.len());
+            for _ in 0..world.ids.len() {
+                physiology.push_organism();
+            }
+            world.physiology = Some(physiology);
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -681,6 +759,34 @@ impl World {
             pair_rejected_energy_total: phase2_counters.pair_rejected_energy_total,
             controller_faults_total: phase2_counters.controller_faults_total,
             max_ancestry_depth: phase2.map(|p2| p2.max_depth()).unwrap_or(0),
+            physiology_enabled: self.physiology.is_some(),
+            deaths_senescence_total: self
+                .physiology
+                .as_ref()
+                .map_or(0, |p| p.deaths_senescence_total),
+            deaths_extrinsic_total: self
+                .physiology
+                .as_ref()
+                .map_or(0, |p| p.deaths_extrinsic_total),
+            deaths_juvenile_total: self
+                .physiology
+                .as_ref()
+                .map_or(0, |p| p.deaths_juvenile_total),
+            mean_cumulative_hazard_q16: self.physiology.as_ref().map_or(0, |p| {
+                if p.cumulative_hazard_q16.is_empty() {
+                    0
+                } else {
+                    (p.cumulative_hazard_q16
+                        .iter()
+                        .map(|&value| i128::from(value))
+                        .sum::<i128>()
+                        / p.cumulative_hazard_q16.len() as i128) as i64
+                }
+            }),
+            max_age_ticks_observed: self.age_ticks.iter().copied().max().unwrap_or(0),
+            total_capacity_milli: (0..self.terrain.cell_count())
+                .map(|cell| self.effective_capacity_milli(cell))
+                .sum(),
             contest_enabled: self.contest.is_some(),
             attacks_total: self.contest.as_ref().map_or(0, |c| c.attacks_total),
             deaths_by_damage_total: self
@@ -735,6 +841,15 @@ impl World {
 
     pub(crate) fn contest_state(&self) -> Option<&ContestState> {
         self.contest.as_ref()
+    }
+
+    /// Read-only view of Phase 8 physiology state, `None` when disabled.
+    pub(crate) fn physiology_state(&self) -> Option<&PhysiologyState> {
+        self.physiology.as_ref()
+    }
+
+    pub fn physiology_enabled(&self) -> bool {
+        self.physiology.is_some()
     }
 
     pub fn contest_enabled(&self) -> bool {
@@ -846,6 +961,7 @@ impl World {
         phase2: Option<Phase2State>,
         climate: Option<ClimateWorld>,
         contest: Option<ContestState>,
+        physiology: Option<PhysiologyState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -863,6 +979,7 @@ impl World {
         self.phase2 = phase2;
         self.climate = climate;
         self.contest = contest;
+        self.physiology = physiology;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -1618,10 +1735,36 @@ impl World {
             }
         }
 
-        // Cost pass: metabolism scales with the genome-derived multipliers.
+        // Cost pass: metabolism scales with the genome-derived multipliers,
+        // and from Phase 8 also with body mass (allometry) and with the
+        // distance from the organism's preferred temperature.
+        let physiology_config = self.config.physiology;
+        let mut allometric_added = 0_i128;
+        let mut thermal_added = 0_i128;
         for (index, &did_move) in moved.iter().enumerate() {
             let phenotype = &p2.phenotypes[index];
             let mut cost = self.basal_cost_tick * phenotype.basal_mult_milli / 1000;
+            if physiology_config.enabled {
+                let linear = cost;
+                cost =
+                    cost * crate::physiology::allometry_multiplier_milli(
+                        &physiology_config,
+                        phenotype.body_scale_milli,
+                    ) / 1000;
+                allometric_added += i128::from(cost - linear);
+                if let Some(temperature) =
+                    self.temperature_milli(self.cell_of(self.x_fp[index], self.y_fp[index]))
+                {
+                    let thermal = crate::physiology::thermal_cost_milli(
+                        &physiology_config,
+                        phenotype.thermal_pref_milli,
+                        temperature,
+                        self.config.dt_ms,
+                    );
+                    cost += thermal;
+                    thermal_added += i128::from(thermal);
+                }
+            }
             if did_move {
                 let speed_frac_q16 =
                     (p2.speed_milli[index] << 16) / phenotype.max_speed_milli.max(1);
@@ -1635,6 +1778,10 @@ impl World {
             let paid = cost.min(self.energy_milli[index]);
             self.energy_milli[index] -= paid;
             self.ledger.spent_milli += i128::from(paid);
+        }
+        if let Some(physiology) = self.physiology.as_mut() {
+            physiology.allometric_cost_milli += allometric_added;
+            physiology.thermal_cost_milli += thermal_added;
         }
 
         // Feeding pass: requires an eat request; intake scales with the
@@ -2226,12 +2373,60 @@ impl World {
                 .collect(),
             None => vec![false; population],
         };
+        // Phase 8 competing risks, drawn before the cause cascade so a
+        // hazard death is attributable to the hazard that caused it. The
+        // draws happen for every living organism, so which ones are
+        // consulted below cannot depend on the cascade's order.
+        let physiology_config = self.config.physiology;
+        let maturity_ticks: Vec<u64> = match self.phase2.as_ref() {
+            Some(p2) => p2
+                .phenotypes
+                .iter()
+                .map(|phenotype| phenotype.maturity_ticks)
+                .collect(),
+            None => vec![self.config.maturity_age_ticks; population],
+        };
+        let juvenile: Vec<bool> = (0..population)
+            .map(|index| self.age_ticks[index] < maturity_ticks[index])
+            .collect();
+        let mut hazards = vec![HazardOutcome::Survives; population];
+        if self.physiology.is_some() {
+            let mut applied_hazard = vec![0_i64; population];
+            for index in 0..population {
+                let (outcome, applied) = crate::physiology::hazard_draw(
+                    &physiology_config,
+                    self.config.world_seed,
+                    next_tick,
+                    self.ids[index],
+                    self.age_ticks[index],
+                    maturity_ticks[index],
+                    self.config.dt_ms,
+                );
+                hazards[index] = outcome;
+                applied_hazard[index] = applied;
+            }
+            if let Some(physiology) = self.physiology.as_mut() {
+                for (index, applied) in applied_hazard.into_iter().enumerate() {
+                    physiology.cumulative_hazard_q16[index] =
+                        physiology.cumulative_hazard_q16[index].saturating_add(applied);
+                }
+            }
+        }
+        // Senescence replaces the hard cutoff rather than joining it: with
+        // the hazard live, `max_age_ticks` would truncate the very tail the
+        // hazard exists to shape, and C8.5's lifespan comparison would
+        // measure the cutoff instead of the evolved trait.
+        let hard_age_cutoff = !physiology_config.enabled || !physiology_config.senescence_enabled;
         for (index, dead_flag) in dead.iter_mut().enumerate() {
             let cause = if depleted[index] {
                 Some(DeathCause::Damage)
             } else if self.energy_milli[index] <= 0 {
                 Some(DeathCause::Starvation)
-            } else if self.age_ticks[index] >= self.config.max_age_ticks {
+            } else if hazards[index] == HazardOutcome::Senescence {
+                Some(DeathCause::Senescence)
+            } else if hazards[index] == HazardOutcome::Extrinsic {
+                Some(DeathCause::Extrinsic)
+            } else if hard_age_cutoff && self.age_ticks[index] >= self.config.max_age_ticks {
                 Some(DeathCause::OldAge)
             } else {
                 None
@@ -2244,6 +2439,22 @@ impl World {
                 DeathCause::Damage => {
                     if let Some(contest) = self.contest.as_mut() {
                         contest.deaths_by_damage_total += 1;
+                    }
+                }
+                // Counted in the physiology section rather than in
+                // `Counters`, so the Phase 1/2 checksum field list is
+                // untouched -- the same rule Phase 7 followed for damage.
+                DeathCause::Senescence | DeathCause::Extrinsic => {
+                    let was_juvenile = juvenile[index];
+                    if let Some(physiology) = self.physiology.as_mut() {
+                        if cause == DeathCause::Senescence {
+                            physiology.deaths_senescence_total += 1;
+                        } else {
+                            physiology.deaths_extrinsic_total += 1;
+                        }
+                        if was_juvenile {
+                            physiology.deaths_juvenile_total += 1;
+                        }
                     }
                 }
             }
@@ -2273,6 +2484,9 @@ impl World {
             if let Some(contest) = self.contest.as_mut() {
                 contest.retain(&dead);
             }
+            if let Some(physiology) = self.physiology.as_mut() {
+                physiology.retain(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -2286,6 +2500,9 @@ impl World {
             self.energy_milli.push(self.config.offspring_energy_milli);
             self.age_ticks.push(0);
             self.cooldown_ticks.push(0);
+            if let Some(physiology) = self.physiology.as_mut() {
+                physiology.push_organism();
+            }
             if let Some(contest) = self.contest.as_mut() {
                 contest.push_organism(self.config.contest.base_health_milli);
             }
@@ -2314,6 +2531,9 @@ impl World {
                     child.depth,
                     next_tick,
                 );
+                if let Some(physiology) = self.physiology.as_mut() {
+                    physiology.push_organism();
+                }
                 if let Some(contest) = self.contest.as_mut() {
                     contest.push_organism(ContestState::health_max_milli(
                         &self.config.contest,
@@ -2405,6 +2625,9 @@ impl World {
         if let Some(contest) = self.contest.as_ref() {
             contest.hash_into(&mut hasher);
         }
+        if let Some(physiology) = self.physiology.as_ref() {
+            physiology.hash_into(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -2433,7 +2656,14 @@ impl World {
                     energy_milli: energy,
                 });
             }
-            if self.age_ticks[index] >= self.config.max_age_ticks {
+            // With senescence live the hard cutoff is gone, so an organism
+            // older than `max_age_ticks` is expected rather than invalid.
+            // The bound that still holds is that it is alive at all, which
+            // the hazard guarantees probabilistically and this cannot
+            // assert.
+            if !(self.config.physiology.enabled && self.config.physiology.senescence_enabled)
+                && self.age_ticks[index] >= self.config.max_age_ticks
+            {
                 return Err(InvariantViolation::AgeOutOfBounds {
                     id: self.ids[index],
                     age_ticks: self.age_ticks[index],
@@ -2489,11 +2719,18 @@ impl World {
             .contest
             .as_ref()
             .map_or(0, |contest| contest.deaths_by_damage_total);
+        // Phase 8 causes live in the physiology section's counters, so they
+        // have to be subtracted here too. Leaving them out is exactly the
+        // omission this invariant exists to catch, and it did.
+        let hazard_deaths = self.physiology.as_ref().map_or(0, |physiology| {
+            physiology.deaths_senescence_total + physiology.deaths_extrinsic_total
+        });
         let expected_population = i128::from(self.config.initial_organisms)
             + i128::from(self.counters.births_total)
             - i128::from(self.counters.deaths_starvation_total)
             - i128::from(self.counters.deaths_old_age_total)
-            - i128::from(damage_deaths);
+            - i128::from(damage_deaths)
+            - i128::from(hazard_deaths);
         if expected_population != self.ids.len() as i128 {
             return Err(InvariantViolation::PopulationAccounting {
                 expected: expected_population,
@@ -2506,6 +2743,16 @@ impl World {
             return Err(InvariantViolation::EntityIdAllocation {
                 expected: expected_next,
                 actual: self.next_entity_id,
+            });
+        }
+        // Phase 8 structural invariant, checked before the hazard arrays
+        // are ever indexed by organism position.
+        if let Some(physiology) = self.physiology.as_ref()
+            && physiology.len() != self.ids.len()
+        {
+            return Err(InvariantViolation::PhysiologyDesync {
+                organisms: self.ids.len(),
+                physiology: physiology.len(),
             });
         }
         // Phase 7 structural and bounds invariants.

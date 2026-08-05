@@ -45,6 +45,12 @@ pub struct RunResult {
     /// Spatial samples written. Recorded so an analysis can prove it read
     /// the whole series rather than a silently shortened one.
     pub spatial_samples: u64,
+    /// Phase 8 demography outcomes. Zero when the section is disabled.
+    pub deaths_senescence_total: u64,
+    pub deaths_extrinsic_total: u64,
+    pub deaths_juvenile_total: u64,
+    pub max_age_ticks_observed: u64,
+    pub total_capacity_milli: i64,
     /// Phase 7 contest outcomes. Zero when the section is disabled.
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
@@ -328,7 +334,9 @@ fn render_run(run: &RunResult) -> String {
          state_checksum={} ticks={} population={} extinct={} energy_milli={} biomass_milli={} \
          max_ancestry_depth={} births={} deaths_starvation={} deaths_old_age={} \
          capacity_rejections={} dropped_events={} event_log_bytes={} snapshot_bytes={} \
-         attacks={} deaths_by_damage={} carcasses={} spatial_samples={}",
+         attacks={} deaths_by_damage={} carcasses={} spatial_samples={} \
+         deaths_senescence={} deaths_extrinsic={} deaths_juvenile={} \
+         max_age_observed={} capacity_milli={}",
         run.index,
         run.condition,
         hex(run.seed),
@@ -353,6 +361,11 @@ fn render_run(run: &RunResult) -> String {
         run.deaths_by_damage_total,
         run.carcasses,
         run.spatial_samples,
+        run.deaths_senescence_total,
+        run.deaths_extrinsic_total,
+        run.deaths_juvenile_total,
+        run.max_age_ticks_observed,
+        run.total_capacity_milli,
     );
     if let Some(phase2) = run.phase2.as_ref() {
         line.push_str(&format!(
@@ -462,6 +475,11 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         deaths_by_damage_total: number("deaths_by_damage").unwrap_or(0),
         carcasses: number("carcasses").unwrap_or(0),
         spatial_samples: number("spatial_samples").unwrap_or(0),
+        deaths_senescence_total: number("deaths_senescence").unwrap_or(0),
+        deaths_extrinsic_total: number("deaths_extrinsic").unwrap_or(0),
+        deaths_juvenile_total: number("deaths_juvenile").unwrap_or(0),
+        max_age_ticks_observed: number("max_age_observed").unwrap_or(0),
+        total_capacity_milli: signed("capacity_milli").unwrap_or(0),
     })
 }
 

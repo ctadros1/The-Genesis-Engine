@@ -103,6 +103,82 @@ pub struct SimConfig {
     /// disabled section is behaviorally inert, excluded from the config
     /// hash, and appends nothing to the checksum, so both fixtures survive.
     pub contest: ContestConfig,
+    /// Phase 8 demography section, disabled by default. Same D-014 rule: a
+    /// disabled section is behaviorally inert, excluded from the config
+    /// hash, and appends nothing to the checksum, so every earlier fixture
+    /// survives.
+    pub physiology: PhysiologyConfig,
+}
+
+/// Versioned Phase 8 demography policy (`lifesim-demography-v1`).
+///
+/// Six independently gated mechanisms rather than one switch, because the
+/// phase's acceptance criteria compare them against each other and a
+/// campaign has to be able to turn exactly one on. All disabled is
+/// behaviorally identical to Phase 7.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PhysiologyConfig {
+    pub enabled: bool,
+
+    /// Basal cost scales as body mass to `basal_exponent_quarters / 4`.
+    /// The default 3 is Kleiber's 0.75. Quarters rather than a Q16
+    /// fraction because a quarter-power is exactly two integer square
+    /// roots and needs no transcendental (see `physiology.rs`).
+    pub allometry_enabled: bool,
+    pub basal_exponent_quarters: u32,
+
+    /// Thermal preference becomes live against the Phase 6 temperature
+    /// field. Inert without climate, which is a documented precondition
+    /// rather than an error: a world with no temperature field has nothing
+    /// for the gene to be preferred against.
+    pub thermoregulation_enabled: bool,
+    /// Temperatures that thermal preference 0 and 1000 map to,
+    /// milli-degrees.
+    pub thermal_pref_low_milli: i32,
+    pub thermal_pref_high_milli: i32,
+    /// Deviation tolerated for free, milli-degrees.
+    pub thermal_neutral_band_milli: i32,
+    /// Milli-EU per second per milli-degree of excess deviation.
+    pub thermal_cost_milli_per_s_per_degree: i64,
+
+    /// Age-dependent hazard replacing the hard `max_age_ticks` cutoff.
+    pub senescence_enabled: bool,
+    pub senescence_onset_ticks: u64,
+    /// Age scale over which the hazard reaches its base rate.
+    pub senescence_scale_ticks: u64,
+    /// Weibull shape; 1..=4.
+    pub senescence_power: u32,
+    pub senescence_hazard_q16_per_s: u32,
+
+    /// Non-food hazard, the mechanism that lets a population sit below its
+    /// food ceiling. Zero is off.
+    pub extrinsic_hazard_q16_per_s: u32,
+
+    /// Hazard multiplier applied before maturity. `Q16_ONE` is no penalty.
+    pub juvenile_hazard_multiplier_q16: u32,
+}
+
+impl PhysiologyConfig {
+    /// Documented conservative Phase 8 defaults (disabled by default).
+    pub fn physiology_default() -> Self {
+        Self {
+            enabled: false,
+            allometry_enabled: true,
+            basal_exponent_quarters: 3, // 0.75, Kleiber
+            thermoregulation_enabled: true,
+            thermal_pref_low_milli: 0,
+            thermal_pref_high_milli: 40_000,
+            thermal_neutral_band_milli: 6_000,
+            thermal_cost_milli_per_s_per_degree: 4,
+            senescence_enabled: true,
+            senescence_onset_ticks: 6_000,
+            senescence_scale_ticks: 12_000,
+            senescence_power: 2,
+            senescence_hazard_q16_per_s: 655, // 0.01 per second at scale
+            extrinsic_hazard_q16_per_s: 13,   // ~0.0002 per second
+            juvenile_hazard_multiplier_q16: 2 * Q16_ONE,
+        }
+    }
 }
 
 /// Versioned Phase 7 contest policy (`contest-behavior-v1`). Every value is
@@ -445,6 +521,7 @@ impl SimConfig {
             climate: ClimateConfig::climate_default(),
             origin: OriginConfig::origin_default(),
             contest: ContestConfig::contest_default(),
+            physiology: PhysiologyConfig::physiology_default(),
         }
     }
 
@@ -616,6 +693,38 @@ impl SimConfig {
         }
         if contest.max_carcasses == 0 || contest.max_carcasses > 200_000 {
             return Err(ConfigError::MaxCarcasses(contest.max_carcasses));
+        }
+        let physiology = &self.physiology;
+        if physiology.enabled {
+            if !(1..=6).contains(&physiology.basal_exponent_quarters) {
+                return Err(ConfigError::PhysiologyRange(
+                    "basal_exponent_quarters",
+                    i64::from(physiology.basal_exponent_quarters),
+                ));
+            }
+            if !(1..=4).contains(&physiology.senescence_power) {
+                return Err(ConfigError::PhysiologyRange(
+                    "senescence_power",
+                    i64::from(physiology.senescence_power),
+                ));
+            }
+            if physiology.senescence_scale_ticks == 0 {
+                return Err(ConfigError::PhysiologyRange("senescence_scale_ticks", 0));
+            }
+            if physiology.thermal_pref_high_milli <= physiology.thermal_pref_low_milli {
+                return Err(ConfigError::PhysiologyRange(
+                    "thermal_pref_high_milli",
+                    i64::from(physiology.thermal_pref_high_milli),
+                ));
+            }
+            if physiology.thermal_neutral_band_milli < 0
+                || physiology.thermal_cost_milli_per_s_per_degree < 0
+            {
+                return Err(ConfigError::PhysiologyRange(
+                    "thermal_neutral_band_milli",
+                    i64::from(physiology.thermal_neutral_band_milli),
+                ));
+            }
         }
         for (name, value) in [
             ("damage_variance_q16", contest.damage_variance_q16),
@@ -969,6 +1078,27 @@ impl SimConfig {
             hasher.update_u32(self.contest.max_carcasses);
             hasher.update_i64(self.contest.local_depletion_milli);
         }
+        // Phase 8 section: hashed only when enabled, so a
+        // demography-disabled config hashes exactly as it did before Phase
+        // 8 existed and every earlier fixture is preserved.
+        if self.physiology.enabled {
+            hasher.update(b"lifesim-physiology-config");
+            hasher.update(crate::physiology::PHYSIOLOGY_POLICY_VERSION.as_bytes());
+            hasher.update_u32(u32::from(self.physiology.allometry_enabled));
+            hasher.update_u32(self.physiology.basal_exponent_quarters);
+            hasher.update_u32(u32::from(self.physiology.thermoregulation_enabled));
+            hasher.update_i32(self.physiology.thermal_pref_low_milli);
+            hasher.update_i32(self.physiology.thermal_pref_high_milli);
+            hasher.update_i32(self.physiology.thermal_neutral_band_milli);
+            hasher.update_i64(self.physiology.thermal_cost_milli_per_s_per_degree);
+            hasher.update_u32(u32::from(self.physiology.senescence_enabled));
+            hasher.update_u64(self.physiology.senescence_onset_ticks);
+            hasher.update_u64(self.physiology.senescence_scale_ticks);
+            hasher.update_u32(self.physiology.senescence_power);
+            hasher.update_u32(self.physiology.senescence_hazard_q16_per_s);
+            hasher.update_u32(self.physiology.extrinsic_hazard_q16_per_s);
+            hasher.update_u32(self.physiology.juvenile_hazard_multiplier_q16);
+        }
         hasher.finish()
     }
 
@@ -987,6 +1117,8 @@ impl SimConfig {
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum ConfigError {
+    /// A Phase 8 physiology parameter outside its documented range.
+    PhysiologyRange(&'static str, i64),
     FractionOutOfRange(&'static str, u32),
     WorldDimensions(u32, u32),
     CellSize(u32),
@@ -1050,6 +1182,9 @@ pub enum ConfigError {
 impl fmt::Display for ConfigError {
     fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::PhysiologyRange(name, value) => {
+                write!(formatter, "{name} is outside its supported range: {value}")
+            }
             Self::FractionOutOfRange(name, value) => {
                 write!(formatter, "{name} must be a Q16 fraction, got {value}")
             }

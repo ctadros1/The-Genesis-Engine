@@ -24,6 +24,11 @@ pub enum RngSystem {
     /// Contest tie lottery, damage variance, and retreat resolution
     /// (Phase 7). Every draw is keyed on the canonical pair key.
     Contest = 7,
+    /// Age-dependent and extrinsic mortality hazard draws (Phase 8).
+    /// Senescence uses draw index 0 and extrinsic hazard draw index 1;
+    /// those indices are as permanent as the stream value itself, because
+    /// renumbering them would silently change every world.
+    Mortality = 16,
     /// Optional bounded stochastic climate component (Phase 6). Allocated
     /// now and unused under the default deterministic policy, so adopting a
     /// stochastic policy later cannot renumber an existing stream.
