@@ -61,6 +61,12 @@ pub struct RunResult {
     pub distinct_structures: u64,
     pub structural_mutations_applied: u64,
     pub structural_mutations_rejected: u64,
+    /// Phase 10 morphology metrics. Zero when the section is disabled.
+    pub mean_modules_milli: u64,
+    pub median_modules: u64,
+    pub distinct_morphologies: u64,
+    pub nonviable_bodies: u64,
+    pub refused_node_budget: u64,
     /// Phase 7 contest outcomes. Zero when the section is disabled.
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
@@ -349,7 +355,8 @@ fn render_run(run: &RunResult) -> String {
          max_age_observed={} capacity_milli={} mean_nodes_milli={} \
          mean_edges_milli={} median_nodes={} median_edges={} \
          distinct_structures={} structmut_applied={} \
-         structmut_rejected={}",
+         structmut_rejected={} mean_modules_milli={} median_modules={} \
+         distinct_morphologies={} nonviable_bodies={} refused_node_budget={}",
         run.index,
         run.condition,
         hex(run.seed),
@@ -386,6 +393,11 @@ fn render_run(run: &RunResult) -> String {
         run.distinct_structures,
         run.structural_mutations_applied,
         run.structural_mutations_rejected,
+        run.mean_modules_milli,
+        run.median_modules,
+        run.distinct_morphologies,
+        run.nonviable_bodies,
+        run.refused_node_budget,
     );
     if let Some(phase2) = run.phase2.as_ref() {
         line.push_str(&format!(
@@ -510,6 +522,11 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         distinct_structures: number("distinct_structures").unwrap_or(0),
         structural_mutations_applied: number("structmut_applied").unwrap_or(0),
         structural_mutations_rejected: number("structmut_rejected").unwrap_or(0),
+        mean_modules_milli: number("mean_modules_milli").unwrap_or(0),
+        median_modules: number("median_modules").unwrap_or(0),
+        distinct_morphologies: number("distinct_morphologies").unwrap_or(0),
+        nonviable_bodies: number("nonviable_bodies").unwrap_or(0),
+        refused_node_budget: number("refused_node_budget").unwrap_or(0),
     })
 }
 

@@ -302,7 +302,6 @@ impl World {
         // is decoded through the ordinary fail-closed path rather than
         // trusted: a save is untrusted input like any other.
         let morphology_config = world.config().morphology;
-        let basal_reference = world.config().basal_cost_milli_per_s;
         // Rebuilt by regrowing every organism, in the phase-2 loop below.
         let mut rebuilt_morphology = morphology_config
             .enabled
@@ -424,7 +423,7 @@ impl World {
                                             "organism {index} regrew a non-viable body on restore,                                              which means development is not a pure function of the                                              genome"
                                         )))?;
                                     let derived = state.derived[state.derived.len() - 1];
-                                    Phenotype::from_body(&traits, &derived, basal_reference)
+                                    Phenotype::from_body(&traits, &derived, &state.reference)
                                 }
                                 None => Phenotype::from_traits(&traits),
                             };

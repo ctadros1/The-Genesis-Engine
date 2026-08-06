@@ -458,33 +458,67 @@ pub fn develop(
     }
 }
 
-/// The founder growth program: one rule that turns the origin module into a
-/// gut.
+/// The founder growth program: gut, motor, sensor.
 ///
-/// Minimal by construction, exactly as Phase 9's founder network is three
-/// nodes and two edges. Development starts from a single `Structural`
-/// module, and a structural module has no intake, so a founder with no
-/// program at all would be a valid body that starves. One rule makes it a
-/// functioning unicell and leaves **every** further morphological change to
-/// evolution, which is what lets a campaign attribute structure to
-/// duplication and mutation rather than to what was seeded.
-pub fn founder_program() -> Regulatory {
-    Regulatory {
-        condition_kind: COND_ALWAYS,
-        condition_op: OP_GE,
+/// **Minimal but functional**, which is the same standard Phase 9's founder
+/// network meets - three nodes, two edges, and both channel bindings, rather
+/// than the smallest thing that decodes. A one-module gut is a *valid* body
+/// and a hopeless organism: with no motor it has zero thrust and sits at the
+/// speed floor, and with no sensory module it sits at the sensing floor. A
+/// campaign founded on those measures immobility and blindness, not
+/// morphology, and the first run of this phase's campaign died in 29 worlds
+/// of 30 for exactly that reason.
+///
+/// Three modules is therefore the floor, not a design preference: each one
+/// is the minimum needed for a derived attribute to be something other than
+/// its clamp. Everything beyond it - size, symmetry, extra organs, tissue
+/// specialisation - is left to evolution, which is what lets a campaign
+/// attribute morphology to mutation rather than to what was seeded.
+pub fn founder_program() -> Vec<(u32, Regulatory)> {
+    let base = crate::genome2::STRUCTURAL_HOMOLOGY_BASE + 20_000;
+    let rule = |action_kind: u8, action_type: u8, direction: u8| Regulatory {
+        condition_kind: COND_MODULE_COUNT,
+        condition_op: OP_LT,
         condition_param: 0,
-        threshold: 0,
-        action_kind: ACT_DIFFERENTIATE,
-        action_type: crate::morphology::TYPE_DIGESTIVE,
-        direction: 0,
+        // Fires only while the body is still smaller than the founder plan,
+        // so growth stops on its own rather than by hitting a cap.
+        threshold: 3,
+        action_kind,
+        action_type,
+        direction,
         scale_milli: 1_000,
-    }
+    };
+    vec![
+        // The origin becomes a gut.
+        (
+            base,
+            Regulatory {
+                condition_kind: COND_SELF_TYPE,
+                condition_op: OP_GE,
+                condition_param: crate::morphology::TYPE_STRUCTURAL,
+                threshold: 0,
+                action_kind: ACT_DIFFERENTIATE,
+                action_type: crate::morphology::TYPE_DIGESTIVE,
+                direction: 0,
+                scale_milli: 1_000,
+            },
+        ),
+        // ...then a motor and a sensor, one step apart.
+        (
+            base + 100,
+            rule(ACT_PLACE, crate::morphology::TYPE_MOTOR, 0),
+        ),
+        (
+            base + 200,
+            rule(ACT_PLACE, crate::morphology::TYPE_SENSORY, 1),
+        ),
+    ]
 }
 
-/// Homology slot the founder program occupies. Fixed, so two independently
+/// Homology slots the founder program occupies. Fixed, so two independently
 /// created founders align at meiosis.
-pub fn founder_program_homology_id() -> u32 {
-    crate::genome2::STRUCTURAL_HOMOLOGY_BASE + 20_000
+pub fn founder_program_homology_ids() -> Vec<u32> {
+    founder_program().into_iter().map(|(id, _)| id).collect()
 }
 
 /// Phenotypic distance between two bodies, milli, in `0..=1000`.

@@ -12,6 +12,7 @@
 //! of the campaign artifacts plus that seed.
 
 mod demography;
+mod morph;
 mod paired;
 mod power;
 mod spatial;
@@ -20,6 +21,11 @@ mod structure;
 pub use demography::{
     DEMOGRAPHY_INDEX_VERSION, WorldDemography, spearman_milli, thermal_match_rho_milli,
     world_demography,
+};
+pub use morph::{
+    MORPH_ANALYSIS_VERSION, MorphOutcome, MorphPlan, MorphSample, PERMUTATIONS, WorldMorph,
+    consequence_of, pairs_of as morph_pairs, parse_series, permutation_p95_milli,
+    render as render_morph, rho_of, stability as morph_stability, summarise as summarise_morph,
 };
 pub use paired::{
     BOOTSTRAP_RESAMPLES, Direction, PAIRED_STATS_VERSION, Pair, PairedResult,

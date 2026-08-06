@@ -289,6 +289,22 @@ pub struct StructureSample {
     pub genome_bytes: u32,
 }
 
+/// One organism's body size paired with what it has achieved.
+///
+/// C10.3's consequence clause needs both halves of this pair from the same
+/// organism, and no existing view supplies them together. Observation only:
+/// it hands out counts and returns nothing to the kernel (ADR-0016).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MorphologySample {
+    pub modules: u32,
+    pub child_count: u32,
+    pub age_ticks: u64,
+    /// Past its own maturity age. C10.3 restricts the correlation to mature
+    /// organisms because a juvenile has had no opportunity to reproduce, and
+    /// including them would measure age rather than morphology.
+    pub mature: bool,
+}
+
 /// Point-in-time observable metrics (pure data; no clock). The Phase 2
 /// fields are zero when Phase 2 is disabled.
 #[derive(Clone, Copy, Debug)]
@@ -694,7 +710,6 @@ impl World {
             let mut morphology = morphology_config
                 .enabled
                 .then(|| MorphologyState::with_capacity(world.ids.len()));
-            let basal_reference = world.config.basal_cost_milli_per_s;
             if let Some(p2) = world.phase2.as_mut() {
                 for index in 0..world.ids.len() {
                     // A morphology world's founder carries the one-rule growth
@@ -727,7 +742,7 @@ impl World {
                                 },
                             )?;
                             let derived = state.derived[state.derived.len() - 1];
-                            crate::genome::Phenotype::from_body(&traits, &derived, basal_reference)
+                            crate::genome::Phenotype::from_body(&traits, &derived, &state.reference)
                         }
                         None => crate::genome::Phenotype::from_traits(&traits),
                     };
@@ -1111,6 +1126,25 @@ impl World {
     /// distinguish "duplication never fired" from "duplication fired and was
     /// rejected every time", and a null result about structural evolution
     /// means opposite things in those two worlds.
+    /// Per-organism body size against reproductive success, in entity-ID
+    /// order. Empty when morphology is disabled.
+    pub fn morphology_census(&self) -> Vec<MorphologySample> {
+        let (Some(state), Some(p2)) = (self.morphology.as_ref(), self.phase2.as_ref()) else {
+            return Vec::new();
+        };
+        state
+            .bodies
+            .iter()
+            .enumerate()
+            .map(|(index, body)| MorphologySample {
+                modules: body.len() as u32,
+                child_count: p2.child_count[index],
+                age_ticks: self.age_ticks[index],
+                mature: self.age_ticks[index] >= p2.phenotypes[index].maturity_ticks,
+            })
+            .collect()
+    }
+
     pub fn mutation_counters(&self) -> Option<MutationCounters> {
         self.schema2.as_ref().map(|state| state.counters)
     }
@@ -2161,7 +2195,6 @@ impl World {
         // Copied out once: `self.morphology` is borrowed mutably inside the
         // pairing loop, so the config cannot be read through `self` there.
         let morphology_config = self.config.morphology;
-        let basal_reference = self.config.basal_cost_milli_per_s;
         let range_fp = i64::from(phase2_config.pairing_range_m) * i64::from(crate::FP_PER_METER);
         let range_squared = range_fp * range_fp;
         let compatibility = phase2_config.compatibility_threshold_q16 as f32 / 65536.0;
@@ -2458,7 +2491,7 @@ impl World {
                             continue;
                         }
                         let traits = resolve_traits(&child.express_traits());
-                        phenotype = Phenotype::from_body(&traits, &derived, basal_reference);
+                        phenotype = Phenotype::from_body(&traits, &derived, &state.reference);
                         child_body = Some(body);
                     }
                     Err(_) => {

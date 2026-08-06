@@ -653,6 +653,36 @@ pub struct DerivedBody {
     pub node_budget_milli: i64,
 }
 
+/// The founder body's own derived values, used as the neutral point every
+/// phenotype multiplier is expressed against.
+///
+/// **Self-calibrating on purpose.** Every derived attribute is a ratio to
+/// this reference, so a founder lands mid-range on all of them and any
+/// deviation is a genuine consequence of a *different* body. Hard-coding the
+/// references instead would silently become a handicap the moment a registry
+/// coefficient or the founder program changed - which is the failure this
+/// phase already hit twice, once on energy capacity (D-083) and once on
+/// basal cost, speed, and body scale together.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct BodyReference {
+    pub mass_milli: i64,
+    pub upkeep_milli: i64,
+    pub intake_milli: i64,
+    /// Thrust per unit mass, milli. What speed is a ratio of.
+    pub thrust_ratio_milli: i64,
+}
+
+impl BodyReference {
+    pub fn of(derived: &DerivedBody) -> Self {
+        Self {
+            mass_milli: derived.mass_milli.max(1),
+            upkeep_milli: derived.basal_cost_milli.max(1),
+            intake_milli: derived.intake_milli.max(1),
+            thrust_ratio_milli: (derived.thrust_milli * 1_000 / derived.mass_milli.max(1)).max(1),
+        }
+    }
+}
+
 impl DerivedBody {
     /// Realized speed: thrust over mass, scaled and clamped.
     ///

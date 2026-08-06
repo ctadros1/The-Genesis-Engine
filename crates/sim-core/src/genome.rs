@@ -419,41 +419,42 @@ impl Phenotype {
     /// what makes turning morphology off a config flip rather than a schema
     /// change.
     ///
-    /// Derived values are mapped into the *existing* clamps rather than
-    /// given new ones, so an organism grown from modules is interchangeable
-    /// with one derived from genes everywhere downstream. That
-    /// interchangeability is the whole seam.
+    /// **Every quantity is a ratio to the founder body**, so a founder lands
+    /// mid-range on all of them and any deviation is a genuine consequence
+    /// of a different body. The first version of this function mapped module
+    /// sums onto the clamps directly, using whatever constant looked
+    /// dimensionally plausible, and produced a founder pinned at *three*
+    /// clamp extremes at once - maximum basal cost, minimum speed, minimum
+    /// sensing. Enabling morphology was therefore a systematic handicap
+    /// rather than a change of representation, and 29 of 30 campaign worlds
+    /// went extinct. A derived phenotype needs its reference point
+    /// calibrated to the founder or the derivation is a tax.
     pub fn from_body(
         traits: &[f32; TRAIT_COUNT],
         derived: &crate::morphology::DerivedBody,
-        basal_reference_milli: i64,
+        reference: &crate::morphology::BodyReference,
     ) -> Self {
         let mut phenotype = Self::from_traits(traits);
-        // Mass sets body scale. The reference point is one module of unit
-        // scale and unit density, so a single-module organism lands mid-range
-        // and a larger body scales up from there.
-        phenotype.body_scale_milli = (derived.mass_milli * 1_000 / 1_000).clamp(600, 1_600);
-        phenotype.max_speed_milli = derived.max_speed_milli(500, 3_000);
-        // A body with no sensory module senses at the floor rather than not
-        // at all: blindness is a lack of range, not a lack of the channel,
-        // and zero would divide badly downstream.
+        phenotype.body_scale_milli =
+            (derived.mass_milli * 1_000 / reference.mass_milli).clamp(600, 1_600);
+        phenotype.basal_mult_milli =
+            (derived.basal_cost_milli * 1_000 / reference.upkeep_milli).clamp(600, 1_600);
+        phenotype.intake_mult_milli =
+            (derived.intake_milli * 1_000 / reference.intake_milli).clamp(800, 1_200);
+        // Speed is thrust per unit mass relative to the founder's, centred so
+        // a founder sits mid-range and can move either way from there. A body
+        // with no motor still has zero thrust and lands on the floor, which
+        // is correct: it cannot move.
+        let ratio = derived.thrust_milli * 1_000 / derived.mass_milli.max(1);
+        phenotype.max_speed_milli =
+            (1_500 * ratio / reference.thrust_ratio_milli).clamp(500, 3_000);
+        // Sensing comes from the best sensory module. A body with none is
+        // blind, which is a real morphology and lands on the floor.
         phenotype.sensor_range_milli = if derived.sensory_modules == 0 {
             4_000
         } else {
             derived.sensor_range_milli.clamp(4_000, 12_000)
         };
-        // Basal cost is the sum of module upkeep expressed as a multiplier
-        // against the same reference, so the existing energy path is
-        // untouched in form and only its input changes.
-        if basal_reference_milli > 0 {
-            phenotype.basal_mult_milli =
-                (derived.basal_cost_milli * 1_000 / basal_reference_milli).clamp(600, 1_600);
-        }
-        // Intake likewise: digestive modules replace diet affinity as the
-        // multiplier's source.
-        if derived.intake_milli > 0 {
-            phenotype.intake_mult_milli = (derived.intake_milli).clamp(800, 1_200);
-        }
         phenotype
     }
 }

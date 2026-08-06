@@ -77,6 +77,7 @@ fn run() -> Result<(), String> {
         Some("spatial") => command_spatial(parse_options(args.collect())?),
         Some("demography") => command_demography(parse_options(args.collect())?),
         Some("structure") => command_structure(parse_options(args.collect())?),
+        Some("morph") => command_morph(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -97,6 +98,7 @@ fn usage() -> String {
         "       lifesim spatial --manifest FILE --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX] [--power]\n",
         "       lifesim demography --manifest FILE\n",
         "       lifesim structure --manifest FILE --baseline CONDITION\n",
+        "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2\n",
@@ -749,6 +751,131 @@ fn command_spatial(options: Options) -> Result<(), String> {
             }
         }
     }
+    Ok(())
+}
+
+/// Phase 10 C10.3 and C10.6: morphological evolution against a
+/// fixed-morphology control.
+///
+/// The baseline condition is the fixed-morphology control C10.6 contrasts
+/// against. C10.3's three clauses are reported per world and per condition,
+/// with the count of worlds that had no morphological variance separated
+/// out - those worlds cannot speak to consequence and are not counted as
+/// having refuted it.
+fn command_morph(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("morph requires --manifest\n{}", usage()))?;
+    let baseline = options
+        .baseline
+        .as_deref()
+        .ok_or_else(|| format!("morph requires --baseline\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    if !manifest
+        .campaign
+        .conditions
+        .iter()
+        .any(|condition| condition.name == baseline)
+    {
+        return Err(format!("no condition named '{baseline}' in this campaign"));
+    }
+
+    let mut plan = sim_analysis::MorphPlan::default();
+    if let Some(seed) = options.analysis_seed {
+        plan.analysis_seed = seed;
+    }
+    if let Some(sesoi) = options.sesoi {
+        plan.stability_tolerance_milli = sesoi;
+    }
+
+    let mut per_world: Vec<(String, Vec<sim_analysis::WorldMorph>)> = Vec::new();
+    for condition in &manifest.campaign.conditions {
+        let mut worlds = Vec::new();
+        for run in manifest.runs_for(&condition.name) {
+            let stem = sim_experiment::run_stem(&run.condition, run.seed);
+            let median_lifespan_ticks = fs::read(directory.join(format!("{stem}.alev")))
+                .ok()
+                .and_then(|bytes| sim_persist::decode_log_events(&bytes).ok())
+                .map(|(_, events)| sim_analysis::world_demography(&events).median_lifespan_ticks)
+                .unwrap_or(0);
+            let census = fs::read(directory.join(format!("{stem}.alif")))
+                .ok()
+                .and_then(|bytes| sim_persist::decode_snapshot(&bytes).ok())
+                .and_then(|(_, state)| sim_core::World::from_state(state).ok())
+                .map(|world| world.morphology_census())
+                .unwrap_or_default();
+            let (compared, rho_milli, null_p95_milli, no_variance) =
+                sim_analysis::consequence_of(&census, plan.analysis_seed ^ run.seed);
+            let series = fs::read_to_string(directory.join(format!("{stem}.almo")))
+                .map(|text| sim_analysis::parse_series(&text))
+                .unwrap_or_default();
+            let diverged = |sample: &sim_analysis::MorphSample| {
+                sample.distinct > 1 && sample.median_modules > plan.founder_modules
+            };
+            let halfway = series.get(series.len() / 2).copied();
+            worlds.push(sim_analysis::WorldMorph {
+                seed: run.seed,
+                population: run.population,
+                extinct: run.extinct,
+                median_modules: run.median_modules,
+                mean_modules_milli: run.mean_modules_milli,
+                distinct_morphologies: run.distinct_morphologies,
+                median_lifespan_ticks,
+                compared,
+                rho_milli,
+                null_p95_milli,
+                no_variance,
+                diverged_at_halfway: halfway.as_ref().is_some_and(diverged),
+                diverged_at_end: series.last().is_some_and(diverged),
+                series_samples: series.len(),
+            });
+        }
+        per_world.push((condition.name.clone(), worlds));
+    }
+
+    let outcomes: Vec<sim_analysis::MorphOutcome> = per_world
+        .iter()
+        .map(|(name, worlds)| sim_analysis::summarise_morph(name, worlds, &plan))
+        .collect();
+    let control = per_world
+        .iter()
+        .find(|(name, _)| name == baseline)
+        .map(|(_, worlds)| worlds.clone())
+        .unwrap_or_default();
+    let mut stabilities = Vec::new();
+    for (name, worlds) in &per_world {
+        if name == baseline {
+            continue;
+        }
+        for (label, quantity) in [
+            (
+                "population",
+                (|world: &sim_analysis::WorldMorph| world.population as i64)
+                    as fn(&sim_analysis::WorldMorph) -> i64,
+            ),
+            ("median_lifespan", |world: &sim_analysis::WorldMorph| {
+                world.median_lifespan_ticks as i64
+            }),
+        ] {
+            let pairs = sim_analysis::morph_pairs(worlds, &control, quantity);
+            let (within, paired) = sim_analysis::morph_stability(&pairs, &plan);
+            stabilities.push((name.clone(), label.to_owned(), within, paired));
+        }
+    }
+
+    print!(
+        "{}",
+        sim_analysis::render_morph(
+            &manifest.campaign.id,
+            &plan,
+            &per_world,
+            &outcomes,
+            &stabilities
+        )
+    );
     Ok(())
 }
 

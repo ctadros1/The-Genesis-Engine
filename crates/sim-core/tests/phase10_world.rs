@@ -225,3 +225,56 @@ fn subsystem_validation_runs_when_contest_is_disabled() {
     both.genome2.caps.max_nodes = 0;
     assert!(both.validate().is_err());
 }
+
+#[test]
+fn a_founder_body_is_energetically_comparable_to_a_schema_2_organism() {
+    // **The calibration test.** Morphology replaces how the phenotype is
+    // computed, and every derived quantity has to land on the same scale the
+    // trait-derived one did, or enabling morphology is a metabolic penalty
+    // rather than a change of representation - and C10.3 and C10.6 would be
+    // measuring that penalty instead of morphology.
+    //
+    // The founder body is one digestive module at unit scale, so it is the
+    // reference point: it must be near-neutral on every multiplier.
+    let with = World::new(morphology_config(7)).expect("world");
+    let without = World::new(flat_config(7)).expect("world");
+    let id = *with.organism_ids_view().first().expect("a founder");
+    let flat_id = *without.organism_ids_view().first().expect("a founder");
+    let body = with
+        .organism_detail(id)
+        .and_then(|detail| detail.phase2)
+        .expect("phase 2 detail")
+        .phenotype;
+    let flat = without
+        .organism_detail(flat_id)
+        .and_then(|detail| detail.phase2)
+        .expect("phase 2 detail")
+        .phenotype;
+    println!(
+        "PHASE10-CALIB body basal={} intake={} scale={} speed={} sensor={} | \
+         flat basal={} intake={} scale={} speed={} sensor={}",
+        body.basal_mult_milli,
+        body.intake_mult_milli,
+        body.body_scale_milli,
+        body.max_speed_milli,
+        body.sensor_range_milli,
+        flat.basal_mult_milli,
+        flat.intake_mult_milli,
+        flat.body_scale_milli,
+        flat.max_speed_milli,
+        flat.sensor_range_milli,
+    );
+    // Basal cost is the one that kills a world if it is wrong: it is paid
+    // every tick by every organism for its whole life.
+    assert!(
+        (900..=1_100).contains(&body.basal_mult_milli),
+        "a founder body's basal multiplier is {} - it must be near-neutral, \
+         or enabling morphology is a metabolic tax on every organism",
+        body.basal_mult_milli
+    );
+    assert!(
+        (800..=1_200).contains(&body.intake_mult_milli),
+        "a founder body's intake multiplier is {}",
+        body.intake_mult_milli
+    );
+}

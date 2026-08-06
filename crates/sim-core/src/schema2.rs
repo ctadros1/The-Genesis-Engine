@@ -228,18 +228,21 @@ pub fn founder_from_traits(traits: &[f32; crate::genome::TRAIT_COUNT]) -> Genome
 /// before Phase 10 existed and its fixture cannot move.
 pub fn founder_with_morphology(traits: &[f32; crate::genome::TRAIT_COUNT]) -> Genome2 {
     let mut genome = founder_from_traits(traits);
-    let homology_id = crate::develop::founder_program_homology_id();
-    let locus = crate::genome2::Locus {
-        homology_id,
-        gene_lineage_id: u64::from(homology_id),
-        mutation_event_id: 0,
-        kind: crate::genome2::LocusKind::Regulatory {
-            rule: crate::develop::founder_program(),
-        },
-    };
+    for (homology_id, rule) in crate::develop::founder_program() {
+        let locus = crate::genome2::Locus {
+            homology_id,
+            gene_lineage_id: u64::from(homology_id),
+            mutation_event_id: 0,
+            kind: crate::genome2::LocusKind::Regulatory { rule },
+        };
+        for haplotype in &mut genome.haplotypes {
+            for chromosome in &mut haplotype.chromosomes {
+                chromosome.push(locus);
+            }
+        }
+    }
     for haplotype in &mut genome.haplotypes {
         for chromosome in &mut haplotype.chromosomes {
-            chromosome.push(locus);
             chromosome.sort_unstable_by_key(|locus| locus.homology_id);
         }
     }

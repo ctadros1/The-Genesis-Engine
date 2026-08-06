@@ -24,15 +24,43 @@ use crate::checksum::Fnv1a64;
 use crate::config::MorphologyConfig;
 use crate::develop::{DevelopCounters, develop};
 use crate::genome2::Genome2;
-use crate::morphology::{Body, DerivedBody, ViabilityFailure};
+use crate::morphology::{Body, BodyReference, DerivedBody, ViabilityFailure};
 
 /// Parallel per-organism arrays, kept in lockstep with the world's primary
 /// arrays exactly as every other subsystem's are.
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug)]
 pub(crate) struct MorphologyState {
     pub bodies: Vec<Body>,
     pub derived: Vec<DerivedBody>,
     pub counters: DevelopCounters,
+    /// The founder body's derived values. Computed once from the founder
+    /// growth program - which is a constant of the build - so it is the same
+    /// in a fresh world and a restored one without being saved.
+    pub reference: BodyReference,
+}
+
+/// Derive the founder body once, for use as the neutral reference.
+///
+/// Pure: the founder growth program and the module registry are both build
+/// constants, so this is the same value in every world and does not need
+/// saving. It is computed rather than hard-coded so that changing a registry
+/// coefficient re-centres the phenotype instead of silently biasing it.
+pub(crate) fn founder_reference() -> BodyReference {
+    let config = crate::config::MorphologyConfig::morphology_default();
+    let mut counters = DevelopCounters::default();
+    let body = crate::develop::grow(
+        &crate::develop::founder_program(),
+        config.lattice,
+        &config.caps,
+        &mut counters,
+    );
+    BodyReference::of(&body.derive())
+}
+
+impl Default for MorphologyState {
+    fn default() -> Self {
+        Self::with_capacity(0)
+    }
 }
 
 impl MorphologyState {
@@ -41,6 +69,7 @@ impl MorphologyState {
             bodies: Vec::with_capacity(capacity),
             derived: Vec::with_capacity(capacity),
             counters: DevelopCounters::default(),
+            reference: founder_reference(),
         }
     }
 
