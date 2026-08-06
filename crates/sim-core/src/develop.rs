@@ -515,11 +515,7 @@ pub fn founder_program() -> Vec<(u32, Regulatory)> {
     ]
 }
 
-/// Homology slots the founder program occupies. Fixed, so two independently
-/// created founders align at meiosis.
-pub fn founder_program_homology_ids() -> Vec<u32> {
-    founder_program().into_iter().map(|(id, _)| id).collect()
-}
+
 
 /// Phenotypic distance between two bodies, milli, in `0..=1000`.
 ///
