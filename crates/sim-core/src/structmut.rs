@@ -272,6 +272,35 @@ pub fn mutate(
 
     let fires = |rate: u32, value: u64| rate > 0 && (value & 0xffff) < u64::from(rate);
 
+    // **The growth program is held fixed by restoring it, not by skipping
+    // operators.** `regulatory_enabled` gates point mutation directly, but
+    // duplication and deletion pick runs of loci without knowing what kind
+    // they are, so they were happily duplicating and deleting regulatory
+    // loci - and C10.3's fixed-morphology control diverged in 21 of 30
+    // worlds, which is not a control at all.
+    //
+    // Excluding regulatory loci from run selection would have been the
+    // obvious fix and the wrong one: it changes which loci the other
+    // operators can reach, raising their effective rate on everything else
+    // and making the control a different experiment. Snapshotting the
+    // regulatory set and restoring it afterwards leaves every draw, every
+    // rate, and every other locus exactly as the treatment sees them, and
+    // freezes only morphology.
+    let frozen_rules: Option<Vec<Vec<Locus>>> = (!config.regulatory_enabled).then(|| {
+        genome
+            .haplotypes
+            .iter()
+            .flat_map(|haplotype| haplotype.chromosomes.iter())
+            .map(|chromosome| {
+                chromosome
+                    .iter()
+                    .filter(|locus| matches!(locus.kind, LocusKind::Regulatory { .. }))
+                    .copied()
+                    .collect()
+            })
+            .collect()
+    });
+
     // 1. Point mutation.
     if fires(config.point_q16, value_draw(0)) {
         try_operator(genome, caps, counters, RejectReason::Invalid, |working| {
@@ -309,6 +338,20 @@ pub fn mutate(
         match transpose(genome, config, caps, &draw) {
             Ok(()) => counters.transposition_applied += 1,
             Err(reason) => counters.reject(reason),
+        }
+    }
+
+    if let Some(frozen) = frozen_rules {
+        let mut slot = 0_usize;
+        for haplotype in &mut genome.haplotypes {
+            for chromosome in &mut haplotype.chromosomes {
+                chromosome.retain(|locus| !matches!(locus.kind, LocusKind::Regulatory { .. }));
+                if let Some(saved) = frozen.get(slot) {
+                    chromosome.extend_from_slice(saved);
+                }
+                chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+                slot += 1;
+            }
         }
     }
 }

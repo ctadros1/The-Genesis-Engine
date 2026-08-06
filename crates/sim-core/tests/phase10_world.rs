@@ -278,3 +278,36 @@ fn a_founder_body_is_energetically_comparable_to_a_schema_2_organism() {
         body.intake_mult_milli
     );
 }
+
+#[test]
+fn the_fixed_morphology_control_actually_holds_morphology_fixed() {
+    // C10.3's control, and it did not control. `regulatory_enabled` gated
+    // point mutation only, while duplication and deletion pick runs of loci
+    // without knowing what kind they are - so they duplicated and deleted
+    // growth rules happily, and the "fixed morphology" arm diverged in 21 of
+    // 30 campaign worlds. A control that drifts is worse than no control,
+    // because it makes the treatment look less exceptional than it is.
+    let mut fixed = morphology_config(53);
+    fixed.genome2.mutation.duplication_q16 = 6_554;
+    fixed.genome2.mutation.deletion_q16 = 655;
+    fixed.genome2.mutation.regulatory_enabled = false;
+    let world = run(fixed, 4_000);
+    let metrics = world.metrics();
+    assert!(world.population() > 0 && metrics.births_total > 0);
+    assert_eq!(
+        metrics.distinct_morphologies, 1,
+        "the fixed-morphology control produced {} distinct bodies; it is not fixed",
+        metrics.distinct_morphologies
+    );
+
+    // ...and the treatment on the same seed must diverge, or the control is
+    // trivially satisfied by a world where nothing was going to happen.
+    let mut evolvable = morphology_config(53);
+    evolvable.genome2.mutation.duplication_q16 = 6_554;
+    evolvable.genome2.mutation.deletion_q16 = 655;
+    let treated = run(evolvable, 4_000);
+    assert!(
+        treated.metrics().distinct_morphologies > 1,
+        "the evolvable arm did not diverge either, so this test proves nothing"
+    );
+}

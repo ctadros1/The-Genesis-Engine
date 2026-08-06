@@ -801,12 +801,31 @@ fn command_morph(options: Options) -> Result<(), String> {
                 .and_then(|bytes| sim_persist::decode_log_events(&bytes).ok())
                 .map(|(_, events)| sim_analysis::world_demography(&events).median_lifespan_ticks)
                 .unwrap_or(0);
-            let census = fs::read(directory.join(format!("{stem}.alif")))
-                .ok()
-                .and_then(|bytes| sim_persist::decode_snapshot(&bytes).ok())
-                .and_then(|(_, state)| sim_core::World::from_state(state).ok())
-                .map(|world| world.morphology_census())
-                .unwrap_or_default();
+            // **A restore failure is reported, never swallowed.** An
+            // earlier version used `.ok()` here, so a world whose snapshot
+            // could not be restored produced an empty census - and the
+            // report said "no organism was mature" when the truth was "the
+            // config did not survive the codec". The two are opposite
+            // conclusions and only one of them is about biology.
+            let census = match fs::read(directory.join(format!("{stem}.alif"))) {
+                Ok(bytes) => {
+                    let (_, state) = sim_persist::decode_snapshot(&bytes)
+                        .map_err(|error| format!("{stem}: decode: {error}"))?;
+                    let world = sim_core::World::from_state(state)
+                        .map_err(|error| format!("{stem}: restore: {error}"))?;
+                    if world.morphology_enabled() != (run.mean_modules_milli > 0) {
+                        return Err(format!(
+                            "{stem}: the restored world's morphology is {} but the manifest \
+                             recorded mean_modules_milli={} - the config did not survive the \
+                             snapshot",
+                            world.morphology_enabled(),
+                            run.mean_modules_milli
+                        ));
+                    }
+                    world.morphology_census()
+                }
+                Err(error) => return Err(format!("{stem}: {error}")),
+            };
             let (compared, rho_milli, null_p95_milli, no_variance) =
                 sim_analysis::consequence_of(&census, plan.analysis_seed ^ run.seed);
             let series = fs::read_to_string(directory.join(format!("{stem}.almo")))

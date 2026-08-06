@@ -515,8 +515,6 @@ pub fn founder_program() -> Vec<(u32, Regulatory)> {
     ]
 }
 
-
-
 /// Phenotypic distance between two bodies, milli, in `0..=1000`.
 ///
 /// Lattice-occupancy difference over the union of occupied positions, as

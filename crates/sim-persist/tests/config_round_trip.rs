@@ -117,6 +117,18 @@ fn perturbed() -> SimConfig {
     config.physiology.senescence_hazard_q16_per_s = 656;
     config.physiology.extrinsic_hazard_q16_per_s = 14;
     config.physiology.juvenile_hazard_multiplier_q16 = 3 * 65_536;
+    // Phase 10 morphology. Added because the first version of this test
+    // predated the section and therefore passed while the morphology config
+    // was silently dropped on save - a restored world came back with
+    // morphology disabled and no bodies at all. A round-trip test only
+    // defends the fields it actually perturbs.
+    config.morphology.enabled = true;
+    config.morphology.lattice = sim_core::LatticeKind::Hex;
+    config.morphology.base_node_budget = 11;
+    config.morphology.caps.max_modules = 37;
+    config.morphology.caps.lattice_radius = 5;
+    config.morphology.caps.max_growth_steps = 9;
+    config.morphology.caps.required_types_mask = 1 << 3;
     config
 }
 

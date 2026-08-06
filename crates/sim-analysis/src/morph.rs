@@ -45,8 +45,13 @@ pub const PERMUTATIONS: usize = 199;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct MorphPlan {
-    /// Founder body size. One module, by construction of the founder growth
-    /// program, and asserted at tick 0 rather than assumed.
+    /// Founder body size, in modules.
+    ///
+    /// Three: gut, motor, sensor. It was 1 while the founder was a lone
+    /// digestive module, and leaving it at 1 after the founder grew made the
+    /// divergence clause trivially true for every world including the
+    /// control. A criterion phrased as "differs from the founder" is only as
+    /// good as its idea of what the founder is.
     pub founder_modules: u64,
     pub divergence_bar: usize,
     pub consequence_bar: usize,
@@ -60,7 +65,7 @@ pub struct MorphPlan {
 impl Default for MorphPlan {
     fn default() -> Self {
         Self {
-            founder_modules: 1,
+            founder_modules: 3,
             divergence_bar: 20,
             consequence_bar: 20,
             persistence_bar: 20,

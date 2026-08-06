@@ -400,6 +400,20 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u32(genome2.mutation.max_run);
     writer.u32(genome2.mutation.point_delta_q16);
     writer.u8(u8::from(genome2.mutation.regulatory_enabled));
+    // Phase 10 morphology config. Absent from the first cut of this
+    // function, which meant a restored world had morphology **disabled**:
+    // it rebuilt no bodies, its census came back empty, and the analysis
+    // read that as "no organism was mature" rather than as "the config did
+    // not survive". Exactly the defect D-065 introduced this whole function
+    // to prevent, one phase later.
+    let morphology = &config.morphology;
+    writer.u8(u8::from(morphology.enabled));
+    writer.u8(morphology.lattice.id());
+    writer.u32(morphology.base_node_budget);
+    writer.u32(u32::from(morphology.caps.max_modules));
+    writer.i32(i32::from(morphology.caps.lattice_radius));
+    writer.u32(u32::from(morphology.caps.max_growth_steps));
+    writer.u8(morphology.caps.required_types_mask);
     writer.0
 }
 
@@ -568,6 +582,18 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.genome2.mutation.max_run = reader.u32()?;
     config.genome2.mutation.point_delta_q16 = reader.u32()?;
     config.genome2.mutation.regulatory_enabled = reader.u8()? != 0;
+    config.morphology.enabled = reader.u8()? != 0;
+    let lattice_id = reader.u8()?;
+    config.morphology.lattice = sim_core::LatticeKind::from_id(lattice_id)
+        .ok_or(CodecError::ValueOutOfRange("morphology lattice"))?;
+    config.morphology.base_node_budget = reader.u32()?;
+    config.morphology.caps.max_modules = u16::try_from(reader.u32()?)
+        .map_err(|_| CodecError::ValueOutOfRange("morphology max_modules"))?;
+    config.morphology.caps.lattice_radius = i16::try_from(reader.i32()?)
+        .map_err(|_| CodecError::ValueOutOfRange("morphology lattice_radius"))?;
+    config.morphology.caps.max_growth_steps = u16::try_from(reader.u32()?)
+        .map_err(|_| CodecError::ValueOutOfRange("morphology max_growth_steps"))?;
+    config.morphology.caps.required_types_mask = reader.u8()?;
     Ok(config)
 }
 
