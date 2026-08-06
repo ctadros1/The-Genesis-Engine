@@ -25,6 +25,12 @@ pub(crate) struct PendingChild {
     /// other, and neither carries a placeholder for the one it is not.
     pub genome2: Option<crate::genome2::Genome2>,
     pub genome_hash: u64,
+    /// The grown body, `Some` exactly in a morphology world.
+    ///
+    /// Carried rather than regrown at admission: development is bounded but
+    /// not free, and it already ran at pairing time to decide whether this
+    /// child was viable at all.
+    pub body: Option<crate::morphology::Body>,
     pub phenotype: Phenotype,
     pub x_fp: i32,
     pub y_fp: i32,
@@ -41,7 +47,16 @@ pub enum PairRejectReason {
     Capacity,
     Placement,
     Energy,
-    /// The schema-2 child genome is not structurally viable.
+    /// The child cannot be produced: either its schema-2 genome is not
+    /// structurally viable, or the body that genome grows is not.
+    ///
+    /// One reason for two causes on purpose. From the pairing's point of
+    /// view they are the same outcome - this mating produces no viable
+    /// child - and the *class* of developmental failure is carried at full
+    /// resolution by `DevelopCounters`, which breaks it out by empty,
+    /// disconnected, missing-type, and other. Splitting the reason here
+    /// would duplicate that breakdown in a second place that could drift
+    /// from it.
     ///
     /// A real genetic outcome rather than an error. Crossover cuts a
     /// haplotype at an arbitrary point, so a gamete can carry an edge whose

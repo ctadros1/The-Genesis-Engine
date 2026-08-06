@@ -328,6 +328,22 @@ pub struct Module {
 pub const MIN_SCALE_MILLI: u16 = 500;
 pub const MAX_SCALE_MILLI: u16 = 2_000;
 
+/// Energy capacity conferred by ordinary tissue, per 1000 units of mass.
+///
+/// **Every body holds energy, not just bodies with storage organs.** An
+/// earlier version derived capacity from storage modules alone, which gave a
+/// storage-less body a capacity of zero - so every founder was instantly
+/// over its own limit and the world could not start. Adding a config floor
+/// would have papered over it with a magic constant; deriving from mass
+/// instead is both physical and removes the constant, because tissue really
+/// does hold energy and a bigger organism really does hold more.
+///
+/// Calibrated so a founder - one digestive module at unit scale, mass 800 -
+/// lands at 12,000 milli-EU, which is exactly the global `energy_max_milli`
+/// default a schema-2 organism gets. A morphology world therefore starts
+/// from the same energetics and diverges only as bodies do.
+pub const TISSUE_CAPACITY_PER_MASS_MILLI: i64 = 15_000;
+
 impl Module {
     /// Scale cubed, in milli units: `(scale/1000)^3 * 1000`.
     ///
@@ -583,12 +599,16 @@ impl Body {
                 }
                 ModuleType::Motor => derived.thrust_milli += capability,
                 ModuleType::Digestive => derived.intake_milli += capability,
-                ModuleType::Storage => derived.energy_capacity_milli += capability,
+                ModuleType::Storage => derived.storage_capacity_milli += capability,
                 ModuleType::Reproductive => derived.invest_capacity_milli += capability,
                 ModuleType::Neural => derived.node_budget_milli += capability,
             }
         }
         derived.modules = self.modules.len() as u32;
+        // Tissue capacity is a function of the whole body, so it is computed
+        // after the loop rather than accumulated inside it.
+        derived.energy_capacity_milli = derived.mass_milli * TISSUE_CAPACITY_PER_MASS_MILLI / 1_000
+            + derived.storage_capacity_milli;
         derived
     }
 
@@ -623,6 +643,11 @@ pub struct DerivedBody {
     pub sensor_range_milli: i64,
     pub sensory_modules: u32,
     pub intake_milli: i64,
+    /// Capacity from storage modules alone. Reported separately from the
+    /// total so an analysis can tell a body that invested in storage from
+    /// one that is merely large.
+    pub storage_capacity_milli: i64,
+    /// Total energy capacity: tissue plus storage.
     pub energy_capacity_milli: i64,
     pub invest_capacity_milli: i64,
     pub node_budget_milli: i64,

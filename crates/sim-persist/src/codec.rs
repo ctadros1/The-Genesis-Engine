@@ -76,6 +76,10 @@ const SECTION_CONTEST: u16 = 8;
 const SECTION_PHYSIOLOGY: u16 = 9;
 /// Phase 9 genome schema 2. Optional on the same terms.
 const SECTION_SCHEMA2: u16 = 10;
+/// Phase 10 morphology. Optional on the same terms, and deliberately tiny:
+/// bodies are derived and never stored, so this section carries only the
+/// developmental counters.
+const SECTION_MORPHOLOGY: u16 = 11;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodecError {
@@ -769,6 +773,42 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         }
         write_section(&mut payload, SECTION_SCHEMA2, section.0);
     }
+    if let Some(morphology) = state.morphology.as_ref() {
+        let mut section = Writer(Vec::new());
+        // Exhaustive destructuring with no `..`, so adding a counter fails
+        // this line rather than silently dropping it on save (D-077).
+        let sim_core::DevelopCounters {
+            bodies_grown,
+            modules_placed,
+            differentiations,
+            scale_changes,
+            refused_occupied,
+            refused_out_of_bounds,
+            refused_max_modules,
+            refused_node_budget,
+            nonviable_empty,
+            nonviable_disconnected,
+            nonviable_missing_type,
+            nonviable_other,
+        } = morphology.counters;
+        for value in [
+            bodies_grown,
+            modules_placed,
+            differentiations,
+            scale_changes,
+            refused_occupied,
+            refused_out_of_bounds,
+            refused_max_modules,
+            refused_node_budget,
+            nonviable_empty,
+            nonviable_disconnected,
+            nonviable_missing_type,
+            nonviable_other,
+        ] {
+            section.u64(value);
+        }
+        write_section(&mut payload, SECTION_MORPHOLOGY, section.0);
+    }
     payload
 }
 
@@ -778,6 +818,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
     let mut climate: Option<sim_core::ClimateSaveState> = None;
     let mut physiology: Option<sim_core::PhysiologySaveState> = None;
     let mut schema2: Option<sim_core::Schema2SaveState> = None;
+    let mut morphology: Option<sim_core::MorphologySaveState> = None;
     let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut meta: Option<(u64, bool, bool, u64, u64)> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -1159,6 +1200,29 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     counters,
                 });
             }
+            SECTION_MORPHOLOGY => {
+                if morphology.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let mut counters = sim_core::DevelopCounters::default();
+                for slot in [
+                    &mut counters.bodies_grown,
+                    &mut counters.modules_placed,
+                    &mut counters.differentiations,
+                    &mut counters.scale_changes,
+                    &mut counters.refused_occupied,
+                    &mut counters.refused_out_of_bounds,
+                    &mut counters.refused_max_modules,
+                    &mut counters.refused_node_budget,
+                    &mut counters.nonviable_empty,
+                    &mut counters.nonviable_disconnected,
+                    &mut counters.nonviable_missing_type,
+                    &mut counters.nonviable_other,
+                ] {
+                    *slot = reader.u64()?;
+                }
+                morphology = Some(sim_core::MorphologySaveState { counters });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -1196,6 +1260,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
         contest,
         physiology,
         schema2,
+        morphology,
     })
 }
 

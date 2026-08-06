@@ -112,6 +112,7 @@ pub struct SimConfig {
     /// schema 1 or schema 2 by config; there is no mixed-schema world and no
     /// migration between them.
     pub genome2: Genome2Config,
+    pub morphology: MorphologyConfig,
 }
 
 /// Versioned Phase 9 genome schema 2 policy.
@@ -135,6 +136,43 @@ impl Genome2Config {
             caps: crate::genome2::GenomeCaps::provisional(),
             meiosis: crate::meiosis::MeiosisConfig::default(),
             mutation: crate::structmut::MutationConfig::default(),
+        }
+    }
+}
+
+/// Versioned Phase 10 morphology policy (`lifesim-morphology-v1`,
+/// `lifesim-develop-v1`).
+///
+/// The seam is as narrow as Phase 9's and for the same reason (D-072):
+/// enabling morphology replaces exactly **how the phenotype is computed** -
+/// from a grown body rather than from trait genes - and nothing else.
+/// Movement, feeding, pairing, contest, and physiology all read `Phenotype`
+/// and cannot tell which produced it. If morphology also rewrote the tick,
+/// C10.3's "morphological change has consequence" and C10.6's "the ecology
+/// is still stable" would be comparisons between two different simulations.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct MorphologyConfig {
+    pub enabled: bool,
+    pub lattice: crate::morphology::LatticeKind,
+    pub caps: crate::morphology::MorphologyCaps,
+    /// Controller nodes available before any neural module is grown.
+    ///
+    /// Non-zero on purpose. A unicell with no neural tissue still responds
+    /// to its surroundings - chemotaxis needs no neurons - and a floor of
+    /// zero would make every founder non-viable, since the minimal founder
+    /// network has three nodes and no body starts with a brain. Neural
+    /// modules buy budget *above* this floor, which is where C10.7's
+    /// coupling lives.
+    pub base_node_budget: u32,
+}
+
+impl MorphologyConfig {
+    pub fn morphology_default() -> Self {
+        Self {
+            enabled: false,
+            lattice: crate::morphology::LatticeKind::Square,
+            caps: crate::morphology::MorphologyCaps::provisional(),
+            base_node_budget: 4,
         }
     }
 }
@@ -552,6 +590,7 @@ impl SimConfig {
             contest: ContestConfig::contest_default(),
             physiology: PhysiologyConfig::physiology_default(),
             genome2: Genome2Config::genome2_default(),
+            morphology: MorphologyConfig::morphology_default(),
         }
     }
 
@@ -690,40 +729,19 @@ impl SimConfig {
         self.validate_climate()?;
         self.validate_origin()?;
         self.validate_contest()?;
+        self.validate_subsystems()?;
         Ok(())
     }
 
-    fn validate_contest(&self) -> Result<(), ConfigError> {
-        let contest = &self.contest;
-        if !contest.enabled {
-            return Ok(());
-        }
-        // Contest is a Phase 2 mechanism: it wires reserved controller
-        // channels, which only exist when a controller does.
-        if !self.phase2.enabled {
-            return Err(ConfigError::ContestRequiresPhase2);
-        }
-        if contest.base_health_milli <= 0 {
-            return Err(ConfigError::NonPositive("base_health_milli"));
-        }
-        if contest.damage_base_milli < 0 {
-            return Err(ConfigError::Negative("damage_base_milli"));
-        }
-        if contest.attack_cost_milli < 0 {
-            return Err(ConfigError::Negative("attack_cost_milli"));
-        }
-        if contest.local_depletion_milli < 0 {
-            return Err(ConfigError::Negative("local_depletion_milli"));
-        }
-        if contest.attack_range_m == 0 || contest.attack_range_m > 32 {
-            return Err(ConfigError::AttackRange(contest.attack_range_m));
-        }
-        if contest.carcass_reach_m == 0 || contest.carcass_reach_m > 32 {
-            return Err(ConfigError::AttackRange(contest.carcass_reach_m));
-        }
-        if contest.max_carcasses == 0 || contest.max_carcasses > 200_000 {
-            return Err(ConfigError::MaxCarcasses(contest.max_carcasses));
-        }
+    /// Validation for the subsystems that are not contest.
+    ///
+    /// **These checks used to live inside `validate_contest`**, which
+    /// early-returns when the contest section is disabled - so every
+    /// genome2 and physiology cap check was silently skipped in any world
+    /// without contest, which is most of them. The blocks were appended to
+    /// the wrong function over successive phases and nothing failed,
+    /// because a skipped validation looks exactly like a passing one.
+    fn validate_subsystems(&self) -> Result<(), ConfigError> {
         if self.genome2.enabled {
             if !self.phase2.enabled {
                 return Err(ConfigError::PhysiologyRange("genome2 requires phase2", 0));
@@ -737,6 +755,22 @@ impl SimConfig {
                 || caps.min_nodes == 0
             {
                 return Err(ConfigError::PhysiologyRange("genome2 cap is zero", 0));
+            }
+        }
+        if self.morphology.enabled {
+            // Morphology is expressed from schema-2 loci, so it cannot run
+            // without the genome that carries them. Refused rather than
+            // silently ignored: a config that asks for bodies and gets none
+            // would report morphology metrics of zero and read as a null.
+            if !self.genome2.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "morphology requires genome2",
+                    0,
+                ));
+            }
+            let caps = &self.morphology.caps;
+            if caps.max_modules == 0 || caps.lattice_radius <= 0 || caps.max_growth_steps == 0 {
+                return Err(ConfigError::PhysiologyRange("morphology cap is zero", 0));
             }
         }
         let physiology = &self.physiology;
@@ -770,6 +804,40 @@ impl SimConfig {
                     i64::from(physiology.thermal_neutral_band_milli),
                 ));
             }
+        }
+        Ok(())
+    }
+
+    fn validate_contest(&self) -> Result<(), ConfigError> {
+        let contest = &self.contest;
+        if !contest.enabled {
+            return Ok(());
+        }
+        // Contest is a Phase 2 mechanism: it wires reserved controller
+        // channels, which only exist when a controller does.
+        if !self.phase2.enabled {
+            return Err(ConfigError::ContestRequiresPhase2);
+        }
+        if contest.base_health_milli <= 0 {
+            return Err(ConfigError::NonPositive("base_health_milli"));
+        }
+        if contest.damage_base_milli < 0 {
+            return Err(ConfigError::Negative("damage_base_milli"));
+        }
+        if contest.attack_cost_milli < 0 {
+            return Err(ConfigError::Negative("attack_cost_milli"));
+        }
+        if contest.local_depletion_milli < 0 {
+            return Err(ConfigError::Negative("local_depletion_milli"));
+        }
+        if contest.attack_range_m == 0 || contest.attack_range_m > 32 {
+            return Err(ConfigError::AttackRange(contest.attack_range_m));
+        }
+        if contest.carcass_reach_m == 0 || contest.carcass_reach_m > 32 {
+            return Err(ConfigError::AttackRange(contest.carcass_reach_m));
+        }
+        if contest.max_carcasses == 0 || contest.max_carcasses > 200_000 {
+            return Err(ConfigError::MaxCarcasses(contest.max_carcasses));
         }
         for (name, value) in [
             ("damage_variance_q16", contest.damage_variance_q16),
@@ -1177,6 +1245,24 @@ impl SimConfig {
             hasher.update_u32(mutation.transposition_q16);
             hasher.update_u32(mutation.max_run);
             hasher.update_u32(mutation.point_delta_q16);
+        }
+        // Phase 10 section, on the same terms: hashed only when enabled, so
+        // every earlier fixture survives untouched (D-014).
+        if self.morphology.enabled {
+            hasher.update(b"lifesim-morphology-config");
+            hasher.update(crate::morphology::MORPHOLOGY_POLICY_VERSION.as_bytes());
+            hasher.update(crate::develop::DEVELOP_POLICY_VERSION.as_bytes());
+            // The module registry is part of what a body means: the same
+            // modules under different coefficients describe a different
+            // organism.
+            hasher.update_u32(u32::from(crate::morphology::MODULE_REGISTRY_VERSION));
+            hasher.update_u32(u32::from(self.morphology.lattice.id()));
+            let caps = &self.morphology.caps;
+            hasher.update_u32(u32::from(caps.max_modules));
+            hasher.update_u32(caps.lattice_radius as u32);
+            hasher.update_u32(u32::from(caps.max_growth_steps));
+            hasher.update_u32(u32::from(caps.required_types_mask));
+            hasher.update_u32(self.morphology.base_node_budget);
         }
         hasher.finish()
     }

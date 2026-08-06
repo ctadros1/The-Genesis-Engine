@@ -146,6 +146,10 @@ pub struct DevelopCounters {
     pub refused_out_of_bounds: u64,
     /// Placements refused because the body was already at `max_modules`.
     pub refused_max_modules: u64,
+    /// Births refused because the controller needed more nodes than the
+    /// body's neural tissue could support. C10.7's coupling, counted so a
+    /// campaign can tell "brains are constrained" from "brains are free".
+    pub refused_node_budget: u64,
     /// Bodies that failed validation, by class.
     pub nonviable_empty: u64,
     pub nonviable_disconnected: u64,
@@ -180,6 +184,7 @@ impl DevelopCounters {
             self.refused_occupied,
             self.refused_out_of_bounds,
             self.refused_max_modules,
+            self.refused_node_budget,
             self.nonviable_empty,
             self.nonviable_disconnected,
             self.nonviable_missing_type,
@@ -451,6 +456,35 @@ pub fn develop(
             Err(failure)
         }
     }
+}
+
+/// The founder growth program: one rule that turns the origin module into a
+/// gut.
+///
+/// Minimal by construction, exactly as Phase 9's founder network is three
+/// nodes and two edges. Development starts from a single `Structural`
+/// module, and a structural module has no intake, so a founder with no
+/// program at all would be a valid body that starves. One rule makes it a
+/// functioning unicell and leaves **every** further morphological change to
+/// evolution, which is what lets a campaign attribute structure to
+/// duplication and mutation rather than to what was seeded.
+pub fn founder_program() -> Regulatory {
+    Regulatory {
+        condition_kind: COND_ALWAYS,
+        condition_op: OP_GE,
+        condition_param: 0,
+        threshold: 0,
+        action_kind: ACT_DIFFERENTIATE,
+        action_type: crate::morphology::TYPE_DIGESTIVE,
+        direction: 0,
+        scale_milli: 1_000,
+    }
+}
+
+/// Homology slot the founder program occupies. Fixed, so two independently
+/// created founders align at meiosis.
+pub fn founder_program_homology_id() -> u32 {
+    crate::genome2::STRUCTURAL_HOMOLOGY_BASE + 20_000
 }
 
 /// Phenotypic distance between two bodies, milli, in `0..=1000`.

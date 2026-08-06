@@ -94,6 +94,20 @@ pub struct Schema2SaveState {
     pub counters: crate::structmut::MutationCounters,
 }
 
+/// Phase 10 morphology state.
+///
+/// **Bodies are deliberately absent.** They are a pure function of the
+/// genome, which is already here, so storing them would add a fourth
+/// per-organism growth term to the snapshot for no information (ADR-0019).
+/// What *is* state is the developmental counters: they are hashed into the
+/// checksum, so a restore that rebuilt them from zero would produce a world
+/// that no longer matched the one it was saved from - the D-077 defect, one
+/// phase later.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MorphologySaveState {
+    pub counters: crate::develop::DevelopCounters,
+}
+
 /// Complete logical world state in stable field order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveState {
@@ -123,6 +137,7 @@ pub struct SaveState {
     pub physiology: Option<PhysiologySaveState>,
     /// Present exactly when the config's genome2 section is enabled.
     pub schema2: Option<Schema2SaveState>,
+    pub morphology: Option<MorphologySaveState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -206,6 +221,9 @@ impl World {
                     deaths_by_damage_total: contest.deaths_by_damage_total,
                     healed_milli: contest.healed_milli,
                 }),
+            morphology: self.morphology_state().map(|state| MorphologySaveState {
+                counters: state.counters,
+            }),
             schema2: self.schema2_state().map(|state| Schema2SaveState {
                 genomes: state.genomes.iter().map(|genome| genome.encode()).collect(),
                 activation_values: state
@@ -283,6 +301,12 @@ impl World {
         // Schema 2 presence must match the configuration, and every genome
         // is decoded through the ordinary fail-closed path rather than
         // trusted: a save is untrusted input like any other.
+        let morphology_config = world.config().morphology;
+        let basal_reference = world.config().basal_cost_milli_per_s;
+        // Rebuilt by regrowing every organism, in the phase-2 loop below.
+        let mut rebuilt_morphology = morphology_config
+            .enabled
+            .then(crate::morphstate::MorphologyState::default);
         let rebuilt_schema2 = match (world.genome2_enabled(), state.schema2) {
             (true, Some(schema2)) => {
                 same_length(schema2.genomes.len(), "schema2.genomes")?;
@@ -378,11 +402,33 @@ impl World {
                         Some(state) => {
                             let genome2 = &state.genomes[index];
                             let traits = crate::world::resolve_traits(&genome2.express_traits());
-                            (
-                                None,
-                                crate::checksum::fnv1a64(&genome2.encode()),
-                                Phenotype::from_traits(&traits),
-                            )
+                            // **Bodies are recomputed, never read.** Nothing
+                            // in the save carries one: development is a pure
+                            // function of `(genome, config)`, so regrowing
+                            // gives the same body bit for bit, and C10.10's
+                            // "snapshot size is unaffected" is a consequence
+                            // of that rather than a target to hit.
+                            //
+                            // This is the D-065 trap's twin, and the
+                            // difference is worth naming. The biome map was
+                            // documented as derived and was *not* a pure
+                            // function of saved state - it was a
+                            // classification cached on a cadence - so
+                            // recomputing it diverged. A body is a pure
+                            // function of a genome, and the genome is saved.
+                            let phenotype = match rebuilt_morphology.as_mut() {
+                                Some(state) => {
+                                    state
+                                        .push_organism(genome2, &morphology_config)
+                                        .map_err(|_| RestoreError::StateInvalid(format!(
+                                            "organism {index} regrew a non-viable body on restore,                                              which means development is not a pure function of the                                              genome"
+                                        )))?;
+                                    let derived = state.derived[state.derived.len() - 1];
+                                    Phenotype::from_body(&traits, &derived, basal_reference)
+                                }
+                                None => Phenotype::from_traits(&traits),
+                            };
+                            (None, crate::checksum::fnv1a64(&genome2.encode()), phenotype)
                         }
                         None => {
                             let genome = Genome::validated(
@@ -527,6 +573,18 @@ impl World {
             rebuilt_contest,
             rebuilt_physiology,
             rebuilt_schema2,
+            {
+                // Regrowing every body incremented `bodies_grown` and its
+                // siblings. The counters are world state and are hashed, so
+                // they come from the save; the ones accumulated while
+                // rebuilding are an artifact of the rebuild and are dropped.
+                if let (Some(state), Some(saved)) =
+                    (rebuilt_morphology.as_mut(), state.morphology.as_ref())
+                {
+                    state.counters = saved.counters;
+                }
+                rebuilt_morphology
+            },
         );
 
         world

@@ -29,6 +29,7 @@ mod genome;
 mod genome2;
 mod meiosis;
 mod morphology;
+mod morphstate;
 mod origin;
 mod phase2;
 mod physiology;
@@ -48,8 +49,8 @@ pub use climate::{
 };
 pub use config::{
     BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
-    Genome2Config, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig,
-    SimConfig, WorldgenVersion,
+    Genome2Config, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config,
+    PhysiologyConfig, SimConfig, WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -114,12 +115,12 @@ pub use registry::{
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
-    ClimateSaveState, ContestSaveState, Phase2SaveState, PhysiologySaveState, RestoreError,
-    SAVE_STATE_VERSION, SaveState, Schema2SaveState,
+    ClimateSaveState, ContestSaveState, MorphologySaveState, Phase2SaveState, PhysiologySaveState,
+    RestoreError, SAVE_STATE_VERSION, SaveState, Schema2SaveState,
 };
 pub use schema2::{
     ACTION_CHANNELS, SENSE_CHANNELS, compatibility_distance, founder_from_traits,
-    outputs_from_requests,
+    founder_with_morphology, outputs_from_requests,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use structmut::{

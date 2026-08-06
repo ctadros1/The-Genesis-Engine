@@ -15,6 +15,7 @@ use crate::controller::{
 use crate::genome::{
     CONTROLLER_INPUTS, Genome, Phenotype, VariationPolicy, VariationSummary, recombine,
 };
+use crate::morphstate::MorphologyState;
 use crate::origin::{self, OriginError};
 use crate::phase2::{
     PairRejectReason, PendingChild, Phase2Counters, Phase2State, SENSOR_RANGE_MAX_M,
@@ -339,6 +340,18 @@ pub struct MetricsSnapshot {
     pub distinct_structures: u64,
     pub structural_mutations_applied: u64,
     pub structural_mutations_rejected: u64,
+    /// Phase 10. Zero when the morphology section is disabled.
+    pub morphology_enabled: bool,
+    pub mean_modules_milli: u64,
+    /// Distinct whole-body signatures among the living. C10.3's divergence
+    /// measure, and a signature rather than a module count because A13 says
+    /// novelty is not progress: two equal-sized bodies of different tissue
+    /// are genuinely different morphologies, and counting modules alone
+    /// would miss it.
+    pub distinct_morphologies: u64,
+    pub bodies_grown: u64,
+    pub nonviable_bodies: u64,
+    pub refused_node_budget: u64,
     pub carcasses: u64,
     pub total_carcass_energy_milli: i64,
 }
@@ -412,6 +425,10 @@ pub enum InvariantViolation {
     /// report rather than a runtime condition.
     Schema2Invalid {
         id: u64,
+    },
+    MorphologyDesync {
+        organisms: usize,
+        morphology: usize,
     },
     ContestStateInvalid {
         id: u64,
@@ -533,6 +550,7 @@ pub struct World {
     contest: Option<ContestState>,
     physiology: Option<PhysiologyState>,
     schema2: Option<Schema2State>,
+    morphology: Option<MorphologyState>,
 }
 
 impl World {
@@ -606,6 +624,7 @@ impl World {
             contest: None,
             physiology: None,
             schema2: None,
+            morphology: None,
             config,
         };
 
@@ -670,12 +689,47 @@ impl World {
         }
         if world.config.genome2.enabled {
             let mut schema2 = Schema2State::with_capacity(world.ids.len());
+            let morphology_config = world.config.morphology;
+            let mut morphology = morphology_config
+                .enabled
+                .then(|| MorphologyState::with_capacity(world.ids.len()));
+            let basal_reference = world.config.basal_cost_milli_per_s;
             if let Some(p2) = world.phase2.as_mut() {
                 for index in 0..world.ids.len() {
-                    let genome = crate::schema2::founder_from_traits(p2.genomes[index].traits());
-                    let traits = genome.express_traits();
-                    p2.phenotypes[index] =
-                        crate::genome::Phenotype::from_traits(&resolve_traits(&traits));
+                    // A morphology world's founder carries the one-rule growth
+                    // program as well; a schema-2 world's founder is
+                    // byte-identical to what it was before Phase 10.
+                    let genome = if morphology_config.enabled {
+                        crate::schema2::founder_with_morphology(p2.genomes[index].traits())
+                    } else {
+                        crate::schema2::founder_from_traits(p2.genomes[index].traits())
+                    };
+                    let traits = resolve_traits(&genome.express_traits());
+                    p2.phenotypes[index] = match morphology.as_mut() {
+                        Some(state) => {
+                            state.push_organism(&genome, &morphology_config).map_err(
+                                |failure| {
+                                    NewWorldError::Config(
+                                    crate::config::ConfigError::PhysiologyRange(
+                                        match failure {
+                                            crate::morphology::ViabilityFailure::Empty => {
+                                                "founder body is empty"
+                                            }
+                                            crate::morphology::ViabilityFailure::Disconnected => {
+                                                "founder body is disconnected"
+                                            }
+                                            _ => "founder body is not viable",
+                                        },
+                                        index as i64,
+                                    ),
+                                )
+                                },
+                            )?;
+                            let derived = state.derived[state.derived.len() - 1];
+                            crate::genome::Phenotype::from_body(&traits, &derived, basal_reference)
+                        }
+                        None => crate::genome::Phenotype::from_traits(&traits),
+                    };
                     if !schema2.push_organism(genome) {
                         return Err(NewWorldError::Config(
                             crate::config::ConfigError::PhysiologyRange(
@@ -695,6 +749,7 @@ impl World {
                 }
             }
             world.schema2 = Some(schema2);
+            world.morphology = morphology;
         }
         if world.config.physiology.enabled {
             let mut physiology = PhysiologyState::with_capacity(world.ids.len());
@@ -873,6 +928,27 @@ impl World {
                 .schema2
                 .as_ref()
                 .map_or(0, |state| state.counters.total_rejected()),
+            morphology_enabled: self.morphology.is_some(),
+            mean_modules_milli: self
+                .morphology
+                .as_ref()
+                .map_or(0, |state| state.mean_modules_milli()),
+            distinct_morphologies: self
+                .morphology
+                .as_ref()
+                .map_or(0, |state| state.distinct_morphologies() as u64),
+            bodies_grown: self
+                .morphology
+                .as_ref()
+                .map_or(0, |state| state.counters.bodies_grown),
+            nonviable_bodies: self
+                .morphology
+                .as_ref()
+                .map_or(0, |state| state.counters.total_nonviable()),
+            refused_node_budget: self
+                .morphology
+                .as_ref()
+                .map_or(0, |state| state.counters.refused_node_budget),
             physiology_enabled: self.physiology.is_some(),
             deaths_senescence_total: self
                 .physiology
@@ -967,8 +1043,35 @@ impl World {
         self.schema2.as_ref()
     }
 
+    pub(crate) fn morphology_state(&self) -> Option<&MorphologyState> {
+        self.morphology.as_ref()
+    }
+
     pub fn genome2_enabled(&self) -> bool {
         self.schema2.is_some()
+    }
+
+    pub fn morphology_enabled(&self) -> bool {
+        self.morphology.is_some()
+    }
+
+    /// This organism's energy capacity, milli-EU.
+    ///
+    /// Without morphology this is the global config value and every caller
+    /// behaves exactly as it did, which is what keeps the schema-1 and
+    /// schema-2 fixtures intact. With morphology it is the config floor plus
+    /// what the body's storage modules confer.
+    ///
+    /// Storage has to buy *something*. Every module costs mass and upkeep,
+    /// and mass costs speed, so a storage module that conferred no capacity
+    /// would be strictly deleterious - an authored disadvantage, and the
+    /// morphospace would simply exclude a tissue type the registry claims to
+    /// offer.
+    fn energy_capacity_of(&self, index: usize) -> i64 {
+        match self.morphology.as_ref() {
+            Some(state) if index < state.derived.len() => state.energy_capacity_milli(index),
+            _ => self.config.energy_max_milli,
+        }
     }
 
     /// Per-organism expressed structure and encoded genome size, in entity-ID
@@ -1122,6 +1225,7 @@ impl World {
         contest: Option<ContestState>,
         physiology: Option<PhysiologyState>,
         schema2: Option<Schema2State>,
+        morphology: Option<MorphologyState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -1141,6 +1245,7 @@ impl World {
         self.contest = contest;
         self.physiology = physiology;
         self.schema2 = schema2;
+        self.morphology = morphology;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -1172,9 +1277,9 @@ impl World {
             if x < x0_fp || x > x1_fp || y < y0_fp || y > y1_fp {
                 continue;
             }
-            let energy_frac_q8 = ((self.energy_milli[index].clamp(0, self.config.energy_max_milli)
-                * 255)
-                / self.config.energy_max_milli.max(1)) as u8;
+            let energy_frac_q8 =
+                ((self.energy_milli[index].clamp(0, self.energy_capacity_of(index)) * 255)
+                    / self.energy_capacity_of(index).max(1)) as u8;
             let record = match p2 {
                 Some(p2) => {
                     let traits = match self.schema2.as_ref() {
@@ -1530,7 +1635,7 @@ impl World {
             if available <= 0 {
                 continue;
             }
-            let remaining_capacity = self.config.energy_max_milli - self.energy_milli[index];
+            let remaining_capacity = self.energy_capacity_of(index) - self.energy_milli[index];
             if remaining_capacity <= 0 {
                 continue;
             }
@@ -1633,7 +1738,8 @@ impl World {
             let phenotype = &p2.phenotypes[index];
 
             // 1: energy fraction; 2: health neutral; 3: age fraction.
-            inputs[0] = self.energy_milli[index] as f32 / self.config.energy_max_milli as f32;
+            inputs[0] =
+                self.energy_milli[index] as f32 / self.energy_capacity_of(index).max(1) as f32;
             // Reserved channel 2: health. Neutral 1.0 without the contest
             // section, which is what keeps the Phase 2 fixture exact.
             inputs[1] = match contest_view.as_ref() {
@@ -2008,7 +2114,7 @@ impl World {
             if available <= 0 {
                 continue;
             }
-            let remaining_capacity = self.config.energy_max_milli - self.energy_milli[index];
+            let remaining_capacity = self.energy_capacity_of(index) - self.energy_milli[index];
             if remaining_capacity <= 0 {
                 continue;
             }
@@ -2047,6 +2153,10 @@ impl World {
     fn resolve_pairs(&mut self, next_tick: u64, p2: &mut Phase2State) {
         let population = self.ids.len();
         let phase2_config = self.config.phase2;
+        // Copied out once: `self.morphology` is borrowed mutably inside the
+        // pairing loop, so the config cannot be read through `self` there.
+        let morphology_config = self.config.morphology;
+        let basal_reference = self.config.basal_cost_milli_per_s;
         let range_fp = i64::from(phase2_config.pairing_range_m) * i64::from(crate::FP_PER_METER);
         let range_squared = range_fp * range_fp;
         let compatibility = phase2_config.compatibility_threshold_q16 as f32 / 65536.0;
@@ -2296,6 +2406,73 @@ impl World {
                 continue;
             }
 
+            // **Development runs here, at pairing time**, for the same reason
+            // the genome check above does: a child whose body will not work
+            // costs a mating opportunity rather than the energy ledger, and
+            // the phenotype the rest of the tick reads has to come from the
+            // body rather than from trait genes. The grown body travels with
+            // the pending child so development runs once per birth.
+            let mut child_body = None;
+            let mut phenotype = phenotype;
+            if let Some(state) = self.morphology.as_mut()
+                && let Some(child) = child_genome2.as_ref()
+            {
+                match crate::develop::develop(
+                    child,
+                    morphology_config.lattice,
+                    &morphology_config.caps,
+                    &mut state.counters,
+                ) {
+                    Ok(body) => {
+                        let derived = body.derive();
+                        // **C10.7: brain costs body.** A controller larger
+                        // than the body's neural tissue can support is not a
+                        // controller this organism can run, so the child is
+                        // refused rather than having its network trimmed - a
+                        // trimmed network is one no genome encoded, and the
+                        // same fail-closed rule the structural caps follow.
+                        //
+                        // This is what makes the coupling structural rather
+                        // than stipulated: growing a bigger brain requires
+                        // growing neural modules, which cost mass and a
+                        // fourth-power upkeep, and nothing anywhere states
+                        // that a big brain is good or bad.
+                        let budget = morphology_config.base_node_budget + derived.node_budget();
+                        let nodes = child.express_network().nodes.len() as u32;
+                        if nodes > budget {
+                            state.counters.refused_node_budget += 1;
+                            p2.counters.pair_rejected_nonviable_total += 1;
+                            self.push_event(
+                                next_tick,
+                                EventKind::PairRejected {
+                                    parent_a,
+                                    parent_b,
+                                    reason: PairRejectReason::Nonviable,
+                                },
+                            );
+                            continue;
+                        }
+                        let traits = resolve_traits(&child.express_traits());
+                        phenotype = Phenotype::from_body(&traits, &derived, basal_reference);
+                        child_body = Some(body);
+                    }
+                    Err(_) => {
+                        // The class is already counted by `DevelopCounters`;
+                        // this counts the *pairing* that failed because of it.
+                        p2.counters.pair_rejected_nonviable_total += 1;
+                        self.push_event(
+                            next_tick,
+                            EventKind::PairRejected {
+                                parent_a,
+                                parent_b,
+                                reason: PairRejectReason::Nonviable,
+                            },
+                        );
+                        continue;
+                    }
+                }
+            }
+
             let heading = (named_random(
                 self.config.world_seed,
                 next_tick,
@@ -2322,6 +2499,7 @@ impl World {
                 genome,
                 genome2: child_genome2,
                 genome_hash,
+                body: child_body,
                 phenotype,
                 x_fp: birth_x,
                 y_fp: birth_y,
@@ -2515,8 +2693,12 @@ impl World {
 
         // --- Apply damage, heal, decay. ---
         let heal_per_tick = contest_config.heal_milli_per_s * dt / 1_000;
-        let energy_floor =
-            (self.config.energy_max_milli * i64::from(contest_config.heal_energy_floor_q16)) >> 16;
+        // Hoisted out of the loop as a *fraction*, not an absolute: with
+        // morphology the capacity differs per organism, so an absolute floor
+        // computed from the global would let a small-storage organism heal
+        // below what the policy intends and forbid a large-storage one from
+        // healing at all.
+        let heal_energy_floor_q16 = i64::from(contest_config.heal_energy_floor_q16);
         let decay_per_tick = i64::from(contest_config.damage_decay_q16_per_s) * dt / 1_000;
         let mut heal_spend = vec![0_i64; population];
         if let Some(contest) = self.contest.as_mut() {
@@ -2563,6 +2745,7 @@ impl World {
             if spend <= 0 {
                 continue;
             }
+            let energy_floor = (self.energy_capacity_of(index) * heal_energy_floor_q16) >> 16;
             if self.energy_milli[index] <= energy_floor {
                 // Could not afford it after all: undo the restoration.
                 if let Some(contest) = self.contest.as_mut() {
@@ -2588,7 +2771,7 @@ impl World {
             // visited in ascending carcass ID order. Both orders are
             // canonical, so contested consumption resolves deterministically.
             for index in 0..population {
-                if self.energy_milli[index] >= self.config.energy_max_milli {
+                if self.energy_milli[index] >= self.energy_capacity_of(index) {
                     continue;
                 }
                 let (x, y) = (i64::from(self.x_fp[index]), i64::from(self.y_fp[index]));
@@ -2601,7 +2784,7 @@ impl World {
                     if dx * dx + dy * dy > reach_fp * reach_fp {
                         continue;
                     }
-                    let room = self.config.energy_max_milli - self.energy_milli[index];
+                    let room = self.energy_capacity_of(index) - self.energy_milli[index];
                     let take = carcass.energy_milli.min(self.intake_tick).max(0);
                     if take <= 0 {
                         continue;
@@ -2784,6 +2967,9 @@ impl World {
             if let Some(state) = self.schema2.as_mut() {
                 state.retain(&dead);
             }
+            if let Some(state) = self.morphology.as_mut() {
+                state.retain(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -2837,6 +3023,9 @@ impl World {
                     self.ledger.spent_milli += i128::from(child.energy_milli);
                     p2.counters.pair_rejected_nonviable_total += 1;
                     continue;
+                }
+                if let (Some(state), Some(body)) = (self.morphology.as_mut(), child.body.clone()) {
+                    state.push_body(body);
                 }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;
@@ -2952,6 +3141,13 @@ impl World {
         if let Some(state) = self.schema2.as_ref() {
             state.hash_into(&mut hasher);
         }
+        // Phase 10: only the developmental counters. Bodies are a pure
+        // function of genomes, and genomes are already hashed above, so
+        // hashing bodies would add no discriminating power - divergent
+        // bodies imply divergent genomes and the section above catches it.
+        if let Some(state) = self.morphology.as_ref() {
+            state.hash_into(&mut hasher);
+        }
         if let Some(physiology) = self.physiology.as_ref() {
             physiology.hash_into(&mut hasher);
         }
@@ -2977,7 +3173,7 @@ impl World {
                 });
             }
             let energy = self.energy_milli[index];
-            if energy < 0 || energy > self.config.energy_max_milli {
+            if energy < 0 || energy > self.energy_capacity_of(index) {
                 return Err(InvariantViolation::EnergyOutOfBounds {
                     id: self.ids[index],
                     energy_milli: energy,
@@ -3090,6 +3286,17 @@ impl World {
                     id: self.ids[index],
                 });
             }
+        }
+        // Phase 10, on the same terms. Bodies are derived rather than stored,
+        // which makes a desync *more* likely to go unnoticed rather than
+        // less: nothing on the save path would ever reveal it.
+        if let Some(state) = self.morphology.as_ref()
+            && (state.len() != self.ids.len() || state.derived.len() != self.ids.len())
+        {
+            return Err(InvariantViolation::MorphologyDesync {
+                organisms: self.ids.len(),
+                morphology: state.len(),
+            });
         }
         // Phase 8 structural invariant, checked before the hazard arrays
         // are ever indexed by organism position.

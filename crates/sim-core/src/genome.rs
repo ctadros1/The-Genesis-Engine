@@ -403,6 +403,59 @@ impl Phenotype {
             cooldown_ticks: lerp_milli(traits[GENE_REPRO_COOLDOWN], 200, 600) as u64,
         }
     }
+
+    /// Phase 10: the retired trait genes replaced by their grown body.
+    ///
+    /// **Three traits are retired and only three.** Body scale, speed
+    /// potential, and sensor range are now consequences of the module set,
+    /// per `specifications/morphology-and-development.md`. Everything else -
+    /// metabolism, diet affinity, thermal preference, approach and defense
+    /// tendency, maturity, investment, cooldown - stays a trait gene,
+    /// because none of those is a fact about shape.
+    ///
+    /// The retired trait IDs are **never reused**. They keep their slots in
+    /// the trait block, keep being inherited, and stop being read. That is
+    /// the same treatment `PlasticityGenes` gets before Phase 11, and it is
+    /// what makes turning morphology off a config flip rather than a schema
+    /// change.
+    ///
+    /// Derived values are mapped into the *existing* clamps rather than
+    /// given new ones, so an organism grown from modules is interchangeable
+    /// with one derived from genes everywhere downstream. That
+    /// interchangeability is the whole seam.
+    pub fn from_body(
+        traits: &[f32; TRAIT_COUNT],
+        derived: &crate::morphology::DerivedBody,
+        basal_reference_milli: i64,
+    ) -> Self {
+        let mut phenotype = Self::from_traits(traits);
+        // Mass sets body scale. The reference point is one module of unit
+        // scale and unit density, so a single-module organism lands mid-range
+        // and a larger body scales up from there.
+        phenotype.body_scale_milli = (derived.mass_milli * 1_000 / 1_000).clamp(600, 1_600);
+        phenotype.max_speed_milli = derived.max_speed_milli(500, 3_000);
+        // A body with no sensory module senses at the floor rather than not
+        // at all: blindness is a lack of range, not a lack of the channel,
+        // and zero would divide badly downstream.
+        phenotype.sensor_range_milli = if derived.sensory_modules == 0 {
+            4_000
+        } else {
+            derived.sensor_range_milli.clamp(4_000, 12_000)
+        };
+        // Basal cost is the sum of module upkeep expressed as a multiplier
+        // against the same reference, so the existing energy path is
+        // untouched in form and only its input changes.
+        if basal_reference_milli > 0 {
+            phenotype.basal_mult_milli =
+                (derived.basal_cost_milli * 1_000 / basal_reference_milli).clamp(600, 1_600);
+        }
+        // Intake likewise: digestive modules replace diet affinity as the
+        // multiplier's source.
+        if derived.intake_milli > 0 {
+            phenotype.intake_mult_milli = (derived.intake_milli).clamp(800, 1_200);
+        }
+        phenotype
+    }
 }
 
 fn lerp_milli(gene: f32, min: i64, max: i64) -> i64 {
