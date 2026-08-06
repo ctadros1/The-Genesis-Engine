@@ -1,0 +1,7 @@
+PHASE10-BENCH tick tier=500 label=schema2 whole_tick_p50_us=184.42 mean_population=499 ticks_per_second=5422 mean_modules_milli=0 bodies_grown=0
+PHASE10-BENCH tick tier=500 label=morphology whole_tick_p50_us=157.71 mean_population=499 ticks_per_second=6341 mean_modules_milli=3044 bodies_grown=1893
+PHASE10-BENCH distribution lattice=square population=1999 modules_p50=3 modules_p90=3 modules_p99=3 modules_max=18 distinct=11 nonviable=0 refused_node_budget=282 cap_max_modules=64 cap_lattice_radius=8 cap_max_growth_steps=16
+PHASE10-BENCH tick tier=2000 label=schema2 whole_tick_p50_us=953.63 mean_population=1999 ticks_per_second=1049 mean_modules_milli=0 bodies_grown=0
+PHASE10-BENCH distribution lattice=hex population=1999 modules_p50=3 modules_p90=3 modules_p99=3 modules_max=6 distinct=10 nonviable=0 refused_node_budget=352 cap_max_modules=64 cap_lattice_radius=8 cap_max_growth_steps=16
+PHASE10-BENCH tick tier=2000 label=morphology whole_tick_p50_us=827.00 mean_population=1999 ticks_per_second=1209 mean_modules_milli=3024 bodies_grown=7773
+PHASE10-BENCH ledger ticks=1000000 checks=100 population=742 births=665019 bodies_grown=685462 nonviable=0 mean_modules_milli=3001 distinct=10 energy_milli=15181903 biomass_milli=31018139

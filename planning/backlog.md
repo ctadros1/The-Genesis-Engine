@@ -43,6 +43,33 @@ every phase's Benchmark Impact section.
 
 ## Current Status
 
+**Phase 10 is complete except C10.3** (2026-08-06), benchmark schema 6.
+C10.1, C10.2, C10.4, C10.5, C10.6, C10.7, C10.8, C10.9, C10.10 and C10.11
+are met. Phase 11 has not been started.
+
+**Morphology has consequence and does not spread.** Body size predicts
+reproductive success in 26 of 30 worlds against a within-world permutation
+null (median rho +132 against +47), and under a frozen control the same
+measurement is undefined in 30 of 30. But the median body is the founder's
+three modules in every world while the mean is 4.65 and the median world
+carries 33 distinct bodies, so C10.3's divergence clause fails 0 of 30 and
+the conjunctive criterion is **not met**. At 89 percent silent morphological
+mutations, nothing reaches half a population in 60 generations - the
+fixation-scale problem D-079 recorded for C9.1, on a different mechanism
+(D-080, D-087).
+
+**The developmental encoding survived its own gate.** ADR-0022 D1 made C10.4
+pass/fail so a discontinuous genotype-phenotype map would take the
+parameterized fallback. It passes at a median of 0 against a bar of 500, and
+narrowly: 89.0 percent silent against a 90 percent vacuity ceiling.
+
+Four defects were found by measurement rather than review, and one of them
+killed 29 of 30 worlds on the first campaign run: an uncalibrated derived
+phenotype (D-085), the morphology config missing from the snapshot codec,
+a fixed-morphology control that was not fixed, and an analysis that swallowed
+restore failures (D-086).
+
+
 **Phase 9 is complete except two partial criteria** (2026-08-05). C9.1 to
 C9.5 and C9.8 are met. **C9.6 is partial**: structural-cap rejections are
 typed, counted, and checksummed, but emit no event, and the criterion asks
@@ -157,9 +184,11 @@ ADRs remain proposed.
 
 ## Ordered Next Work
 
-Phases 5, 6, 7, 8 and 9 are done, Phase 9 bar one criterion. **The next
-implementation phase is 10, modular morphology and development**, which has
-not been started. Before it starts, two Phase 9 items are worth closing
+Phases 5 through 10 are done, Phase 9 bar C9.6/C9.7 and Phase 10 bar C10.3.
+**The next implementation phase is 11, lifetime learning**, which has not
+been started - and `PlasticityGenes` have been carried, inherited, and
+validated since Phase 9 precisely so that enabling it is a flag rather than
+a schema change. Before it starts, two Phase 9 items are worth closing
 because they are cheap and they protect everything after: C9.7's compaction
 test, and the per-class rejection counters the manifest still lacks (both in
 the deferred backlog).
@@ -191,24 +220,32 @@ and set the rate accordingly, or they will measure the mutation rate.
    **Complete bar C9.7** (D-066 to D-079). Campaigns measured across 210
    worlds; caps restated from measurement; four defects found and fixed in
    the schema-2 birth and persistence paths.
-6. **Phase 10, modular morphology and development.** Not started.
-7. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
+6. ~~**Phase 10, modular morphology and development.**~~ **Complete bar
+   C10.3** (D-080, D-081, D-085, D-086, D-087).
+7. **Phase 11, lifetime learning.** Not started.
+8. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
    benchmark). This bounds the compute-cost risk recorded as unresolved in
    `docs/20-risk-register.md`. Phase 5 measured the development host only;
    no supported campaign size is claimed.
-8. If separately approved, run a read-only servernode3/monitoring/backup
+9. If separately approved, run a read-only servernode3/monitoring/backup
    audit and record live facts.
-9. Test physical target desktop, mobile, and kiosk browsers against the live
+10. Test physical target desktop, mobile, and kiosk browsers against the live
    server; do not treat viewport emulation as device evidence. Note that
    ADR-0024's voxel path reopens this gate with a different rendering
    technique, so sprite-path device evidence will not transfer.
-10. Phase 18, intra-world parallelism, when the single-world population
+11. Phase 18, intra-world parallelism, when the single-world population
    ceiling starts to bind. Scheduled after 8 and before Phase 13.
 
 ## Deferred Backlog
 
 Carried forward unchanged unless noted:
 
+- **Revisit C10.3's divergence clause before any phase reuses it.** It was
+  operationalized as a median shift, and the median is a fixation-scale
+  statistic that at realistic mutation rates never moves. A distributional
+  statistic - 33 distinct bodies against the founder's one - answers a
+  better-posed question. The rule was not revised after the run and should
+  not be; what should change is how the *next* such criterion is written.
 - **Finish C9.6: emit an event when a structural cap rejects.** Rejections
   are typed, counted, and in the checksum; the criterion also asks for an
   event, and there is no `EventKind` for one. Until there is, a cap that
