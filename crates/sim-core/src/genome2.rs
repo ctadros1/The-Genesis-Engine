@@ -54,8 +54,11 @@ const TAG_TRAIT: u8 = 1;
 const TAG_NODE: u8 = 2;
 const TAG_EDGE: u8 = 3;
 const TAG_IO_BINDING: u8 = 4;
-// Tag 5 `Regulatory` is reserved and unallocated: a coarse regulatory locus
-// is an open question, not a commitment.
+/// Tag 5, allocated by Phase 10. ADR-0013 reserved it and deferred it; the
+/// developmental growth program ADR-0019 adopts is what it is for. Reserving
+/// the tag rather than appending later is why a schema-2 genome and a
+/// schema-3 genome share a decoder.
+const TAG_REGULATORY: u8 = 5;
 
 /// `Edge.flags` bits. Bit 2 was added by D-066: the hybrid evaluation
 /// ADR-0022 A9 adopted needs every edge typed zero-delay or delayed, and the
@@ -219,6 +222,11 @@ pub enum LocusKind {
         channel_id: u16,
         gain: f32,
     },
+    /// A morphological growth rule (Phase 10). Behaviourally inert unless the
+    /// morphology section is enabled, following the precedent thermal
+    /// preference and `PlasticityGenes` both set: carried, inherited,
+    /// validated, and expressed only when its phase turns on.
+    Regulatory { rule: crate::develop::Regulatory },
 }
 
 impl LocusKind {
@@ -228,6 +236,7 @@ impl LocusKind {
             LocusKind::Node { .. } => TAG_NODE,
             LocusKind::Edge { .. } => TAG_EDGE,
             LocusKind::IoBinding { .. } => TAG_IO_BINDING,
+            LocusKind::Regulatory { .. } => TAG_REGULATORY,
         }
     }
 
@@ -237,6 +246,7 @@ impl LocusKind {
             TAG_NODE => 1 + 1 + 4 + 2,
             TAG_EDGE => 4 + 4 + 4 + 1 + PlasticityGenes::ENCODED_LEN,
             TAG_IO_BINDING => 4 + 2 + 4,
+            TAG_REGULATORY => crate::develop::Regulatory::ENCODED_LEN,
             _ => return None,
         })
     }
@@ -290,6 +300,18 @@ impl Locus {
             } => {
                 hasher.update_u32(node);
                 hasher.update_u32(u32::from(channel_id));
+            }
+            LocusKind::Regulatory { rule } => {
+                // Every field is phenotype-relevant: a growth rule *is*
+                // structure, unlike an edge weight.
+                hasher.update_u32(u32::from(rule.condition_kind));
+                hasher.update_u32(u32::from(rule.condition_op));
+                hasher.update_u32(u32::from(rule.condition_param));
+                hasher.update_u32(u32::from(rule.threshold));
+                hasher.update_u32(u32::from(rule.action_kind));
+                hasher.update_u32(u32::from(rule.action_type));
+                hasher.update_u32(u32::from(rule.direction));
+                hasher.update_u32(u32::from(rule.scale_milli));
             }
         }
         hasher.finish()
@@ -550,6 +572,16 @@ impl Genome2 {
                             put_u16(&mut body, channel_id);
                             put_f32(&mut body, gain);
                         }
+                        LocusKind::Regulatory { rule } => {
+                            body.push(rule.condition_kind);
+                            body.push(rule.condition_op);
+                            body.push(rule.condition_param);
+                            put_u16(&mut body, rule.threshold);
+                            body.push(rule.action_kind);
+                            body.push(rule.action_type);
+                            body.push(rule.direction);
+                            put_u16(&mut body, rule.scale_milli);
+                        }
                     }
                 }
             }
@@ -758,6 +790,19 @@ impl Genome2 {
                             edges_out.push((source, target));
                         }
                     }
+                    LocusKind::Regulatory { .. } => {
+                        // A growth rule references no node and no channel, so
+                        // there is nothing here that can dangle. Its fields
+                        // are normalized at decode, so there is nothing out
+                        // of range either. The homology block is the only
+                        // invariant left to assert.
+                        if locus.homology_id < STRUCTURAL_HOMOLOGY_BASE {
+                            return Err(Genome2Error::HomologyBlockViolation {
+                                homology_id: locus.homology_id,
+                                tag: TAG_REGULATORY,
+                            });
+                        }
+                    }
                     LocusKind::IoBinding { node, .. } => {
                         if locus.homology_id < STRUCTURAL_HOMOLOGY_BASE {
                             return Err(Genome2Error::HomologyBlockViolation {
@@ -964,6 +1009,27 @@ fn decode_locus(reader: &mut Reader<'_>) -> Result<Locus, Genome2Error> {
                 gain,
             }
         }
+        TAG_REGULATORY => {
+            // Stored **normalized**, so nothing downstream ever sees an
+            // out-of-range code. Reduction rather than rejection is
+            // deliberate and is argued at `develop::Regulatory::normalized`:
+            // these fields are mutation targets, and rejecting out-of-range
+            // bytes would make most mutations of a growth rule lethal for
+            // reasons unrelated to morphology.
+            let rule = crate::develop::Regulatory {
+                condition_kind: reader.u8()?,
+                condition_op: reader.u8()?,
+                condition_param: reader.u8()?,
+                threshold: reader.u16()?,
+                action_kind: reader.u8()?,
+                action_type: reader.u8()?,
+                direction: reader.u8()?,
+                scale_milli: reader.u16()?,
+            };
+            LocusKind::Regulatory {
+                rule: rule.normalized(),
+            }
+        }
         other => return Err(Genome2Error::UnknownLocusType(other)),
     };
 
@@ -1122,7 +1188,10 @@ impl Genome2 {
             let dominance = 1.0_f32;
             for locus in self.haplotypes[slot].chromosomes.iter().flatten() {
                 match locus.kind {
-                    LocusKind::Trait { .. } => {}
+                    // Neither traits nor growth rules are part of the
+                    // controller: one is a scalar phenotype and the other is
+                    // morphology.
+                    LocusKind::Trait { .. } | LocusKind::Regulatory { .. } => {}
                     LocusKind::Node {
                         role,
                         activation_id,

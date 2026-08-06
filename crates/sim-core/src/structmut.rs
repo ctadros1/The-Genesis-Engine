@@ -38,6 +38,7 @@
 //! a cap has to be visible in its own report, or a null result about
 //! structural evolution might only mean the mutations never happened.
 
+use crate::develop::{ACTION_KIND_COUNT, CONDITION_KIND_COUNT, OPERATOR_COUNT};
 use crate::genome2::{
     Genome2, GenomeCaps, Locus, LocusKind, PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, VALUE_LIMIT,
     derive_gene_lineage_id, derive_homology_id, derive_mutation_event_id,
@@ -353,6 +354,42 @@ fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32
         }
         LocusKind::IoBinding { gain, .. } => {
             *gain = (*gain + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
+        }
+        LocusKind::Regulatory { rule } => {
+            // A growth rule is discrete: there is no "small delta" on a
+            // condition kind, so one field is chosen and re-drawn. Which
+            // field matters enormously for evolvability - re-drawing the
+            // action type rewrites what a rule builds, while nudging a
+            // threshold usually changes only when it fires - and C10.4's
+            // gate is precisely the measurement of how big those jumps are.
+            //
+            // Thresholds and scale move by a *step* rather than a re-draw,
+            // so that the two numeric fields have a local neighbourhood at
+            // all. Without that, every regulatory mutation would be a jump
+            // and the encoding would fail its own gate by construction.
+            let step = if delta < 0.0 { -1_i32 } else { 1_i32 };
+            match draw(5) % 6 {
+                0 => rule.condition_kind = (draw(6) % u64::from(CONDITION_KIND_COUNT)) as u8,
+                1 => rule.condition_op = (draw(6) % u64::from(OPERATOR_COUNT)) as u8,
+                2 => {
+                    rule.condition_param =
+                        (draw(6) % crate::morphology::MODULE_TYPE_COUNT as u64) as u8
+                }
+                3 => {
+                    rule.threshold =
+                        (i32::from(rule.threshold) + step).clamp(0, i32::from(u16::MAX)) as u16
+                }
+                4 => rule.action_kind = (draw(6) % u64::from(ACTION_KIND_COUNT)) as u8,
+                _ => {
+                    if draw(7) & 1 == 0 {
+                        rule.action_type =
+                            (draw(6) % crate::morphology::MODULE_TYPE_COUNT as u64) as u8;
+                    } else {
+                        rule.direction = (draw(6) & 0xff) as u8;
+                    }
+                }
+            }
+            *rule = rule.normalized();
         }
     }
     true
@@ -1117,6 +1154,13 @@ mod tests {
                 }
                 LocusKind::IoBinding { gain, .. } => {
                     assert!((-VALUE_LIMIT..=VALUE_LIMIT).contains(&gain));
+                }
+                LocusKind::Regulatory { rule } => {
+                    // Growth-rule fields have no float range to check; what
+                    // must hold is that every code stays inside its registry
+                    // after any number of mutations, which is what makes the
+                    // genotype space total.
+                    assert_eq!(rule, rule.normalized());
                 }
             }
         }

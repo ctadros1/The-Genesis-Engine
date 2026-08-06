@@ -24,9 +24,11 @@ mod config;
 mod contest;
 mod controller;
 mod controller2;
+mod develop;
 mod genome;
 mod genome2;
 mod meiosis;
+mod morphology;
 mod origin;
 mod phase2;
 mod physiology;
@@ -63,6 +65,12 @@ pub use controller2::{
     IncomingEdge, commit as commit_activations, compile as compile_network,
     evaluate as evaluate_network, output_of,
 };
+pub use develop::{
+    ACT_DIFFERENTIATE, ACT_PLACE, ACT_SET_SCALE, ACT_TERMINATE, ACTION_KIND_COUNT, COND_ALWAYS,
+    COND_DISTANCE, COND_MODULE_COUNT, COND_NEIGHBOURS, COND_SELF_TYPE, COND_STEP, COND_TYPE_COUNT,
+    CONDITION_KIND_COUNT, DEVELOP_POLICY_VERSION, DevelopCounters, OP_EQ, OP_GE, OP_LT,
+    OPERATOR_COUNT, Regulatory, develop, grow, phenotypic_distance_milli, rules_of,
+};
 pub use genome::{
     CONTROLLER_INPUTS, CONTROLLER_OUTPUTS, ENCODED_LEN as GENOME_ENCODED_LEN,
     GENE_APPROACH_TENDENCY, GENE_BODY_SCALE, GENE_DEFENSE_TENDENCY, GENE_DIET_AFFINITY,
@@ -83,6 +91,11 @@ pub use genome2::{
 pub use meiosis::{
     Gamete, InheritanceMode, MAX_EXTRA_CROSSOVERS, MEIOSIS_POLICY_VERSION, MeiosisConfig, gamete,
     recombine as recombine2,
+};
+pub use morphology::{
+    Body, DerivedBody, LatticeKind, LatticePos, MAX_SCALE_MILLI, MIN_SCALE_MILLI,
+    MODULE_REGISTRY_VERSION, MODULE_TYPE_COUNT, MORPHOLOGY_POLICY_VERSION, Module, ModuleType,
+    MorphologyCaps, TypeEntry, ViabilityFailure, registry_entry,
 };
 pub use origin::{
     Archetype, Founder, MAX_ARCHETYPES, MAX_DEMES, ORIGIN_POLICY_VERSION, OriginError, OriginMode,
