@@ -1,0 +1,125 @@
+# Phase 10 confirmatory campaign: C10.3 and C10.6.
+#
+# ============================================================
+# PRE-REGISTRATION. Committed before the campaign was run.
+# ============================================================
+#
+# ECOLOGY inherited from Phase 9's ecology sweep, which selected `k240` by a
+# rule fixed before it ran: highest median generation count subject to no
+# extinctions and population >= 200. Reused rather than re-swept because the
+# quantity it calibrates - generational turnover - is a property of the
+# ecology and not of the genome schema, and Phase 9 measured it on disjoint
+# seeds at this exact configuration. Morphology does change the phenotype,
+# so the regime is verified rather than assumed: `preflight` refuses any
+# world that cannot be built, and C10.6's own extinction count is reported.
+#
+# SEEDS 4001..4030, disjoint from every seed used anywhere in Phase 9 - the
+# ecology sweep's 1..8, the climate probe's 2002..2011, and the C9.1
+# confirmatory's 3001..3030.
+#
+# THE MUTATION REGIME is Phase 9's A10 - duplication at ten times its shipped
+# default with deletion at default - because D-079 established that the
+# shipped rates produce no population-level structural change in 60,000
+# ticks, and morphology is expressed from the same loci. Running Phase 10 at
+# the shipped rates would reproduce that null and learn nothing new about
+# morphology. Transposition is 0: single-chromosome founders make it
+# provably inert (D-074).
+#
+# **THE RATE PROBLEM C10.3 HAS TO DESIGN AROUND, STATED FIRST.** D-080
+# measured that **89 percent of growth-rule mutations change nothing** - they
+# perturb a threshold a rule never reaches, or re-point a direction already
+# blocked. Morphological evolution under this encoding is therefore slow, and
+# a campaign that did not account for it would measure the effective
+# mutation rate rather than morphology, which is exactly what D-079 caught
+# C9.1 doing one phase earlier. Two things follow, both fixed here:
+#   - the run is 60,000 ticks, ~60 generations, the same budget C9.1 needed
+#     before its median moved at all;
+#   - the campaign reports its **realized** count of applied structural
+#     mutations and its morphology series, so a null can be attributed to
+#     "morphology did not matter" rather than to "morphology did not vary".
+#     A world whose morphology never diverged cannot speak to consequence
+#     and is reported as such rather than counted as a failure of C10.3.
+#
+# CONDITIONS
+#   M   evolvable morphology.
+#   F   fixed morphology: the growth program is present and inherited but
+#       **inert**, because `genome2.mutation.regulatory_enabled` is false.
+#       Every organism therefore develops the founder body - one digestive
+#       module - for the whole run. Matched to M on total mutational input:
+#       identical point, duplication and deletion rates, so the two differ in
+#       whether morphology *can* change and in nothing else.
+#   B   morphology disabled entirely: the Phase 9 world, phenotype from trait
+#       genes. Not a control for C10.3 - it is a different phenotype model -
+#       but it is the reference that says whether the morphology machinery
+#       costs anything ecologically at all.
+#
+# The F/M contrast is C10.3's and C10.6's control. The B arm is reported and
+# is not a criterion.
+#
+# DECISION RULES, fixed here before the run. C10.3 is **conjunctive over
+# three clauses** because ADR-0022 A13 says novelty is not progress: a
+# diverging module count on its own is variance, not consequence.
+#
+#   C10.3a  divergence. Under M, more than one distinct body among the
+#           living AND a median module count above the founder's 1, at the
+#           final tick.
+#   C10.3b  consequence. Under M, among organisms past maturity, the
+#           Spearman correlation between module count and cumulative
+#           offspring must exceed what the same world produces when the
+#           morphologies are **permuted** against the reproductive records.
+#           The permutation is the null: it destroys the morphology-outcome
+#           link while preserving both marginals and every age effect, which
+#           an unpaired comparison would not. Bar: the observed correlation
+#           must exceed the 95th percentile of 199 permutations.
+#   C10.3c  persistence. Under M, divergence present at the halfway sample
+#           (tick 30,000) is still present at the final sample, read from the
+#           `.almo` series. "Persists beyond the stated window" is a claim
+#           about a series, and a final tick alone cannot distinguish a
+#           durable shift from a transient one.
+#   C10.3   met when a, b, and c all hold in at least 20 of 30 worlds.
+#
+#   C10.6   stability. M against F, seed-paired: median population and
+#           median completed lifespan within 25 percent **or better**, each
+#           in at least 20 of 30 seeds. Same bound and same one-sided
+#           wording as C9.2, so the two phases' stability claims are
+#           directly comparable.
+#
+# CAPS PINNED EXPLICITLY, so a later revision of a default cannot move this
+# campaign's effective config - the coupling D-078 removed for Phase 9.
+campaign phase10-c103-confirmatory
+ticks 60000
+workers 8
+seeds 4001..4030
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base morphology.caps.max_modules 64
+base morphology.caps.lattice_radius 8
+base morphology.caps.max_growth_steps 16
+base morphology.base_node_budget 4
+condition M
+condition F
+condition B
+set M morphology.enabled true
+set F morphology.enabled true
+set F genome2.mutation.regulatory_enabled false
+set B morphology.enabled false
+vary morphology.enabled
+vary genome2.mutation.regulatory_enabled
+output events on
+output snapshots on
+output morphology 3000

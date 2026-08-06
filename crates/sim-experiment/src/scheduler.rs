@@ -272,6 +272,19 @@ fn execute_unit(
         }
         _ => None,
     };
+    // Morphology series. Plain text rather than a versioned binary like
+    // ALSS, because a sample here is six scalars and not a dense position
+    // dump - the artifact that justified a binary format does not apply, and
+    // a readable series is cheaper to audit.
+    let mut morphology_series: Option<String> =
+        (output_dir.is_some() && campaign.output.morphology_interval > 0).then(|| {
+            format!(
+                "morphology-series 1 policy {} seed {:#018x} interval {}\n",
+                sim_core::MORPHOLOGY_POLICY_VERSION,
+                unit.seed,
+                campaign.output.morphology_interval
+            )
+        });
     let mut render_buffer: Vec<RenderEntity> = Vec::new();
     let mut positions: Vec<(i32, i32)> = Vec::new();
 
@@ -297,6 +310,22 @@ fn execute_unit(
                 .append(world.tick_number(), &positions)
                 .map_err(|error| error.to_string())?;
         }
+        if let Some(series) = morphology_series.as_mut()
+            && world.tick_number() % campaign.output.morphology_interval == 0
+        {
+            let metrics = world.metrics();
+            series.push_str(&format!(
+                "sample tick={} population={} mean_modules_milli={} median_modules={} \
+                 distinct={} nonviable={} refused_node_budget={}\n",
+                metrics.tick,
+                metrics.population,
+                metrics.mean_modules_milli,
+                metrics.median_modules,
+                metrics.distinct_morphologies,
+                metrics.nonviable_bodies,
+                metrics.refused_node_budget,
+            ));
+        }
         if campaign.check_interval > 0 && world.tick_number() % campaign.check_interval == 0 {
             world
                 .check_invariants()
@@ -310,6 +339,10 @@ fn execute_unit(
         }
         None => 0,
     };
+    if let (Some(directory), Some(series)) = (output_dir, morphology_series.as_ref()) {
+        std::fs::write(directory.join(format!("{stem}.almo")), series)
+            .map_err(|error| error.to_string())?;
+    }
     world
         .check_invariants()
         .map_err(|violation| format!("invariant violated at end of run: {violation}"))?;

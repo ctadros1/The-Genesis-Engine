@@ -161,6 +161,12 @@ macro_rules! config_fields {
         }
     };
     (@read bool, $expr:expr) => { FieldValue::Bool($expr) };
+    // 16-bit fields report as their widened form. Widening on read and
+    // narrowing on parse keeps `FieldValue` from growing a variant per
+    // integer width, and the narrowing is checked rather than truncating:
+    // `max_modules 70000` is refused, not silently wrapped to 4464.
+    (@read u16, $expr:expr) => { FieldValue::U32(u32::from($expr)) };
+    (@read i16, $expr:expr) => { FieldValue::I32(i32::from($expr)) };
     (@read u32, $expr:expr) => { FieldValue::U32($expr) };
     (@read u64, $expr:expr) => { FieldValue::U64($expr) };
     (@read i32, $expr:expr) => { FieldValue::I32($expr) };
@@ -281,6 +287,12 @@ config_fields! {
     "genome2.mutation.insertion_q16" => genome2.mutation.insertion_q16: u32,
     "genome2.mutation.transposition_q16" => genome2.mutation.transposition_q16: u32,
     "genome2.mutation.max_run" => genome2.mutation.max_run: u32,
+    "genome2.mutation.regulatory_enabled" => genome2.mutation.regulatory_enabled: bool,
+    "morphology.enabled" => morphology.enabled: bool,
+    "morphology.base_node_budget" => morphology.base_node_budget: u32,
+    "morphology.caps.max_modules" => morphology.caps.max_modules: u16,
+    "morphology.caps.max_growth_steps" => morphology.caps.max_growth_steps: u16,
+    "morphology.caps.lattice_radius" => morphology.caps.lattice_radius: i16,
 }
 
 /// Every field on which two configs disagree, in `FIELD_NAMES` order.

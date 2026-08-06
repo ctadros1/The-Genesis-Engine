@@ -96,6 +96,14 @@ pub struct OutputPolicy {
     /// that measure spatial structure, and a campaign that does not ask for
     /// one should not pay for it.
     pub spatial_interval: u64,
+    /// Ticks between morphology samples; `0` writes no `.almo` file.
+    ///
+    /// Off by default, on the same terms as spatial sampling. C10.3's
+    /// persistence clause is the reason it exists at all: "the change
+    /// persists beyond the stated window" is a statement about a series, and
+    /// a campaign that records only its final tick cannot tell a durable
+    /// morphological shift from one that happened to be there at the end.
+    pub morphology_interval: u64,
 }
 
 impl Default for OutputPolicy {
@@ -105,6 +113,7 @@ impl Default for OutputPolicy {
             snapshot: true,
             compression_level: Some(3),
             spatial_interval: 0,
+            morphology_interval: 0,
         }
     }
 }
@@ -482,9 +491,24 @@ impl Campaign {
                             interval
                         };
                     }
+                    ["morphology", value] => {
+                        output.morphology_interval = if *value == "off" {
+                            0
+                        } else {
+                            let interval: u64 = value
+                                .parse()
+                                .map_err(|_| syntax("morphology takes a tick interval or off"))?;
+                            if interval == 0 {
+                                return Err(syntax(
+                                    "morphology interval must be positive; use 'off' to disable",
+                                ));
+                            }
+                            interval
+                        };
+                    }
                     _ => {
                         return Err(syntax(
-                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off",
+                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off | output morphology <ticks>|off",
                         ));
                     }
                 },

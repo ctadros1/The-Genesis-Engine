@@ -105,6 +105,21 @@ impl MorphologyState {
         total * 1_000 / self.bodies.len() as u64
     }
 
+    /// Median module count among the living.
+    ///
+    /// The same argument as C9.1's median: evolved body sizes are expected
+    /// to be right-skewed, so a mean can describe no organism actually
+    /// alive. Founders are one module, so a median above one means half the
+    /// population has grown past the founding body.
+    pub fn median_modules(&self) -> u64 {
+        if self.bodies.is_empty() {
+            return 0;
+        }
+        let mut counts: Vec<usize> = self.bodies.iter().map(|body| body.len()).collect();
+        counts.sort_unstable();
+        counts[(counts.len() - 1) / 2] as u64
+    }
+
     /// Distinct module-count/type-signature pairs among the living. C10.3's
     /// divergence measure, and deliberately not a module count on its own:
     /// A13 says novelty is not progress, and two bodies of equal size with

@@ -343,6 +343,7 @@ pub struct MetricsSnapshot {
     /// Phase 10. Zero when the morphology section is disabled.
     pub morphology_enabled: bool,
     pub mean_modules_milli: u64,
+    pub median_modules: u64,
     /// Distinct whole-body signatures among the living. C10.3's divergence
     /// measure, and a signature rather than a module count because A13 says
     /// novelty is not progress: two equal-sized bodies of different tissue
@@ -933,6 +934,10 @@ impl World {
                 .morphology
                 .as_ref()
                 .map_or(0, |state| state.mean_modules_milli()),
+            median_modules: self
+                .morphology
+                .as_ref()
+                .map_or(0, |state| state.median_modules()),
             distinct_morphologies: self
                 .morphology
                 .as_ref()

@@ -399,6 +399,7 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u32(genome2.mutation.transposition_q16);
     writer.u32(genome2.mutation.max_run);
     writer.u32(genome2.mutation.point_delta_q16);
+    writer.u8(u8::from(genome2.mutation.regulatory_enabled));
     writer.0
 }
 
@@ -566,6 +567,7 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.genome2.mutation.transposition_q16 = reader.u32()?;
     config.genome2.mutation.max_run = reader.u32()?;
     config.genome2.mutation.point_delta_q16 = reader.u32()?;
+    config.genome2.mutation.regulatory_enabled = reader.u8()? != 0;
     Ok(config)
 }
 

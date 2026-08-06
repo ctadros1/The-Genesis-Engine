@@ -1245,6 +1245,7 @@ impl SimConfig {
             hasher.update_u32(mutation.transposition_q16);
             hasher.update_u32(mutation.max_run);
             hasher.update_u32(mutation.point_delta_q16);
+            hasher.update_u32(u32::from(mutation.regulatory_enabled));
         }
         // Phase 10 section, on the same terms: hashed only when enabled, so
         // every earlier fixture survives untouched (D-014).

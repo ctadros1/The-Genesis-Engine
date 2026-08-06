@@ -191,6 +191,22 @@ pub struct MutationConfig {
     /// sufficient. That comparison is C9.5.
     pub insertion_q16: u32,
     pub transposition_q16: u32,
+    /// Whether point mutation may alter a regulatory locus.
+    ///
+    /// This is C10.3's control in one flag. With it false the growth program
+    /// is still present, still inherited, and still expressed - it simply
+    /// never changes, so every organism develops the founder body for the
+    /// whole run.
+    ///
+    /// **The draws are consumed either way.** A point mutation that lands on
+    /// a regulatory locus with this disabled becomes a no-op rather than
+    /// being redirected to another locus, so the fixed-morphology condition
+    /// sees the identical rate, the identical locus choice, and the
+    /// identical RNG stream position as the evolvable one. That is what
+    /// "matched on total mutational input" has to mean to be worth anything:
+    /// redirecting the mutation elsewhere would raise the effective rate on
+    /// every *other* locus type and make the control a different experiment.
+    pub regulatory_enabled: bool,
     /// Longest contiguous run a duplication, deletion, or transposition may
     /// move.
     pub max_run: u32,
@@ -210,6 +226,7 @@ impl Default for MutationConfig {
             // insertion becomes the default.
             insertion_q16: 0,
             transposition_q16: 328, // 0.005
+            regulatory_enabled: true,
             max_run: 3,
             point_delta_q16: 3_277, // 0.05
         }
@@ -355,7 +372,7 @@ fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32
         LocusKind::IoBinding { gain, .. } => {
             *gain = (*gain + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
         }
-        LocusKind::Regulatory { rule } => {
+        LocusKind::Regulatory { rule } if config.regulatory_enabled => {
             // A growth rule is discrete: there is no "small delta" on a
             // condition kind, so one field is chosen and re-drawn. Which
             // field matters enormously for evolvability - re-drawing the
@@ -391,6 +408,9 @@ fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32
             }
             *rule = rule.normalized();
         }
+        // Regulatory mutation disabled: the draw is spent and nothing
+        // changes, which is exactly the control C10.3 needs.
+        LocusKind::Regulatory { .. } => return false,
     }
     true
 }
@@ -782,6 +802,7 @@ mod tests {
             deletion_q16: 0,
             insertion_q16: 0,
             transposition_q16: 0,
+            regulatory_enabled: true,
             max_run: 3,
             point_delta_q16: rate,
         }
@@ -818,6 +839,7 @@ mod tests {
             deletion_q16: 65_535,
             insertion_q16: 65_535,
             transposition_q16: 65_535,
+            regulatory_enabled: true,
             max_run: 3,
             point_delta_q16: 6_554,
         };
@@ -1046,6 +1068,7 @@ mod tests {
         }
         let config = MutationConfig {
             transposition_q16: 65_535,
+            regulatory_enabled: true,
             ..always(0)
         };
         let mut counters = MutationCounters::default();
@@ -1178,6 +1201,7 @@ mod tests {
             deletion_q16: 6_554,
             insertion_q16: 0,
             transposition_q16: 0,
+            regulatory_enabled: true,
             max_run: 2,
             point_delta_q16: 3_277,
         };

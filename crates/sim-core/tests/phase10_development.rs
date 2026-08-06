@@ -95,6 +95,10 @@ fn point_only() -> MutationConfig {
         deletion_q16: 0,
         insertion_q16: 0,
         transposition_q16: 0,
+        // The gate must be *on* here: C10.4 measures what a mutation of a
+        // growth rule does, so a run with regulatory mutation disabled would
+        // measure nothing at all.
+        regulatory_enabled: true,
         max_run: 1,
         point_delta_q16: 3_277,
     }
