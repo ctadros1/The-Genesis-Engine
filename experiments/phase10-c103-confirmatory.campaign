@@ -13,9 +13,17 @@
 # so the regime is verified rather than assumed: `preflight` refuses any
 # world that cannot be built, and C10.6's own extinction count is reported.
 #
-# SEEDS 4001..4030, disjoint from every seed used anywhere in Phase 9 - the
-# ecology sweep's 1..8, the climate probe's 2002..2011, and the C9.1
-# confirmatory's 3001..3030.
+# SEEDS: the first 30 in ascending order from 4001 that world generation
+# accepts, which is 4001..4012 and 4014..4031. Seed 4013 is refused - its
+# land fraction falls outside the configured bounds - and the selection rule
+# is **outcome-blind**: it depends only on terrain, before any condition is
+# applied, exactly as Phase 8's did. Preflight proves the declared design is
+# the one that runs, and it is what caught 4013 rather than the campaign
+# quietly executing as 29 seeds.
+#
+# Disjoint from every seed used anywhere in Phase 9 - the ecology sweep's
+# 1..8, the climate probe's 2002..2011, and the C9.1 confirmatory's
+# 3001..3030.
 #
 # THE MUTATION REGIME is Phase 9's A10 - duplication at ten times its shipped
 # default with deletion at default - because D-079 established that the
@@ -89,7 +97,7 @@
 campaign phase10-c103-confirmatory
 ticks 60000
 workers 8
-seeds 4001..4030
+seeds 4001..4012 4014..4031
 base preset phase2
 base cells_x 128
 base cells_y 128
