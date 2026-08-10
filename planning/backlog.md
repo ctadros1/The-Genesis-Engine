@@ -43,6 +43,42 @@ every phase's Benchmark Impact section.
 
 ## Current Status
 
+**Phase 12's mutable-world half is built and verified; the artifact half is
+NOT STARTED** (2026-08-10). Met: **C12.5** (ALIF format 4, every clause,
+each mutation-verified) and **C12.8** (all four fixtures preserved).
+Partial: C12.4 (modification-set ordering and identity done; no objects, no
+Phase 12 fixture), C12.6 (capacity trim ledgered exactly; **no 10^6-tick
+run**, and mass does not exist because objects do not), C12.7 (terrain-write
+caps typed and counted; object caps unbuilt). **Not built:** C12.1, C12.2,
+C12.3 - all three need the object system.
+
+**Three corrections landed before any code**, each recorded rather than
+worked around: the plan argued the pre-reversal ordering and named a Phase
+13 fixture that does not exist (D-096); the save format successor is **4**,
+not the "format 2" every spec said, and the format-1-to-2 migration those
+specs demand **was never implementable** - a format-1 file cannot say what
+its climate settings were; and `migration_for` had no transform type at all,
+so a "registered migration" was not expressible.
+
+**The measurement worth carrying: the cost is the seam, not the data.**
+Enabling the section costs ~20 percent of tick time with *zero* overrides
+(253.6 -> 305.4 us at 65,536 cells), because every terrain read goes through
+a composed accessor; going from zero to 6,187 overrides costs another 3
+percent. The plan's risk table anticipated the opposite shape.
+
+**The composed checksum is a full recompute, not incremental.** FNV-1a
+cannot be updated for a value changed mid-stream, and a recompute costs
+~1 ms at 65,536 cells - about four ticks - so it runs on a cadence. The spec
+asks for incremental cross-checked against full; only full exists, and the
+reason is recorded rather than the gap being papered over.
+
+**A guard defended by nothing, found by mutation** (D-097): sortedness and
+uniqueness are decode-time invariants, and deleting either guard left every
+test green, because a disordered set also fails the composed checksum and
+the tamper test accepted *either* error. Two tests now pin the near guard by
+its diagnostic. The general pattern - a guard whose only test accepts a set
+of errors rather than the one it should produce - is worth grepping for.
+
 **Phase 11's kernel is built; five of eight criteria are met** (2026-08-10),
 benchmark schema 7. Met: C11.3, C11.4, C11.5, C11.6 (10^6 ticks, 18,971,594
 plasticity updates, ledger exact), C11.8. C11.7 partial - snapshot budget and

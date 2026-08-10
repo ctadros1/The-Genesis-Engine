@@ -172,52 +172,94 @@ Conditions, matched on seeds (30), config, and run length:
 
 Criteria:
 
-- [ ] **C12.1 Object actions are used, not just fired.** Under A, the rate
-      of successful pick-up, place, and combine actions exceeds the rate
-      under C by the stated effect size in at least 20 of 30 seeds. Condition
-      C is the control that distinguishes evolved use from output channels
-      firing at their baseline rate.
-- [ ] **C12.2 Structures persist and matter.** Under A, the median lifetime
-      of a placed object exceeds the run's median organism lifespan in at
-      least 15 of 30 seeds, **and** organisms occupying cells containing
-      placed objects show a measurable fitness difference (reproductive
-      output or survival) against matched cells without them. Both halves
-      are required: persistence without a fitness effect is litter, not
-      structure.
-- [ ] **C12.3 Cumulative dependency.** Under A, the frequency of composite
-      objects of combination depth two or more increases over time in at
-      least N of 30 seeds, with N stated before the campaign. Under D this
-      is zero by construction. **This is the criterion most likely to return
-      null and it is stated that way in advance.** A null here is a real
-      result about this world's physics and is reported as such, not
-      quietly dropped or replaced with a weaker measure after the fact.
-- [ ] **C12.4 Determinism and identity.** Object IDs strictly increase and
-      never repeat; storage index order equals ID order; contested
-      acquisition is order-independent under storage permutation;
-      clean-process fixture replay.
-- [ ] **C12.5 Save format correctness.** Baseline check still fails closed
-      on a `(seed, config)` mismatch; composed check fails closed on a
-      tampered modification section; sparse and dense representations
-      restore to identical worlds; a world crossing the density threshold
-      mid-run saves, restores, and continues bit-identically; the format 1
-      migration produces a world byte-identical to a format 1 load.
-- [ ] **C12.6 Mass and energy exactness.** The ledger stays exact to the
-      milli-unit across creation, combination, fracture, decay, carrying,
-      and consumption over a 10^6-tick run. Combining then fracturing
-      restores constituent mass and energy exactly. Rounding remainders go
-      deterministically to the lowest constituent object ID.
-- [ ] **C12.7 Caps enforced visibly.** Composition depth, composition
-      breadth, cell occupancy, carry capacity, and object count all reject
-      deterministically, count, and event. A run that is silently pressed
-      against a cap must be visible in its report.
-- [ ] **C12.8 Fixtures preserved.** Artifacts and mutable world disabled
-      reproduces **every** existing fixture exactly: Phase 1
-      `0x1e3158a26afd3b39`, Phase 2 `0xff9dfcff5dffbf42`, Phase 9
-      `0x5f0c4e95e4f5170f`, and Phase 11 `0x53b354bd94e82bcf`. The criterion
-      as written said "the Phase 13 fixture", which does not exist; under the
-      corrected ordering the obligation is broader, not narrower.
+**Status 2026-08-10: the mutable-world half is built and verified; the
+artifact half is NOT STARTED.** The two halves are separable and were built
+in that order because Phase 11's C11.1 needs the terrain-override layer and
+nothing else from this phase.
 
-## Test Plan
+- [ ] **C12.1 Object actions are used, not just fired. NOT BUILT.** Requires
+      the object system, the five actions, and the four-condition campaign.
+      No object exists yet. Distinct from unmet: nothing was measured.
+- [ ] **C12.2 Structures persist and matter. NOT BUILT.** Same.
+- [ ] **C12.3 Cumulative dependency. NOT BUILT.** Same. Note the ordering
+      correction above: this *is* measurable in this phase once objects
+      exist, because stigmergy is the transmission channel it needs, and it
+      does not wait on Phase 13.
+- [~] **C12.4 Determinism and identity. Partial.** The modification set is
+      strictly ascending and unique by `(layer_id, cell_index)`, asserted as
+      a live-world invariant and, since D-097, as a **decode-time** invariant
+      pinned by its own diagnostic. Object IDs, storage-index order and
+      contested acquisition are **not built** - there are no objects. There
+      is also **no Phase 12 clean-process fixture or verify script**; the
+      four existing fixtures are preserved (C12.8) but this phase has not
+      minted its own.
+- [x] **C12.5 Save format correctness. Met, every clause, each
+      mutation-verified.** ALIF **format 4** (not 2; see the version
+      correction above), `SAVE_STATE_VERSION` 2, with the format-3 reader
+      retained permanently and a real `Migration` type where `migration_for`
+      previously had no way to express a transform at all.
+      - baseline check still fails closed on a `(seed, config)` mismatch;
+      - composed check fails closed on a tampered modification section -
+        verified by disabling the check and watching two tests fail;
+      - sparse and dense restore to identical worlds;
+      - a world crossing `dense_threshold_q16` mid-run saves, restores and
+        continues bit-identically;
+      - the 3-to-4 migration yields a world byte-identical to a format-3
+        load, compared as `SaveState` equality, then as world equality, then
+        over 200 further ticks.
+      A 20,000-case corruption sweep of the modification section passes, and
+      every declared per-layer count is bounded adversarially per standing
+      rule 2. Two migration assertions are tautologies by construction and
+      are recorded as such in D-097 rather than left to look load-bearing.
+- [~] **C12.6 Mass and energy exactness. Partial, and the missing part is
+      the horizon.** Lowering a cell's capacity below its standing biomass
+      trims the excess and books it to a ledgered loss sink, exact to the
+      milli - verified by removing the ledger line and watching four tests
+      fail. The biomass identity holds over a long run full of relocations.
+      **Not done: the 10^6-tick run the criterion names**, and mass does not
+      exist as a conserved quantity because objects do not exist. Creation,
+      combination, fracture, carrying and consumption are all unbuilt.
+- [~] **C12.7 Caps enforced visibly. Partial.** Terrain-modification writes
+      that fall outside a layer's domain, past the map, or beyond the
+      per-layer cap are refused, typed and counted, and a test drives a cap
+      until it binds. Composition depth, composition breadth, cell occupancy
+      and carry capacity are **not built**.
+- [x] **C12.8 Fixtures preserved. Met, and broader than written.** With the
+      section disabled, all four world fixtures reproduce exactly - Phase 1
+      `0x1e3158a26afd3b39`, Phase 2 `0xff9dfcff5dffbf42`, Phase 9
+      `0x5f0c4e95e4f5170f`, Phase 11 `0x53b354bd94e82bcf` - and a
+      disabled-section world encodes the payload format 3 wrote.
+
+### Measured
+
+Benchmarks, 256x256 (65,536 cells), release:
+
+| Quantity | Value |
+|---|---|
+| Tick, section disabled | 253.6 us |
+| Tick, section enabled, **zero** overrides | 305.4 us |
+| Tick, patch radius 8 (289 overrides) | 312.0 us |
+| Tick, patch radius 45 (6,187 overrides) | 315.3 us |
+| Composed checksum, full recompute | ~1,000 us (empty and at 955 overrides alike) |
+| Modification writes, 1,000 / 4,000 / 16,000 entries | 48.5 / 202.2 / 1,044.9 us |
+
+**The cost is the seam, not the data.** Enabling the section costs about
+20 percent of tick time with *no* overrides at all, because every terrain
+read goes through a composed accessor; going from zero to 6,187 overrides
+then costs another 3 percent. That is the opposite of the shape the plan's
+risk table anticipated, and it means the thing to optimise later - if
+anything - is the accessor, not the representation.
+
+**The composed checksum is a full recompute, not incremental.** FNV-1a
+cannot be updated for a value changed in the middle of a stream, and a
+recompute costs about a millisecond at 65,536 cells - roughly four ticks'
+worth - so it is taken on a cadence rather than every tick. The
+specification asks for an incremental computation cross-checked against a
+full one; what is implemented is the full one, and the honest reason is that
+the incremental version is not expressible under this hash. Recorded rather
+than faked.
+
+## Test Plan## Test Plan
 
 - Codec: bounded fail-closed decode of the object table and modification
   section; seeded corruption sweep of at least 20,000 cases, zero panics.
