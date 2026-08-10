@@ -17,18 +17,39 @@ Terrain is currently regenerated from `(seed, config)` and checksum-verified
 rather than stored, which is load-bearing for the snapshot format. This
 phase breaks that invariant and replaces it.
 
-## Why This Is After The Social Channel
+## Why This Is *Before* The Social Channel
 
-Building artifacts before a transmission channel exists would produce
-another inherited trait and teach us nothing. A world where organisms
-construct things but cannot learn from each other tests whether construction
-is genetically encodable, which is a much less interesting question than
-whether construction accumulates. Every acceptance criterion below that
-matters (C12.3 in particular) depends on transmission existing.
+**Corrected 2026-08-10.** This section previously argued the opposite, and
+was stale text left over from before the reordering. `docs/19-implementation-
+roadmap.md` records the reversal and ADR-0022 A2 triple-sources it: **11
+before 12, artifacts precede signalling.**
 
-The order also means that if Phase 13 returns a clean null, this phase can be
-entered knowingly, with its cumulative-dependency criterion understood in
-advance to be unlikely, rather than being surprised by it.
+The superseded argument was that building artifacts before a transmission
+channel exists produces another inherited trait. That assumed transmission
+means *signalling*, and it does not: **an artifact left behind is a
+transmission channel that requires no perception of conspecifics at all.**
+`cumulative_culture` 1.2 puts persistent generic artifacts inside the
+*minimum viable* transmission system; `artifacts` 1.7 puts social
+transmission at step 10 of 12, after carrying, reuse, caching, structures and
+stigmergy; `social_organization` 1.1 puts stigmergic cooperation before
+communication.
+
+So this phase delivers objects and the **first** transmission mechanism,
+stigmergy, and Phase 13 then asks whether a second, faster channel adds
+anything on top of it - a sharper question, because it has a baseline to
+beat. C12.3 is therefore measurable here: composite objects accumulating is
+an artifact-mediated question, not a signalling one.
+
+Two consequences of the correction, recorded rather than silently applied:
+
+- **Phase 13 is not a prerequisite** and has been removed from the list
+  below. Nothing in this phase may be deferred on the grounds that Phase 13
+  does not exist yet.
+- **C12.8 says "the Phase 13 fixture", which does not exist.** Under the
+  corrected order the fixture this phase must preserve is the **Phase 11**
+  one (config `0xae34cd2b6f7a3e13`, state `0x53b354bd94e82bcf`), along with
+  Phase 1, Phase 2 and Phase 9. The criterion is not weakened by this - it is
+  strengthened, because four fixtures must survive rather than one.
 
 ## Scope
 
@@ -64,8 +85,11 @@ advance to be unlikely, rather than being surprised by it.
 
 ## Prerequisites
 
-- Phase 13 (transmission must exist for C12.3 to be meaningful).
+- Phase 11 (this phase's fixtures must preserve it, and lifetime learning is
+  what makes an artifact something an organism can come to use rather than
+  only inherit a disposition toward).
 - Phase 5's asynchronous checkpointing and event log.
+- **Not** Phase 13; see the corrected ordering above.
 
 ## Determinism Notes
 
@@ -159,7 +183,11 @@ Criteria:
       deterministically, count, and event. A run that is silently pressed
       against a cap must be visible in its report.
 - [ ] **C12.8 Fixtures preserved.** Artifacts and mutable world disabled
-      reproduces the Phase 13 fixture exactly.
+      reproduces **every** existing fixture exactly: Phase 1
+      `0x1e3158a26afd3b39`, Phase 2 `0xff9dfcff5dffbf42`, Phase 9
+      `0x5f0c4e95e4f5170f`, and Phase 11 `0x53b354bd94e82bcf`. The criterion
+      as written said "the Phase 13 fixture", which does not exist; under the
+      corrected ordering the obligation is broader, not narrower.
 
 ## Test Plan
 
@@ -224,7 +252,7 @@ carcasses), `docs/12-data-storage-and-saves.md`,
 ## Rollback
 
 Objects and mutable world are separate config sections and can be disabled
-independently. Disabled, the Phase 13 fixture reproduces exactly. ALIF format
+independently. Disabled, every existing fixture reproduces exactly. ALIF format
 1 remains readable forever; format 2 saves of worlds with both sections
 disabled carry empty object and modification sections and restore
 identically to a format 1 save of the same world.
