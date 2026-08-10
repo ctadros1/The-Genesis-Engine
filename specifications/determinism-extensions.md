@@ -16,16 +16,57 @@ Cross-platform byte equality is still not claimed.
 
 ## Rule 0: The Fixture Preservation Guarantee
 
-Phase 1 fixture `0x1e3158a26afd3b39` and Phase 2 fixture
-`0xff9dfcff5dffbf42` must remain reproducible at every future phase, from
-clean processes, using the same seed and config.
+Three fixtures must remain reproducible at every future phase, from clean
+processes, using the same seed and config:
 
-This is achieved by one mechanism, already proven by D-014: **every new
-subsystem is a config section that is behaviorally inert when disabled, is
-folded into the canonical config hash only when enabled, and appends its
-state to the checksum only when present.** A world with all new sections
-disabled executes the same code paths and produces the same bytes as
-before.
+| Fixture | Config hash | State checksum | Seed | Scale | Verified by |
+|---|---|---|---|---|---|
+| Phase 1 | `0x918a381c77559236` | `0x1e3158a26afd3b39` | `0x5eedcafef00dbeef` | 500 organisms, 500 ticks | `scripts/verify-phase1-determinism.sh` |
+| Phase 2 | `0xf83d3981bf7dd189` | `0xff9dfcff5dffbf42` | `0x5eedcafef00dbeef` | 500 organisms, 500 ticks | `scripts/verify-phase2-determinism.sh` |
+| Phase 9 | `0x9abc0cd47914127f` | `0x5f0c4e95e4f5170f` | `0x5eedcafef00dbeef` | 500 organisms, 8,000 ticks | `scripts/verify-phase9-determinism.sh` |
+
+The first two are achieved by one mechanism, already proven by D-014:
+**every new subsystem is a config section that is behaviorally inert when
+disabled, is folded into the canonical config hash only when enabled, and
+appends its state to the checksum only when present.** A world with all new
+sections disabled executes the same code paths and produces the same bytes
+as before.
+
+**The Phase 9 fixture is a permanent obligation on stricter terms, and the
+difference is the point of admitting it.** It is the only Rule 0 fixture
+whose world runs an *enabled* post-Phase-2 section, so preserving it does
+not follow from "a disabled section is inert". It requires that the schema-2
+genome, meiosis, structural mutation, and controller v2 keep behaving
+exactly as they do now, under a configuration pinned literally rather than
+inherited from defaults. Two consequences follow, and neither is optional:
+
+- **The fixture's config is written out field by field** in
+  `apply_pinned_genome2_policy` (`crates/sim-cli/src/main.rs`) and in
+  `phase9_fixture_config` (`crates/sim-core/tests/phase9_determinism.rs`),
+  for the reason `experiments/phase9-c91-confirmatory.campaign` gives for
+  its own caps block (D-078). `SimConfig::stable_hash` folds the entire
+  genome2 section in when it is enabled - four policy strings, both registry
+  versions, all seven `GenomeCaps` fields, the meiosis mode and crossover
+  bound, and all eight `MutationConfig` fields. Revising any of those
+  defaults must not move a fixture, and pinning is what stops it. The caps
+  have already been restated once, by C9.8's measurement.
+- **A later phase that reaches inside schema 2 will move it unless that
+  reach is itself gated.** Phase 11 is the first case: `PlasticityGenes` is
+  already a field on every edge locus and `EDGE_FLAG_PLASTIC` is already a
+  flag bit, so a plasticity implementation that acts on them without its own
+  enabled-by-config gate changes `0x5f0c4e95e4f5170f` while every section
+  that was disabled stays disabled. That is a lineage break and needs an ADR,
+  not a quiet re-baseline of the constant.
+
+The fixture's horizon is 8,000 ticks rather than the 500 the other two use,
+and the reason is a criterion, not a preference. `maturity_age_ticks` is 600
+and founders spawn at age 0, so at 500 ticks a schema-2 world has had **zero
+births**: it would pin meiosis, structural mutation, and the schema-2 birth
+path by pinning none of them, while looking exactly as authoritative as a
+fixture that pinned all three. **A fixture that is silently a control is
+worse than no fixture**, so the counts that prove it is not one - births,
+paired births, deaths, applied duplications, structural rejections - are
+asserted next to the checksum in the script and in both test suites.
 
 Two corollaries that implementers get wrong:
 
@@ -164,6 +205,38 @@ prior state, so the exchange is simultaneous and symmetric.
 Required test, mirroring the existing insertion-order test: permuting the
 internal storage order of a saved population and restoring it produces
 identical checksums for the next N ticks.
+
+**That recipe cannot be executed literally, and pretending otherwise
+produces a test that passes while proving nothing.** `World::from_state`
+refuses a population that is not in ascending entity-ID order
+(`RestoreError::EntityOrder`), which is a guarantee worth more than the
+test - so a permuted save is not restorable, and a permutation applied
+jointly to every per-organism array and then sorted back into ID order is
+*exactly the identity* on the record. Three tests discharge the rule instead,
+and the split is deliberate:
+
+1. **The round trip** (`permuting_every_per_organism_array_together_and_
+   sorting_back_is_a_round_trip`) is the positive control. It shows the
+   transform is exact and that the fail-closed guard fires on the
+   intermediate unsorted state. It cannot fail while the permutation is
+   complete, and it is not the evidence.
+2. **The negative sweep** (`scrambling_any_one_per_organism_array_changes_
+   the_world`) is the evidence. Each per-organism array is rotated on its own
+   and the world must notice - by refusing the restore, by checksumming
+   differently, or by diverging within N ticks. Leaving one array out of a
+   permutation is the desync a storage-permutation test exists to catch, and
+   an array that is saved but never read fails here rather than passing
+   silently. Rotate-by-one is used rather than reverse because its only fixed
+   point is a constant array, so "the world did not notice" can be asserted
+   to mean "there was nothing to notice".
+3. **Compaction** is where storage order changes for real. A death shifts
+   every later survivor down one index, so the same organism occupies a
+   different slot in two runs that differ only in who died. Both the array
+   level (`Schema2State::retain`) and the world level are covered; see C9.7.
+
+The enumeration in tests 1 and 2 destructures `SaveState` with no `..`
+(D-077), so a per-organism array cannot join the save without joining the
+test.
 
 ## Rule 5: Candidate Sets Are Sorted Before Selection
 
@@ -366,8 +439,13 @@ parallel discrete-event simulation. The model is synchronous and phased.
 Every phase that touches this document must add:
 
 1. Disabled-section fixture equality against the previous phase's fixture.
-2. Clean-process replay of the new phase's own fixture, two processes.
-3. Storage-permutation equality over N ticks (Rule 4).
+2. Clean-process replay of the new phase's own fixture, two processes. The
+   fixture's horizon must be long enough that the mechanisms the phase added
+   actually run, and the counts that prove they ran are asserted beside the
+   checksum. A fixture whose horizon is too short is a control with a
+   fixture's authority.
+3. Storage-permutation equality over N ticks (Rule 4), in the three-part form
+   that rule now specifies, not the literal recipe.
 4. Analysis-neutrality equality with the analysis enabled and disabled.
 5. Save, restore, continue: bit-identical trajectory with the new state
    present.

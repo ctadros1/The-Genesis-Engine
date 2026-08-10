@@ -46,7 +46,12 @@ this manifest.
 - scripts/verify-phase2-determinism.sh
 - scripts/run-phase5-benchmarks.sh
 - scripts/run-phase6-benchmarks.sh
+- scripts/run-phase7-benchmarks.sh
+- scripts/run-phase8-benchmarks.sh
+- scripts/run-phase9-benchmarks.sh
+- scripts/run-phase10-benchmarks.sh
 - scripts/verify-phase5-determinism.sh
+- scripts/verify-phase9-determinism.sh
 
 ## Simulation Kernel (Phases 1 And 2)
 
@@ -74,6 +79,7 @@ this manifest.
 - crates/sim-core/tests/phase2_longrun.rs
 - crates/sim-core/tests/phase2_pairing.rs
 - crates/sim-core/tests/phase2_similarity.rs
+- crates/sim-core/tests/phase9_determinism.rs
 - crates/sim-core/tests/property.rs
 - crates/sim-cli/Cargo.toml
 - crates/sim-cli/src/main.rs

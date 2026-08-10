@@ -230,11 +230,17 @@ fn health_stays_within_bounds_and_a_dead_organism_never_acts() {
 }
 
 #[test]
-fn storage_permutation_does_not_change_the_next_ticks() {
-    // Determinism rule 4's required test, applied to contest: restoring a
-    // saved population and continuing must be identical, and it is the
-    // save/restore path that would expose an order dependency in the
-    // contest arrays.
+fn restoring_a_contest_world_twice_continues_identically() {
+    // **Renamed, because the old name was `storage_permutation_does_not_
+    // change_the_next_ticks` and this test permutes nothing.** It restores
+    // the same state twice and compares the two continuations, which is a
+    // save/restore determinism test - a real and useful one - wearing a
+    // permutation test's name. A reader looking for determinism-extensions
+    // Rule 4's evidence would have found this and stopped looking.
+    //
+    // Rule 4's evidence is in `phase9_determinism.rs`, and the contest arrays
+    // are covered there: `contest.health_milli` is one of the arrays the
+    // negative sweep scrambles individually and the world must notice.
     let mut original = World::new(contest_config(13)).expect("world");
     for _ in 0..500 {
         original.step();

@@ -70,13 +70,15 @@ a fixed-morphology control that was not fixed, and an analysis that swallowed
 restore failures (D-086).
 
 
-**Phase 9 is complete except C9.7** (C9.6 closed 2026-08-10). C9.1 to C9.6
-and C9.8 are met. **C9.6 is met**: structural rejections now carry
-`EventKind::StructuralMutationRejected` (log tag 12, event schema 4) as
-well as being typed, counted, and checksummed, and the test that matters is
-the reconciliation - evented equals counted, class by class (D-088).
-**C9.7 is partial**: a Phase 9 fixture, storage-permutation equality, and
-the compaction test are unwritten, and remain in the deferred backlog.
+**Phase 9 is complete** (2026-08-10). All eight criteria are met. C9.6
+closed by emitting `EventKind::StructuralMutationRejected` (log tag 12,
+event schema 4) and reconciling it against the checksummed counters class
+by class (D-088). C9.7 closed with the **Phase 9 fixture** - config
+`0x9abc0cd47914127f`, state `0x5f0c4e95e4f5170f`, 8,000 ticks - the
+compaction tests, and a stated substitute for the storage-permutation
+clause, which is **unfalsifiable as written**: a complete joint permutation
+followed by the id-sort `from_state` requires is the identity on the record
+(D-089).
 
 Two results carry forward, and both were found by measurement rather than by
 inspection.
@@ -185,14 +187,41 @@ ADRs remain proposed.
 
 ## Ordered Next Work
 
-Phases 5 through 10 are done, Phase 9 bar C9.6/C9.7 and Phase 10 bar C10.3.
+Phases 5 through 10 are done, **Phase 9 entirely** (2026-08-10) and Phase 10
+bar C10.3. The Phase 9 debt that protected everything after it - C9.6's
+event, C9.7's fixture and compaction tests, and the manifest's per-class
+rejection counters - is closed (D-088, D-089, D-090).
+
 **The next implementation phase is 11, lifetime learning**, which has not
-been started - and `PlasticityGenes` have been carried, inherited, and
-validated since Phase 9 precisely so that enabling it is a flag rather than
-a schema change. Before it starts, two Phase 9 items are worth closing
-because they are cheap and they protect everything after: C9.7's compaction
-test, and the per-class rejection counters the manifest still lacks (both in
-the deferred backlog).
+been started.
+
+**Correct a claim this file used to make.** It said `PlasticityGenes` had
+been "carried, inherited, and validated since Phase 9 precisely so that
+enabling it is a flag rather than a schema change." The genes are indeed
+carried, inherited and validated - but they are a **reserved schema slot,
+not a working mechanism**, and enabling a flag would measure nothing.
+Verified against the shipped code on 2026-08-10:
+
+- `PlasticityGenes` is **discarded during diploid expression** - the gather
+  destructures `LocusKind::Edge { source, target, weight, flags, .. }` and
+  the `..` drops it, and `ExpressedEdge` has no plasticity field at all.
+- **No production path anywhere sets `EDGE_FLAG_PLASTIC`.** It is defined,
+  included in the flag mask, read during expression and exported, and
+  written only in one test. `insert` writes `EDGE_FLAG_DELAYED`,
+  `minimal_founder` writes `flags: 0`, `duplicate` copies its source. **No
+  edge can become plastic.**
+- `point_mutate`'s only Edge arm touches `weight`, so **`eta` can never
+  leave zero**.
+- `NodeRole` is never mutated, so `Modulatory` is unreachable by evolution
+  and rule forms 3 and 4 are dead on arrival.
+
+This matters more than a scoping correction. Phase 11's own risk table names
+"plasticity is selected to zero and the phase returns a null result" as
+**the single most likely failure of the phase**. On today's code that null
+is guaranteed for a purely mechanical reason, and it would have been read as
+biology. Expression and mutability are therefore Phase 11 scope, and the
+`plasticity_enabled` control must consume its draws either way for the same
+reason `regulatory_enabled` does (D-086).
 
 Phase 10 inherits a warning from Phase 9 worth stating here rather than
 rediscovering: **a criterion phrased on a population median is a
@@ -218,7 +247,7 @@ and set the rate accordingly, or they will measure the mutation rate.
    and stay unmet; C8.7's control failure in particular is worth revisiting
    before any claim about thermoregulation.
 5. ~~**Phase 9, evolvable genome, diploid genetics, variable topology.**~~
-   **Complete bar C9.7** (D-066 to D-079). Campaigns measured across 210
+   **Complete** (D-066 to D-079, D-088, D-089). Campaigns measured across 210
    worlds; caps restated from measurement; four defects found and fixed in
    the schema-2 birth and persistence paths.
 6. ~~**Phase 10, modular morphology and development.**~~ **Complete bar
@@ -247,18 +276,6 @@ Carried forward unchanged unless noted:
   statistic - 33 distinct bodies against the founder's one - answers a
   better-posed question. The rule was not revised after the run and should
   not be; what should change is how the *next* such criterion is written.
-- **Finish C9.7: a Phase 9 fixture with clean-process replay, storage
-  permutation equality, and the compaction test.** The canonical
-  topological order and the `homology_id`-ordered edge summation are
-  implemented and unit-tested, but the compaction test is the one that would
-  catch a *future* layout change, which is what the criterion is for. This
-  is now the only Phase 9 criterion not met.
-- **The manifest carries no per-class mutation rejection counters.** It has
-  a total, in which a cap rejection and a self-loop draw are the same
-  number. The Phase 9 analysis works around this by reading the counters out
-  of each world's snapshot, which works but means a campaign run with
-  `output snapshots off` cannot answer "did a cap bind". Add the per-class
-  columns to `RunResult`.
 - **Sweep the mating compatibility weights.** Phase 9's risk table listed
   reproductive isolation as a risk and the campaign did not test it: at a
   median of three nodes there is almost no structural distance for the

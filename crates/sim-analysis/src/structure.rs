@@ -92,25 +92,34 @@ pub struct WorldStructure {
     pub nonviable_recombinants: u64,
     /// Median completed lifespan, ticks. Zero when no event log was read.
     pub median_lifespan_ticks: u64,
-    /// Structural mutations refused because a cap would have been exceeded.
+    /// Structural-mutation outcomes by operator and by rejection reason.
     ///
     /// C9.8 restates the caps from a measurement, and the restatement is
     /// only meaningful if the campaign can say whether the caps ever bound.
-    /// The manifest carries a total rejection count, which cannot answer
-    /// that: a cap rejection and a self-loop draw both land in it. Read from
-    /// the snapshot, which carries the per-class counters. `None` when no
-    /// snapshot was read, and reported as absent rather than as zero -
-    /// "no snapshot" and "no cap rejections" are opposite conclusions.
-    pub rejected_cap: Option<u64>,
-    pub rejected_inapplicable: Option<u64>,
-    pub rejected_invalid: Option<u64>,
+    /// The `structmut_rejected` total cannot answer that: a cap rejection and
+    /// a self-loop draw both land in it. The manifest now carries the
+    /// thirteen per-class columns, so this reads from the run record and
+    /// falls back to re-opening the world's snapshot only for manifests
+    /// written before those columns existed - which is the only remaining
+    /// reason a campaign has to keep snapshots on to answer the question.
+    ///
+    /// `None` when neither source had them, and reported as absent rather
+    /// than as zero: "not recorded" and "never happened" are opposite
+    /// conclusions, and every count below is summed only over the worlds
+    /// that had it.
+    pub counters: Option<MutationCounters>,
 }
 
 impl WorldStructure {
+    /// `snapshot_counters` is the pre-column fallback and is used **only**
+    /// when the run record carries none. A manifest written by this build
+    /// always wins, so a campaign run with `output snapshots off` answers
+    /// the cap question and a re-analysis of an archived campaign still
+    /// answers it from the `.alif` files beside the manifest.
     fn from_run(
         run: &RunResult,
         median_lifespan_ticks: u64,
-        counters: Option<MutationCounters>,
+        snapshot_counters: Option<MutationCounters>,
     ) -> Self {
         Self {
             seed: run.seed,
@@ -129,10 +138,21 @@ impl WorldStructure {
                 .phase2
                 .map_or(0, |phase2| phase2.pair_rejected_nonviable_total),
             median_lifespan_ticks,
-            rejected_cap: counters.map(|counters| counters.rejected_cap),
-            rejected_inapplicable: counters.map(|counters| counters.rejected_inapplicable),
-            rejected_invalid: counters.map(|counters| counters.rejected_invalid),
+            counters: run.mutation.or(snapshot_counters),
         }
+    }
+
+    /// Cap refusals, `None` when this world carried no per-class counters.
+    pub fn rejected_cap(&self) -> Option<u64> {
+        self.counters.map(|counters| counters.rejected_cap)
+    }
+
+    pub fn rejected_inapplicable(&self) -> Option<u64> {
+        self.counters.map(|counters| counters.rejected_inapplicable)
+    }
+
+    pub fn rejected_invalid(&self) -> Option<u64> {
+        self.counters.map(|counters| counters.rejected_invalid)
     }
 
     /// Did structure reach the population median, in either quantity?
@@ -181,12 +201,66 @@ pub struct StructureOutcome {
     pub total_applied: u64,
     pub total_rejected: u64,
     pub total_nonviable: u64,
-    /// Summed across worlds that had a readable snapshot, and the count of
-    /// those worlds, so a zero can be told apart from an absence.
-    pub total_rejected_cap: u64,
-    pub total_rejected_inapplicable: u64,
-    pub total_rejected_invalid: u64,
+    /// Per-class totals, summed across the worlds that carried them, with
+    /// the count of those worlds beside it so a zero can be told apart from
+    /// an absence. All thirteen classes rather than the three this used to
+    /// carry: the five applied counters answer "did duplication ever fire",
+    /// which is the other half of the question a bare total cannot.
+    pub total_counters: MutationCounters,
     pub worlds_with_counters: usize,
+}
+
+/// Field-by-field sum, **`..`-free on both operands** (D-077).
+///
+/// A counter added to `MutationCounters` fails to compile here rather than
+/// being quietly left out of the condition totals and the report - which is
+/// the same failure the manifest columns exist to prevent, one layer up.
+fn accumulate(total: MutationCounters, add: MutationCounters) -> MutationCounters {
+    let MutationCounters {
+        point_applied,
+        duplication_applied,
+        deletion_applied,
+        insertion_applied,
+        transposition_applied,
+        rejected_homology_collision,
+        rejected_orphaned,
+        rejected_min_nodes,
+        rejected_no_bindings,
+        rejected_cap,
+        rejected_inapplicable,
+        rejected_cycle,
+        rejected_invalid,
+    } = total;
+    let MutationCounters {
+        point_applied: more_point_applied,
+        duplication_applied: more_duplication_applied,
+        deletion_applied: more_deletion_applied,
+        insertion_applied: more_insertion_applied,
+        transposition_applied: more_transposition_applied,
+        rejected_homology_collision: more_rejected_homology_collision,
+        rejected_orphaned: more_rejected_orphaned,
+        rejected_min_nodes: more_rejected_min_nodes,
+        rejected_no_bindings: more_rejected_no_bindings,
+        rejected_cap: more_rejected_cap,
+        rejected_inapplicable: more_rejected_inapplicable,
+        rejected_cycle: more_rejected_cycle,
+        rejected_invalid: more_rejected_invalid,
+    } = add;
+    MutationCounters {
+        point_applied: point_applied + more_point_applied,
+        duplication_applied: duplication_applied + more_duplication_applied,
+        deletion_applied: deletion_applied + more_deletion_applied,
+        insertion_applied: insertion_applied + more_insertion_applied,
+        transposition_applied: transposition_applied + more_transposition_applied,
+        rejected_homology_collision: rejected_homology_collision + more_rejected_homology_collision,
+        rejected_orphaned: rejected_orphaned + more_rejected_orphaned,
+        rejected_min_nodes: rejected_min_nodes + more_rejected_min_nodes,
+        rejected_no_bindings: rejected_no_bindings + more_rejected_no_bindings,
+        rejected_cap: rejected_cap + more_rejected_cap,
+        rejected_inapplicable: rejected_inapplicable + more_rejected_inapplicable,
+        rejected_cycle: rejected_cycle + more_rejected_cycle,
+        rejected_invalid: rejected_invalid + more_rejected_invalid,
+    }
 }
 
 pub fn summarise(
@@ -218,10 +292,11 @@ pub fn summarise(
         total_applied: worlds.iter().map(|w| w.applied).sum(),
         total_rejected: worlds.iter().map(|w| w.rejected).sum(),
         total_nonviable: worlds.iter().map(|w| w.nonviable_recombinants).sum(),
-        total_rejected_cap: worlds.iter().filter_map(|w| w.rejected_cap).sum(),
-        total_rejected_inapplicable: worlds.iter().filter_map(|w| w.rejected_inapplicable).sum(),
-        total_rejected_invalid: worlds.iter().filter_map(|w| w.rejected_invalid).sum(),
-        worlds_with_counters: worlds.iter().filter(|w| w.rejected_cap.is_some()).count(),
+        total_counters: worlds
+            .iter()
+            .filter_map(|w| w.counters)
+            .fold(MutationCounters::default(), accumulate),
+        worlds_with_counters: worlds.iter().filter(|w| w.counters.is_some()).count(),
     }
 }
 
@@ -309,6 +384,12 @@ pub fn stability(
 ///
 /// A missing log yields a zero lifespan and is reported as such by the
 /// caller; it is never silently treated as "no difference".
+///
+/// The per-class mutation counters come from the manifest. Re-opening the
+/// world's snapshot - decompressing it and rebuilding a whole `World` to
+/// read thirteen integers - is now the fallback for manifests written
+/// before the columns existed, not the primary path, and it is skipped
+/// entirely when the run record carries them.
 pub fn worlds_for(
     manifest: &Manifest,
     directory: &std::path::Path,
@@ -324,12 +405,14 @@ pub fn worlds_for(
                 .and_then(|bytes| sim_persist::decode_log_events(&bytes).ok())
                 .map(|(_, events)| world_demography(&events).median_lifespan_ticks)
                 .unwrap_or(0);
-            let counters = std::fs::read(directory.join(format!("{stem}.alif")))
-                .ok()
-                .and_then(|bytes| sim_persist::decode_snapshot(&bytes).ok())
-                .and_then(|(_, state)| sim_core::World::from_state(state).ok())
-                .and_then(|world| world.mutation_counters());
-            WorldStructure::from_run(run, lifespan, counters)
+            let snapshot_counters = run.mutation.is_none().then(|| {
+                std::fs::read(directory.join(format!("{stem}.alif")))
+                    .ok()
+                    .and_then(|bytes| sim_persist::decode_snapshot(&bytes).ok())
+                    .and_then(|(_, state)| sim_core::World::from_state(state).ok())
+                    .and_then(|world| world.mutation_counters())
+            });
+            WorldStructure::from_run(run, lifespan, snapshot_counters.flatten())
         })
         .collect()
 }
@@ -385,13 +468,38 @@ pub fn render(
         }
     }
     for outcome in outcomes {
+        // Destructured with no `..` so a class added to `MutationCounters`
+        // has to be given a column here rather than disappearing from the
+        // only place a human reads these.
+        let MutationCounters {
+            point_applied,
+            duplication_applied,
+            deletion_applied,
+            insertion_applied,
+            transposition_applied,
+            rejected_homology_collision,
+            rejected_orphaned,
+            rejected_min_nodes,
+            rejected_no_bindings,
+            rejected_cap,
+            rejected_inapplicable,
+            rejected_cycle,
+            rejected_invalid,
+        } = outcome.total_counters;
         let _ = writeln!(
             out,
             "condition {} worlds={} extinct={} median_shifted={} diversified={} invariant={} \
              med_generations={} med_births={} med_population={} med_nodes={} med_edges={} \
              med_mean_nodes_milli={} med_mean_edges_milli={} med_distinct={} \
-             applied={} rejected={} nonviable={} rejected_cap={} \
-             rejected_inapplicable={} rejected_invalid={} worlds_with_counters={}",
+             applied={} rejected={} nonviable={} point_applied={point_applied} \
+             duplication_applied={duplication_applied} deletion_applied={deletion_applied} \
+             insertion_applied={insertion_applied} \
+             transposition_applied={transposition_applied} \
+             rejected_homology_collision={rejected_homology_collision} \
+             rejected_orphaned={rejected_orphaned} rejected_min_nodes={rejected_min_nodes} \
+             rejected_no_bindings={rejected_no_bindings} rejected_cap={rejected_cap} \
+             rejected_inapplicable={rejected_inapplicable} rejected_cycle={rejected_cycle} \
+             rejected_invalid={rejected_invalid} worlds_with_counters={}",
             outcome.condition,
             outcome.worlds,
             outcome.extinct,
@@ -409,9 +517,6 @@ pub fn render(
             outcome.total_applied,
             outcome.total_rejected,
             outcome.total_nonviable,
-            outcome.total_rejected_cap,
-            outcome.total_rejected_inapplicable,
-            outcome.total_rejected_invalid,
             outcome.worlds_with_counters,
         );
     }
@@ -456,9 +561,7 @@ mod tests {
             rejected: 10,
             nonviable_recombinants: 0,
             median_lifespan_ticks: 1_000,
-            rejected_cap: Some(0),
-            rejected_inapplicable: Some(0),
-            rejected_invalid: Some(0),
+            counters: Some(MutationCounters::default()),
         }
     }
 

@@ -307,20 +307,55 @@ Criteria:
       `dropped_events_total == 0` so the comparison is against a complete
       stream, and a guard that at least two classes were exercised so the
       equalities are not all `0 == 0`.
-- [~] **C9.7 Determinism and fixtures. Fixture half met; the rest is
-      unwritten and is not claimed.** A schema-1 configured world still
-      reproduces `0xff9dfcff5dffbf42` and a Phase 1 world still reproduces
-      `0x1e3158a26afd3b39`, with schema 2 in the build and the caps restated;
-      all three determinism scripts pass. Schema-2 determinism and
-      save/restore identity are covered by tests, including through the real
-      codec.
+- [x] **C9.7 Determinism and fixtures. Met 2026-08-10, with one clause
+      discharged by a stated substitute because the clause as written is
+      unfalsifiable.** A schema-1 configured world still reproduces
+      `0xff9dfcff5dffbf42` and a Phase 1 world still reproduces
+      `0x1e3158a26afd3b39`; all four determinism scripts pass.
 
-      Still unwritten: a **Phase 9 fixture** and its clean-process replay,
-      storage-permutation equality, and the compaction test that would show
-      edge-summation order is independent of storage layout. The
-      canonical-order code exists and is unit-tested, but the compaction test
-      is the one that would catch a *future* layout change, and it is the
-      test this criterion actually asks for.
+      **The Phase 9 fixture**: config `0x9abc0cd47914127f`, state
+      `0x5f0c4e95e4f5170f`, 500 organisms, seed `0x5eedcafef00dbeef`,
+      **8,000 ticks**, replayed across two clean processes by
+      `scripts/verify-phase9-determinism.sh` - which also `grep`-pins both
+      literals, closing a gap `verify-phase1` and `verify-phase2` leave open
+      (they compare two runs to each other and never check the constant).
+      The genome2 caps, meiosis mode and all eight mutation rates are pinned
+      literally, so a default revision cannot move the fixture silently.
+
+      **The horizon is the load-bearing choice.** At the Phase 1/2 horizon of
+      500 ticks this fixture would pin nothing about Phase 9: `maturity_age_
+      ticks` is 600 and founders spawn at age 0, so 500 ticks gives **zero
+      births**, zero structural mutations, one distinct structure. Measured
+      at the fixture's own seed: 1,500 ticks gives 15 births and no
+      duplications; 3,000 gives 36 births and one point mutation, still no
+      duplications; 8,000 gives 124 births, 8 structural mutations applied,
+      2 duplications, 3 distinct structures. The fixture test asserts every
+      one of those counts alongside the checksum, so it cannot silently
+      become a control - trap 1 in the evidence list, arriving through a
+      horizon rather than through an extinction.
+
+      **Storage-permutation equality could not be tested as specified.**
+      Rule 4 asks that permuting a saved population's storage order and
+      restoring it produce identical checksums - but `World::from_state`
+      fails closed on ids that are not ascending, and a *complete joint*
+      permutation followed by the id-sort needed to satisfy that check is the
+      **identity on the record**. The clause is therefore unfalsifiable as
+      written. Discharged by three tests that each assert something: a
+      positive control proving the permutation harness is exact, whose own
+      comment says it is not the evidence; the evidence, which rotates **each
+      per-organism array on its own** and requires the world to refuse the
+      restore, checksum differently, or diverge within 200 ticks - 23 arrays
+      inventoried by exhaustive destructuring, 18 detected and 5 asserted
+      *constant*, so "not noticed" can never quietly mean "carried but never
+      read"; and the fail-closed control. `determinism-extensions.md` Rule 4
+      is amended to say this rather than leaving the original requirement
+      standing (D-089).
+
+      **The compaction tests** exist at both levels and were each verified by
+      breaking the mechanism: deleting the plan swap or the activation swap
+      from `Schema2State::retain` fails them. They are a regression guard
+      against a *future* layout refactor, not a bug hunt - nothing today
+      reorders loci within an organism, and the tests say so.
 
       One thing that is **not** evidence here, recorded because it was nearly
       claimed as such: the confirmatory campaign was run twice, and the two

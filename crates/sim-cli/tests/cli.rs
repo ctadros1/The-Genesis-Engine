@@ -185,6 +185,68 @@ fn phase2_fixture_is_identical_across_clean_processes_and_versioned() {
 }
 
 #[test]
+fn phase9_fixture_is_identical_across_clean_processes_and_pinned() {
+    // C9.7 clause 1. Two separate processes, and the constants pinned rather
+    // than only compared with each other: `verify-phase1-determinism.sh` and
+    // `verify-phase2-determinism.sh` only `cmp` two runs of one build, so a
+    // change that moved a checksum consistently would pass both of them.
+    //
+    // The full 8,000-tick fixture, not a cheap short one. The horizon is the
+    // point: `maturity_age_ticks` is 600 and founders spawn at age 0, so at
+    // 500 ticks this world has had zero births and would pin nothing about
+    // meiosis, structural mutation, or the schema-2 birth path.
+    let args = [
+        "fixture",
+        "--ticks",
+        "8000",
+        "--phase2",
+        "--genome2",
+        "--seed",
+        "0x5eedcafef00dbeef",
+    ];
+    let first = lifesim(&args);
+    let second = lifesim(&args);
+    assert!(first.status.success(), "stderr: {}", stderr(&first));
+    assert_eq!(stdout(&first), stdout(&second));
+    let line = stdout(&first);
+    for expected in [
+        "\"fixture_schema_version\":4",
+        "\"phase\":\"phase9\"",
+        "\"genome2_policy\":\"lifesim-genome-v2\"",
+        "\"meiosis_policy\":\"lifesim-meiosis-v1\"",
+        "\"structmut_policy\":\"lifesim-structmut-v1\"",
+        "\"controller2_policy\":\"lifesim-controller-v2\"",
+        "\"config_hash\":\"0x9abc0cd47914127f\"",
+        "\"state_checksum\":\"0x5f0c4e95e4f5170f\"",
+    ] {
+        assert!(line.contains(expected), "missing {expected} in {line}");
+    }
+    // Non-vacuity. A fixture whose births, deaths, and applied structural
+    // mutations are all zero is a control wearing a fixture's name, and the
+    // checksum above would say nothing about it either way.
+    // `duplications_applied` is separate from `structural_mutations_applied`
+    // because the latter counts point mutation, which changes no structure.
+    for forbidden in [
+        "\"births_total\":0,",
+        "\"paired_births_total\":0,",
+        "\"deaths_total\":0,",
+        "\"duplications_applied\":0,",
+        "\"structural_mutations_rejected\":0}",
+    ] {
+        assert!(
+            !line.contains(forbidden),
+            "the Phase 9 fixture became vacuous ({forbidden}): {line}"
+        );
+    }
+
+    // ...and the flag is refused rather than quietly implying --phase2, so a
+    // schema-2 request can never silently produce a schema-1 world.
+    let refused = lifesim(&["fixture", "--ticks", "10", "--genome2"]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("--genome2 requires --phase2"));
+}
+
+#[test]
 fn phase2_run_reports_phase2_fields_and_metrics() {
     let mut args = vec!["run", "--ticks", "150", "--phase2", "--metrics-out", "-"];
     args.extend_from_slice(SMALL_WORLD);

@@ -158,11 +158,58 @@ pub struct DevelopCounters {
 }
 
 impl DevelopCounters {
+    /// Every counter, split into the outcome half and the non-viability
+    /// half.
+    ///
+    /// **Destructured with no `..`, never field-accessed** (D-077), for the
+    /// same reason `MutationCounters::partitioned` is. `total_nonviable` and
+    /// `hash_into` used to be two independent hand-written field lists, so a
+    /// counter added to the struct would compile, run, and be reported -
+    /// while sitting outside the state checksum and outside the
+    /// non-viability total. Nothing would have failed; a restored world
+    /// would simply have agreed with a diverged one. That is exactly the
+    /// defect that made two restored checksums differ in Phase 9.
+    ///
+    /// The concatenation order is the declaration order and is **permanent**:
+    /// it is the byte order `hash_into` feeds the hasher, so a morphology
+    /// world's checksum is defined by it. Append, never reorder.
+    fn partitioned(&self) -> ([u64; 8], [u64; 4]) {
+        let Self {
+            bodies_grown,
+            modules_placed,
+            differentiations,
+            scale_changes,
+            refused_occupied,
+            refused_out_of_bounds,
+            refused_max_modules,
+            refused_node_budget,
+            nonviable_empty,
+            nonviable_disconnected,
+            nonviable_missing_type,
+            nonviable_other,
+        } = *self;
+        (
+            [
+                bodies_grown,
+                modules_placed,
+                differentiations,
+                scale_changes,
+                refused_occupied,
+                refused_out_of_bounds,
+                refused_max_modules,
+                refused_node_budget,
+            ],
+            [
+                nonviable_empty,
+                nonviable_disconnected,
+                nonviable_missing_type,
+                nonviable_other,
+            ],
+        )
+    }
+
     pub fn total_nonviable(&self) -> u64 {
-        self.nonviable_empty
-            + self.nonviable_disconnected
-            + self.nonviable_missing_type
-            + self.nonviable_other
+        self.partitioned().1.iter().sum()
     }
 
     fn record_failure(&mut self, failure: ViabilityFailure) {
@@ -175,21 +222,12 @@ impl DevelopCounters {
     }
 
     pub fn hash_into(&self, hasher: &mut crate::checksum::Fnv1a64) {
+        // The hashed order is `partitioned`'s concatenation order, which is
+        // the declaration order and is permanent, so the compiler enforces
+        // that a new counter reaches the checksum.
+        let (outcomes, nonviable) = self.partitioned();
         hasher.update(b"lifesim-morphology-state-v1");
-        for value in [
-            self.bodies_grown,
-            self.modules_placed,
-            self.differentiations,
-            self.scale_changes,
-            self.refused_occupied,
-            self.refused_out_of_bounds,
-            self.refused_max_modules,
-            self.refused_node_budget,
-            self.nonviable_empty,
-            self.nonviable_disconnected,
-            self.nonviable_missing_type,
-            self.nonviable_other,
-        ] {
+        for value in outcomes.into_iter().chain(nonviable) {
             hasher.update_u64(value);
         }
     }
@@ -611,21 +649,30 @@ mod tests {
         assert!(left.len() > 1, "the rule set must actually grow something");
     }
 
-    #[test]
-    fn permuting_locus_storage_order_gives_an_identical_body() {
-        // C10.1's third clause, and the one a storage-layout change would
-        // break silently. `rules_of` sorts, and `grow` relies on that; this
-        // pins the guarantee at the level a compaction would disturb.
-        let mut forward = simple_rules();
-        let mut reversed = forward.clone();
-        reversed.reverse();
-        forward.sort_by_key(|(id, _)| *id);
-        reversed.sort_by_key(|(id, _)| *id);
-        let mut counters = DevelopCounters::default();
-        let left = grow(&forward, LatticeKind::Square, &caps(), &mut counters);
-        let right = grow(&reversed, LatticeKind::Square, &caps(), &mut counters);
-        assert_eq!(left, right);
-    }
+    // C10.1's storage-independence clause used to be asserted here, by
+    // `permuting_locus_storage_order_gives_an_identical_body`, and it was
+    // vacuous. It built the rule list, cloned it, `reverse()`d the clone,
+    // then `sort_by_key`ed both by an id that was already distinct and
+    // ascending - and a stable sort on distinct keys is exactly the inverse
+    // of `reverse`, so the two vectors were bit-identical before `grow` ever
+    // saw them and the assertion was `x == x`. Two other tests in this
+    // workspace carried the same defect (D-089).
+    //
+    // It cannot be repaired at this level. `grow` takes an already-canonical
+    // slice, so the only thing available to permute here is the canonical
+    // form itself: disturbing it either reconstructs the same vector or
+    // hands `grow` a genuinely different program, and neither is the claim.
+    //
+    // The claim is tested where the storage actually lives - over a genome
+    // whose loci are split across chromosomes differently, which is a real
+    // and legal layout difference - in
+    // `phase10_development::repartitioning_chromosomes_grows_the_same_body`.
+    //
+    // Deliberately *not* asserted, because it was measured and is not true
+    // of the obvious fixture: that `grow` is order-sensitive. Reversing
+    // `simple_rules` grows an identical body, so whether `rules_of`'s sort is
+    // load-bearing or belt-and-braces is open. It is kept regardless, because
+    // a canonical order is cheaper to guarantee than to reason about.
 
     #[test]
     fn growth_always_terminates_within_its_step_budget() {
@@ -757,6 +804,46 @@ mod tests {
         // Half the cells shared.
         let overlapping = make(&[(0, 0), (0, 1)], ModuleType::Digestive);
         assert_eq!(phenotypic_distance_milli(&a, &overlapping), 666);
+    }
+
+    #[test]
+    fn the_hashed_counter_order_is_the_one_the_morphology_fixture_was_taken_at() {
+        // `hash_into` and `total_nonviable` were two hand-maintained field
+        // lists and are now derived from one `..`-free destructuring. That
+        // is only a safe refactor if the *bytes* did not move: this hash is
+        // part of every morphology world's state checksum, so a reordered
+        // array literal would silently invalidate a saved world rather than
+        // fail anything.
+        //
+        // The expected value is built from the pre-refactor list, written
+        // out literally here rather than derived from `partitioned`, so the
+        // two cannot drift together. Every counter holds a distinct value -
+        // a uniform 1 would hash identically under any permutation.
+        let counters = DevelopCounters {
+            bodies_grown: 1,
+            modules_placed: 2,
+            differentiations: 3,
+            scale_changes: 4,
+            refused_occupied: 5,
+            refused_out_of_bounds: 6,
+            refused_max_modules: 7,
+            refused_node_budget: 8,
+            nonviable_empty: 9,
+            nonviable_disconnected: 10,
+            nonviable_missing_type: 11,
+            nonviable_other: 12,
+        };
+        let mut expected = crate::checksum::Fnv1a64::new();
+        expected.update(b"lifesim-morphology-state-v1");
+        for value in [1_u64, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12] {
+            expected.update_u64(value);
+        }
+        let mut observed = crate::checksum::Fnv1a64::new();
+        counters.hash_into(&mut observed);
+        assert_eq!(observed.finish(), expected.finish());
+        // ...and the total is over the four non-viability classes only, not
+        // over everything the destructuring now reaches.
+        assert_eq!(counters.total_nonviable(), 9 + 10 + 11 + 12);
     }
 
     #[test]

@@ -153,7 +153,10 @@ pub struct MutationReport {
 impl MutationReport {
     fn push(&mut self, operator: u8, reason: RejectReason) {
         let slot = self.len as usize;
-        debug_assert!(slot < self.entries.len(), "at most one rejection per operator");
+        debug_assert!(
+            slot < self.entries.len(),
+            "at most one rejection per operator"
+        );
         if slot < self.entries.len() {
             self.entries[slot] = Some((operator, reason));
             self.len += 1;

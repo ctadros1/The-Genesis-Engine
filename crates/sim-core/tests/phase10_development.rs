@@ -349,3 +349,71 @@ fn c10_5_non_viability_is_typed_counted_and_reported() {
     // programs, which are far harsher than anything evolution would carry.
     assert!(nonviable < attempts, "every drawn program was non-viable");
 }
+
+#[test]
+fn repartitioning_chromosomes_grows_the_same_body() {
+    // C10.1's storage-independence clause, tested where the storage actually
+    // lives. `develop.rs`'s version of this could not test it: `grow` takes
+    // an already-canonical slice, so the only thing available to permute
+    // there was the canonical form itself.
+    //
+    // A genome's real layout freedom is which chromosome a locus sits on.
+    // `validate_structure` requires loci to ascend only *within* a
+    // chromosome, so the same locus set partitioned differently is a valid,
+    // genuinely distinct layout - and `rules_of` must flatten both to the
+    // same program, because it sorts by `(homology_id, haplotype_slot)`
+    // across every chromosome rather than trusting storage order.
+    let flat = genome_with_rules(0x51a7, 6);
+    let mut split = flat.clone();
+    for haplotype in 0..2 {
+        let loci: Vec<Locus> = split.haplotypes[haplotype].chromosomes[0].clone();
+        // Deal alternate loci onto a second chromosome, so neither chromosome
+        // holds a contiguous run and the flattening order cannot be recovered
+        // by concatenation alone.
+        let mut first = Vec::new();
+        let mut second = Vec::new();
+        for (position, locus) in loci.into_iter().enumerate() {
+            if position % 2 == 0 {
+                first.push(locus);
+            } else {
+                second.push(locus);
+            }
+        }
+        split.haplotypes[haplotype].chromosomes[0] = first;
+        split.haplotypes[haplotype].chromosomes.push(second);
+    }
+
+    // Both layouts must be legal, or this compares a valid genome with one
+    // the kernel would have refused.
+    let caps = sim_core::GenomeCaps::provisional();
+    flat.validate_structure(&caps)
+        .expect("flat layout is valid");
+    split
+        .validate_structure(&caps)
+        .expect("split layout is valid");
+    assert_ne!(
+        flat.haplotypes[0].chromosomes.len(),
+        split.haplotypes[0].chromosomes.len(),
+        "the two layouts are the same layout, so this test is vacuous"
+    );
+
+    assert_eq!(
+        rules_of(&flat),
+        rules_of(&split),
+        "the flattened growth program depends on which chromosome a rule is \
+         stored on, so `rules_of` is trusting storage order somewhere"
+    );
+
+    let mut left_counters = DevelopCounters::default();
+    let mut right_counters = DevelopCounters::default();
+    let left = body_of(&flat, &mut left_counters);
+    let right = body_of(&split, &mut right_counters);
+    assert_eq!(left, right, "the same program grew two different bodies");
+    // ...and the program must actually build something, or two empty bodies
+    // would compare equal and prove nothing.
+    assert!(
+        left.modules().len() > 1,
+        "the fixture grew {} module(s); it must exercise growth to be evidence",
+        left.modules().len()
+    );
+}

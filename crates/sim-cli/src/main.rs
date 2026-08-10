@@ -13,9 +13,11 @@
 //! - `verify-events` replay an event log and report what it contains
 
 use sim_core::{
-    BEHAVIOR_POLICY_VERSION, CONTROLLER_POLICY_VERSION, GENOME_POLICY_VERSION,
-    GENOME_SCHEMA_VERSION, PHASE2_BEHAVIOR_POLICY_VERSION, RNG_ALGORITHM_VERSION, SimConfig,
-    TOPOLOGY_ID, TickObserver, TickPhase, WORLDGEN_VERSION, World, analyze,
+    BEHAVIOR_POLICY_VERSION, CONTROLLER_POLICY_VERSION, CONTROLLER2_POLICY_VERSION,
+    GENOME_POLICY_VERSION, GENOME_SCHEMA_VERSION, GENOME2_POLICY_VERSION, GENOME2_SCHEMA_VERSION,
+    InheritanceMode, MEIOSIS_POLICY_VERSION, PHASE2_BEHAVIOR_POLICY_VERSION, RNG_ALGORITHM_VERSION,
+    STRUCTMUT_POLICY_VERSION, SimConfig, TOPOLOGY_ID, TickObserver, TickPhase, WORLDGEN_VERSION,
+    World, analyze, registry_versions,
 };
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::env;
@@ -101,7 +103,10 @@ fn usage() -> String {
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
-        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2\n",
+        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2\n",
+        "  --genome2 selects the Phase 9 schema-2 genome and controller; it requires --phase2, and it\n",
+        "  pins the structural caps, meiosis mode, and mutation rates literally rather than inheriting\n",
+        "  today's defaults, so the Phase 9 fixture cannot move when a default is revised\n",
         "run also accepts: --event-log PATH"
     )
     .to_owned()
@@ -118,6 +123,7 @@ struct Options {
     no_reproduction: bool,
     no_preflight: bool,
     phase2: bool,
+    genome2: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -156,6 +162,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--phase2" {
             options.phase2 = true;
+            index += 1;
+            continue;
+        }
+        if name == "--genome2" {
+            options.genome2 = true;
             index += 1;
             continue;
         }
@@ -245,8 +256,58 @@ fn build_config(options: &Options) -> Result<SimConfig, String> {
     if options.phase2 {
         config.phase2.enabled = true;
     }
+    if options.genome2 {
+        // `validate_subsystems` refuses genome2 without phase2, and its
+        // message names a config field rather than the flag that was typed.
+        // Say it in the caller's vocabulary instead of letting a validator
+        // explain a flag it has never heard of.
+        if !options.phase2 {
+            return Err(format!("--genome2 requires --phase2\n{}", usage()));
+        }
+        config.genome2.enabled = true;
+        apply_pinned_genome2_policy(&mut config);
+    }
     config.validate().map_err(|error| error.to_string())?;
     Ok(config)
+}
+
+/// The Phase 9 fixture's genome-2 policy, written out literally.
+///
+/// **Pinned rather than inherited from `Genome2Config::genome2_default()`,
+/// for the reason `experiments/phase9-c91-confirmatory.campaign` states in
+/// its own caps block (D-078).** `SimConfig::stable_hash` folds the whole
+/// genome2 section in when it is enabled - four policy strings, both
+/// registry versions, all seven `GenomeCaps` fields, the meiosis mode and
+/// crossover bound, and all eight `MutationConfig` fields. A fixture built
+/// from defaults therefore breaks the moment any one of those defaults is
+/// revised, and the break would look like a determinism failure rather than
+/// what it is. The caps were already restated once, by C9.8's measurement,
+/// which is the event this guards against repeating.
+///
+/// Every value below is today's default. Pinning changes nothing about what
+/// the fixture *is*; it changes who decides when it moves.
+fn apply_pinned_genome2_policy(config: &mut SimConfig) {
+    let caps = &mut config.genome2.caps;
+    caps.max_chromosomes = 4;
+    caps.max_loci_per_chromosome = 160;
+    caps.max_nodes = 160;
+    caps.max_edges = 160;
+    caps.max_edges_per_node = 32;
+    caps.max_genome_bytes = 16_384;
+    caps.min_nodes = 2;
+
+    config.genome2.meiosis.mode = InheritanceMode::Meiotic;
+    config.genome2.meiosis.max_extra_crossovers = 2;
+
+    let mutation = &mut config.genome2.mutation;
+    mutation.point_q16 = 6_554; // 0.10 per birth
+    mutation.duplication_q16 = 655; // 0.01
+    mutation.deletion_q16 = 655; // 0.01
+    mutation.insertion_q16 = 0; // duplication-only is the ADR-0013 baseline
+    mutation.transposition_q16 = 328; // 0.005; inert on single-chromosome founders (D-074)
+    mutation.regulatory_enabled = true;
+    mutation.max_run = 3;
+    mutation.point_delta_q16 = 3_277; // 0.05
 }
 
 fn build_world(options: &Options) -> Result<World, String> {
@@ -1267,7 +1328,73 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if world.phase2_enabled() {
+    if world.genome2_enabled() {
+        // Fixture schema 4: the Phase 9 lineage. A separate schema rather
+        // than extra fields on schema 3, because a schema-2 world is a
+        // different genome and a different controller and a reader that
+        // parsed it as a Phase 2 fixture would be comparing two different
+        // simulations.
+        //
+        // The structure metrics and the applied-mutation counts are here so
+        // the fixture cannot silently become a control. At the Phase 1/2
+        // horizon of 500 ticks nothing has reproduced at all - founders
+        // spawn at age 0 and `maturity_age_ticks` is 600 - so a 500-tick
+        // schema-2 fixture would pin meiosis, structural mutation, and the
+        // schema-2 birth path by pinning none of them. `duplications_applied`
+        // is reported separately from `structural_mutations_applied` because
+        // the latter counts point mutations too, and a point mutation
+        // changes no structure.
+        let counters = world
+            .mutation_counters()
+            .expect("a genome2 world has schema-2 counters");
+        let (channel_registry, activation_registry) = registry_versions();
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":4,\"phase\":\"phase9\",",
+                "\"behavior_policy\":\"{}\",\"genome2_policy\":\"{}\",",
+                "\"meiosis_policy\":\"{}\",\"structmut_policy\":\"{}\",",
+                "\"controller2_policy\":\"{}\",\"genome2_schema\":{},",
+                "\"channel_registry\":{},\"activation_registry\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"births_total\":{},\"paired_births_total\":{},\"deaths_total\":{},",
+                "\"controller_faults_total\":{},\"max_ancestry_depth\":{},",
+                "\"mean_nodes_milli\":{},\"mean_edges_milli\":{},",
+                "\"median_nodes\":{},\"median_edges\":{},\"distinct_structures\":{},",
+                "\"structural_mutations_applied\":{},\"duplications_applied\":{},",
+                "\"structural_mutations_rejected\":{}}}"
+            ),
+            PHASE2_BEHAVIOR_POLICY_VERSION,
+            GENOME2_POLICY_VERSION,
+            MEIOSIS_POLICY_VERSION,
+            STRUCTMUT_POLICY_VERSION,
+            CONTROLLER2_POLICY_VERSION,
+            GENOME2_SCHEMA_VERSION,
+            channel_registry,
+            activation_registry,
+            world.config().initial_organisms,
+            ticks,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.births_total,
+            metrics.paired_births_total,
+            metrics.deaths_starvation_total + metrics.deaths_old_age_total,
+            metrics.controller_faults_total,
+            metrics.max_ancestry_depth,
+            metrics.mean_nodes_milli,
+            metrics.mean_edges_milli,
+            metrics.median_nodes,
+            metrics.median_edges,
+            metrics.distinct_structures,
+            metrics.structural_mutations_applied,
+            counters.duplication_applied,
+            metrics.structural_mutations_rejected
+        );
+    } else if world.phase2_enabled() {
         // Fixture schema 3: the Phase 2 lineage. Never relabeled as v2.
         println!(
             concat!(

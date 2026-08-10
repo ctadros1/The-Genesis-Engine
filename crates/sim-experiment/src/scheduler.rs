@@ -378,6 +378,12 @@ fn execute_unit(
 
     let counters: Counters = world.counters();
     let phase2: Option<Phase2Counters> = world.phase2_enabled().then(|| world.phase2_counters());
+    // Both accessors already return `None` when their section is disabled,
+    // so the "absent, not zero" contract the manifest depends on comes from
+    // the kernel rather than from a `then()` here that could drift out of
+    // step with what the world actually built.
+    let mutation = world.mutation_counters();
+    let develop = world.develop_counters();
 
     Ok(RunResult {
         index: unit.index,
@@ -418,6 +424,8 @@ fn execute_unit(
         attacks_total: metrics.attacks_total,
         deaths_by_damage_total: metrics.deaths_by_damage_total,
         carcasses: metrics.carcasses,
+        mutation,
+        develop,
     })
 }
 

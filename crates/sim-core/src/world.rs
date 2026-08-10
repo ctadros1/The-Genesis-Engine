@@ -1141,13 +1141,6 @@ impl World {
             .collect()
     }
 
-    /// Structural-mutation outcomes broken out by operator and by rejection
-    /// reason. `None` when schema 2 is disabled.
-    ///
-    /// The aggregate applied/rejected pair in [`MetricsSnapshot`] cannot
-    /// distinguish "duplication never fired" from "duplication fired and was
-    /// rejected every time", and a null result about structural evolution
-    /// means opposite things in those two worlds.
     /// Per-organism body size against reproductive success, in entity-ID
     /// order. Empty when morphology is disabled.
     pub fn morphology_census(&self) -> Vec<MorphologySample> {
@@ -1167,8 +1160,30 @@ impl World {
             .collect()
     }
 
+    /// Structural-mutation outcomes broken out by operator and by rejection
+    /// reason. `None` when schema 2 is disabled.
+    ///
+    /// The aggregate applied/rejected pair in [`MetricsSnapshot`] cannot
+    /// distinguish "duplication never fired" from "duplication fired and was
+    /// rejected every time", and a null result about structural evolution
+    /// means opposite things in those two worlds. This doc comment sat on
+    /// `morphology_census` for two phases because the two were adjacent and
+    /// nothing binds a comment to the item it describes.
     pub fn mutation_counters(&self) -> Option<MutationCounters> {
         self.schema2.as_ref().map(|state| state.counters)
+    }
+
+    /// Development outcomes broken out by action and by non-viability class.
+    /// `None` when morphology is disabled.
+    ///
+    /// `morphology_state` is `pub(crate)`, so a campaign that wants to know
+    /// which refusal bound - occupied cell, lattice edge, module cap, node
+    /// budget - has no other way to ask. The aggregate `nonviable_bodies` in
+    /// [`MetricsSnapshot`] collapses four classes into one number, and
+    /// "bodies are hitting the module cap" and "bodies are growing into
+    /// walls" call for opposite changes to a config.
+    pub fn develop_counters(&self) -> Option<crate::develop::DevelopCounters> {
+        self.morphology.as_ref().map(|state| state.counters)
     }
 
     pub fn physiology_enabled(&self) -> bool {

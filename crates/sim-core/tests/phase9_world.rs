@@ -363,7 +363,10 @@ fn every_structural_rejection_is_evented_as_well_as_counted() {
     );
 
     let expected = [
-        (RejectReason::HomologyCollision, counters.rejected_homology_collision),
+        (
+            RejectReason::HomologyCollision,
+            counters.rejected_homology_collision,
+        ),
         (RejectReason::Orphaned, counters.rejected_orphaned),
         (RejectReason::MinNodes, counters.rejected_min_nodes),
         (RejectReason::NoBindings, counters.rejected_no_bindings),

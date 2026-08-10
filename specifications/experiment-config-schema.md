@@ -77,6 +77,42 @@ manifest pointing at an external campaign file would silently change meaning
 when that file was edited, which is exactly the failure the config-hash
 discipline exists to prevent; an edited manifest is refused on load.
 
+### Manifest Run Columns: Optional Blocks, Not New Versions
+
+A `run` record is a flat `key=value` line. Columns are **appended, never
+renumbered or removed**, and a column that a subsystem owns is emitted only
+when that subsystem was enabled for the run. `MANIFEST_VERSION` therefore
+does not move when columns are added: phases 8, 9 and 10 each added columns
+under version 1, and the archived manifests under `experiments/results/`
+still parse.
+
+That works because the reader gates each block on a **sentinel key of that
+block's own**, not on a version number:
+
+| Block | Sentinel | Absent means |
+|---|---|---|
+| Phase 2 pairing | `paired_births` | `phase2` disabled, or the manifest predates the block |
+| Structural mutation, 13 classes | `structmut_point_applied` | `genome2` disabled, or predates the block |
+| Development, 12 classes | `develop_bodies_grown` | `morphology` disabled, or predates the block |
+
+The parsed field is `Option`, and **absent is never read as zero**. A cap
+rejection and a self-loop draw both land in the summed `structmut_rejected`
+column, so "no cap ever bound" is a claim only the per-class columns can
+support; a block of thirteen zeros invented for a run that had no schema-2
+section would assert it without evidence. `structmut_applied` and
+`structmut_rejected` stay alongside the per-class columns because the
+archived manifests carry them and a manifest is a record, not a cache.
+
+The key space is flat, so each block prefixes its columns with the name of
+the counter set it came from (`structmut_`, `develop_`). Without that,
+`rejected_cap` from structural mutation and any future rejection counter
+elsewhere would be one key.
+
+Both the renderer and the reader destructure their counter structs with no
+`..` (D-077), so adding a counter fails to compile on the writing side -
+which is the side that can lose data - rather than being emitted by one and
+dropped by the other.
+
 ## Original Plan: Conditions And Campaigns (Phase 5)
 
 Every acceptance criterion from Phase 7 onward is a multi-seed,

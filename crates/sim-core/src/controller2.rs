@@ -377,7 +377,10 @@ pub fn output_of(requests: &ActionRequests, channel_id: u16) -> Option<f32> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::genome2::{ExpressedBinding, ExpressedEdge, ExpressedNode, VALUE_LIMIT};
+    use crate::genome2::{
+        ExpressedBinding, ExpressedEdge, ExpressedNode, Genome2, Haplotype, Locus, LocusKind,
+        STRUCTURAL_HOMOLOGY_BASE, VALUE_LIMIT,
+    };
 
     fn node(homology_id: u32, role: NodeRole, activation: Activation, bias: f32) -> ExpressedNode {
         ExpressedNode {
@@ -523,29 +526,182 @@ mod tests {
         assert_eq!(compile(&network), Err(CompileError::ZeroDelayCycle));
     }
 
-    #[test]
-    fn evaluation_is_independent_of_node_storage_permutation() {
-        // The determinism obligation. Presenting the same graph with its
-        // nodes and edges in a different order must produce the same
-        // activations, because the canonical order is derived from
-        // `homology_id` rather than from position.
-        let network = chain();
-        let (baseline, state) = run(&network, 0.375, 3);
+    /// One structural locus, in the reserved structural homology block.
+    fn structural(offset: u32, kind: LocusKind) -> Locus {
+        Locus {
+            homology_id: STRUCTURAL_HOMOLOGY_BASE + offset,
+            gene_lineage_id: u64::from(offset) + 1,
+            mutation_event_id: 0,
+            kind,
+        }
+    }
 
-        let mut permuted = network.clone();
-        permuted.nodes.reverse();
-        permuted.edges.reverse();
-        permuted.bindings.reverse();
-        // `compile` assumes the sorted invariant the expressed network
-        // guarantees, so restore it -- the point is that the *input order*
-        // reaching the compiler was different, not that sortedness is
-        // optional.
-        permuted.nodes.sort_by_key(|node| node.homology_id);
-        permuted.edges.sort_by_key(|edge| edge.homology_id);
-        permuted.bindings.sort_by_key(|binding| binding.homology_id);
-        let (other, other_state) = run(&permuted, 0.375, 3);
-        assert_eq!(baseline, other);
-        assert_eq!(state.values, other_state.values);
+    /// A homozygous diploid genome carrying `layout` on both haplotypes,
+    /// where `layout` is a list of chromosomes.
+    fn genome_with_layout(layout: &[&[Locus]]) -> Genome2 {
+        let haplotype = || Haplotype {
+            chromosomes: layout
+                .iter()
+                .map(|chromosome| chromosome.to_vec())
+                .collect(),
+        };
+        Genome2 {
+            haplotypes: [haplotype(), haplotype()],
+        }
+    }
+
+    #[test]
+    fn expression_is_independent_of_how_loci_are_split_across_chromosomes() {
+        // The determinism obligation, tested through a genuinely different
+        // storage layout.
+        //
+        // **The test this replaces was vacuous.** It reversed an already
+        // sorted `Vec` and then `sort_by_key`ed it back; the keys are
+        // distinct and ascending, so the stable sort restored the original
+        // vector exactly and the assertion compared a value with a copy of
+        // itself. The permutation was undone before the code under test ever
+        // saw it, which is precisely the trap this project's own notes name.
+        //
+        // `validate_structure` requires loci to ascend only *within* a
+        // chromosome, so the same locus set partitioned differently is a
+        // legal and genuinely distinct layout: the split below reaches
+        // `express_network`'s traversal in the order 10, 30, 50, 70, 81, 90,
+        // 20, 40, 60, 80, 82, which is not ascending anywhere. `upsert`
+        // merges by binary search, so the expressed network should be
+        // order-free by construction - and if it were ever changed to append,
+        // node 40's incoming list would arrive as 50, 70, 60 and the sum
+        // would move, which the weights below are chosen to make visible.
+        //
+        // **This must not be lifted to world-level checksum equality.** The
+        // chromosome count is an input to meiosis: crossover draws are per
+        // chromosome pair, so two worlds whose founders are partitioned
+        // differently consume the meiosis stream differently and legitimately
+        // diverge at the first birth. The claim here is about expression and
+        // evaluation, and that is the whole claim.
+        let big = 1.0_f32;
+        // Straddling f32 epsilon (about 1.19e-7) for the same reason
+        // `incoming_edges_are_summed_in_homology_order_not_storage_order`
+        // does: adding each small weight to 1.0 separately loses both, while
+        // accumulating them first does not. Weights on which both orders
+        // agree would make this test pass without demonstrating anything.
+        let small = 6.0e-8_f32;
+        let hidden = |offset: u32, role: NodeRole| {
+            structural(
+                offset,
+                LocusKind::Node {
+                    role,
+                    activation_id: Activation::Linear.id(),
+                    bias: 0.0,
+                    time_constant: 0,
+                },
+            )
+        };
+        let wire = |offset: u32, source: u32, target: u32, weight: f32| {
+            structural(
+                offset,
+                LocusKind::Edge {
+                    source: STRUCTURAL_HOMOLOGY_BASE + source,
+                    target: STRUCTURAL_HOMOLOGY_BASE + target,
+                    weight,
+                    flags: 0,
+                    plasticity: crate::genome2::PlasticityGenes::inert(),
+                },
+            )
+        };
+        let bind = |offset: u32, node: u32, channel_id: u16| {
+            structural(
+                offset,
+                LocusKind::IoBinding {
+                    node: STRUCTURAL_HOMOLOGY_BASE + node,
+                    channel_id,
+                    gain: 1.0,
+                },
+            )
+        };
+
+        let loci = [
+            hidden(10, NodeRole::Input),
+            hidden(20, NodeRole::Input),
+            hidden(30, NodeRole::Input),
+            hidden(40, NodeRole::Output),
+            wire(50, 10, 40, big),
+            wire(60, 20, 40, small),
+            wire(70, 30, 40, small),
+            bind(80, 10, 1),
+            bind(81, 20, 2),
+            bind(82, 30, 3),
+            bind(90, 40, 101),
+        ];
+        let single: Vec<Locus> = loci.to_vec();
+        // Interleaved partition: every other locus by position, so neither
+        // chromosome is a prefix of the other and the flattened traversal is
+        // not ascending.
+        let even: Vec<Locus> = loci.iter().step_by(2).copied().collect();
+        let odd: Vec<Locus> = loci.iter().skip(1).step_by(2).copied().collect();
+
+        let one_chromosome = genome_with_layout(&[&single]);
+        let two_chromosomes = genome_with_layout(&[&even, &odd]);
+        let caps = crate::genome2::GenomeCaps::provisional();
+        one_chromosome
+            .validate_structure(&caps)
+            .expect("a single-chromosome layout is valid");
+        two_chromosomes
+            .validate_structure(&caps)
+            .expect("a split layout is valid: loci ascend within each chromosome");
+        assert_ne!(
+            one_chromosome.chromosome_count(),
+            two_chromosomes.chromosome_count(),
+            "the two layouts are the same, so this test compares a value with itself"
+        );
+        assert_ne!(
+            one_chromosome, two_chromosomes,
+            "the two genomes are identical records, so nothing was permuted"
+        );
+
+        let flat = one_chromosome.express_network();
+        let split = two_chromosomes.express_network();
+        assert_eq!(flat, split, "expression depended on the chromosome split");
+
+        let flat_plan = compile(&flat).expect("compiles");
+        let split_plan = compile(&split).expect("compiles");
+        assert_eq!(flat_plan, split_plan, "compilation depended on the layout");
+        let ids: Vec<u32> = split_plan.incoming[3]
+            .iter()
+            .map(|edge| edge.homology_id - STRUCTURAL_HOMOLOGY_BASE)
+            .collect();
+        assert_eq!(
+            ids,
+            vec![50, 60, 70],
+            "the split layout produced a different summation order"
+        );
+
+        // ...and the two orders really are numerically different at these
+        // magnitudes, so pinning the order above is not about nothing.
+        // Homology order adds the large weight first and loses both small
+        // ones; any order that accumulates the small ones first does not.
+        assert_ne!(
+            ((0.0_f32 + big) + small) + small,
+            ((0.0_f32 + small) + small) + big,
+            "the chosen weights are not order-sensitive, so the order assertion proves nothing"
+        );
+
+        // Evaluated activations must agree bit for bit. `state.values` and
+        // not the requests: the output binding clamps to [-1, 1], which would
+        // hide exactly the difference the weights were chosen to expose.
+        let (_, flat_state) = run(&flat, 1.0, 3);
+        let (_, split_state) = run(&split, 1.0, 3);
+        assert_eq!(
+            flat_state
+                .values
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<u32>>(),
+            split_state
+                .values
+                .iter()
+                .map(|value| value.to_bits())
+                .collect::<Vec<u32>>()
+        );
     }
 
     #[test]

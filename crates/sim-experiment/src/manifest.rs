@@ -71,6 +71,23 @@ pub struct RunResult {
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
     pub carcasses: u64,
+    /// Structural-mutation outcomes by operator and by rejection reason, and
+    /// development outcomes by action and by non-viability class.
+    ///
+    /// Nested rather than flattened into thirteen and twelve more scalars,
+    /// so the compiler enforces completeness at every seam these cross:
+    /// adding a counter to either struct breaks `render_run` and `parse_run`
+    /// at once instead of letting one of them drop it.
+    ///
+    /// `None` when the subsystem is disabled, never zero. Absent and zero
+    /// are opposite conclusions - "the cap could not have bound because
+    /// schema 2 was off" against "the cap never bound" - and every question
+    /// these columns exist to answer depends on telling them apart. The
+    /// summed `structural_mutations_applied`/`_rejected` above stay, because
+    /// the eight archived manifests under `experiments/results/` carry them
+    /// and a manifest is a record, not a cache.
+    pub mutation: Option<sim_core::MutationCounters>,
+    pub develop: Option<sim_core::DevelopCounters>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -344,75 +361,186 @@ impl Manifest {
     }
 }
 
+/// One `run` line.
+///
+/// **Every struct is destructured with no `..`, never field-accessed**
+/// (D-077). This was 41 positional `run.field` arguments to one `format!`,
+/// and the consequence is worth stating because it is not the obvious one: a
+/// field added to `RunResult` broke compilation *only* in `parse_run`, where
+/// it is satisfied by a `number("...").unwrap_or(0)` in seconds. Nothing
+/// forced the renderer to emit it. The column would then be absent from
+/// every manifest, parse back as zero, and `manifest_round_trips_exactly`
+/// would compare that zero against the zero it started with and pass.
+///
+/// Destructuring moves the failure to compile time on the writing side,
+/// which is the only side that can lose data.
 fn render_run(run: &RunResult) -> String {
-    let mut line = format!(
-        "run index={} condition={} seed={} delta_hash={} config_hash={} terrain_checksum={} \
-         state_checksum={} ticks={} population={} extinct={} energy_milli={} biomass_milli={} \
-         max_ancestry_depth={} births={} deaths_starvation={} deaths_old_age={} \
-         capacity_rejections={} dropped_events={} event_log_bytes={} snapshot_bytes={} \
-         attacks={} deaths_by_damage={} carcasses={} spatial_samples={} \
-         deaths_senescence={} deaths_extrinsic={} deaths_juvenile={} \
-         max_age_observed={} capacity_milli={} mean_nodes_milli={} \
-         mean_edges_milli={} median_nodes={} median_edges={} \
-         distinct_structures={} structmut_applied={} \
-         structmut_rejected={} mean_modules_milli={} median_modules={} \
-         distinct_morphologies={} nonviable_bodies={} refused_node_budget={}",
-        run.index,
-        run.condition,
-        hex(run.seed),
-        hex(run.condition_delta_hash),
-        hex(run.config_hash),
-        hex(run.terrain_checksum),
-        hex(run.state_checksum),
-        run.ticks,
-        run.population,
-        run.extinct,
-        run.total_energy_milli,
-        run.total_biomass_milli,
-        run.max_ancestry_depth,
-        run.counters.births_total,
-        run.counters.deaths_starvation_total,
-        run.counters.deaths_old_age_total,
-        run.counters.capacity_rejections_total,
-        run.counters.dropped_events_total,
-        run.event_log_offset,
-        run.snapshot_bytes,
-        run.attacks_total,
-        run.deaths_by_damage_total,
-        run.carcasses,
-        run.spatial_samples,
-        run.deaths_senescence_total,
-        run.deaths_extrinsic_total,
-        run.deaths_juvenile_total,
-        run.max_age_ticks_observed,
-        run.total_capacity_milli,
-        run.mean_nodes_milli,
-        run.mean_edges_milli,
-        run.median_nodes,
-        run.median_edges,
-        run.distinct_structures,
-        run.structural_mutations_applied,
-        run.structural_mutations_rejected,
-        run.mean_modules_milli,
-        run.median_modules,
-        run.distinct_morphologies,
-        run.nonviable_bodies,
-        run.refused_node_budget,
+    let RunResult {
+        index,
+        condition,
+        seed,
+        condition_delta_hash,
+        config_hash,
+        terrain_checksum,
+        state_checksum,
+        ticks,
+        population,
+        extinct,
+        total_energy_milli,
+        total_biomass_milli,
+        max_ancestry_depth,
+        counters,
+        phase2,
+        event_log_offset,
+        snapshot_bytes,
+        spatial_samples,
+        deaths_senescence_total,
+        deaths_extrinsic_total,
+        deaths_juvenile_total,
+        max_age_ticks_observed,
+        total_capacity_milli,
+        mean_nodes_milli,
+        mean_edges_milli,
+        median_nodes,
+        median_edges,
+        distinct_structures,
+        structural_mutations_applied,
+        structural_mutations_rejected,
+        mean_modules_milli,
+        median_modules,
+        distinct_morphologies,
+        nonviable_bodies,
+        refused_node_budget,
+        attacks_total,
+        deaths_by_damage_total,
+        carcasses,
+        mutation,
+        develop,
+    } = run;
+    let Counters {
+        births_total,
+        deaths_starvation_total,
+        deaths_old_age_total,
+        capacity_rejections_total,
+        dropped_events_total,
+    } = counters;
+    let (seed, delta_hash, config_hash, terrain_checksum, state_checksum) = (
+        hex(*seed),
+        hex(*condition_delta_hash),
+        hex(*config_hash),
+        hex(*terrain_checksum),
+        hex(*state_checksum),
     );
-    if let Some(phase2) = run.phase2.as_ref() {
+    let mut line = format!(
+        "run index={index} condition={condition} seed={seed} delta_hash={delta_hash} \
+         config_hash={config_hash} terrain_checksum={terrain_checksum} \
+         state_checksum={state_checksum} ticks={ticks} population={population} \
+         extinct={extinct} energy_milli={total_energy_milli} \
+         biomass_milli={total_biomass_milli} max_ancestry_depth={max_ancestry_depth} \
+         births={births_total} deaths_starvation={deaths_starvation_total} \
+         deaths_old_age={deaths_old_age_total} \
+         capacity_rejections={capacity_rejections_total} \
+         dropped_events={dropped_events_total} event_log_bytes={event_log_offset} \
+         snapshot_bytes={snapshot_bytes} attacks={attacks_total} \
+         deaths_by_damage={deaths_by_damage_total} carcasses={carcasses} \
+         spatial_samples={spatial_samples} deaths_senescence={deaths_senescence_total} \
+         deaths_extrinsic={deaths_extrinsic_total} deaths_juvenile={deaths_juvenile_total} \
+         max_age_observed={max_age_ticks_observed} capacity_milli={total_capacity_milli} \
+         mean_nodes_milli={mean_nodes_milli} mean_edges_milli={mean_edges_milli} \
+         median_nodes={median_nodes} median_edges={median_edges} \
+         distinct_structures={distinct_structures} \
+         structmut_applied={structural_mutations_applied} \
+         structmut_rejected={structural_mutations_rejected} \
+         mean_modules_milli={mean_modules_milli} median_modules={median_modules} \
+         distinct_morphologies={distinct_morphologies} nonviable_bodies={nonviable_bodies} \
+         refused_node_budget={refused_node_budget}"
+    );
+    if let Some(Phase2Counters {
+        paired_births_total,
+        pair_rejected_capacity_total,
+        pair_rejected_placement_total,
+        pair_rejected_energy_total,
+        pair_rejected_nonviable_total,
+        controller_faults_total,
+        mutated_trait_genes_total,
+        mutated_neural_genes_total,
+    }) = phase2
+    {
         line.push_str(&format!(
-            " paired_births={} pair_rejected_capacity={} pair_rejected_placement={} \
-             pair_rejected_energy={} pair_rejected_nonviable={} controller_faults={} \
-             mutated_trait_genes={} \
-             mutated_neural_genes={}",
-            phase2.paired_births_total,
-            phase2.pair_rejected_capacity_total,
-            phase2.pair_rejected_placement_total,
-            phase2.pair_rejected_energy_total,
-            phase2.pair_rejected_nonviable_total,
-            phase2.controller_faults_total,
-            phase2.mutated_trait_genes_total,
-            phase2.mutated_neural_genes_total,
+            " paired_births={paired_births_total} \
+             pair_rejected_capacity={pair_rejected_capacity_total} \
+             pair_rejected_placement={pair_rejected_placement_total} \
+             pair_rejected_energy={pair_rejected_energy_total} \
+             pair_rejected_nonviable={pair_rejected_nonviable_total} \
+             controller_faults={controller_faults_total} \
+             mutated_trait_genes={mutated_trait_genes_total} \
+             mutated_neural_genes={mutated_neural_genes_total}"
+        ));
+    }
+    // The key space is flat, so every column here carries the `structmut_`
+    // or `develop_` prefix of the struct it came from. Without it
+    // `rejected_cap` and a future contest or physiology rejection counter
+    // would be one key, and the manifest would parse whichever was written
+    // last into both.
+    if let Some(sim_core::MutationCounters {
+        point_applied,
+        duplication_applied,
+        deletion_applied,
+        insertion_applied,
+        transposition_applied,
+        rejected_homology_collision,
+        rejected_orphaned,
+        rejected_min_nodes,
+        rejected_no_bindings,
+        rejected_cap,
+        rejected_inapplicable,
+        rejected_cycle,
+        rejected_invalid,
+    }) = mutation
+    {
+        line.push_str(&format!(
+            " structmut_point_applied={point_applied} \
+             structmut_duplication_applied={duplication_applied} \
+             structmut_deletion_applied={deletion_applied} \
+             structmut_insertion_applied={insertion_applied} \
+             structmut_transposition_applied={transposition_applied} \
+             structmut_rejected_homology_collision={rejected_homology_collision} \
+             structmut_rejected_orphaned={rejected_orphaned} \
+             structmut_rejected_min_nodes={rejected_min_nodes} \
+             structmut_rejected_no_bindings={rejected_no_bindings} \
+             structmut_rejected_cap={rejected_cap} \
+             structmut_rejected_inapplicable={rejected_inapplicable} \
+             structmut_rejected_cycle={rejected_cycle} \
+             structmut_rejected_invalid={rejected_invalid}"
+        ));
+    }
+    if let Some(sim_core::DevelopCounters {
+        bodies_grown,
+        modules_placed,
+        differentiations,
+        scale_changes,
+        refused_occupied,
+        refused_out_of_bounds,
+        refused_max_modules,
+        refused_node_budget,
+        nonviable_empty,
+        nonviable_disconnected,
+        nonviable_missing_type,
+        nonviable_other,
+    }) = develop
+    {
+        line.push_str(&format!(
+            " develop_bodies_grown={bodies_grown} develop_modules_placed={modules_placed} \
+             develop_differentiations={differentiations} \
+             develop_scale_changes={scale_changes} \
+             develop_refused_occupied={refused_occupied} \
+             develop_refused_out_of_bounds={refused_out_of_bounds} \
+             develop_refused_max_modules={refused_max_modules} \
+             develop_refused_node_budget={refused_node_budget} \
+             develop_nonviable_empty={nonviable_empty} \
+             develop_nonviable_disconnected={nonviable_disconnected} \
+             develop_nonviable_missing_type={nonviable_missing_type} \
+             develop_nonviable_other={nonviable_other}"
         ));
     }
     line.push('\n');
@@ -476,6 +604,47 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
             mutated_trait_genes_total: number("mutated_trait_genes").unwrap_or(0),
             mutated_neural_genes_total: number("mutated_neural_genes").unwrap_or(0),
         });
+    // Each block is gated on one of its own columns, so a manifest written
+    // before the block existed parses as `None` rather than as a struct full
+    // of zeros. The eight archived manifests under `experiments/results/`
+    // predate both blocks, which is why `MANIFEST_VERSION` does not move:
+    // absence is a supported reading of the same format version, exactly as
+    // it already is for the phase2 block.
+    let mutation =
+        fields
+            .contains_key("structmut_point_applied")
+            .then(|| sim_core::MutationCounters {
+                point_applied: number("structmut_point_applied").unwrap_or(0),
+                duplication_applied: number("structmut_duplication_applied").unwrap_or(0),
+                deletion_applied: number("structmut_deletion_applied").unwrap_or(0),
+                insertion_applied: number("structmut_insertion_applied").unwrap_or(0),
+                transposition_applied: number("structmut_transposition_applied").unwrap_or(0),
+                rejected_homology_collision: number("structmut_rejected_homology_collision")
+                    .unwrap_or(0),
+                rejected_orphaned: number("structmut_rejected_orphaned").unwrap_or(0),
+                rejected_min_nodes: number("structmut_rejected_min_nodes").unwrap_or(0),
+                rejected_no_bindings: number("structmut_rejected_no_bindings").unwrap_or(0),
+                rejected_cap: number("structmut_rejected_cap").unwrap_or(0),
+                rejected_inapplicable: number("structmut_rejected_inapplicable").unwrap_or(0),
+                rejected_cycle: number("structmut_rejected_cycle").unwrap_or(0),
+                rejected_invalid: number("structmut_rejected_invalid").unwrap_or(0),
+            });
+    let develop = fields
+        .contains_key("develop_bodies_grown")
+        .then(|| sim_core::DevelopCounters {
+            bodies_grown: number("develop_bodies_grown").unwrap_or(0),
+            modules_placed: number("develop_modules_placed").unwrap_or(0),
+            differentiations: number("develop_differentiations").unwrap_or(0),
+            scale_changes: number("develop_scale_changes").unwrap_or(0),
+            refused_occupied: number("develop_refused_occupied").unwrap_or(0),
+            refused_out_of_bounds: number("develop_refused_out_of_bounds").unwrap_or(0),
+            refused_max_modules: number("develop_refused_max_modules").unwrap_or(0),
+            refused_node_budget: number("develop_refused_node_budget").unwrap_or(0),
+            nonviable_empty: number("develop_nonviable_empty").unwrap_or(0),
+            nonviable_disconnected: number("develop_nonviable_disconnected").unwrap_or(0),
+            nonviable_missing_type: number("develop_nonviable_missing_type").unwrap_or(0),
+            nonviable_other: number("develop_nonviable_other").unwrap_or(0),
+        });
     Ok(RunResult {
         index: number("index")? as usize,
         condition: fields
@@ -527,6 +696,8 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         distinct_morphologies: number("distinct_morphologies").unwrap_or(0),
         nonviable_bodies: number("nonviable_bodies").unwrap_or(0),
         refused_node_budget: number("refused_node_budget").unwrap_or(0),
+        mutation,
+        develop,
     })
 }
 
@@ -590,6 +761,228 @@ output snapshots off
         assert_eq!(parsed.render(), text, "rendering is not a fixed point");
     }
 
+    /// A run record in which **every** scalar holds a distinct nonzero
+    /// value.
+    ///
+    /// Distinctness is the whole point. `manifest_round_trips_exactly` runs
+    /// a campaign with genome2 and morphology disabled, so every one of the
+    /// twenty-five new columns is zero on both sides of the comparison and
+    /// the assertion it makes about them is `0 == 0`. It would pass with
+    /// `render_run` emitting nothing at all. It would also pass with two
+    /// columns transposed, or with a whole block written from the wrong
+    /// struct, as long as the values happened to agree - which for a uniform
+    /// 1 they always would.
+    fn distinctly_valued_run() -> RunResult {
+        RunResult {
+            index: 7,
+            condition: "treatment".to_owned(),
+            seed: 0x1111_2222_3333_4444,
+            condition_delta_hash: 0x2222_3333_4444_5555,
+            config_hash: 0x3333_4444_5555_6666,
+            terrain_checksum: 0x4444_5555_6666_7777,
+            state_checksum: 0x5555_6666_7777_8888,
+            ticks: 101,
+            population: 102,
+            extinct: true,
+            total_energy_milli: 103,
+            total_biomass_milli: 104,
+            max_ancestry_depth: 105,
+            counters: Counters {
+                births_total: 106,
+                deaths_starvation_total: 107,
+                deaths_old_age_total: 108,
+                capacity_rejections_total: 109,
+                dropped_events_total: 110,
+            },
+            phase2: Some(Phase2Counters {
+                paired_births_total: 111,
+                pair_rejected_capacity_total: 112,
+                pair_rejected_placement_total: 113,
+                pair_rejected_energy_total: 114,
+                pair_rejected_nonviable_total: 115,
+                controller_faults_total: 116,
+                mutated_trait_genes_total: 117,
+                mutated_neural_genes_total: 118,
+            }),
+            event_log_offset: 119,
+            snapshot_bytes: 120,
+            spatial_samples: 121,
+            deaths_senescence_total: 122,
+            deaths_extrinsic_total: 123,
+            deaths_juvenile_total: 124,
+            max_age_ticks_observed: 125,
+            total_capacity_milli: 126,
+            mean_nodes_milli: 127,
+            mean_edges_milli: 128,
+            median_nodes: 129,
+            median_edges: 130,
+            distinct_structures: 131,
+            structural_mutations_applied: 132,
+            structural_mutations_rejected: 133,
+            mean_modules_milli: 134,
+            median_modules: 135,
+            distinct_morphologies: 136,
+            nonviable_bodies: 137,
+            refused_node_budget: 138,
+            attacks_total: 139,
+            deaths_by_damage_total: 140,
+            carcasses: 141,
+            mutation: Some(sim_core::MutationCounters {
+                point_applied: 201,
+                duplication_applied: 202,
+                deletion_applied: 203,
+                insertion_applied: 204,
+                transposition_applied: 205,
+                rejected_homology_collision: 206,
+                rejected_orphaned: 207,
+                rejected_min_nodes: 208,
+                rejected_no_bindings: 209,
+                rejected_cap: 210,
+                rejected_inapplicable: 211,
+                rejected_cycle: 212,
+                rejected_invalid: 213,
+            }),
+            develop: Some(sim_core::DevelopCounters {
+                bodies_grown: 301,
+                modules_placed: 302,
+                differentiations: 303,
+                scale_changes: 304,
+                refused_occupied: 305,
+                refused_out_of_bounds: 306,
+                refused_max_modules: 307,
+                refused_node_budget: 308,
+                nonviable_empty: 309,
+                nonviable_disconnected: 310,
+                nonviable_missing_type: 311,
+                nonviable_other: 312,
+            }),
+        }
+    }
+
+    #[test]
+    fn every_counter_class_survives_the_round_trip() {
+        let mut manifest = built_manifest();
+        let run = distinctly_valued_run();
+        manifest.runs = vec![run.clone()];
+        let text = manifest.render();
+
+        // Guard the guard: if any two fields shared a value, an equality
+        // assertion below would tolerate the transposition it exists to
+        // catch. Checked on the rendered text rather than on the struct so
+        // it covers whatever `render_run` actually chose to emit.
+        let line = text
+            .lines()
+            .find(|line| line.starts_with("run "))
+            .expect("a run line");
+        let mut values: Vec<&str> = line
+            .split_whitespace()
+            .skip(1)
+            .filter_map(|pair| pair.split_once('=').map(|(_, value)| value))
+            .collect();
+        let emitted = values.len();
+        values.sort_unstable();
+        values.dedup();
+        assert_eq!(
+            values.len(),
+            emitted,
+            "two columns share a value, so this test cannot see them swapped"
+        );
+
+        let parsed = Manifest::parse(&text).expect("parse");
+        assert_eq!(parsed.runs, vec![run]);
+        assert_eq!(parsed.render(), text, "rendering is not a fixed point");
+    }
+
+    #[test]
+    fn a_manifest_without_the_counter_columns_parses_as_absent_not_as_zero() {
+        // The eight archived manifests under experiments/results/ say
+        // `manifest-version 1` and carry neither block. Absence has to read
+        // as "not recorded": a campaign that reported thirteen zeros for a
+        // world whose schema-2 section was never even enabled would be
+        // asserting that no cap ever bound, which it has no evidence for.
+        let manifest = built_manifest();
+        for run in &manifest.runs {
+            assert_eq!(run.mutation, None);
+            assert_eq!(run.develop, None);
+        }
+        let text = manifest.render();
+        assert!(
+            !text.contains("structmut_point_applied") && !text.contains("develop_bodies_grown"),
+            "a disabled subsystem emitted counter columns"
+        );
+        let parsed = Manifest::parse(&text).expect("parse");
+        assert!(parsed.runs.iter().all(|run| run.mutation.is_none()));
+        assert!(parsed.runs.iter().all(|run| run.develop.is_none()));
+
+        // ...and the same manifest with the columns present parses them,
+        // so the assertion above is about the columns and not about a
+        // parser that never fills these in at all.
+        let mut with_columns = manifest;
+        with_columns.runs = vec![distinctly_valued_run()];
+        let reparsed = Manifest::parse(&with_columns.render()).expect("parse");
+        assert_eq!(
+            reparsed.runs[0]
+                .mutation
+                .expect("mutation block")
+                .rejected_cap,
+            210
+        );
+    }
+
+    #[test]
+    fn every_archived_manifest_still_parses_at_this_version() {
+        // Adding columns without bumping MANIFEST_VERSION is only sound if
+        // the records already written still load. Phases 8, 9 and 10 each
+        // added columns on that reasoning and none of them wrote the check
+        // down, so "still parses" was an assumption for three phases.
+        let root =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../experiments/results");
+        let mut checked = 0;
+        let mut phase9: Option<Manifest> = None;
+        for entry in std::fs::read_dir(&root).expect("experiments/results exists") {
+            let path = entry.expect("dir entry").path();
+            let name = path
+                .file_name()
+                .unwrap_or_default()
+                .to_string_lossy()
+                .into_owned();
+            if !name.ends_with("-manifest.txt") {
+                continue;
+            }
+            let text = std::fs::read_to_string(&path).expect("read manifest");
+            let manifest = Manifest::parse(&text)
+                .unwrap_or_else(|error| panic!("{name} no longer parses: {error}"));
+            assert!(!manifest.runs.is_empty(), "{name} parsed to zero runs");
+            if name == "phase9-c91-confirmatory-manifest.txt" {
+                phase9 = Some(manifest);
+            }
+            checked += 1;
+        }
+        // A floor, not an exact count, so adding a manifest does not fail
+        // this; but a floor is required, because an empty or moved
+        // directory would otherwise let the loop above assert nothing.
+        assert!(
+            checked >= 8,
+            "only {checked} archived manifests were read; the fixture set shrank"
+        );
+        // The strongest of the eight: C9.1 ran with schema 2 enabled, so a
+        // manifest written today would carry all thirteen columns. Its
+        // absence must read as "not recorded" rather than as thirteen
+        // zeros, which would assert that no cap ever bound in a run that
+        // has no such evidence either way.
+        let phase9 = phase9.expect("the phase 9 confirmatory manifest is archived");
+        assert_eq!(phase9.runs.len(), 210);
+        assert!(phase9.runs.iter().all(|run| run.mutation.is_none()));
+        assert!(phase9.runs.iter().all(|run| run.develop.is_none()));
+        assert!(
+            phase9
+                .runs
+                .iter()
+                .any(|run| run.structural_mutations_applied > 0),
+            "the summed columns those manifests do carry stopped parsing"
+        );
+    }
+
     #[test]
     fn manifest_text_is_independent_of_worker_count() {
         let campaign = Campaign::parse(SOURCE).unwrap();
@@ -639,6 +1032,105 @@ output snapshots off
         });
         let parsed = Manifest::parse(&manifest.render()).unwrap();
         assert_eq!(parsed.failed, manifest.failed);
+    }
+
+    /// The rates are `phase9_world::the_invalid_counter_stays_zero_because_
+    /// it_is_the_bug_signal`'s, and they are chosen rather than raised:
+    /// transposition cannot apply to a single-chromosome founder, so every
+    /// transposition draw that fires becomes an `Inapplicable` rejection.
+    /// That gives a class which is reliably nonzero and which the summed
+    /// `structmut_rejected` column cannot be distinguished from a cap
+    /// rejection inside.
+    const REJECTING: &str = "\
+campaign structmut-columns
+ticks 5000
+seeds 13..14
+base preset phase2
+base cells_x 64
+base cells_y 64
+base initial_organisms 120
+base max_entities 2000
+base cell_capacity_milli 120000
+base genome2.enabled true
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.insertion_q16 6554
+base genome2.mutation.transposition_q16 6554
+condition only
+output events off
+output snapshots off
+";
+
+    #[test]
+    fn a_real_run_carries_its_rejection_classes_into_the_rendered_text() {
+        // The hand-built round trip proves render and parse agree with each
+        // other. It cannot prove the scheduler ever puts a counter into a
+        // `RunResult` - `execute_unit` could set both fields to `None` and
+        // that test would still pass. This runs a real campaign with
+        // snapshots off, which is the configuration the whole change exists
+        // for: before it, the only way to learn which class a rejection
+        // belonged to was to re-open a snapshot that a campaign is not
+        // obliged to write.
+        let campaign = Campaign::parse(REJECTING).expect("campaign parses");
+        let runs: Vec<RunResult> = run_campaign(&campaign, &SchedulerOptions::in_memory(2))
+            .into_iter()
+            .map(|result| result.expect("run succeeded"))
+            .collect();
+        let mut manifest = built_manifest();
+        let source = manifest.campaign_source.clone();
+        manifest.campaign = campaign;
+        manifest.campaign_source = REJECTING.to_owned();
+        assert_ne!(source, manifest.campaign_source);
+        manifest.runs = runs;
+
+        let observed: Vec<u64> = manifest
+            .runs
+            .iter()
+            .map(|run| {
+                run.mutation
+                    .expect("schema 2 is enabled, so the block must be present")
+                    .rejected_inapplicable
+            })
+            .collect();
+        assert!(
+            observed.iter().all(|count| *count > 0),
+            "no world reported an inapplicable rejection ({observed:?}); the campaign is \
+             not exercising the class this test reads"
+        );
+        for run in &manifest.runs {
+            let counters = run.mutation.expect("block");
+            // The block and the two summed columns have to describe the
+            // same world. Without this, `execute_unit` could read `mutation`
+            // from a freshly defaulted world, or from the wrong one, and
+            // every assertion above would still hold.
+            assert_eq!(counters.total_applied(), run.structural_mutations_applied);
+            assert_eq!(counters.total_rejected(), run.structural_mutations_rejected);
+            // The two halves of the same mechanism, in opposite directions:
+            // a single-chromosome founder cannot transpose, so the draws
+            // that fire land in `rejected_inapplicable` and never in
+            // `transposition_applied`. No one mis-wired field could produce
+            // both readings, which is what stops this from passing on a
+            // column that merely happens to hold the same number.
+            assert_eq!(counters.transposition_applied, 0);
+            assert!(
+                counters.point_applied > 0 && counters.duplication_applied > 0,
+                "no applied class fired, so only the rejection half is covered"
+            );
+        }
+        // Morphology is off in this campaign, so its block must be absent -
+        // the same run proving that "present" and "absent" are both driven
+        // by the world rather than emitted unconditionally.
+        assert!(manifest.runs.iter().all(|run| run.develop.is_none()));
+
+        let text = manifest.render();
+        for count in &observed {
+            assert!(
+                text.contains(&format!("structmut_rejected_inapplicable={count}")),
+                "the rendered manifest does not carry {count}"
+            );
+        }
+        assert!(!text.contains("develop_bodies_grown"));
+        let parsed = Manifest::parse(&text).expect("parse");
+        assert_eq!(parsed.runs, manifest.runs);
     }
 
     #[test]

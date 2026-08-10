@@ -380,6 +380,205 @@ mod tests {
         );
     }
 
+    /// A network of `inputs` input nodes all feeding one output node, with
+    /// the first edge heavy and the rest at the f32-epsilon scale.
+    ///
+    /// The weights are the same magnitudes
+    /// `controller2::incoming_edges_are_summed_in_homology_order_not_storage_order`
+    /// uses, and for the same reason: adding the heavy weight first loses
+    /// every small one, while accumulating the small ones first does not. A
+    /// compaction test built on weights where both summation orders agree
+    /// would pass whatever compaction did to the edge lists.
+    fn fan_in(inputs: u32) -> Genome2 {
+        use crate::genome2::{Haplotype, Locus, LocusKind, PlasticityGenes};
+        use crate::registry::{Activation, NodeRole};
+
+        const BASE: u32 = crate::genome2::STRUCTURAL_HOMOLOGY_BASE;
+        let output_id = BASE + 1;
+        let mut loci: Vec<Locus> = Vec::new();
+        let mut push = |homology_id: u32, kind: LocusKind| {
+            loci.push(Locus {
+                homology_id,
+                gene_lineage_id: u64::from(homology_id),
+                mutation_event_id: 0,
+                kind,
+            });
+        };
+        push(
+            output_id,
+            LocusKind::Node {
+                role: NodeRole::Output,
+                activation_id: Activation::Linear.id(),
+                bias: 0.0,
+                time_constant: 0,
+            },
+        );
+        for index in 0..inputs {
+            let node_id = BASE + 100 + index;
+            push(
+                node_id,
+                LocusKind::Node {
+                    role: NodeRole::Input,
+                    activation_id: Activation::Linear.id(),
+                    bias: 0.0,
+                    time_constant: 0,
+                },
+            );
+            push(
+                BASE + 10_000 + index,
+                LocusKind::Edge {
+                    source: node_id,
+                    target: output_id,
+                    weight: if index == 0 { 1.0 } else { 6.0e-8 },
+                    flags: 0,
+                    plasticity: PlasticityGenes::inert(),
+                },
+            );
+            push(
+                BASE + 20_000 + index,
+                LocusKind::IoBinding {
+                    node: node_id,
+                    channel_id: SENSE_CHANNELS[index as usize % SENSE_CHANNELS.len()],
+                    gain: 1.0,
+                },
+            );
+        }
+        push(
+            BASE + 30_000,
+            LocusKind::IoBinding {
+                node: output_id,
+                channel_id: ACTION_CHANNELS[0],
+                gain: 1.0,
+            },
+        );
+        loci.sort_unstable_by_key(|locus| locus.homology_id);
+        let haplotype = || Haplotype {
+            chromosomes: vec![loci.clone()],
+        };
+        Genome2 {
+            haplotypes: [haplotype(), haplotype()],
+        }
+    }
+
+    /// Evaluate one organism for one tick and return its activations and its
+    /// action requests, so two states can be compared on behaviour and not
+    /// only on bytes.
+    fn evaluate_one(
+        state: &mut Schema2State,
+        index: usize,
+        input: f32,
+    ) -> (Vec<u32>, ActionRequests) {
+        let mut requests = ActionRequests::new();
+        crate::controller2::evaluate(
+            &state.plans[index],
+            &mut state.activations[index],
+            &|_| input,
+            &mut requests,
+        );
+        (
+            state.activations[index]
+                .values
+                .iter()
+                .map(|value| value.to_bits())
+                .collect(),
+            requests,
+        )
+    }
+
+    fn content_hash(state: &Schema2State) -> u64 {
+        let mut hasher = Fnv1a64::new();
+        state.hash_into(&mut hasher);
+        hasher.finish()
+    }
+
+    #[test]
+    fn compaction_leaves_the_survivors_identical_to_a_state_built_from_them() {
+        // What `state_stays_in_lockstep_across_births_and_deaths` checks is
+        // three lengths. Three arrays can be the right length and hold the
+        // wrong organisms' contents, which is the whole failure mode
+        // `InvariantViolation::Schema2Desync` exists to name, so this checks
+        // content and behaviour instead.
+        //
+        // Two comparisons, because neither alone is sufficient:
+        //
+        // - `hash_into` covers genomes and activations, and would catch a
+        //   `retain` that moved one and not the other. It does **not** cover
+        //   `plans`, which are derived and deliberately excluded from the
+        //   checksum.
+        // - Evaluation covers `plans`. A `retain` that compacted genomes and
+        //   activations correctly but left `plans` behind would produce a
+        //   state that hashes identically and evaluates as a different
+        //   organism, and only the second comparison sees it.
+        //
+        // The organisms are given genuinely different networks - different
+        // node counts, different in-degrees - so a mis-paired plan cannot
+        // coincidentally behave the same way.
+        let sizes = [1_u32, 2, 3, 4, 5];
+        let mut state = Schema2State::with_capacity(sizes.len());
+        for inputs in sizes {
+            assert!(state.push_organism(fan_in(inputs)));
+        }
+        // Distinct prior-state buffers: a recurrent organism's memory lives
+        // here, and it is the array a length-only test cannot see move.
+        for (index, activation) in state.activations.iter_mut().enumerate() {
+            for (slot, value) in activation.prior.iter_mut().enumerate() {
+                *value = (index as f32 + 1.0) / 16.0 + (slot as f32) / 256.0;
+            }
+            activation.faults = index as u32;
+        }
+        assert!(
+            state.plans.iter().map(|plan| plan.node_count()).max()
+                != state.plans.iter().map(|plan| plan.node_count()).min(),
+            "every organism has the same network, so a mis-paired plan would \
+             be invisible"
+        );
+
+        // Keep 0, 2 and 4: a pattern that forces every survivor after the
+        // first to move, so a `retain` that only truncated would be caught.
+        let removed = [false, true, false, true, false];
+        let survivors: Vec<usize> = (0..sizes.len()).filter(|index| !removed[*index]).collect();
+        let mut fresh = Schema2State::with_capacity(survivors.len());
+        for &index in &survivors {
+            assert!(fresh.push_organism(fan_in(sizes[index])));
+        }
+        for (slot, &index) in survivors.iter().enumerate() {
+            fresh.activations[slot]
+                .prior
+                .clone_from(&state.activations[index].prior);
+            fresh.activations[slot].faults = state.activations[index].faults;
+        }
+        // The two states must differ *before* compaction, or the equality
+        // afterwards is an equality between a value and its own copy.
+        assert_ne!(content_hash(&state), content_hash(&fresh));
+
+        state.retain(&removed);
+        assert_eq!(state.len(), survivors.len());
+        assert_eq!(
+            content_hash(&state),
+            content_hash(&fresh),
+            "compaction did not leave the survivors' genomes and activations \
+             matching a state built from those survivors alone"
+        );
+
+        for index in 0..survivors.len() {
+            assert_eq!(
+                state.plans[index], fresh.plans[index],
+                "organism {index} carries a plan that is not its own after \
+                 compaction"
+            );
+            for tick in 0..3 {
+                let input = 0.25 + tick as f32 / 8.0;
+                assert_eq!(
+                    evaluate_one(&mut state, index, input),
+                    evaluate_one(&mut fresh, index, input),
+                    "organism {index} evaluated differently after compaction"
+                );
+                crate::controller2::commit(&mut state.activations[index]);
+                crate::controller2::commit(&mut fresh.activations[index]);
+            }
+        }
+    }
+
     #[test]
     fn structure_statistics_report_what_c9_1_measures() {
         let mut state = Schema2State::with_capacity(2);

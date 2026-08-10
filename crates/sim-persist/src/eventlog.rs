@@ -38,8 +38,8 @@
 //! no repair path.
 
 use sim_core::{
-    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, MAX_EVENTS_PER_TICK,
-    OP_POINT, OP_TRANSPOSITION, PairRejectReason, Phase2Counters, RejectReason, World,
+    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, MAX_EVENTS_PER_TICK, OP_POINT,
+    OP_TRANSPOSITION, PairRejectReason, Phase2Counters, RejectReason, World,
 };
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -1214,7 +1214,8 @@ mod tests {
         // one `Cap` and one `Inapplicable` each.
         assert_eq!(scan.counters.structural_rejections_total, 6);
         assert_eq!(
-            scan.counters.structural_rejections_by_reason[usize::from(RejectReason::Cap.code() - 1)],
+            scan.counters.structural_rejections_by_reason
+                [usize::from(RejectReason::Cap.code() - 1)],
             3
         );
         assert_eq!(

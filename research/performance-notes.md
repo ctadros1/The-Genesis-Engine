@@ -533,6 +533,59 @@ which this record now prices against a second phase's worth of work.
 
 Raw records under `benchmarks/raw/phase8-local-20260805T035043Z/`.
 
+## Phase 9 Fixture Record
+
+Provenance: revision `0e39f02`, dirty worktree; macOS 26.5 arm64, Apple M3
+Pro; Rust 1.97.1 release with thin LTO; seed `0x5eedcafef00dbeef`; policies
+`phase2-behavior-v1`, `lifesim-genome-v2` (schema 2), `lifesim-meiosis-v1`,
+`lifesim-structmut-v1`, `lifesim-controller-v2`; channel registry 1,
+activation registry 1; default 256x256-cell world, 500 organisms,
+`max_entities` 5,000; fixture schema 4.
+
+Clean-process Phase 9 fixture (two separate processes, byte-identical):
+500 organisms, **8,000 ticks**, config hash `0x9abc0cd47914127f`, terrain
+checksum `0x60049f78e1881044`, state checksum `0x5f0c4e95e4f5170f`. Wall
+clock 0.98-1.03 s per process across three runs, so the two-process check in
+`scripts/verify-phase9-determinism.sh` costs about two seconds on top of the
+build.
+
+**The horizon is 8,000 ticks and not the 500 the Phase 1 and Phase 2
+fixtures use, and that is a correctness requirement rather than a
+preference.** `maturity_age_ticks` is 600 and founders spawn at age 0, so a
+schema-2 world at 500 ticks has had zero births - measured, not assumed:
+
+| Ticks | Population | Births | Deaths | Structural applied | Duplications applied | Mean nodes (milli) | Distinct structures |
+|---:|---:|---:|---:|---:|---:|---:|---:|
+| 500 | 477 | 0 | 23 | 0 | 0 | 3,000 | 1 |
+| 1,500 | 376 | 15 | 139 | 0 | 0 | 3,000 | 1 |
+| 3,000 | 324 | 36 | 212 | 1 | 0 | 3,000 | 1 |
+| **8,000** | **288** | **124** | **336** | **8** | **2** | **3,010** | **3** |
+| 20,000 | 362 | 540 | 678 | 57 | 8 | 3,038 | 3 |
+
+A 500-tick fixture would pin meiosis, structural mutation, and the schema-2
+birth path by pinning none of them, while carrying exactly the authority of
+one that pinned all three. 8,000 is the first horizon at which every
+mechanism the fixture claims to cover has run: 124 paired births exercise
+meiosis, 336 deaths exercise compaction, two applied duplications and two
+structural rejections exercise the mutation operators and their refusal path,
+and the mean node count has left the founding topology (3,010 against the
+founders' 3,000) with three distinct structures alive. Those counts are
+asserted beside the checksum in the verification script, in
+`crates/sim-core/tests/phase9_determinism.rs`, and in
+`crates/sim-cli/tests/cli.rs`, so the fixture cannot quietly become a control.
+
+Note what the table also shows: at the **default** carrying capacity this
+world is birth-limited, which is the same finding
+`structure_evolves_and_stays_inside_its_caps` records and the reason the
+Phase 9 confirmatory campaign runs at `cell_capacity_milli` 240,000. The
+fixture deliberately does not raise it - the fixture's job is to pin the
+default schema-2 configuration, not to be a good experiment.
+
+The fixture's configuration is pinned field by field rather than inherited
+from `Genome2Config::genome2_default()`, for the reason D-078 gives for the
+campaign's caps block: `SimConfig::stable_hash` folds the whole genome2
+section in when enabled, so any revised default would move the constant.
+
 ## Required Record Format
 
 | Field | Required Value |
