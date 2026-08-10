@@ -976,3 +976,92 @@ fn a_section_flag_nobody_defined_is_refused() {
     let (_, clean) = decode_snapshot(&bytes).expect("decode");
     assert_eq!(decoded.worldmod, clean.worldmod);
 }
+
+#[test]
+fn a_modification_set_that_is_not_strictly_ascending_is_refused_as_disorder() {
+    // `specifications/mutable-world-state.md` makes sortedness and
+    // uniqueness **decode-time invariants**, and until this test existed
+    // nothing checked them: deleting the `order_violation` guard from
+    // `from_state` left every test in this file green.
+    //
+    // The reason it hid is defence in depth without discrimination. A
+    // disordered set also produces a different composed checksum, so the
+    // *far* guard refuses it and the world is still fail-closed - but
+    // `a_tampered_modification_section_is_refused_by_the_composed_check`
+    // accepts either error, so it could not tell which layer fired. That is
+    // the same shape as the Phase 11 restore guards, where two independent
+    // refusals meant deleting either one changed nothing a test could see.
+    //
+    // So this pins the **near** guard by its message. The order check exists
+    // specifically so a reader is told the set is disordered rather than
+    // being sent to look at a checksum, and that diagnostic is the thing
+    // being defended.
+    let world = modified_world(20, 200, ONE_Q16, 1_200);
+    let state = world.export_state();
+    let bytes = encode(&state, world.state_checksum());
+    let (flags, body_start, body_len) = section(&bytes, 13);
+    assert_eq!(flags, 0, "this test reads a sparse body");
+
+    let entries = u64::from_le_bytes(bytes[body_start + 8..body_start + 16].try_into().unwrap());
+    assert!(entries > 4, "the section carries {entries} entries");
+
+    // Swap two adjacent entries wholesale - cell **and** value. The multiset
+    // of overrides is unchanged, so this is disorder and nothing else: no
+    // value is invented, no cell is invented, and the world the set
+    // describes is the one it always described.
+    const ENTRY: usize = 4 + 8;
+    let first = body_start + 16;
+    let second = first + ENTRY;
+    let mut patched = bytes.clone();
+    let a: Vec<u8> = patched[first..first + ENTRY].to_vec();
+    let b: Vec<u8> = patched[second..second + ENTRY].to_vec();
+    assert_ne!(a, b, "two identical entries would not be a swap");
+    patched[first..first + ENTRY].copy_from_slice(&b);
+    patched[second..second + ENTRY].copy_from_slice(&a);
+    reseal(&mut patched, body_start, body_len);
+
+    let (_, decoded) = decode_snapshot(&patched).expect("a resealed file decodes");
+    let error = World::from_state(decoded).expect_err("a disordered set was accepted");
+    match &error {
+        RestoreError::StateInvalid(message) => assert!(
+            message.contains("ascending"),
+            "refused, but not as disorder: {message}"
+        ),
+        other => panic!(
+            "a disordered modification set must be refused by the order guard, \
+             which names the defect; got {other:?}"
+        ),
+    }
+}
+
+#[test]
+fn a_modification_entry_outside_its_layer_or_the_map_is_refused() {
+    // The other decode-time invariant: a layer id the registry does not
+    // define, a cell index past the map, or a value outside its layer's
+    // domain. All three are hostile input rather than corruption - the CRCs
+    // are resealed, so nothing here looks damaged - and each must be refused
+    // before the value reaches a composed checksum that would then report
+    // the wrong defect.
+    let world = modified_world(20, 200, ONE_Q16, 1_200);
+    let state = world.export_state();
+    let bytes = encode(&state, world.state_checksum());
+    let (_, body_start, body_len) = section(&bytes, 13);
+    let cells = state.biomass_milli.len() as u32;
+
+    // A cell index past the end of the map, placed on the last entry so the
+    // set stays ascending and the order guard cannot be what fires.
+    let entries = u64::from_le_bytes(bytes[body_start + 8..body_start + 16].try_into().unwrap());
+    let last = body_start + 16 + (entries as usize - 1) * 12;
+    let mut patched = bytes.clone();
+    patched[last..last + 4].copy_from_slice(&cells.to_le_bytes());
+    reseal(&mut patched, body_start, body_len);
+    let (_, decoded) = decode_snapshot(&patched).expect("a resealed file decodes");
+    let error = World::from_state(decoded).expect_err("an off-map cell was accepted");
+    assert!(
+        matches!(&error, RestoreError::StateInvalid(message) if message.contains("cell index")
+            || message.contains("layer id")
+            || message.contains("domain")),
+        "an off-map cell must be refused by the bounds guard, which names the \
+         defect; got {error:?}"
+    );
+}
