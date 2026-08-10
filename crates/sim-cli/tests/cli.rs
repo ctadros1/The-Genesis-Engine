@@ -278,3 +278,94 @@ fn analyze_requires_phase2_and_reports_versioned_output() {
     assert!(!rejected.status.success());
     assert!(stderr(&rejected).contains("requires --phase2"));
 }
+
+#[test]
+fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
+    // C11.5's clean-process half, at a horizon this test can afford. The
+    // 10^6-tick trace the criterion names is
+    // `scripts/verify-phase11-determinism.sh`; what is checked here is that
+    // the fixture exists, is pinned, is schema 5, and is not a control.
+    //
+    // 200,000 ticks rather than 1,000,000 because the whole point of the long
+    // horizon is accumulation, and the accumulation clause below can be made
+    // at any two horizons that differ. The script carries the criterion's
+    // number.
+    let args = [
+        "fixture",
+        "--ticks",
+        "200000",
+        "--phase2",
+        "--genome2",
+        "--plasticity",
+        "--seed",
+        "0x5eedcafef00dbeef",
+    ];
+    let first = lifesim(&args);
+    let second = lifesim(&args);
+    assert!(first.status.success(), "stderr: {}", stderr(&first));
+    assert_eq!(stdout(&first), stdout(&second));
+    let line = stdout(&first);
+    for expected in [
+        "\"fixture_schema_version\":5",
+        "\"phase\":\"phase11\"",
+        "\"plasticity_policy\":\"lifesim-plasticity-v1\"",
+        "\"rule_registry\":1",
+        "\"config_hash\":\"0xa1ad80da0cf6790e\"",
+        // One organism, alive at the end, with both edges plastic and the
+        // learn phase having fired on every one of them: 2 edges x 200,000
+        // ticks. Any of these at zero and the checksum above would still
+        // reproduce - it would simply be a different constant.
+        "\"population\":1",
+        "\"plastic_edges_total\":2",
+        "\"plasticity_updates_total\":400000",
+        "\"plasticity_anomalies_total\":0",
+        "\"controller_faults_total\":0}",
+    ] {
+        assert!(line.contains(expected), "missing {expected} in {line}");
+    }
+    assert!(
+        !line.contains("\"mean_abs_learned_milli\":0,"),
+        "the trace learned nothing: {line}"
+    );
+
+    // **The accumulation clause.** A plastic edge with decay settles at an
+    // equilibrium and then repeats one step forever; a fixture in that state
+    // reproduces perfectly and measures nothing past the point it settled.
+    // The first cut of this fixture did exactly that, with the input bound to
+    // `energy_fraction`, which is constant in a world with no energy costs.
+    // Two horizons with different learned magnitudes is what says the trace
+    // is still moving.
+    let mut short_args = args;
+    short_args[2] = "20000";
+    let short = lifesim(&short_args);
+    let learned = |line: &str| {
+        line.split("\"mean_abs_learned_milli\":")
+            .nth(1)
+            .and_then(|rest| rest.split(',').next())
+            .expect("the field is in the line")
+            .to_owned()
+    };
+    assert_ne!(
+        learned(&line),
+        learned(&stdout(&short)),
+        "the trace reached a fixed point, so its horizon is decorative"
+    );
+
+    // The flag is refused rather than quietly implying its prerequisites, on
+    // the same grounds --genome2 is.
+    let refused = lifesim(&["fixture", "--ticks", "10", "--plasticity"]);
+    assert!(!refused.status.success());
+    assert!(stderr(&refused).contains("--plasticity requires --phase2 --genome2"));
+
+    // ...and the Phase 9 fixture is untouched by the flag existing.
+    let phase9 = lifesim(&[
+        "fixture",
+        "--ticks",
+        "8000",
+        "--phase2",
+        "--genome2",
+        "--seed",
+        "0x5eedcafef00dbeef",
+    ]);
+    assert!(stdout(&phase9).contains("\"state_checksum\":\"0x5f0c4e95e4f5170f\""));
+}

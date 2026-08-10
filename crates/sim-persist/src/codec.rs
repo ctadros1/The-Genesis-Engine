@@ -80,6 +80,22 @@ const SECTION_SCHEMA2: u16 = 10;
 /// bodies are derived and never stored, so this section carries only the
 /// developmental counters.
 const SECTION_MORPHOLOGY: u16 = 11;
+/// Phase 11 learned state. Optional on the same terms as every section
+/// above, and the format version stays 3: an absent optional section is
+/// readable by every existing build, so a pre-Phase-11 snapshot decodes
+/// unchanged and a snapshot from a world with plasticity disabled is
+/// byte-identical to the one that build would have written.
+///
+/// Sparse: only plastic edges are stored, each naming the edge it belongs to
+/// rather than a slot index. See `LearnSaveState`.
+const SECTION_LEARN: u16 = 12;
+/// Smallest number of bytes one organism's learn record can occupy: its
+/// plastic-edge count word and its fault word, with no plastic edges at all.
+/// Used to bound the allocation a declared organism count implies, never to
+/// assert an exact length (D-075).
+const LEARN_MIN_PER_ORGANISM: u64 = 4 + 4;
+/// Bytes per stored plastic edge: homology id, learned delta, trace.
+const LEARN_BYTES_PER_EDGE: u64 = 4 + 4 + 4;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum CodecError {
@@ -220,6 +236,35 @@ pub fn crc32(bytes: &[u8]) -> u32 {
 }
 
 // --- sections ----------------------------------------------------------------
+
+/// Whether a declared count's minimum encoded size fits inside the section
+/// body it was read from.
+///
+/// **The overflow case is the hostile case, and the obvious spelling admits
+/// it.** Every section used to write its bound as
+/// `count.checked_mul(size) > Some(body.len() as u64)`, which reads correctly
+/// and is wrong: `checked_mul` returns `None` for exactly the counts that are
+/// too large to multiply, and `None > Some(_)` is **false** under `Option`'s
+/// ordering, so those counts passed the guard and went straight into
+/// `Vec::with_capacity`, which aborts with a capacity overflow. A loader that
+/// panics on hostile input has failed open into a crash - it never reaches
+/// the typed error the caller is supposed to see.
+///
+/// Found by the Phase 11 decode-bound test patching an organism count to
+/// `u64::MAX`. The climate, contest, physiology and schema-2 sections all had
+/// it and are all routed through here now. `persistence.rs`'s 2,000-flip
+/// corruption sweep never found it because a handful of flipped bits does not
+/// produce a count near 2^61, and because a panic aborts the sweep rather
+/// than counting as a rejection.
+fn allocation_fits(count: u64, per_item: u64, extra: u64, body_len: usize) -> bool {
+    match count
+        .checked_mul(per_item)
+        .and_then(|bytes| bytes.checked_add(extra))
+    {
+        Some(bytes) => bytes <= body_len as u64,
+        None => false,
+    }
+}
 
 fn write_section(out: &mut Vec<u8>, tag: u16, body: Vec<u8>) {
     out.extend_from_slice(&tag.to_le_bytes());
@@ -422,6 +467,25 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.i32(i32::from(morphology.caps.lattice_radius));
     writer.u32(u32::from(morphology.caps.max_growth_steps));
     writer.u8(morphology.caps.required_types_mask);
+    // Phase 11 plasticity config. **The fourth time a config section has been
+    // added without this function**, after D-065's climate/contest/origin, the
+    // Phase 10 morphology block above, and `mutation.plasticity_enabled`
+    // immediately above that - and it was caught here by
+    // `config_round_trip.rs` only because that test was extended in the same
+    // change, which is the whole argument for extending it.
+    //
+    // The consequence is the worst of the four. `World::from_state` checks
+    // that the learn section's presence matches the configuration, so a
+    // snapshot of a plasticity world decoded with `enabled` back at its
+    // `false` default does not restore a world with plasticity quietly off -
+    // it **refuses to restore at all**, with a message about section presence
+    // that names neither the config field nor the codec. A campaign that
+    // checkpoints could not resume.
+    let plasticity = &config.plasticity;
+    writer.u8(u8::from(plasticity.enabled));
+    writer.i64(plasticity.plastic_edge_cost_milli_per_s);
+    writer.u32(plasticity.max_plastic_edges);
+    writer.u32(plasticity.lamarckian_fraction_q16);
     writer.0
 }
 
@@ -603,6 +667,10 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.morphology.caps.max_growth_steps = u16::try_from(reader.u32()?)
         .map_err(|_| CodecError::ValueOutOfRange("morphology max_growth_steps"))?;
     config.morphology.caps.required_types_mask = reader.u8()?;
+    config.plasticity.enabled = reader.u8()? != 0;
+    config.plasticity.plastic_edge_cost_milli_per_s = reader.i64()?;
+    config.plasticity.max_plastic_edges = reader.u32()?;
+    config.plasticity.lamarckian_fraction_q16 = reader.u32()?;
     Ok(config)
 }
 
@@ -846,6 +914,63 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         }
         write_section(&mut payload, SECTION_MORPHOLOGY, section.0);
     }
+    if let Some(learn) = state.learn.as_ref() {
+        let mut section = Writer(Vec::new());
+        // **The organism count, never the plastic-edge count.** This is
+        // D-076's trap and the Phase 2 section carries the scar of it: that
+        // loop was driven by `traits.len()`, which is the organism count in a
+        // schema-1 world and zero in a schema-2 world, so a schema-2 snapshot
+        // encoded no per-organism records at all. The mirror image here is a
+        // low-plasticity world - the *expected* outcome of the phase under
+        // `E-stationary`, where plasticity is predicted to be selected down -
+        // in which every organism has zero plastic edges. Framing that by
+        // edges would write a section that says "no organisms" rather than
+        // "no plastic edges", and the per-organism fault counts would go with
+        // it. Each organism writes its own count instead.
+        let organisms = learn.edges.len() as u64;
+        section.u64(organisms);
+        for index in 0..learn.edges.len() {
+            let row = &learn.edges[index];
+            section.u32(row.len() as u32);
+            for edge in row {
+                // Destructured with no `..` so a field added to the record
+                // fails here rather than being dropped on save (D-077).
+                let sim_core::LearnedEdgeSave {
+                    edge_homology_id,
+                    learned_q16,
+                    trace_q16,
+                } = *edge;
+                section.u32(edge_homology_id);
+                section.i32(learned_q16);
+                section.i32(trace_q16);
+            }
+            section.u32(learn.faults[index]);
+        }
+        // Exhaustive destructuring with no `..`, for the reason the schema-2
+        // block states: these counters are hashed into the state checksum, so
+        // a counter dropped on save makes a restored world's checksum differ
+        // from the one it was saved from with nothing to point at.
+        let sim_core::PlasticityCounters {
+            updates_applied,
+            updates_static,
+            updates_refused,
+            faults,
+            clamped,
+            trace_clamped,
+        } = learn.counters;
+        for value in [
+            updates_applied,
+            updates_static,
+            updates_refused,
+            faults,
+            clamped,
+            trace_clamped,
+        ] {
+            section.u64(value);
+        }
+        section.i128(learn.cost_milli);
+        write_section(&mut payload, SECTION_LEARN, section.0);
+    }
     payload
 }
 
@@ -856,6 +981,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
     let mut physiology: Option<sim_core::PhysiologySaveState> = None;
     let mut schema2: Option<sim_core::Schema2SaveState> = None;
     let mut morphology: Option<sim_core::MorphologySaveState> = None;
+    let mut learn: Option<sim_core::LearnSaveState> = None;
     let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut meta: Option<(u64, bool, bool, u64, u64)> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -1079,7 +1205,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 // every time the section gains a field -- which is how it
                 // broke when it did. Exactness is still enforced, by the
                 // trailing-bytes check every section runs at the end.
-                if count.checked_mul(8) > Some(body.len() as u64) {
+                if !allocation_fits(count, 8, 0, body.len()) {
                     return Err(CodecError::ValueOutOfRange("climate count"));
                 }
                 let mut moisture_milli = Vec::with_capacity(count as usize);
@@ -1110,9 +1236,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 let organisms = reader.u64()?;
                 // Cap before allocating: 16 bytes per organism plus the
                 // carcass count that follows.
-                if organisms.checked_mul(16).and_then(|len| len.checked_add(8))
-                    > Some(body.len() as u64)
-                {
+                if !allocation_fits(organisms, 16, 8, body.len()) {
                     return Err(CodecError::ValueOutOfRange("contest organisms"));
                 }
                 let mut health_milli = Vec::with_capacity(organisms as usize);
@@ -1122,7 +1246,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     recent_damage_milli.push(reader.i64()?);
                 }
                 let carcass_count = reader.u64()?;
-                if carcass_count.checked_mul(32) > Some(body.len() as u64) {
+                if !allocation_fits(carcass_count, 32, 0, body.len()) {
                     return Err(CodecError::ValueOutOfRange("contest carcasses"));
                 }
                 let mut carcasses = Vec::with_capacity(carcass_count as usize);
@@ -1154,7 +1278,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 }
                 let organisms = reader.u64()?;
                 // Cap before allocating: 8 bytes per organism.
-                if organisms.checked_mul(8) > Some(body.len() as u64) {
+                if !allocation_fits(organisms, 8, 0, body.len()) {
                     return Err(CodecError::ValueOutOfRange("physiology organisms"));
                 }
                 let mut cumulative_hazard_q16 = Vec::with_capacity(organisms as usize);
@@ -1178,7 +1302,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 // Each organism contributes at least a length word, so a
                 // count beyond the section body is refused before anything
                 // is allocated.
-                if organisms.checked_mul(4) > Some(body.len() as u64) {
+                if !allocation_fits(organisms, 4, 0, body.len()) {
                     return Err(CodecError::ValueOutOfRange("schema2 organisms"));
                 }
                 let mut genomes = Vec::with_capacity(organisms as usize);
@@ -1196,7 +1320,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     }
                     genomes.push(genome);
                     let nodes = reader.u32()?;
-                    if (nodes as u64).checked_mul(8) > Some(body.len() as u64) {
+                    if !allocation_fits(u64::from(nodes), 8, 0, body.len()) {
                         return Err(CodecError::ValueOutOfRange("schema2 activation length"));
                     }
                     let mut values = Vec::with_capacity(nodes as usize);
@@ -1260,6 +1384,65 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 }
                 morphology = Some(sim_core::MorphologySaveState { counters });
             }
+            SECTION_LEARN => {
+                if learn.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let organisms = reader.u64()?;
+                // **A cap, never an equality, and never an encoded field
+                // count** (D-075). Every organism contributes at least its
+                // count word and its fault word, so a declared count beyond
+                // what the body could hold is refused before anything is
+                // allocated. Exactness is enforced by the trailing-bytes
+                // check every section runs at the end, which needs no editing
+                // when this section gains a field - which is how the climate
+                // and Phase 2 equality checks broke when theirs did.
+                if !allocation_fits(organisms, LEARN_MIN_PER_ORGANISM, 0, body.len()) {
+                    return Err(CodecError::ValueOutOfRange("learn organisms"));
+                }
+                let mut edges = Vec::with_capacity(organisms as usize);
+                let mut faults = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    let plastic = u64::from(reader.u32()?);
+                    if !allocation_fits(plastic, LEARN_BYTES_PER_EDGE, 0, body.len()) {
+                        return Err(CodecError::ValueOutOfRange("learn plastic edges"));
+                    }
+                    let mut row = Vec::with_capacity(plastic as usize);
+                    for _ in 0..plastic {
+                        row.push(sim_core::LearnedEdgeSave {
+                            edge_homology_id: reader.u32()?,
+                            learned_q16: reader.i32()?,
+                            trace_q16: reader.i32()?,
+                        });
+                    }
+                    edges.push(row);
+                    faults.push(reader.u32()?);
+                }
+                let mut counters = sim_core::PlasticityCounters::default();
+                for slot in [
+                    &mut counters.updates_applied,
+                    &mut counters.updates_static,
+                    &mut counters.updates_refused,
+                    &mut counters.faults,
+                    &mut counters.clamped,
+                    &mut counters.trace_clamped,
+                ] {
+                    *slot = reader.u64()?;
+                }
+                // Nothing here checks that a learned value is inside its
+                // clamp or that an edge id matches a plan. That is deliberate
+                // and not an omission: the codec's job is framing, and the
+                // meaning of these numbers lives in `World::from_state`,
+                // which recompiles the plans and refuses a mismatch. A bounds
+                // check duplicated here would be a second copy of the range
+                // to keep in step with `plasticity.rs`.
+                learn = Some(sim_core::LearnSaveState {
+                    edges,
+                    faults,
+                    counters,
+                    cost_milli: reader.i128()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -1298,6 +1481,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
         physiology,
         schema2,
         morphology,
+        learn,
     })
 }
 

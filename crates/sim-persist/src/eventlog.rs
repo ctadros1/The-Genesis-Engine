@@ -79,6 +79,9 @@ const TAG_CARCASS_CREATED: u8 = 10;
 const TAG_CARCASS_CONSUMED: u8 = 11;
 // Phase 9 C9.6, event schema 4. Additive; tags 1-11 are unchanged.
 const TAG_STRUCTURAL_MUTATION_REJECTED: u8 = 12;
+// Phase 11, event schema 5. Additive; tags 1-12 are unchanged, so every log
+// written before this build decodes byte for byte.
+const TAG_PLASTICITY_FAULT: u8 = 13;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -177,6 +180,10 @@ pub struct ReconstructedCounters {
     /// that could be reshuffled.
     pub structural_rejections_by_reason: [u64; 8],
     pub structural_rejections_total: u64,
+    /// Phase 11. Neutralized plastic-edge updates, summed the way
+    /// `controller_faults_total` is: the kernel sums neutralized values, not
+    /// fault events, so an event carrying five faults counts five.
+    pub plasticity_faults_total: u64,
 }
 
 impl ReconstructedCounters {
@@ -235,6 +242,9 @@ impl ReconstructedCounters {
                 if let Some(counter) = self.structural_rejections_by_reason.get_mut(slot) {
                     *counter += 1;
                 }
+            }
+            EventKind::PlasticityFault { faults, .. } => {
+                self.plasticity_faults_total += u64::from(faults);
             }
         }
     }
@@ -556,6 +566,14 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             // change what an already-written log means.
             out.push(reason.code());
         }
+        // Same payload shape as `ControllerFault`, because it is the same
+        // kind of record: an entity and the number of values neutralized on
+        // one tick.
+        EventKind::PlasticityFault { id, faults } => {
+            out.push(TAG_PLASTICITY_FAULT);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&faults.to_le_bytes());
+        }
     }
 }
 
@@ -765,6 +783,10 @@ fn decode_events_into(
                 }
             }
             TAG_CONTROLLER_FAULT => EventKind::ControllerFault {
+                id: short!(cursor.u64()),
+                faults: short!(cursor.u32()),
+            },
+            TAG_PLASTICITY_FAULT => EventKind::PlasticityFault {
                 id: short!(cursor.u64()),
                 faults: short!(cursor.u32()),
             },

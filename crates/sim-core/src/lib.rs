@@ -27,6 +27,7 @@ mod controller2;
 mod develop;
 mod genome;
 mod genome2;
+mod learnstate;
 mod meiosis;
 mod morphology;
 mod morphstate;
@@ -51,7 +52,7 @@ pub use climate::{
 pub use config::{
     BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
     Genome2Config, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config,
-    PhysiologyConfig, SimConfig, WorldgenVersion,
+    PhysiologyConfig, PlasticityConfig, SimConfig, WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -64,8 +65,9 @@ pub use controller::{
 };
 pub use controller2::{
     ActionRequests, ActivationState, CONTROLLER2_POLICY_VERSION, CompileError, CompiledNetwork,
-    IncomingEdge, commit as commit_activations, compile as compile_network,
-    evaluate as evaluate_network, output_of,
+    IncomingEdge, NO_MODULATOR, NOT_PLASTIC, PlasticEdge, PlasticityBudget,
+    commit as commit_activations, compile as compile_network,
+    compile_with_budget as compile_network_with_budget, evaluate as evaluate_network, output_of,
 };
 pub use develop::{
     ACT_DIFFERENTIATE, ACT_PLACE, ACT_SET_SCALE, ACT_TERMINATE, ACTION_KIND_COUNT, COND_ALWAYS,
@@ -123,8 +125,9 @@ pub use registry::{
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
-    ClimateSaveState, ContestSaveState, MorphologySaveState, Phase2SaveState, PhysiologySaveState,
-    RestoreError, SAVE_STATE_VERSION, SaveState, Schema2SaveState,
+    ClimateSaveState, ContestSaveState, LearnSaveState, LearnedEdgeSave, MorphologySaveState,
+    Phase2SaveState, PhysiologySaveState, RestoreError, SAVE_STATE_VERSION, SaveState,
+    Schema2SaveState,
 };
 pub use schema2::{
     ACTION_CHANNELS, SENSE_CHANNELS, compatibility_distance, founder_from_traits,
@@ -137,9 +140,10 @@ pub use structmut::{
     minimal_founder, mutate,
 };
 pub use world::{
-    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation, Ledger,
-    MAX_EVENTS_PER_TICK, MetricsSnapshot, MorphologySample, NewWorldError, NoopObserver,
-    OrganismDetail, Phase2Detail, RenderEntity, StructureSample, TickObserver, TickPhase, World,
+    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation,
+    LearnedSample, Ledger, MAX_EVENTS_PER_TICK, MetricsSnapshot, MorphologySample, NewWorldError,
+    NoopObserver, OrganismDetail, Phase2Detail, RenderEntity, StructureSample, TickObserver,
+    TickPhase, World,
 };
 pub use worldgen::{Terrain, WORLDGEN_VERSION, WorldGenError, generate as generate_terrain};
 

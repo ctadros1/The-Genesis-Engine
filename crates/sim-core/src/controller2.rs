@@ -34,12 +34,43 @@
 
 use crate::checksum::Fnv1a64;
 use crate::genome2::ExpressedNetwork;
+use crate::plasticity::{self, PlasticityRule};
 use crate::registry::{Activation, ChannelDirection, NodeRole, channel};
 
 pub const CONTROLLER2_POLICY_VERSION: &str = "lifesim-controller-v2";
 
 /// Pre-activation clamp, unchanged from schema 1.
 const ACTIVATION_LIMIT: f32 = 8.0;
+
+/// `IncomingEdge::plastic_slot` for an edge that does not learn.
+///
+/// A sentinel rather than an `Option<u32>` because this struct is read once
+/// per incoming edge per node per organism per tick and is the hottest record
+/// in the kernel; the niche optimization would give `Option<u32>` the same
+/// size, but the branch reads better as an explicit comparison next to the
+/// slot index it guards.
+pub const NOT_PLASTIC: u32 = u32::MAX;
+
+/// `PlasticEdge::modulator` for an edge with no usable modulator.
+///
+/// The caller hands `plasticity::step` a modulator activation of `0.0` for
+/// these, which makes rules 3 and 4 **inert** rather than always-on. The
+/// alternative reading - an absent modulator means "always on" - would
+/// collapse rule 3 into rule 1 and hand every modulated edge an ungated
+/// update it did not evolve.
+pub const NO_MODULATOR: u32 = u32::MAX;
+
+/// How many of an expressed network's flagged edges this world compiles as
+/// plastic.
+///
+/// `None` is the plasticity section disabled, and it is not the same as
+/// `Some(0)`: with `None` no edge is compiled plastic, nothing is counted as
+/// over the cap, and the plan, the evaluation and the checksum are exactly
+/// what they were before Phase 11 existed. That distinction is what
+/// discharges Rule 0's Phase 11 clause - `EDGE_FLAG_PLASTIC` is already a
+/// flag on every schema-2 edge, so acting on it without a gate would move the
+/// Phase 9 fixture while every disabled section stayed disabled.
+pub type PlasticityBudget = Option<u32>;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CompileError {
@@ -64,10 +95,50 @@ pub struct IncomingEdge {
     /// Kept so the sort key is inspectable and testable.
     pub homology_id: u32,
     pub source: u32,
+    /// The **genome** weight, never the learned one.
+    ///
+    /// Folding the learned delta in here would be faster and is wrong. A
+    /// compiled plan is derived state, rebuilt from the genome on every load
+    /// and after every structural change, so a mutated weight would be
+    /// silently reset by each restore - and the reset would be invisible,
+    /// because the genome checksum still matches and nothing else would
+    /// disagree. The delta lives in `LearnState` and is applied at the
+    /// summation site by `plasticity::effective_weight`.
     pub weight: f32,
     /// Delayed edges read the prior-state buffer; zero-delay edges read the
     /// value computed earlier this tick.
     pub delayed: bool,
+    /// Index into `CompiledNetwork::plastic_edges` and into this organism's
+    /// learned-state arrays, or [`NOT_PLASTIC`].
+    pub plastic_slot: u32,
+}
+
+/// One plastic edge, resolved for the learn phase.
+///
+/// Kept as its own list rather than found by rescanning `incoming`, because
+/// the learn phase visits plastic edges in ascending `homology_id` across the
+/// whole organism while `incoming` is grouped by target node. Built in the
+/// same pass over `network.edges`, which is already ascending, so the list is
+/// **in the spec's update order with no sort** - and a sort here would be a
+/// second place the order was decided.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct PlasticEdge {
+    pub homology_id: u32,
+    /// Node index whose activation is the postsynaptic value `y`.
+    pub target: u32,
+    /// Node index whose activation was read as `x`. Diagnostic only: the
+    /// value actually read is captured during evaluation, because a delayed
+    /// edge read the *previous* tick's activation and by learn time both
+    /// buffers hold this tick's.
+    pub source: u32,
+    /// Genome weight, the base of `plasticity::effective_weight`.
+    pub weight: f32,
+    /// The rule form and its coefficients, with `decay` already converted to
+    /// Q16: it is per-edge constant for a lifetime, so converting it per tick
+    /// would be a float operation repeated 10^5 times for nothing.
+    pub rule: PlasticityRule,
+    /// Node index of the gating modulator, or [`NO_MODULATOR`].
+    pub modulator: u32,
 }
 
 /// A network compiled for evaluation.
@@ -92,6 +163,18 @@ pub struct CompiledNetwork {
     /// pinned order.
     pub input_bindings: Vec<(u16, u32, f32)>,
     pub output_bindings: Vec<(u16, u32, f32)>,
+    /// Plastic edges in ascending `homology_id` order - the spec's update
+    /// order. Empty whenever the plasticity budget is `None`.
+    pub plastic_edges: Vec<PlasticEdge>,
+    /// Edges flagged plastic that the budget refused, compiled as ordinary
+    /// fixed edges instead.
+    ///
+    /// Counted rather than only truncated. A cap that binds must reject *and*
+    /// count, which is what C9.6 established for the structural caps; without
+    /// this number a population sitting hard against the plastic-edge cap and
+    /// a population that simply evolved that many plastic edges look
+    /// identical, and C11.7 sets the cap from exactly that distinction.
+    pub plastic_over_cap: u32,
 }
 
 impl CompiledNetwork {
@@ -102,10 +185,22 @@ impl CompiledNetwork {
     pub fn edge_count(&self) -> usize {
         self.incoming.iter().map(Vec::len).sum()
     }
+
+    pub fn plastic_edge_count(&self) -> usize {
+        self.plastic_edges.len()
+    }
 }
 
-/// Compile an expressed network.
+/// Compile an expressed network with no plasticity, the pre-Phase-11 form.
 pub fn compile(network: &ExpressedNetwork) -> Result<CompiledNetwork, CompileError> {
+    compile_with_budget(network, None)
+}
+
+/// Compile an expressed network, admitting up to `budget` plastic edges.
+pub fn compile_with_budget(
+    network: &ExpressedNetwork,
+    budget: PlasticityBudget,
+) -> Result<CompiledNetwork, CompileError> {
     let node_ids: Vec<u32> = network.nodes.iter().map(|node| node.homology_id).collect();
     // The expressed network is sorted by homology, so a node's index *is*
     // its homology rank and a binary search is the canonical lookup.
@@ -118,25 +213,91 @@ pub fn compile(network: &ExpressedNetwork) -> Result<CompiledNetwork, CompileErr
 
     let mut incoming: Vec<Vec<IncomingEdge>> = vec![Vec::new(); node_ids.len()];
     let mut zero_delay: Vec<(u32, u32)> = Vec::new();
+    let mut plastic_edges: Vec<PlasticEdge> = Vec::new();
+    let mut plastic_over_cap = 0_u32;
     // `network.edges` is already ascending by `homology_id`, so pushing in
     // iteration order leaves each node's list in that order. That is the
     // summation order, and it is why nothing here sorts by anything else.
+    // The plastic-edge list is built in the same pass for the same reason:
+    // it inherits the order instead of re-deciding it.
     for edge in &network.edges {
         if edge.disabled {
             continue;
         }
         let source = index_of(edge.source)?;
         let target = index_of(edge.target)?;
+        // A flagged edge is plastic when the world runs plasticity at all and
+        // the per-organism budget has room. Beyond the budget it compiles as
+        // an ordinary fixed edge - it keeps its genome weight, evaluates
+        // identically, and pays no plastic-edge cost - which is a bounded
+        // outcome rather than a refused birth. Refusing would make the cap a
+        // lethal structural constraint on a value C11.7 has not measured yet.
+        let plastic_slot = match budget {
+            Some(limit) if edge.plastic => {
+                if plastic_edges.len() as u32 >= limit {
+                    plastic_over_cap += 1;
+                    NOT_PLASTIC
+                } else {
+                    let genes = edge.plasticity;
+                    // Only a node the genome declares `Modulatory` can gate a
+                    // plastic edge. `modulator_node` naming an ordinary node
+                    // resolves to no modulator, which makes a modulated rule
+                    // inert rather than gating it on whatever that node
+                    // happened to output. The role is authored physics - the
+                    // spec authors *that* a modulatory node gates plasticity
+                    // - and letting any node gate would make the role
+                    // decorative and delete the distinction the design rests
+                    // on. Validation already refuses a `modulator_node` that
+                    // names no node at all, so the only case reaching here is
+                    // a real node of the wrong role.
+                    let modulator = if genes.modulator_node == 0 {
+                        NO_MODULATOR
+                    } else {
+                        match index_of(genes.modulator_node) {
+                            Ok(index)
+                                if network.nodes[index as usize].role == NodeRole::Modulatory =>
+                            {
+                                index
+                            }
+                            _ => NO_MODULATOR,
+                        }
+                    };
+                    let slot = plastic_edges.len() as u32;
+                    plastic_edges.push(PlasticEdge {
+                        homology_id: edge.homology_id,
+                        target,
+                        source,
+                        weight: edge.weight,
+                        rule: PlasticityRule {
+                            rule_id: genes.rule_id,
+                            eta: genes.eta,
+                            coefficients: genes.coefficients,
+                            decay_q16: plasticity::decay_to_q16(genes.decay),
+                        },
+                        modulator,
+                    });
+                    slot
+                }
+            }
+            _ => NOT_PLASTIC,
+        };
         incoming[target as usize].push(IncomingEdge {
             homology_id: edge.homology_id,
             source,
             weight: edge.weight,
             delayed: edge.delayed,
+            plastic_slot,
         });
         if !edge.delayed {
             zero_delay.push((source, target));
         }
     }
+    debug_assert!(
+        plastic_edges
+            .windows(2)
+            .all(|pair| pair[0].homology_id < pair[1].homology_id),
+        "plastic edges must be ascending by homology_id: that is the update order"
+    );
     debug_assert!(
         incoming
             .iter()
@@ -177,6 +338,8 @@ pub fn compile(network: &ExpressedNetwork) -> Result<CompiledNetwork, CompileErr
         incoming,
         input_bindings,
         output_bindings,
+        plastic_edges,
+        plastic_over_cap,
     })
 }
 
@@ -238,15 +401,35 @@ pub struct ActivationState {
     /// checksum, and carried here only so evaluation allocates nothing --
     /// the same treatment the contest intent buffers get.
     gathered: Vec<f32>,
+    /// The presynaptic value each plastic edge actually read this tick,
+    /// indexed by `IncomingEdge::plastic_slot`. **Scratch on exactly the same
+    /// terms as `gathered`, and excluded from the checksum for exactly the
+    /// same reason.**
+    ///
+    /// It has to be captured during evaluation and cannot be recovered
+    /// afterwards. `controllers_phase2` ends by calling `commit`, which
+    /// copies `values` into `prior`, so by the time the learn phase runs both
+    /// buffers hold *this* tick's activations and a delayed edge's actual
+    /// presynaptic input is gone.
+    ///
+    /// Two alternatives were rejected. Defining `x` as the current-tick
+    /// source activation for every edge is cheaper and makes the arithmetic a
+    /// lie: the update would pair an `x` the edge never read with the `y` it
+    /// produced, so the spec's `a*x*y` would not be the correlation it
+    /// claims to be. Moving `commit` after the learn phase would recover the
+    /// old `prior`, and would break the Rule 4 guarantee that prior-state
+    /// buffers advance only after **every** organism has been evaluated.
+    plastic_pre: Vec<f32>,
 }
 
 impl ActivationState {
-    pub fn for_network(node_count: usize) -> Self {
+    pub fn for_network(node_count: usize, plastic_edges: usize) -> Self {
         Self {
             values: vec![0.0; node_count],
             prior: vec![0.0; node_count],
             faults: 0,
             gathered: vec![0.0; node_count],
+            plastic_pre: vec![0.0; plastic_edges],
         }
     }
 
@@ -255,10 +438,21 @@ impl ActivationState {
     /// Only used when a network is recompiled for an organism that already
     /// exists; a newborn starts from zero, because learned or accumulated
     /// activation is never inherited.
-    pub fn resize(&mut self, node_count: usize) {
+    pub fn resize(&mut self, node_count: usize, plastic_edges: usize) {
         self.values.resize(node_count, 0.0);
         self.prior.resize(node_count, 0.0);
         self.gathered.resize(node_count, 0.0);
+        self.plastic_pre.resize(plastic_edges, 0.0);
+    }
+
+    /// The presynaptic value plastic edge `slot` read this tick.
+    ///
+    /// Read by the learn phase, which lives in `world.rs` and therefore
+    /// cannot reach a private field. Not part of logical state: between
+    /// evaluation and the learn phase of the same tick it is meaningful, and
+    /// at any other moment it is whatever the last evaluation left behind.
+    pub fn plastic_pre(&self, slot: usize) -> f32 {
+        self.plastic_pre[slot]
     }
 
     pub fn hash_into(&self, hasher: &mut Fnv1a64) {
@@ -273,9 +467,10 @@ impl ActivationState {
             hasher.update_u32(value.to_bits());
         }
         hasher.update_u32(self.faults);
-        // `gathered` is deliberately absent: it is scratch, rebuilt every
-        // tick before it is read, so hashing it would make the checksum
-        // depend on where in the tick it was taken.
+        // `gathered` and `plastic_pre` are deliberately absent: both are
+        // scratch, rebuilt every tick before they are read, so hashing either
+        // would make the checksum depend on where in the tick it was taken.
+        // `the_scratch_buffers_are_excluded_from_the_checksum` asserts it.
     }
 }
 
@@ -288,6 +483,10 @@ pub type ActionRequests = Vec<(u16, f32)>;
 /// channels the organism actually binds, so an unbound channel costs
 /// nothing - there is no "documented neutral zero" placeholder any more.
 ///
+/// `learned` is this organism's Q16 learned delta per plastic edge, indexed
+/// by `IncomingEdge::plastic_slot`. It is empty in a world without the
+/// plasticity section, where no edge carries a slot.
+///
 /// `requests` is cleared and refilled, so a caller reusing one buffer across
 /// organisms allocates nothing. **Evaluation performs no allocation at all**:
 /// schema 1's controller had that property with stack buffers, and variable
@@ -295,10 +494,13 @@ pub type ActionRequests = Vec<(u16, f32)>;
 pub fn evaluate(
     plan: &CompiledNetwork,
     state: &mut ActivationState,
+    learned: &[i32],
     input: &dyn Fn(u16) -> f32,
     requests: &mut ActionRequests,
 ) {
     debug_assert_eq!(state.values.len(), plan.node_count());
+    debug_assert_eq!(learned.len(), plan.plastic_edges.len());
+    debug_assert_eq!(state.plastic_pre.len(), plan.plastic_edges.len());
 
     // Gathered sensory contribution per node. Bindings are in ascending
     // homology order, so two bindings onto one node accumulate in a pinned
@@ -331,7 +533,20 @@ pub fn evaluate(
                 // computed earlier this tick.
                 state.values[source]
             };
-            sum += edge.weight * value;
+            // The learned delta is applied here and nowhere else. A plastic
+            // edge with a zero delta multiplies by exactly its genome weight,
+            // so an organism that has learned nothing evaluates identically
+            // to the same organism in a world without plasticity.
+            let weight = if edge.plastic_slot == NOT_PLASTIC {
+                edge.weight
+            } else {
+                let slot = edge.plastic_slot as usize;
+                // Captured here because this is the only moment it exists:
+                // `commit` overwrites `prior` before the learn phase runs.
+                state.plastic_pre[slot] = value;
+                plasticity::effective_weight(edge.weight, learned[slot])
+            };
+            sum += weight * value;
         }
         let activated =
             plan.activations[index].apply(sum.clamp(-ACTIVATION_LIMIT, ACTIVATION_LIMIT));
@@ -381,6 +596,9 @@ mod tests {
         ExpressedBinding, ExpressedEdge, ExpressedNode, Genome2, Haplotype, Locus, LocusKind,
         PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, VALUE_LIMIT,
     };
+    use crate::plasticity::{
+        LEARN_LIMIT_Q16, ONE_Q16, RULE_HEBBIAN, RULE_MODULATED_HEBBIAN, RULE_STATIC,
+    };
 
     fn node(homology_id: u32, role: NodeRole, activation: Activation, bias: f32) -> ExpressedNode {
         ExpressedNode {
@@ -415,6 +633,44 @@ mod tests {
         }
     }
 
+    /// Plasticity genes that move: eta 1, `a = 1` so the Hebbian form is
+    /// exactly `x*y`, and no decay. A gene set that produced zero would make
+    /// every plasticity assertion below an assertion about nothing.
+    fn genes(rule_id: u8, modulator_node: u32) -> PlasticityGenes {
+        PlasticityGenes {
+            rule_id,
+            eta: 1.0,
+            coefficients: [1.0, 0.0, 0.0, 0.0],
+            decay: 0.0,
+            modulator_node,
+        }
+    }
+
+    fn plastic(
+        homology_id: u32,
+        source: u32,
+        target: u32,
+        weight: f32,
+        rule_id: u8,
+        modulator_node: u32,
+    ) -> ExpressedEdge {
+        ExpressedEdge {
+            plastic: true,
+            plasticity: genes(rule_id, modulator_node),
+            ..edge(homology_id, source, target, weight)
+        }
+    }
+
+    /// The three-node chain with both edges flagged plastic.
+    fn plastic_chain(rule_id: u8, modulator_node: u32) -> ExpressedNetwork {
+        let mut network = chain();
+        network.edges = vec![
+            plastic(40, 10, 20, 1.0, rule_id, modulator_node),
+            plastic(50, 20, 30, 1.0, rule_id, modulator_node),
+        ];
+        network
+    }
+
     fn binding(homology_id: u32, node: u32, channel_id: u16, gain: f32) -> ExpressedBinding {
         ExpressedBinding {
             homology_id,
@@ -444,10 +700,10 @@ mod tests {
         ticks: usize,
     ) -> (ActionRequests, ActivationState) {
         let plan = compile(network).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let mut requests = ActionRequests::new();
         for _ in 0..ticks {
-            evaluate(&plan, &mut state, &|_| value, &mut requests);
+            evaluate(&plan, &mut state, &[], &|_| value, &mut requests);
             commit(&mut state);
         }
         (requests, state)
@@ -456,7 +712,7 @@ mod tests {
     /// Evaluate once into a fresh buffer, for tests that want one tick.
     fn once(plan: &CompiledNetwork, state: &mut ActivationState, value: f32) -> ActionRequests {
         let mut requests = ActionRequests::new();
-        evaluate(plan, state, &|_| value, &mut requests);
+        evaluate(plan, state, &[], &|_| value, &mut requests);
         requests
     }
 
@@ -481,7 +737,7 @@ mod tests {
         let mut network = chain();
         network.edges = vec![delayed(40, 10, 20, 1.0), delayed(50, 20, 30, 1.0)];
         let plan = compile(&network).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
 
         let first = once(&plan, &mut state, 1.0);
         commit(&mut state);
@@ -503,7 +759,7 @@ mod tests {
         let mut network = chain();
         network.edges.push(delayed(80, 30, 20, 0.5));
         let plan = compile(&network).expect("a delayed cycle compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         // Feed a pulse, then silence, and watch the loop carry it.
         let mut history = Vec::new();
         for tick in 0..6 {
@@ -778,12 +1034,13 @@ mod tests {
         // The registry's promise: an organism binding a subset pays nothing
         // for the rest, and no placeholder value is invented for them.
         let plan = compile(&chain()).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let asked = std::cell::RefCell::new(Vec::new());
         let mut requests = ActionRequests::new();
         evaluate(
             &plan,
             &mut state,
+            &[],
             &|channel_id| {
                 asked.borrow_mut().push(channel_id);
                 0.25
@@ -800,9 +1057,9 @@ mod tests {
     #[test]
     fn a_non_finite_input_is_neutralized_and_counted() {
         let plan = compile(&chain()).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let mut requests = ActionRequests::new();
-        evaluate(&plan, &mut state, &|_| f32::NAN, &mut requests);
+        evaluate(&plan, &mut state, &[], &|_| f32::NAN, &mut requests);
         assert_eq!(output_of(&requests, 101), Some(0.0));
         assert_eq!(state.faults, 1, "the fault was not counted");
         assert!(state.values.iter().all(|value| value.is_finite()));
@@ -867,8 +1124,8 @@ mod tests {
         // checksum that ignored them would call two genuinely different
         // worlds identical.
         let plan = compile(&chain()).expect("compiles");
-        let mut left = ActivationState::for_network(plan.node_count());
-        let mut right = ActivationState::for_network(plan.node_count());
+        let mut left = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
+        let mut right = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let hash = |state: &ActivationState| {
             let mut hasher = Fnv1a64::new();
             state.hash_into(&mut hasher);
@@ -891,22 +1148,31 @@ mod tests {
         // better answer, and the check is that no buffer's capacity ever
         // grows once it has been sized: a `Vec` that reallocates is a `Vec`
         // whose capacity changed.
-        let plan = compile(&chain()).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        //
+        // **Extended for Phase 11 rather than weakened.** The plan is the
+        // plastic chain, so the presynaptic capture runs on every tick, and
+        // `plastic_pre` joins the tuple - a capture that pushed instead of
+        // writing in place would grow a capacity and fail here.
+        let plan = compile_with_budget(&plastic_chain(RULE_HEBBIAN, 0), Some(8)).expect("compiles");
+        assert_eq!(plan.plastic_edge_count(), 2, "nothing plastic to capture");
+        let learned = vec![0_i32; plan.plastic_edge_count()];
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let mut requests = ActionRequests::with_capacity(plan.output_bindings.len());
-        evaluate(&plan, &mut state, &|_| 0.5, &mut requests);
+        evaluate(&plan, &mut state, &learned, &|_| 0.5, &mut requests);
         commit(&mut state);
 
         let capacities = (
             state.values.capacity(),
             state.prior.capacity(),
             state.gathered.capacity(),
+            state.plastic_pre.capacity(),
             requests.capacity(),
         );
         for tick in 0..500 {
             evaluate(
                 &plan,
                 &mut state,
+                &learned,
                 &|_| (tick % 7) as f32 / 7.0,
                 &mut requests,
             );
@@ -918,6 +1184,7 @@ mod tests {
                 state.values.capacity(),
                 state.prior.capacity(),
                 state.gathered.capacity(),
+                state.plastic_pre.capacity(),
                 requests.capacity(),
             ),
             "a buffer reallocated during evaluation"
@@ -925,11 +1192,17 @@ mod tests {
     }
 
     #[test]
-    fn the_scratch_buffer_is_excluded_from_the_checksum() {
-        // `gathered` is rebuilt before it is read every tick, so hashing it
-        // would make the checksum depend on where in the tick it was taken.
-        let plan = compile(&chain()).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+    fn the_scratch_buffers_are_excluded_from_the_checksum() {
+        // Both scratch buffers are rebuilt before they are read every tick,
+        // so hashing either would make the checksum depend on where in the
+        // tick it was taken. `plastic_pre` is the Phase 11 addition and is
+        // checked the same way `gathered` is.
+        let plan = compile_with_budget(&plastic_chain(RULE_HEBBIAN, 0), Some(8)).expect("compiles");
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
+        assert!(
+            !state.gathered.is_empty() && !state.plastic_pre.is_empty(),
+            "an empty buffer cannot be perturbed, so this would prove nothing"
+        );
         let hash = |state: &ActivationState| {
             let mut hasher = Fnv1a64::new();
             state.hash_into(&mut hasher);
@@ -937,7 +1210,202 @@ mod tests {
         };
         let before = hash(&state);
         state.gathered[0] = 0.75;
+        state.plastic_pre[0] = 0.75;
         assert_eq!(before, hash(&state), "scratch reached the checksum");
+
+        // The control: a field that *is* logical state must move the hash,
+        // or this test would pass on a `hash_into` that hashed nothing.
+        state.values[0] = 0.75;
+        assert_ne!(before, hash(&state));
+    }
+
+    #[test]
+    fn a_flagged_edge_is_plastic_only_when_the_world_runs_plasticity() {
+        // Rule 0's Phase 11 clause in one assertion: `EDGE_FLAG_PLASTIC` is
+        // already set on schema-2 edges, so a build that acted on it without
+        // a config gate would change every existing schema-2 world.
+        let network = plastic_chain(RULE_HEBBIAN, 0);
+        let disabled = compile_with_budget(&network, None).expect("compiles");
+        assert_eq!(disabled.plastic_edge_count(), 0);
+        assert_eq!(disabled.plastic_over_cap, 0);
+        assert!(
+            disabled
+                .incoming
+                .iter()
+                .flatten()
+                .all(|edge| edge.plastic_slot == NOT_PLASTIC),
+            "an edge carries a learned-state slot in a world with no learned state"
+        );
+        // ...and the compiled plan is *identical* to the same network with no
+        // flags at all, which is the strongest form of "inert".
+        let mut unflagged = network.clone();
+        for edge in &mut unflagged.edges {
+            edge.plastic = false;
+        }
+        assert_eq!(disabled, compile(&unflagged).expect("compiles"));
+
+        let enabled = compile_with_budget(&network, Some(8)).expect("compiles");
+        assert_eq!(enabled.plastic_edge_count(), 2);
+        assert_eq!(
+            enabled
+                .plastic_edges
+                .iter()
+                .map(|edge| edge.homology_id)
+                .collect::<Vec<u32>>(),
+            vec![40, 50],
+            "the update order is not ascending homology_id"
+        );
+        // The slot on the incoming list and the position in `plastic_edges`
+        // must be the same index, or evaluation and the learn phase would
+        // disagree about which edge learned.
+        for node in &enabled.incoming {
+            for edge in node {
+                if edge.plastic_slot != NOT_PLASTIC {
+                    assert_eq!(
+                        enabled.plastic_edges[edge.plastic_slot as usize].homology_id,
+                        edge.homology_id
+                    );
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn the_budget_caps_plastic_edges_in_homology_order_and_counts_the_refusals() {
+        let network = plastic_chain(RULE_HEBBIAN, 0);
+        let capped = compile_with_budget(&network, Some(1)).expect("compiles");
+        assert_eq!(capped.plastic_edge_count(), 1);
+        assert_eq!(capped.plastic_over_cap, 1);
+        // The lower homology_id keeps the slot; the refused edge falls back
+        // to being an ordinary fixed edge rather than refusing the organism.
+        assert_eq!(capped.plastic_edges[0].homology_id, 40);
+        assert_eq!(capped.edge_count(), 2, "the capped edge left the network");
+        let slots: Vec<u32> = capped
+            .incoming
+            .iter()
+            .flatten()
+            .map(|edge| edge.plastic_slot)
+            .collect();
+        assert_eq!(slots.iter().filter(|slot| **slot == NOT_PLASTIC).count(), 1);
+    }
+
+    #[test]
+    fn only_a_modulatory_node_can_gate_a_plastic_edge() {
+        // The role is authored physics. If any node could gate, `Modulatory`
+        // would be decorative and rules 3 and 4 would be rule 1 with extra
+        // steps - which is exactly the collapse the spec's "a modulated rule
+        // with no modulator is inert" clause exists to prevent.
+        let mut network = plastic_chain(RULE_MODULATED_HEBBIAN, 20);
+        let hidden = compile_with_budget(&network, Some(8)).expect("compiles");
+        assert!(
+            hidden
+                .plastic_edges
+                .iter()
+                .all(|edge| edge.modulator == NO_MODULATOR),
+            "a Hidden node gated a plastic edge"
+        );
+
+        // The control: the same gene, on the same node, once that node's
+        // role is Modulatory. Without this the assertion above would pass on
+        // an implementation that never resolved a modulator at all.
+        network.nodes[1].role = NodeRole::Modulatory;
+        let gated = compile_with_budget(&network, Some(8)).expect("compiles");
+        assert!(
+            gated.plastic_edges.iter().all(|edge| edge.modulator == 1),
+            "a Modulatory node did not gate its edges"
+        );
+        // Node id 0 stays "ungated", which for a modulated rule is inert.
+        let ungated = compile_with_budget(&plastic_chain(RULE_MODULATED_HEBBIAN, 0), Some(8))
+            .expect("compiles");
+        assert!(
+            ungated
+                .plastic_edges
+                .iter()
+                .all(|edge| edge.modulator == NO_MODULATOR)
+        );
+    }
+
+    #[test]
+    fn the_learned_delta_reaches_the_summation_site_without_touching_the_plan() {
+        // The delta must change evaluation, and the compiled plan must be
+        // exactly what it was: a plan whose weights had been mutated would be
+        // silently reset by the next restore, and nothing would say so.
+        let plan = compile_with_budget(&plastic_chain(RULE_STATIC, 0), Some(8)).expect("compiles");
+        let before = plan.clone();
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
+        let mut requests = ActionRequests::new();
+
+        evaluate(&plan, &mut state, &[0, 0], &|_| 0.5, &mut requests);
+        assert_eq!(output_of(&requests, 101), Some(0.5), "unlearned baseline");
+
+        // +1.0 on the first edge doubles its weight, so the chain's product
+        // doubles: 0.5 * 2 * 1 = 1.0.
+        evaluate(&plan, &mut state, &[ONE_Q16, 0], &|_| 0.5, &mut requests);
+        assert_eq!(output_of(&requests, 101), Some(1.0));
+
+        // -1.0 cancels the genome weight exactly, so the chain goes silent.
+        evaluate(&plan, &mut state, &[-ONE_Q16, 0], &|_| 0.5, &mut requests);
+        assert_eq!(output_of(&requests, 101), Some(0.0));
+
+        // The clamp holds at the summation site too: genome weight 1 plus a
+        // learned 8 is clamped to 8, not 9.
+        evaluate(
+            &plan,
+            &mut state,
+            &[LEARN_LIMIT_Q16, 0],
+            &|_| 0.5,
+            &mut requests,
+        );
+        // 1 + 8 clamps to 8, so node 20 sums 8 * 0.5 = 4 and its Linear
+        // activation clamps that to 1; without the weight clamp the sum
+        // would be 9 * 0.5 and the activation clamp would hide the
+        // difference, which is why the assertion below is paired with the
+        // -1.0 case rather than standing alone.
+        assert_eq!(output_of(&requests, 101), Some(1.0));
+
+        assert_eq!(plan, before, "evaluation mutated the compiled plan");
+    }
+
+    #[test]
+    fn the_presynaptic_capture_is_the_value_the_edge_actually_read() {
+        // The whole reason `plastic_pre` exists. A delayed plastic edge reads
+        // last tick's activation; by the time the learn phase runs, `commit`
+        // has overwritten `prior` with this tick's. Capturing at read time is
+        // the only way the update pairs the `x` that produced the `y`.
+        let mut network = chain();
+        network.edges = vec![
+            ExpressedEdge {
+                delayed: true,
+                ..plastic(40, 10, 20, 1.0, RULE_HEBBIAN, 0)
+            },
+            plastic(50, 20, 30, 1.0, RULE_HEBBIAN, 0),
+        ];
+        let plan = compile_with_budget(&network, Some(8)).expect("compiles");
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
+        let learned = vec![0_i32; plan.plastic_edge_count()];
+        let mut requests = ActionRequests::new();
+
+        // Tick 1: input 0.25. The delayed edge reads prior, which is zero.
+        evaluate(&plan, &mut state, &learned, &|_| 0.25, &mut requests);
+        assert_eq!(state.plastic_pre(0), 0.0, "delayed edge read this tick");
+        assert_eq!(state.values[0], 0.25, "and the source really is not zero");
+        commit(&mut state);
+
+        // Tick 2: input 0.75. The delayed edge reads tick 1's 0.25, not
+        // tick 2's 0.75 - and after `commit` neither buffer holds 0.25 any
+        // more, which is what makes the capture irrecoverable afterwards.
+        evaluate(&plan, &mut state, &learned, &|_| 0.75, &mut requests);
+        assert_eq!(state.plastic_pre(0), 0.25);
+        commit(&mut state);
+        assert_eq!(state.prior[0], 0.75);
+        assert_eq!(state.values[0], 0.75);
+
+        // The zero-delay edge captures the source computed earlier this tick,
+        // which is node 20's activation - 0.25, the delayed edge's output -
+        // and not the 0.75 sitting on node 10.
+        assert_eq!(state.plastic_pre(1), state.values[1]);
+        assert_eq!(state.values[1], 0.25);
+        assert_ne!(state.plastic_pre(1), state.values[0]);
     }
 
     #[test]
@@ -957,7 +1425,7 @@ mod tests {
             bindings: vec![binding(40, 10, 1, 1.0), binding(50, 20, 101, 1.0)],
         };
         let plan = compile(&network).expect("compiles");
-        let mut state = ActivationState::for_network(plan.node_count());
+        let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let first = once(&plan, &mut state, 1.0);
         let repeat = once(&plan, &mut state, 1.0);
         assert_eq!(first, repeat, "evaluation without commit is not idempotent");

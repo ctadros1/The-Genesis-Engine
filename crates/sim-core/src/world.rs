@@ -15,12 +15,14 @@ use crate::controller::{
 use crate::genome::{
     CONTROLLER_INPUTS, Genome, Phenotype, VariationPolicy, VariationSummary, recombine,
 };
+use crate::learnstate::LearnState;
 use crate::morphstate::MorphologyState;
 use crate::origin::{self, OriginError};
 use crate::phase2::{
     PairRejectReason, PendingChild, Phase2Counters, Phase2State, SENSOR_RANGE_MAX_M,
 };
 use crate::physiology::{HazardOutcome, PhysiologyState};
+use crate::plasticity::{self, EdgeSignals, LearnedState};
 use crate::rng::{RngSystem, named_random};
 use crate::schema2::Schema2State;
 use crate::structmut::MutationCounters;
@@ -76,18 +78,26 @@ pub enum TickPhase {
     /// the phase boundary stays so per-phase timing is comparable.
     Controllers,
     Apply,
+    /// Plastic-edge updates and their energy cost (Phase 11). Empty when the
+    /// plasticity section is disabled; the phase boundary is emitted anyway,
+    /// so per-phase timing stays comparable between a plasticity world and
+    /// the world it is being compared against. The cost of that is a
+    /// benchmark schema increment, which is cheaper than a benchmark table
+    /// whose rows mean different things.
+    Learn,
     Lifecycle,
     Finalize,
 }
 
 impl TickPhase {
-    pub const ALL: [TickPhase; 8] = [
+    pub const ALL: [TickPhase; 9] = [
         TickPhase::Commands,
         TickPhase::Environment,
         TickPhase::SpatialIndex,
         TickPhase::Sense,
         TickPhase::Controllers,
         TickPhase::Apply,
+        TickPhase::Learn,
         TickPhase::Lifecycle,
         TickPhase::Finalize,
     ];
@@ -100,6 +110,7 @@ impl TickPhase {
             TickPhase::Sense => "sense",
             TickPhase::Controllers => "controllers",
             TickPhase::Apply => "apply",
+            TickPhase::Learn => "learn",
             TickPhase::Lifecycle => "lifecycle",
             TickPhase::Finalize => "finalize",
         }
@@ -147,9 +158,10 @@ impl DeathCause {
 /// Event payloads. Version 1 covered Birth/Death/CapacityRejected/
 /// Extinction; version 2 added the Phase 2 variants; version 3 adds the
 /// Phase 7 contest variants; version 4 adds the structural-mutation
-/// rejection (C9.6). Every increment is additive: earlier payloads are
-/// unchanged. Reading events never alters simulation state.
-pub const EVENT_SCHEMA_VERSION: u32 = 4;
+/// rejection (C9.6); version 5 adds the plasticity fault (Phase 11). Every
+/// increment is additive: earlier payloads are unchanged. Reading events
+/// never alters simulation state.
+pub const EVENT_SCHEMA_VERSION: u32 = 5;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -232,6 +244,20 @@ pub enum EventKind {
         /// One of the `OP_*` codes in `structmut`.
         operator: u8,
         reason: crate::structmut::RejectReason,
+    },
+    /// One or more plastic-edge updates produced a non-finite delta this tick
+    /// and were neutralized to zero (Phase 11).
+    ///
+    /// Follows the `ControllerFault` policy exactly, down to the shape:
+    /// neutralize, count, event the **per-tick delta** rather than the
+    /// lifetime total, never panic, and never let the value reach the
+    /// checksum. Expected to stay at zero - the genome validator bounds every
+    /// coefficient and activations are clamped - so a nonzero rate here is a
+    /// bug report about validation, which is precisely why it is evented
+    /// rather than only counted.
+    PlasticityFault {
+        id: u64,
+        faults: u32,
     },
 }
 
@@ -327,6 +353,28 @@ pub struct MorphologySample {
     pub mature: bool,
 }
 
+/// One organism's learned state, summarized (Phase 11).
+///
+/// **`sum_abs_learned_q16 == 0` is exactly "every plastic edge is at zero"**,
+/// which is what makes C11.4 assertable directly rather than inferred from a
+/// population mean: a mean of zero is also what you get from two organisms
+/// whose deltas cancel, and a birth-reset test that could pass that way would
+/// be no test at all.
+///
+/// Observation only (ADR-0016): it hands out numbers and returns nothing to
+/// the kernel. A per-organism view rather than a summary for the reason
+/// `structure_census` gives - C11.2 asks whether plasticity spread through
+/// the population, and no aggregate can answer that.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct LearnedSample {
+    pub plastic_edges: u32,
+    pub sum_abs_learned_q16: i64,
+    pub max_abs_learned_q16: i32,
+    pub sum_abs_trace_q16: i64,
+    pub faults: u32,
+    pub age_ticks: u64,
+}
+
 /// Point-in-time observable metrics (pure data; no clock). The Phase 2
 /// fields are zero when Phase 2 is disabled.
 #[derive(Clone, Copy, Debug)]
@@ -393,6 +441,40 @@ pub struct MetricsSnapshot {
     pub refused_node_budget: u64,
     pub carcasses: u64,
     pub total_carcass_energy_milli: i64,
+    /// Phase 11. Zero when the plasticity section is disabled.
+    pub plasticity_enabled: bool,
+    /// Plastic edges across the living population, and the mean fraction of
+    /// an organism's expressed edges that are plastic, in milli. C11.2 reads
+    /// the second against the founder distribution: the count alone moves
+    /// with population and with topology growth, so a rising count in a
+    /// population that grew its networks is not evidence of anything.
+    pub plastic_edges_total: u64,
+    pub mean_plastic_fraction_milli: u64,
+    /// Mean absolute learned delta over every plastic edge alive, in milli
+    /// weight units against a clamp of 8000. This is the "did anything
+    /// actually learn" number: a population full of plastic edges whose
+    /// deltas are all zero is C11.1's null with C11.2's positive.
+    pub mean_abs_learned_milli: u64,
+    /// Plastic-edge updates applied, and the anomaly half - faults plus
+    /// clamp saturations. Runaway plasticity destabilizing controllers into
+    /// noise is a named risk of this phase and this is its measurement.
+    pub plasticity_updates_total: u64,
+    pub plasticity_anomalies_total: u64,
+    /// Split out of `plasticity_anomalies_total`, which sums both, because
+    /// the halves mean opposite things: a saturation is the clamp working
+    /// and is expected in any run where anything learned, while a fault is a
+    /// non-finite value that should be unreachable and is a bug report. A
+    /// single total is how a bug signal becomes noise (D-074).
+    pub plasticity_faults_total: u64,
+    pub plasticity_saturations_total: u64,
+    /// Flagged edges refused by `max_plastic_edges`. C11.7 sets that cap from
+    /// measurement, and a population sitting hard against it looks exactly
+    /// like a population that evolved that much plasticity without this.
+    pub plastic_edges_over_cap: u64,
+    /// Energy charged for plastic edges over the run, milli-EU. Already
+    /// inside `Ledger::spent_milli`; reported separately because "the ledger
+    /// balances" and "plasticity cost what we think" are different claims.
+    pub plasticity_cost_milli: i64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -468,6 +550,26 @@ pub enum InvariantViolation {
     MorphologyDesync {
         organisms: usize,
         morphology: usize,
+    },
+    /// The Phase 11 learned-state arrays fell out of lockstep with the
+    /// organism arrays, or one organism's row is not the length its compiled
+    /// plan says it should be.
+    ///
+    /// Both halves matter and the second is the one a length check on the
+    /// outer array would miss: a row of the wrong width would let an organism
+    /// index another organism's learned delta, or index past the end. This is
+    /// the price D2 records for keeping learned state in its own
+    /// `Option<LearnState>` instead of on `Schema2State` - lockstep is
+    /// maintained by hand, so it is asserted rather than argued.
+    LearnDesync {
+        organisms: usize,
+        learn: usize,
+    },
+    /// A learned delta or eligibility trace outside the clamp the update
+    /// arithmetic promises. `accumulate_clamped` cannot produce one, so this
+    /// is a restore or a future initialization policy, not the tick.
+    LearnBounds {
+        id: u64,
     },
     ContestStateInvalid {
         id: u64,
@@ -570,6 +672,10 @@ pub struct World {
     move_cost_tick: i64,
     crowding_cost_tick: i64,
     intake_tick: i64,
+    /// Energy one plastic edge costs per tick, derived by the same
+    /// `milli_per_s * dt / 1000` idiom as every other per-tick cost so the
+    /// truncation behaves identically. Zero when plasticity is disabled.
+    plastic_edge_cost_tick: i64,
     crowding_radius_fp: i64,
 
     /// Phase 2 state; `None` exactly when `config.phase2.enabled` is false.
@@ -590,6 +696,11 @@ pub struct World {
     physiology: Option<PhysiologyState>,
     schema2: Option<Schema2State>,
     morphology: Option<MorphologyState>,
+    /// Phase 11 learned state; `None` exactly when
+    /// `config.plasticity.enabled` is false, so a disabled world compiles no
+    /// plastic edge, runs an empty learn phase, and appends nothing to the
+    /// checksum.
+    learn: Option<LearnState>,
 }
 
 impl World {
@@ -655,6 +766,11 @@ impl World {
             move_cost_tick: config.move_cost_milli_per_s * dt / 1000,
             crowding_cost_tick: config.crowding_cost_milli_per_s * dt / 1000,
             intake_tick: config.intake_rate_milli_per_s * dt / 1000,
+            plastic_edge_cost_tick: if config.plasticity.enabled {
+                config.plasticity.plastic_edge_cost_milli_per_s * dt / 1000
+            } else {
+                0
+            },
             crowding_radius_fp: i64::from(config.crowding_radius_m)
                 * i64::from(crate::FP_PER_METER),
             phase2: None,
@@ -664,6 +780,7 @@ impl World {
             physiology: None,
             schema2: None,
             morphology: None,
+            learn: None,
             config,
         };
 
@@ -728,6 +845,12 @@ impl World {
         }
         if world.config.genome2.enabled {
             let mut schema2 = Schema2State::with_capacity(world.ids.len());
+            let budget = world.config.plasticity_budget();
+            let mut learn = world
+                .config
+                .plasticity
+                .enabled
+                .then(|| LearnState::with_capacity(world.ids.len()));
             let morphology_config = world.config.morphology;
             let mut morphology = morphology_config
                 .enabled
@@ -768,13 +891,22 @@ impl World {
                         }
                         None => crate::genome::Phenotype::from_traits(&traits),
                     };
-                    if !schema2.push_organism(genome) {
+                    if !schema2.push_organism(genome, budget) {
                         return Err(NewWorldError::Config(
                             crate::config::ConfigError::PhysiologyRange(
                                 "founder genome does not compile",
                                 index as i64,
                             ),
                         ));
+                    }
+                    // Founders start at zero on every plastic edge for the
+                    // same reason children do: learned state is never
+                    // inherited and never seeded. Pushed here, in the same
+                    // loop as the plan it is sized from, because the length
+                    // has to be the plan's and reading it from anywhere else
+                    // is how the two arrays drift apart.
+                    if let Some(state) = learn.as_mut() {
+                        state.push_organism(schema2.plastic_edges(index));
                     }
                 }
                 // Schema 1's flat genomes play no part in a schema-2 world;
@@ -788,6 +920,7 @@ impl World {
             }
             world.schema2 = Some(schema2);
             world.morphology = morphology;
+            world.learn = learn;
         }
         if world.config.physiology.enabled {
             let mut physiology = PhysiologyState::with_capacity(world.ids.len());
@@ -1033,6 +1166,39 @@ impl World {
                 .contest
                 .as_ref()
                 .map_or(0, |c| c.total_carcass_energy_milli() as i64),
+            plasticity_enabled: self.learn.is_some(),
+            plastic_edges_total: self.learn.as_ref().map_or(0, |l| l.total_plastic_edges()),
+            mean_plastic_fraction_milli: match (self.learn.as_ref(), self.schema2.as_ref()) {
+                (Some(learn), Some(schema2)) => {
+                    learn.mean_plastic_fraction_milli(&schema2.edges_per_organism())
+                }
+                _ => 0,
+            },
+            mean_abs_learned_milli: self
+                .learn
+                .as_ref()
+                .map_or(0, |l| l.mean_abs_learned_milli()),
+            plasticity_updates_total: self
+                .learn
+                .as_ref()
+                .map_or(0, |l| l.counters.total_evaluated()),
+            plasticity_anomalies_total: self
+                .learn
+                .as_ref()
+                .map_or(0, |l| l.counters.total_anomalies()),
+            plasticity_faults_total: self.learn.as_ref().map_or(0, |l| l.counters.total_faults()),
+            plasticity_saturations_total: self
+                .learn
+                .as_ref()
+                .map_or(0, |l| l.counters.total_saturations()),
+            // Read off the plans rather than the learned state: an edge over
+            // the cap has no learned-state row by definition, so counting it
+            // there would report zero forever.
+            plastic_edges_over_cap: match (self.learn.as_ref(), self.schema2.as_ref()) {
+                (Some(_), Some(schema2)) => schema2.plastic_over_cap(),
+                _ => 0,
+            },
+            plasticity_cost_milli: self.learn.as_ref().map_or(0, |l| l.cost_milli as i64),
         }
     }
 
@@ -1087,6 +1253,17 @@ impl World {
 
     pub(crate) fn morphology_state(&self) -> Option<&MorphologyState> {
         self.morphology.as_ref()
+    }
+
+    /// Read-only view of Phase 11 learned state, `None` when the plasticity
+    /// section is disabled.
+    ///
+    /// `export_state` reads it *with* `schema2_state`, never alone: the
+    /// learned rows are positional and the edge identity that names each slot
+    /// lives in the compiled plan, so a saved row without the plan it was
+    /// sized against says nothing about which edge learned what.
+    pub(crate) fn learn_state(&self) -> Option<&LearnState> {
+        self.learn.as_ref()
     }
 
     pub fn genome2_enabled(&self) -> bool {
@@ -1158,6 +1335,65 @@ impl World {
                 mature: self.age_ticks[index] >= p2.phenotypes[index].maturity_ticks,
             })
             .collect()
+    }
+
+    /// Per-organism learned state, in entity-ID order. Empty when the
+    /// plasticity section is disabled.
+    ///
+    /// This is the accessor C11.4 is asserted through. A newborn's entry has
+    /// `sum_abs_learned_q16 == 0` on every plastic edge it carries, whatever
+    /// its parents had learned, and `plastic_edges > 0` is what stops that
+    /// zero from being the trivial zero of an organism with nothing to learn.
+    pub fn learned_census(&self) -> Vec<LearnedSample> {
+        let Some(learn) = self.learn.as_ref() else {
+            return Vec::new();
+        };
+        (0..learn.len())
+            .map(|index| {
+                let learned = &learn.learned_q16[index];
+                let trace = &learn.trace_q16[index];
+                LearnedSample {
+                    plastic_edges: learned.len() as u32,
+                    sum_abs_learned_q16: learned
+                        .iter()
+                        .map(|value| i64::from(value.unsigned_abs()))
+                        .sum(),
+                    max_abs_learned_q16: learned
+                        .iter()
+                        .map(|value| value.saturating_abs())
+                        .max()
+                        .unwrap_or(0),
+                    sum_abs_trace_q16: trace
+                        .iter()
+                        .map(|value| i64::from(value.unsigned_abs()))
+                        .sum(),
+                    faults: learn.faults[index],
+                    age_ticks: self.age_ticks[index],
+                }
+            })
+            .collect()
+    }
+
+    /// Effective weight of every plastic edge alive, genome weight plus
+    /// learned delta after the clamp.
+    ///
+    /// Materialized rather than summarized because the property C11.5 states
+    /// is a bound on **every** edge, and a mean or a max computed inside the
+    /// kernel would be the same code under test checking itself.
+    pub fn plastic_effective_weights(&self) -> Vec<f32> {
+        let (Some(learn), Some(schema2)) = (self.learn.as_ref(), self.schema2.as_ref()) else {
+            return Vec::new();
+        };
+        let mut out = Vec::new();
+        for index in 0..learn.len().min(schema2.len()) {
+            for (slot, edge) in schema2.plans[index].plastic_edges.iter().enumerate() {
+                out.push(plasticity::effective_weight(
+                    edge.weight,
+                    learn.learned_q16[index][slot],
+                ));
+            }
+        }
+        out
     }
 
     /// Structural-mutation outcomes broken out by operator and by rejection
@@ -1302,6 +1538,7 @@ impl World {
         physiology: Option<PhysiologyState>,
         schema2: Option<Schema2State>,
         morphology: Option<MorphologyState>,
+        learn: Option<LearnState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -1322,6 +1559,18 @@ impl World {
         self.physiology = physiology;
         self.schema2 = schema2;
         self.morphology = morphology;
+        // Learned state comes from the save, like every other subsystem here.
+        //
+        // It did not, for one stage: this rebuilt the rows from the restored
+        // plans and zeroed them, because the `SaveState` section did not exist
+        // yet. That was structurally valid - the rows were the width the plans
+        // said, so the desync invariant passed and the first learn phase did
+        // not panic - and it was still a restore that silently reset the one
+        // piece of world state that cannot be recomputed from the genome. The
+        // caller now validates every value against its clamp and every stored
+        // edge id against the rebuilt plan's plastic edges *before* this
+        // point, so what arrives here is checked, not trusted.
+        self.learn = learn;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -1472,6 +1721,14 @@ impl World {
         }
         self.contest_phase(next_tick);
         observer.phase_finished(TickPhase::Apply);
+
+        // The boundary is emitted whether or not the section is enabled, so
+        // per-phase timing is comparable between conditions A and B of this
+        // phase's design. A phase that appeared only when enabled would make
+        // the two runs' benchmark records different shapes.
+        observer.phase_started(TickPhase::Learn);
+        self.learn_phase(next_tick);
+        observer.phase_finished(TickPhase::Learn);
 
         observer.phase_started(TickPhase::Lifecycle);
         self.lifecycle(next_tick);
@@ -1992,15 +2249,25 @@ impl World {
         // action channels onto the same twelve output slots topology 1
         // produced, so everything below this point is schema-agnostic.
         let mut schema2 = self.schema2.take();
+        // Learned deltas are read here and written only in the learn phase,
+        // so evaluation sees a value that has been stable since the previous
+        // tick's learn phase. An empty slice in a world with no plasticity
+        // section, where no compiled edge carries a slot to index with.
+        let learn = self.learn.take();
         for index in 0..population {
             let output = match schema2.as_mut() {
                 Some(state) => {
                     let inputs = p2.inputs[index];
                     let before = state.activations[index].faults;
                     let mut requests = std::mem::take(&mut state.requests);
+                    let learned: &[i32] = match learn.as_ref() {
+                        Some(learn) => &learn.learned_q16[index],
+                        None => &[],
+                    };
                     crate::controller2::evaluate(
                         &state.plans[index],
                         &mut state.activations[index],
+                        learned,
                         &|channel_id| {
                             // Channel IDs 1..=16 are the sixteen sensory
                             // inputs in `inputs[0..16]`; 17..20 are topology
@@ -2078,6 +2345,7 @@ impl World {
             }
         }
         self.schema2 = schema2;
+        self.learn = learn;
         self.phase2 = Some(p2);
     }
 
@@ -2930,6 +3198,129 @@ impl World {
         }
     }
 
+    /// Update every plastic edge and charge for it (Phase 11).
+    ///
+    /// Runs after `apply` and reads only values already committed for this
+    /// tick: the presynaptic value each plastic edge actually read, captured
+    /// during evaluation; the postsynaptic activation the same evaluation
+    /// produced; and the modulator node's activation from that same update.
+    /// It writes only learned state and energy. **No organism's learning
+    /// reads another organism's state at all**, current-tick or prior, so
+    /// Rule 4 is satisfied by construction rather than by ordering: the
+    /// per-organism loop below could run in any order and produce the same
+    /// answer, and it runs in index order anyway because index order is
+    /// entity-ID order and the events it emits are ordered.
+    ///
+    /// **Zero allocation per organism per tick.** Nothing here builds a
+    /// buffer; the learned-state rows were sized at birth and are written in
+    /// place.
+    ///
+    /// # Nothing in this function knows how well an organism is doing
+    ///
+    /// The inputs to `plasticity::step` are four activations and a genome
+    /// weight. Energy, age, offspring count, and food are not among them and
+    /// must never be: what gates a modulated update is the organism's own
+    /// evolved modulatory node, and this function cannot tell a modulator
+    /// that fires on food from one that fires on a wall.
+    fn learn_phase(&mut self, next_tick: u64) {
+        let Some(mut learn) = self.learn.take() else {
+            return;
+        };
+        // Both are taken out of `self` so the loop can hold a plan while
+        // `push_event` and the energy debit take `&mut self`. The established
+        // idiom in this file, and the reason `controllers_phase2` does it.
+        let Some(schema2) = self.schema2.take() else {
+            // Unreachable: validation refuses plasticity without genome2. The
+            // state goes back rather than being dropped, because a silent
+            // `None` here would be a desync at the next invariant check.
+            self.learn = Some(learn);
+            return;
+        };
+        let cost_per_edge = self.plastic_edge_cost_tick;
+
+        for index in 0..self.ids.len() {
+            let plan = &schema2.plans[index];
+            let activation = &schema2.activations[index];
+            let learned_row = &mut learn.learned_q16[index];
+            let trace_row = &mut learn.trace_q16[index];
+            let before = learn.faults[index];
+            // Ascending `homology_id`: `plastic_edges` was built in the
+            // compile pass over `network.edges`, which is already in that
+            // order, so this loop inherits the spec's update order instead of
+            // re-deriving it (Rule 6's discipline applied to the learn pass).
+            for (slot, edge) in plan.plastic_edges.iter().enumerate() {
+                let learned_q16 = learned_row[slot];
+                let signals = EdgeSignals {
+                    // The value this edge read during evaluation. Not
+                    // `prior[source]`: `commit` has already run, so both
+                    // activation buffers hold this tick's values and a
+                    // delayed edge's actual input is only in the capture.
+                    pre: activation.plastic_pre(slot),
+                    post: activation.values[edge.target as usize],
+                    // An edge with no usable modulator is handed 0.0, which
+                    // makes rules 3 and 4 inert rather than always-on.
+                    modulator: if edge.modulator == crate::controller2::NO_MODULATOR {
+                        0.0
+                    } else {
+                        activation.values[edge.modulator as usize]
+                    },
+                    w_eff: plasticity::effective_weight(edge.weight, learned_q16),
+                };
+                let outcome = plasticity::step(
+                    edge.rule,
+                    signals,
+                    LearnedState {
+                        learned_q16,
+                        trace_q16: trace_row[slot],
+                    },
+                );
+                // `step` has already neutralized a non-finite delta to zero
+                // and reported it; counting and eventing it is this loop's
+                // half of the controller-fault policy.
+                learn.counters.record(&outcome);
+                if outcome.fault {
+                    learn.faults[index] = learn.faults[index].saturating_add(1);
+                }
+                learned_row[slot] = outcome.state.learned_q16;
+                trace_row[slot] = outcome.state.trace_q16;
+            }
+            let faults = learn.faults[index] - before;
+            if faults > 0 {
+                let id = self.ids[index];
+                self.push_event(next_tick, EventKind::PlasticityFault { id, faults });
+            }
+
+            // The energy cost, **charged after the update and never before**.
+            // The order cannot change what was learned - energy is not an
+            // input to any rule and must not become one - so the choice is
+            // about what the cost means: an organism pays for the plastic
+            // edges it carried through this tick, having exercised them. It
+            // also means an organism whose last energy goes on plasticity
+            // still learned this tick and dies in `lifecycle` afterwards,
+            // rather than being silently exempted from a cost it could not
+            // afford.
+            //
+            // Every plastic edge pays, including a rule-0 edge that writes
+            // nothing: the cost is the price of carrying the machinery, and
+            // charging only edges that moved would make "turn the rule off"
+            // a free way to keep the flag.
+            let cost = plan.plastic_edges.len() as i64 * cost_per_edge;
+            if cost > 0 {
+                // `min(cost, energy)` with the paired ledger add, never a
+                // debit without one: `check_invariants` compares the ledger
+                // to the summed energy with **no tolerance**, so an unledgered
+                // milli is a hard failure rather than a rounding note.
+                let paid = cost.min(self.energy_milli[index]);
+                self.energy_milli[index] -= paid;
+                self.ledger.spent_milli += i128::from(paid);
+                learn.cost_milli += i128::from(paid);
+            }
+        }
+
+        self.schema2 = Some(schema2);
+        self.learn = Some(learn);
+    }
+
     fn lifecycle(&mut self, next_tick: u64) {
         // Death marks in stable order. Starvation is checked before age
         // (documented tie policy).
@@ -3065,6 +3456,12 @@ impl World {
             if let Some(state) = self.morphology.as_mut() {
                 state.retain(&dead);
             }
+            // A dead organism takes its learned state with it. There is
+            // nothing for it to survive into: learned state is per-organism
+            // and per-edge, and a child starts at zero.
+            if let Some(state) = self.learn.as_mut() {
+                state.retain(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -3083,6 +3480,17 @@ impl World {
             }
             if let Some(contest) = self.contest.as_mut() {
                 contest.push_organism(self.config.contest.base_health_milli);
+            }
+            // Unreachable in practice: this is the schema-1 asexual birth
+            // path, which only runs when Phase 2 is disabled, and plasticity
+            // requires genome2 which requires Phase 2. Pushed anyway, with no
+            // plastic edges because there is no schema-2 plan to size a row
+            // from, so lockstep is maintained by construction instead of by
+            // an argument about which paths can coexist. D2's cost is exactly
+            // this bookkeeping, and the way it goes wrong is a branch nobody
+            // thought could be taken.
+            if let Some(state) = self.learn.as_mut() {
+                state.push_organism(0);
             }
             self.counters.births_total += 1;
             self.push_event(next_tick, EventKind::Birth { id, parent_id });
@@ -3107,8 +3515,9 @@ impl World {
                 // `validate_structure` now rejects outright, so this path
                 // should be unreachable - which is exactly why it must be
                 // counted rather than trusted.
+                let budget = self.config.plasticity_budget();
                 if let (Some(state), Some(genome2)) = (self.schema2.as_mut(), child.genome2.clone())
-                    && !state.push_organism(genome2)
+                    && !state.push_organism(genome2, budget)
                 {
                     // The parents already paid at pairing time and the
                     // investment was riding on this child, so refusing the
@@ -3121,6 +3530,17 @@ impl World {
                 }
                 if let (Some(state), Some(body)) = (self.morphology.as_mut(), child.body.clone()) {
                     state.push_body(body);
+                }
+                // **C11.4, at the only path a child can enter by.** The row
+                // is sized from the plan that was just compiled for this
+                // child and is zero on every plastic edge, whatever its
+                // parents had learned. `LearnState::push_organism` takes no
+                // initial value, so there is nowhere for a parent's delta to
+                // be passed even by mistake - which is what makes "reset at
+                // birth" an invariant rather than a default someone could
+                // later parameterize.
+                if let (Some(state), Some(schema2)) = (self.learn.as_mut(), self.schema2.as_ref()) {
+                    state.push_organism(schema2.plastic_edges(schema2.len() - 1));
                 }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;
@@ -3245,6 +3665,16 @@ impl World {
         }
         if let Some(physiology) = self.physiology.as_ref() {
             physiology.hash_into(&mut hasher);
+        }
+        // Phase 11, **appended at the very end**. The shipped order above
+        // (phase2, climate, contest, schema2, morphology, physiology) already
+        // deviates from the order Rule 8's table lists, and reordering it to
+        // match would move every existing checksum for no gain. Appending is
+        // what Rule 8 actually guarantees: a section added to the end never
+        // changes the checksum of a world that lacks it, and a world without
+        // the plasticity section hashes exactly as it did before Phase 11.
+        if let Some(learn) = self.learn.as_ref() {
+            learn.hash_into(&mut hasher);
         }
         hasher.finish()
     }
@@ -3382,6 +3812,39 @@ impl World {
                 });
             }
         }
+        // Phase 11, on the same terms and with one extra clause. The outer
+        // length is the ordinary lockstep check every parallel-array
+        // subsystem needs; the per-row width is the one a length check alone
+        // would miss, and it is the difference between an organism reading
+        // its own learned delta and reading a neighbour's.
+        if let Some(learn) = self.learn.as_ref() {
+            if learn.len() != self.ids.len() {
+                return Err(InvariantViolation::LearnDesync {
+                    organisms: self.ids.len(),
+                    learn: learn.len(),
+                });
+            }
+            if let Some(schema2) = self.schema2.as_ref() {
+                for index in 0..learn.len() {
+                    if learn.plastic_edges(index) != schema2.plastic_edges(index) {
+                        return Err(InvariantViolation::LearnDesync {
+                            organisms: schema2.plastic_edges(index),
+                            learn: learn.plastic_edges(index),
+                        });
+                    }
+                }
+            }
+            // Every stored value inside the clamp. The tick cannot produce a
+            // violation - `accumulate_clamped` clamps - so this defends the
+            // restore path and any future initialization policy, both of
+            // which would otherwise put an out-of-range value into
+            // `effective_weight` and into the checksum.
+            if let Some(index) = learn.bounds_violation() {
+                return Err(InvariantViolation::LearnBounds {
+                    id: self.ids[index],
+                });
+            }
+        }
         // Phase 10, on the same terms. Bodies are derived rather than stored,
         // which makes a desync *more* likely to go unnoticed rather than
         // less: nothing on the save path would ever reveal it.
@@ -3510,6 +3973,74 @@ mod tests {
         config.initial_organisms = 40;
         config.max_entities = 200;
         config
+    }
+
+    /// A schema-2 world with the plasticity section live. Founder genomes
+    /// carry no plastic edge, which is what makes the rows below length
+    /// zero - fine for the lockstep and bounds assertions, which are about
+    /// the arrays and not about learning.
+    fn plasticity_world() -> World {
+        let mut config = SimConfig::phase11_default(TEST_SEED);
+        config.cells_x = 64;
+        config.cells_y = 64;
+        config.initial_organisms = 40;
+        config.max_entities = 200;
+        World::new(config).unwrap()
+    }
+
+    #[test]
+    fn the_learn_state_invariants_fire_rather_than_waiting_for_an_index_panic() {
+        // Both halves of `LearnDesync` and `LearnBounds`, injected directly.
+        // D2 accepts hand-maintained lockstep as the price of keeping learned
+        // state out of `Schema2State`; these invariants are what that price
+        // buys, and an invariant nobody has watched fail is an invariant
+        // nobody knows works.
+        let world = plasticity_world();
+        world
+            .check_invariants()
+            .expect("a fresh world is consistent");
+        assert_eq!(world.learn.as_ref().map(|learn| learn.len()), Some(40));
+
+        // An extra row: the missed-push failure, in the direction a birth
+        // path gets wrong.
+        let mut desynced = world.clone();
+        desynced.learn.as_mut().unwrap().push_organism(0);
+        assert_eq!(
+            desynced.check_invariants(),
+            Err(InvariantViolation::LearnDesync {
+                organisms: 40,
+                learn: 41,
+            })
+        );
+
+        // A row of the wrong width: the failure an outer length check cannot
+        // see, and the one that would let an organism read a neighbour's
+        // learned delta.
+        let mut ragged = world.clone();
+        ragged.learn.as_mut().unwrap().learned_q16[3].push(0);
+        ragged.learn.as_mut().unwrap().trace_q16[3].push(0);
+        assert!(matches!(
+            ragged.check_invariants(),
+            Err(InvariantViolation::LearnDesync { .. })
+        ));
+
+        // A value outside the clamp. Unreachable through `step`, which is
+        // exactly why the restore path needs the check.
+        let mut out_of_bounds = world.clone();
+        {
+            let learn = out_of_bounds.learn.as_mut().unwrap();
+            learn.learned_q16[5].push(crate::plasticity::LEARN_LIMIT_Q16 + 1);
+            learn.trace_q16[5].push(0);
+        }
+        // The row is now ragged too, so the width check would fire first;
+        // widen the plan-side expectation out of the way by removing schema2
+        // from the comparison, which is what a restored world with no plans
+        // looks like.
+        out_of_bounds.schema2 = None;
+        assert!(matches!(
+            out_of_bounds.check_invariants(),
+            Err(InvariantViolation::LearnBounds { .. })
+        ));
     }
 
     #[test]

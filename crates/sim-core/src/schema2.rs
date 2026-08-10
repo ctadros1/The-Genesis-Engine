@@ -26,7 +26,9 @@
 //! There is no mixed-schema world and no migration between them.
 
 use crate::checksum::Fnv1a64;
-use crate::controller2::{ActionRequests, ActivationState, CompiledNetwork, compile};
+use crate::controller2::{
+    ActionRequests, ActivationState, CompiledNetwork, PlasticityBudget, compile_with_budget,
+};
 use crate::genome2::{Genome2, GenomeCaps};
 use crate::structmut::MutationCounters;
 
@@ -82,16 +84,44 @@ impl Schema2State {
     /// A genome whose network will not compile cannot reach here: decode and
     /// the mutation operators both reject a zero-delay cycle, so the fallback
     /// is an assertion rather than a runtime path.
-    pub fn push_organism(&mut self, genome: Genome2) -> bool {
+    ///
+    /// `budget` is the world's plasticity section, threaded through rather
+    /// than read from a global: the plan records which edges are plastic and
+    /// in which slot, and a plan compiled under a different budget would
+    /// index a different organism's learned state. Passing `None` is a world
+    /// with no plasticity section and produces exactly the pre-Phase-11 plan.
+    pub fn push_organism(&mut self, genome: Genome2, budget: PlasticityBudget) -> bool {
         let network = genome.express_network();
-        let Ok(plan) = compile(&network) else {
+        let Ok(plan) = compile_with_budget(&network, budget) else {
             return false;
         };
-        self.activations
-            .push(ActivationState::for_network(plan.node_count()));
+        self.activations.push(ActivationState::for_network(
+            plan.node_count(),
+            plan.plastic_edge_count(),
+        ));
         self.plans.push(plan);
         self.genomes.push(genome);
         true
+    }
+
+    /// Plastic edges the organism at `index` carries, i.e. the length its
+    /// learned-state row must have.
+    pub fn plastic_edges(&self, index: usize) -> usize {
+        self.plans[index].plastic_edge_count()
+    }
+
+    /// Expressed edge count per organism, the denominator C11.2's
+    /// plastic-edge fraction divides by.
+    pub fn edges_per_organism(&self) -> Vec<usize> {
+        self.plans.iter().map(|plan| plan.edge_count()).collect()
+    }
+
+    /// Edges refused by the plastic-edge cap across the living population.
+    pub fn plastic_over_cap(&self) -> u64 {
+        self.plans
+            .iter()
+            .map(|plan| u64::from(plan.plastic_over_cap))
+            .sum()
     }
 
     pub fn retain(&mut self, remove: &[bool]) {
@@ -368,7 +398,7 @@ mod tests {
     fn state_stays_in_lockstep_across_births_and_deaths() {
         let mut state = Schema2State::with_capacity(4);
         for _ in 0..4 {
-            assert!(state.push_organism(founder()));
+            assert!(state.push_organism(founder(), None));
         }
         assert_eq!(state.len(), 4);
         assert_eq!(state.plans.len(), 4);
@@ -472,6 +502,7 @@ mod tests {
         crate::controller2::evaluate(
             &state.plans[index],
             &mut state.activations[index],
+            &[],
             &|_| input,
             &mut requests,
         );
@@ -516,7 +547,7 @@ mod tests {
         let sizes = [1_u32, 2, 3, 4, 5];
         let mut state = Schema2State::with_capacity(sizes.len());
         for inputs in sizes {
-            assert!(state.push_organism(fan_in(inputs)));
+            assert!(state.push_organism(fan_in(inputs), None));
         }
         // Distinct prior-state buffers: a recurrent organism's memory lives
         // here, and it is the array a length-only test cannot see move.
@@ -539,7 +570,7 @@ mod tests {
         let survivors: Vec<usize> = (0..sizes.len()).filter(|index| !removed[*index]).collect();
         let mut fresh = Schema2State::with_capacity(survivors.len());
         for &index in &survivors {
-            assert!(fresh.push_organism(fan_in(sizes[index])));
+            assert!(fresh.push_organism(fan_in(sizes[index]), None));
         }
         for (slot, &index) in survivors.iter().enumerate() {
             fresh.activations[slot]
@@ -582,8 +613,8 @@ mod tests {
     #[test]
     fn structure_statistics_report_what_c9_1_measures() {
         let mut state = Schema2State::with_capacity(2);
-        state.push_organism(founder());
-        state.push_organism(founder());
+        state.push_organism(founder(), None);
+        state.push_organism(founder(), None);
         let (nodes, edges) = state.mean_structure_milli();
         assert_eq!(nodes, 3_000, "three nodes, in milli");
         assert_eq!(edges, 2_000);
@@ -600,9 +631,9 @@ mod tests {
             hasher.finish()
         };
         let mut left = Schema2State::with_capacity(1);
-        left.push_organism(founder());
+        left.push_organism(founder(), None);
         let mut right = Schema2State::with_capacity(1);
-        right.push_organism(founder());
+        right.push_organism(founder(), None);
         assert_eq!(hash(&left), hash(&right));
 
         // A differing activation must move it, because that is a recurrent
@@ -614,7 +645,10 @@ mod tests {
 
         // ...and so must a differing genome.
         let mut other = Schema2State::with_capacity(1);
-        other.push_organism(founder_from_traits(&[0.25; crate::genome::TRAIT_COUNT]));
+        other.push_organism(
+            founder_from_traits(&[0.25; crate::genome::TRAIT_COUNT]),
+            None,
+        );
         assert_ne!(hash(&left), hash(&other));
     }
 }

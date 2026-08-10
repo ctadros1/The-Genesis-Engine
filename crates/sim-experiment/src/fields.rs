@@ -291,6 +291,20 @@ config_fields! {
     // Phase 11's A/B ablation lives on this one flag, so without the entry
     // the phase's two conditions are not expressible as a campaign at all.
     "genome2.mutation.plasticity_enabled" => genome2.mutation.plasticity_enabled: bool,
+    // Phase 11. `plasticity.enabled` and
+    // `genome2.mutation.plasticity_enabled` are separate fields on purpose:
+    // condition A sets both, condition B sets neither, and a third condition
+    // that ran the learn phase over frozen plasticity genes is a distinct
+    // experiment that has to be expressible to be ruled out.
+    //
+    // `lamarckian_fraction_q16` is here so a campaign that adopts the
+    // declared experimental condition records it as a named delta in the
+    // manifest, which is what makes the reporting obligation enforceable
+    // rather than a convention. Validation refuses a nonzero value today.
+    "plasticity.enabled" => plasticity.enabled: bool,
+    "plasticity.plastic_edge_cost_milli_per_s" => plasticity.plastic_edge_cost_milli_per_s: i64,
+    "plasticity.max_plastic_edges" => plasticity.max_plastic_edges: u32,
+    "plasticity.lamarckian_fraction_q16" => plasticity.lamarckian_fraction_q16: u32,
     "morphology.enabled" => morphology.enabled: bool,
     "morphology.base_node_budget" => morphology.base_node_budget: u32,
     "morphology.caps.max_modules" => morphology.caps.max_modules: u16,

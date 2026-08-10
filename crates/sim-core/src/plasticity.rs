@@ -499,8 +499,31 @@ impl PlasticityCounters {
 
     /// Faults plus saturations. Runaway plasticity destabilizing controllers
     /// into noise is a named risk of this phase; this is its measurement.
+    ///
+    /// **Read [`Self::total_faults`] alongside it, never instead of it.**
+    /// The two halves mean opposite things. A saturation is the clamp doing
+    /// its job: at `eta = 0.01` with no decay, a consistently-signed
+    /// correlation reaches the limit in about 800 ticks, so a long run
+    /// *should* saturate and a zero here would suggest nothing was learning.
+    /// A fault is a non-finite value that should be unreachable through
+    /// validated genes and is a bug report if it ever appears. Summing them
+    /// into one number is how a bug signal becomes noise - the defect
+    /// `rejected_invalid` carried for the whole of Phase 9 (D-074), and the
+    /// reason this pair is reported separately.
     pub fn total_anomalies(&self) -> u64 {
         self.partitioned().1.iter().sum()
+    }
+
+    /// Non-finite updates neutralized. Expected to stay at zero; nonzero is
+    /// a bug report, not a run outcome.
+    pub fn total_faults(&self) -> u64 {
+        self.faults
+    }
+
+    /// Clamp saturations, learned state and trace. Expected to be nonzero in
+    /// any run where anything learned for long enough.
+    pub fn total_saturations(&self) -> u64 {
+        self.clamped + self.trace_clamped
     }
 
     /// Fold one update's outcome in.

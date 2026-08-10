@@ -224,6 +224,7 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         contest,
         physiology,
         schema2,
+        learn,
     } = state;
 
     per_organism!("ids", ids);
@@ -304,6 +305,28 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         per_organism!("schema2.activation_prior", activation_prior);
         per_organism!("schema2.activation_faults", activation_faults);
     }
+    if let Some(learn) = learn {
+        let sim_core::LearnSaveState {
+            edges,
+            faults,
+            // Aggregate, not per organism.
+            counters: _,
+            cost_milli: _,
+        } = learn;
+        per_organism!("learn.edges", edges);
+        per_organism!("learn.faults", faults);
+    }
+    // `permutation_config` is a **Phase 9** world and leaves plasticity off,
+    // so the branch above does not run here and these two arrays contribute
+    // nothing to this file's inventory. They are named and swept anyway, for
+    // the reason the doc comment gives: a per-organism array that can join
+    // `SaveState` without joining this function is the defect this function
+    // exists to make impossible, and the guard has to be in place before the
+    // section is switched on rather than after. The plasticity world's own
+    // sweep of exactly these two arrays is
+    // `phase11_learning::scrambling_the_learned_state_changes_a_plasticity_world`,
+    // which is where Phase 11's half of the permutation clause lives - here
+    // would entangle C9.7's evidence with a section Phase 9 does not have.
     inventory
 }
 
@@ -402,6 +425,7 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         contest,
         physiology,
         schema2,
+        learn,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);
@@ -481,6 +505,16 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         reorder(activation_values, order);
         reorder(activation_prior, order);
         reorder(activation_faults, order);
+    }
+    if let Some(learn) = learn {
+        let sim_core::LearnSaveState {
+            edges,
+            faults,
+            counters: _,
+            cost_milli: _,
+        } = learn;
+        reorder(edges, order);
+        reorder(faults, order);
     }
 }
 

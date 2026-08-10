@@ -24,7 +24,10 @@ const MEASURED_TICKS: u64 = 2_000;
 struct PhaseTimer {
     started: Option<Instant>,
     current: Option<TickPhase>,
-    samples: [Vec<f64>; 8],
+    // Widened from 8 by Phase 11's `learn` phase. Sized from
+    // `TickPhase::ALL` rather than restated, so the next phase to be added
+    // is a compile error here instead of an index panic at run time.
+    samples: [Vec<f64>; TickPhase::ALL.len()],
     population_sum: u128,
     ticks: u64,
 }

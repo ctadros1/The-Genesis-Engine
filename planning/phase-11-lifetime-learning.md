@@ -127,51 +127,135 @@ Conditions, matched on seeds (30), config, and run length:
 
 Criteria:
 
-- [ ] **C11.1 Within-lifetime behavioral change.** In a controlled reversal
-      probe (a resource patch is relocated at tick t), individual organisms
-      alive both before and after the relocation show a measurable shift in
-      their own action distribution within their own lifetime under A, and
-      do not under B. The shift is computed **per individual**, because a
-      population-level shift is explicable by selection and proves nothing;
-      it is then **aggregated to a world-level rate, and the world is the
-      replicate** (ADR-0022 A5). Individuals are nested observations, not
-      sample size. Required in at least 20 of 30 worlds under `E-variable`.
-      This is the phase's designated primary endpoint.
-- [ ] **C11.2 Learning is under selection.** The distribution of `eta` and
-      plastic-edge-fraction at tick T differs from the founder distribution
-      by more than the drift expectation, measured against a neutral marker
-      locus in the same run as the drift control, in at least 20 of 30 seeds
-      under `E-variable`. Under `E-stationary` the prediction is the
-      opposite: plasticity should be selected *down* because it costs and
-      does not pay. A result showing plasticity increasing in a stationary
-      world would indicate the cost model is wrong, and would be reported as
-      such.
-- [ ] **C11.3 Learned state is world state.** Save, restore, and continue is
-      bit-identical with plastic edges carrying nonzero learned deltas.
-      Learned state cannot be recomputed from the genome and its presence in
-      the snapshot is verified by a test that corrupts it and observes a
-      trajectory divergence.
-- [ ] **C11.4 No Lamarckian leakage.** Children of parents with large learned
-      deltas start at exactly zero on every plastic edge. Asserted directly,
-      not inferred.
-- [ ] **C11.5 Numeric safety.** A 10^6-tick single-organism plasticity trace
-      reproduces bit-identically across clean processes; `learned_q16` never
-      leaves its clamp; effective weight never leaves [-8, 8]; injected
-      non-finite activations are neutralized, counted, and evented with no
-      panic.
-- [ ] **C11.6 Cost accounting.** The energy ledger stays exact to the
-      milli-unit with plasticity costs flowing through it over a 10^6-tick
-      run.
-- [ ] **C11.7 Snapshot and checkpoint budget.** Snapshot size and checkpoint
-      stall are measured at both tiers with realistic evolved plasticity
-      levels, against the Phase 9 record. If sparse learned-state storage
-      does not hold the budget, the phase reports that and the plastic-edge
-      cap is set from the measurement.
-- [ ] **C11.8 Determinism and fixtures.** Plasticity-disabled configs
-      reproduce the Phase 9 fixture exactly; storage-permutation equality
-      holds.
+- [ ] **C11.1 Within-lifetime behavioral change. NOT MEASURED.** Deliberately
+      distinguished from *unmet*: nothing was observed and no threshold was
+      tested, so recording it unmet would claim a null nobody ran. Three
+      pieces it needs do not exist - scripted-intervention machinery (there
+      is no command queue, no intervention list, and no relocatable resource
+      patch; resources are a per-cell scalar field and nothing moves),
+      per-organism action counting (intents are transient `pub(crate)`
+      scratch with no accessor), and the analysis that reduces a
+      per-individual shift to a world-level rate. See
+      `docs/21-open-questions.md`, which records the choice between building
+      that machinery and substituting a climate schedule, and recommends
+      building it.
+- [ ] **C11.2 Learning is under selection. NOT MEASURED**, for the same
+      reason, plus a fourth gap: there is **no neutral marker locus** anywhere
+      in the genome, and the criterion's drift control is defined against one.
 
-## Test Plan
+      Two measurements bear on it and are recorded now rather than saved for
+      a campaign, because both are unfavourable and both were nearly missed.
+      **Evolved plasticity is essentially absent**: after 30,000 ticks with
+      the mutation gate open, 1 plastic edge across 500 organisms and 7
+      across 1,999, with `mean_abs_learned_milli` zero in both. And over the
+      10^6-tick ledger run the founders' 400 plastic edges reached **zero**
+      by the end while 18.9 million updates accumulated along the way - so
+      plasticity was active and then disappeared. That is the phase's named
+      most-likely failure appearing, and it is now legible for a real reason
+      rather than guaranteed by an unreachable flag.
+- [x] **C11.3 Learned state is world state. Met.** Save, restore and continue
+      is bit-identical with plastic edges carrying nonzero learned deltas, and
+      the record is compared field by field rather than only by checksum - a
+      checksum match also holds for a pair of cancelling defects (zeroing on
+      restore *and* dropping the section from the hash). The corruption clause
+      is discharged by injecting a **legal** value inside the clamp at the
+      logical `SaveState` level and re-encoding, so the restore must accept it
+      and then matter; a byte flip would only prove CRC32 works. Divergence is
+      asserted positionally, not on the checksum, because learned state is
+      hashed and a checksum difference is guaranteed either way.
+- [x] **C11.4 No Lamarckian leakage. Met, by construction.**
+      `LearnState::push_organism` takes no initial-state parameter and zeroes
+      every row, so the reset is an invariant rather than a default. Asserted
+      directly with parents carrying large deltas, against
+      `sum_abs_learned_q16 == 0` per organism rather than a population mean,
+      which two cancelling organisms could also produce.
+- [x] **C11.5 Numeric safety. Met.** The 10^6-tick single-organism trace
+      reproduces bit-identically across two clean processes (fixture schema 5,
+      config `0xa1ad80da0cf6790e`, state `0xe6541fee2698286e`, 2,000,000
+      updates, 0 faults). `learned_q16` stays inside its clamp and effective
+      weight inside [-8, 8] under an adversarial sweep of 2,592,000 `step`
+      calls and in a running population. Non-finite deltas are neutralized,
+      counted and evented with no panic, exercised by injection.
+
+      **The first cut of the trace was silently a control.** With the input
+      bound to `energy_fraction`, which is constant in a zero-cost world, the
+      network reached a fixed point and the learned value reached an
+      equilibrium where decay cancels the delta: `mean_abs_learned_milli` read
+      **964 at 10^4 ticks and 964 at 10^6**. It would have reproduced
+      perfectly forever while measuring nothing. Rebound to a monotone input,
+      it reads 100 and 171, and the verify script now **refuses the run if
+      the two horizons agree**.
+
+      One honest gap: a non-finite delta is unreachable through validated
+      genes, so the fault path has no running-world coverage and is defended
+      at the unit and record level only.
+- [x] **C11.6 Cost accounting. Met at the stated horizon.** Two measurements,
+      because they answer different questions. Exactness *at a moment*: on
+      tick 1, against a matched control, the debit is exactly one edge per
+      organism per tick - an approximate version would pass on a cost off by
+      a factor, and a long run cannot make this comparison because the two
+      populations diverge. Exactness *over duration*, which is what the
+      criterion states: **10^6 ticks, 100 invariant checks, population 400,
+      40,328 births, 18,971,594 plasticity updates, 18,970,462 milli-EU
+      charged, ledger exact throughout**, with the plasticity debit inside
+      `spent_milli` rather than beside it.
+
+      The world for that run **mirrors C10.9's** (128x128, cell capacity
+      240,000, physiology on). The first cut invented a thinner one and it
+      went extinct with *and* without plasticity, so the debit was not the
+      cause - the population guard is what said so, and without it a million
+      ticks of an empty world would have reported as a pass (trap 1).
+- [~] **C11.7 Snapshot and checkpoint budget. Snapshot half met; the
+      checkpoint-stall half is not measured through the mechanism the plan
+      names.** Sparse storage holds the budget comfortably. Framing is exact
+      at **12 bytes per plastic edge + 8 per organism + 72 per section**:
+
+      | tier | condition | bytes/organism | learn share |
+      |---|---|---|---|
+      | 500 | off | 1875 | 0 |
+      | 500 | evolved | 1890 | 0.4% |
+      | 500 | seeded (2.05 edges/organism) | 1906 | 1.7% |
+      | 2000 | off | 1676 | 0 |
+      | 2000 | evolved | 1685 | 0.4% |
+      | 2000 | seeded (2.07 edges/organism) | 1707 | 1.9% |
+
+      At the provisional `max_plastic_edges = 32` the worst case is **392
+      bytes per organism, 21 percent of a tier-500 organism** - so the cap,
+      not the representation, is what decides whether the budget holds at the
+      ceiling, and that is the number a later revision should restate from.
+
+      `learn` phase cost, which had no benchmark target at all: p50 3.3 to
+      8.3 microseconds and p95 4.9 to 27.4 across 0, 1 and 2 plastic edges
+      per organism at both tiers, 3 to 65 milli of whole-tick time. Note no
+      prior benchmark in this repo computes a p95; the plan asks for one and
+      a percentile over timing samples was added for it.
+
+      **Not measured: checkpoint stall through `AsyncCheckpointer`.** What is
+      reported is synchronous encode/decode/restore time on the tick thread.
+      The plan calls asynchronous checkpointing a Phase 5 prerequisite for
+      exactly this measurement, so this is a gap rather than a substitution.
+- [x] **C11.8 Determinism and fixtures. Met.** A plasticity-disabled config
+      reproduces the Phase 9 fixture (`0x5f0c4e95e4f5170f`) exactly, and the
+      Phase 1 and Phase 2 fixtures are untouched. A flagged genome in a
+      disabled world is completely inert. The permutation clause is
+      discharged the way C9.7 established: rotating the learned rows changes
+      the world, with an explicit assertion that the rows are not all
+      identical, since a rotation of identical rows is the identity.
+
+## What Is Not Claimed
+
+The phase built the mechanism and measured its cost, safety and persistence.
+It has **not** shown that anything learns anything useful, that plasticity is
+selected for, or that behaviour changes within a lifetime in a way selection
+did not produce - those are C11.1 and C11.2 and they are not measured.
+
+The two numbers that exist point the other way: plasticity is barely present
+after 30,000 ticks of mutation, and the founders' plastic edges are gone
+after 10^6. Neither is a result yet, because neither had a control or a
+pre-registered threshold. They are the reason the campaign is worth running
+rather than a substitute for running it.
+
+## Test Plan## Test Plan
 
 - Unit: each rule form's update at boundary activations; decay arithmetic;
   the f32-to-Q16 rounding rule at ties and at sign boundaries; clamp

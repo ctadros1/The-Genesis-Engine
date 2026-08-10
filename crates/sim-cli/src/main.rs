@@ -15,9 +15,11 @@
 use sim_core::{
     BEHAVIOR_POLICY_VERSION, CONTROLLER_POLICY_VERSION, CONTROLLER2_POLICY_VERSION,
     GENOME_POLICY_VERSION, GENOME_SCHEMA_VERSION, GENOME2_POLICY_VERSION, GENOME2_SCHEMA_VERSION,
-    InheritanceMode, MEIOSIS_POLICY_VERSION, PHASE2_BEHAVIOR_POLICY_VERSION, RNG_ALGORITHM_VERSION,
-    STRUCTMUT_POLICY_VERSION, SimConfig, TOPOLOGY_ID, TickObserver, TickPhase, WORLDGEN_VERSION,
-    World, analyze, registry_versions,
+    InheritanceMode, LearnedEdgeSave, LocusKind, MEIOSIS_POLICY_VERSION,
+    PHASE2_BEHAVIOR_POLICY_VERSION, PLASTICITY_POLICY_VERSION, PlasticityGenes,
+    RNG_ALGORITHM_VERSION, RULE_HEBBIAN, RULE_REGISTRY_VERSION, STRUCTMUT_POLICY_VERSION,
+    SimConfig, TOPOLOGY_ID, TickObserver, TickPhase, WORLDGEN_VERSION, World, analyze,
+    registry_versions,
 };
 use std::alloc::{GlobalAlloc, Layout, System};
 use std::env;
@@ -103,10 +105,13 @@ fn usage() -> String {
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
-        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2\n",
+        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity\n",
         "  --genome2 selects the Phase 9 schema-2 genome and controller; it requires --phase2, and it\n",
         "  pins the structural caps, meiosis mode, and mutation rates literally rather than inheriting\n",
         "  today's defaults, so the Phase 9 fixture cannot move when a default is revised\n",
+        "  --plasticity builds the Phase 11 numeric-safety trace: one immortal, sterile organism whose\n",
+        "  edges are plastic, for C11.5's 10^6-tick fixed-point trace. It requires --phase2 --genome2,\n",
+        "  it pins the entire configuration literally, and it ignores the other config flags on purpose\n",
         "run also accepts: --event-log PATH"
     )
     .to_owned()
@@ -124,6 +129,7 @@ struct Options {
     no_preflight: bool,
     phase2: bool,
     genome2: bool,
+    plasticity: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -167,6 +173,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--genome2" {
             options.genome2 = true;
+            index += 1;
+            continue;
+        }
+        if name == "--plasticity" {
+            options.plasticity = true;
             index += 1;
             continue;
         }
@@ -308,11 +319,187 @@ fn apply_pinned_genome2_policy(config: &mut SimConfig) {
     mutation.regulatory_enabled = true;
     mutation.max_run = 3;
     mutation.point_delta_q16 = 3_277; // 0.05
+    // Phase 11, pinned false on both flags for the same D-078 reason. These
+    // are today's defaults; pinning them means a future decision to enable
+    // plasticity by default cannot move `0x9abc0cd47914127f` by accident.
+    // `mutation.plasticity_enabled` is folded into the genome2 block of the
+    // config hash when true, and the plasticity section appends its own block
+    // when enabled, so leaving either to a default is leaving the fixture to
+    // one.
+    mutation.plasticity_enabled = false;
+    config.plasticity.enabled = false;
 }
 
 fn build_world(options: &Options) -> Result<World, String> {
+    if options.plasticity {
+        return plasticity_trace_world(options);
+    }
     let config = build_config(options)?;
     World::new(config).map_err(|error| error.to_string())
+}
+
+// --- the Phase 11 numeric-safety trace --------------------------------------
+
+/// The Phase 11 plasticity trace's configuration, pinned literally.
+///
+/// **One organism that cannot die and cannot reproduce.** C11.5 asks for a
+/// 10^6-tick single-organism plasticity trace that reproduces bit-identically
+/// across clean processes, and every word of that is load-bearing:
+///
+/// - *Single organism*, so what is being pinned is the fixed-point update
+///   arithmetic accumulating over a lifetime rather than an ecology. A
+///   population fixture pins the same arithmetic diluted through births,
+///   deaths and compaction, and when it moves nobody can say which.
+/// - *Cannot reproduce*, so the network never changes: structural mutation
+///   only runs at birth, so the same plastic edges accumulate for the whole
+///   run and the trace is a trace of one individual rather than of a lineage.
+/// - *Cannot die*, and this is the artificial part, stated rather than
+///   hidden. Basal, movement and crowding costs are zero and the plastic-edge
+///   cost is zero, so energy never falls and no starvation is possible. With
+///   the shipped costs a lone organism starves within a few thousand ticks
+///   and the remaining 99% of the run measures an empty world - a fixture
+///   that is a control and does not say so. The cost path is not what this
+///   fixture is for: C11.6 measures it, exactly, against a disabled control.
+///
+/// `max_age_ticks` is set past the horizon for the same reason.
+///
+/// Everything is written out literally rather than inherited from a default,
+/// on D-078's terms: `SimConfig::stable_hash` folds the whole plasticity
+/// section in when it is enabled, so a fixture built from
+/// `PlasticityConfig::plasticity_default()` moves the moment C11.7 restates
+/// `max_plastic_edges` from measurement - which it is under an explicit
+/// obligation to do.
+fn plasticity_trace_config(seed: u64) -> SimConfig {
+    let mut config = SimConfig::phase1_default(seed);
+    config.phase2.enabled = true;
+    config.genome2.enabled = true;
+    apply_pinned_genome2_policy(&mut config);
+
+    config.cells_x = 16;
+    config.cells_y = 16;
+    config.initial_organisms = 1;
+    config.max_entities = 1;
+    config.reproduction_enabled = false;
+    config.max_age_ticks = 4_000_000;
+    config.basal_cost_milli_per_s = 0;
+    config.move_cost_milli_per_s = 0;
+    config.crowding_cost_milli_per_s = 0;
+
+    config.genome2.mutation.plasticity_enabled = true;
+    config.plasticity.enabled = true;
+    config.plasticity.plastic_edge_cost_milli_per_s = 0;
+    config.plasticity.max_plastic_edges = 32;
+    config.plasticity.lamarckian_fraction_q16 = 0;
+    config
+}
+
+/// The founder's own edges, made plastic, through the public save path.
+///
+/// **Nothing in the engine writes `EDGE_FLAG_PLASTIC`**: only point mutation
+/// can, over generations, which is the correct design - whether an edge is
+/// plastic is evolved, not authored. A fixture that waited for that would be
+/// a fixture of the mutation operator. So this authors the flag directly, and
+/// it is confined to this one determinism harness: no campaign, no default,
+/// and no other subcommand can reach it.
+///
+/// The genes are rule 1 with a nonzero `decay`, and the decay is the point:
+/// it is the step that was specified as an arithmetic shift and corrected to
+/// a truncation on 2026-08-10, because a shift floors and therefore decays
+/// negative learned weights faster than positive ones - and it is integer
+/// arithmetic executed two million times here. `eta` is small enough that the
+/// value settles well inside the clamp instead of pinning against it, because
+/// a trace that saturates in the first hundred ticks spends the remaining
+/// 999,900 proving that a constant stays constant.
+///
+/// # The input binding is moved from `energy_fraction` to `age_fraction`
+///
+/// **Measured, not assumed.** The first version of this fixture left the
+/// founder's binding on channel 1. With every energy cost zeroed, energy pins
+/// at capacity, so that input is the constant 1.0, the network reaches a
+/// fixed point, and the learned value reaches an equilibrium where decay
+/// exactly cancels the delta: `mean_abs_learned_milli` read 964 at 10,000
+/// ticks and 964 at 1,000,000. The arithmetic still ran two million times and
+/// the checksum was still sensitive to the rounding rule, but the last 99% of
+/// the run repeated one step, so a fault that only shows up as slow
+/// accumulation would have been invisible.
+///
+/// `age_fraction` is `age / max_age_ticks`, so over this horizon it sweeps 0
+/// to 0.25 monotonically and never repeats a value. The equilibrium therefore
+/// moves for the whole run instead of being reached and held. The `d`
+/// coefficient is nonzero for the same reason at the other end: with `d = 0`
+/// and an input near zero the delta rounds to zero in Q16 and the first tens
+/// of thousands of ticks learn nothing at all.
+fn plasticity_trace_world(options: &Options) -> Result<World, String> {
+    if !options.genome2 || !options.phase2 {
+        return Err(format!(
+            "--plasticity requires --phase2 --genome2\n{}",
+            usage()
+        ));
+    }
+    let config = plasticity_trace_config(options.seed.unwrap_or(DEFAULT_SEED));
+    config.validate().map_err(|error| error.to_string())?;
+    let world = World::new(config).map_err(|error| error.to_string())?;
+    let mut state = world.export_state();
+    let caps = state.config.genome2.caps;
+    let budget = state.config.plasticity_budget();
+    let mut rows: Vec<Vec<LearnedEdgeSave>> = Vec::new();
+    let schema2 = state
+        .schema2
+        .as_mut()
+        .ok_or_else(|| "the trace world is not schema 2".to_owned())?;
+    for encoded in schema2.genomes.iter_mut() {
+        let mut genome = sim_core::Genome2::decode(encoded, &caps)
+            .map_err(|error| format!("founder genome does not decode: {error}"))?;
+        for haplotype in &mut genome.haplotypes {
+            for chromosome in &mut haplotype.chromosomes {
+                for locus in chromosome.iter_mut() {
+                    match &mut locus.kind {
+                        LocusKind::Edge {
+                            flags, plasticity, ..
+                        } => {
+                            *flags |= sim_core::EDGE_FLAG_PLASTIC;
+                            *plasticity = PlasticityGenes {
+                                rule_id: RULE_HEBBIAN,
+                                eta: 0.01,
+                                coefficients: [1.0, 0.25, -0.25, 0.1],
+                                decay: 0.01,
+                                modulator_node: 0,
+                            };
+                        }
+                        // Channel 1 is `energy_fraction` and is constant in a
+                        // world with no energy costs; channel 3 is
+                        // `age_fraction`, which sweeps monotonically and
+                        // never repeats. See the doc comment.
+                        LocusKind::IoBinding { channel_id, .. } if *channel_id == 1 => {
+                            *channel_id = 3;
+                        }
+                        _ => {}
+                    }
+                }
+            }
+        }
+        rows.push(
+            sim_core::compile_network_with_budget(&genome.express_network(), budget)
+                .map_err(|error| format!("the rewritten founder does not compile: {error:?}"))?
+                .plastic_edges
+                .iter()
+                .map(|edge| LearnedEdgeSave {
+                    edge_homology_id: edge.homology_id,
+                    learned_q16: 0,
+                    trace_q16: 0,
+                })
+                .collect(),
+        );
+        *encoded = genome.encode();
+    }
+    // The learn section has to describe the rewritten plans or `from_state`
+    // refuses it, which is the edge-id check doing exactly its job.
+    state
+        .learn
+        .as_mut()
+        .ok_or_else(|| "the trace world has no learn section".to_owned())?
+        .edges = rows;
+    World::from_state(state).map_err(|error| error.to_string())
 }
 
 // --- run -------------------------------------------------------------------
@@ -1328,7 +1515,67 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if world.genome2_enabled() {
+    if metrics.plasticity_enabled {
+        // Fixture schema 5: the Phase 11 numeric-safety trace. A separate
+        // schema rather than extra fields on schema 4, on the same grounds
+        // schema 4 was separated from 3: this is one immortal sterile
+        // organism, not a population, and a reader that parsed it as a Phase
+        // 9 fixture would be comparing a trace with an ecology.
+        //
+        // The learned-state fields are here so the fixture cannot silently
+        // become a control. A `state_checksum` alone would keep reproducing
+        // if the learn phase stopped running, if the organism died at tick 3,
+        // or if every delta sat at zero - the checksum would simply be a
+        // different constant that two runs still agreed on. `population`,
+        // `plastic_edges_total`, `plasticity_updates_total` and
+        // `mean_abs_learned_milli` are what make a zero visible, and
+        // `verify-phase11-determinism.sh` refuses each of them.
+        //
+        // `plasticity_anomalies_total` is reported rather than asserted
+        // nonzero: it counts faults and clamp saturations, and both are
+        // *supposed* to stay at zero here. It is in the line so that a run
+        // which starts saturating - the runaway-plasticity risk - shows it.
+        let (channel_registry, activation_registry) = registry_versions();
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":5,\"phase\":\"phase11\",",
+                "\"behavior_policy\":\"{}\",\"genome2_policy\":\"{}\",",
+                "\"meiosis_policy\":\"{}\",\"structmut_policy\":\"{}\",",
+                "\"controller2_policy\":\"{}\",\"plasticity_policy\":\"{}\",",
+                "\"rule_registry\":{},\"genome2_schema\":{},",
+                "\"channel_registry\":{},\"activation_registry\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"plastic_edges_total\":{},\"plasticity_updates_total\":{},",
+                "\"plasticity_anomalies_total\":{},\"mean_abs_learned_milli\":{},",
+                "\"plasticity_cost_milli\":{},\"controller_faults_total\":{}}}"
+            ),
+            PHASE2_BEHAVIOR_POLICY_VERSION,
+            GENOME2_POLICY_VERSION,
+            MEIOSIS_POLICY_VERSION,
+            STRUCTMUT_POLICY_VERSION,
+            CONTROLLER2_POLICY_VERSION,
+            PLASTICITY_POLICY_VERSION,
+            RULE_REGISTRY_VERSION,
+            GENOME2_SCHEMA_VERSION,
+            channel_registry,
+            activation_registry,
+            world.config().initial_organisms,
+            ticks,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.plastic_edges_total,
+            metrics.plasticity_updates_total,
+            metrics.plasticity_anomalies_total,
+            metrics.mean_abs_learned_milli,
+            metrics.plasticity_cost_milli,
+            metrics.controller_faults_total
+        );
+    } else if world.genome2_enabled() {
         // Fixture schema 4: the Phase 9 lineage. A separate schema rather
         // than extra fields on schema 3, because a schema-2 world is a
         // different genome and a different controller and a reader that

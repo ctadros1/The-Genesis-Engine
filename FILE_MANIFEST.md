@@ -50,8 +50,10 @@ this manifest.
 - scripts/run-phase8-benchmarks.sh
 - scripts/run-phase9-benchmarks.sh
 - scripts/run-phase10-benchmarks.sh
+- scripts/run-phase11-benchmarks.sh
 - scripts/verify-phase5-determinism.sh
 - scripts/verify-phase9-determinism.sh
+- scripts/verify-phase11-determinism.sh
 
 ## Simulation Kernel (Phases 1 And 2)
 

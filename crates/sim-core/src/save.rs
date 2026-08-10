@@ -108,6 +108,47 @@ pub struct MorphologySaveState {
     pub counters: crate::develop::DevelopCounters,
 }
 
+/// One plastic edge's saved learned state.
+///
+/// The edge is named by its `homology_id` rather than by the slot it
+/// occupied. A slot index is only meaningful against the plan that produced
+/// it, and a plan is recompiled on load from a genome that may express its
+/// edges under a different plasticity budget or - once structural mutation
+/// has run - a different edge set entirely. An id survives all of that, and
+/// it is what lets `from_state` refuse a save whose learned rows do not line
+/// up with the network they claim to belong to instead of quietly applying
+/// one edge's learning to another.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct LearnedEdgeSave {
+    pub edge_homology_id: u32,
+    pub learned_q16: i32,
+    pub trace_q16: i32,
+}
+
+/// Phase 11 learned state.
+///
+/// **Sparse by design, and the sparsity is a budget rather than a
+/// preference.** Only plastic edges appear, in ascending `edge_homology_id`
+/// order, so the cost is proportional to the plasticity that actually
+/// evolved rather than to the weight count. The Phase 4 record already has
+/// snapshot size dominated by per-organism genome arrays at roughly 2.8 KB
+/// each with a synchronous checkpoint on the tick thread; a dense learned
+/// copy of every weight would roughly double it, which is the measurement
+/// C11.7 exists to make and the reason `max_plastic_edges` is provisional.
+///
+/// This is the only section in this file whose contents cannot be recomputed
+/// from the genome. A body is regrown, a phenotype is derived, a plan is
+/// recompiled; a lifetime's learning has no source but the save.
+#[derive(Clone, Debug, PartialEq)]
+pub struct LearnSaveState {
+    /// Per organism, its plastic edges sorted by `edge_homology_id`.
+    pub edges: Vec<Vec<LearnedEdgeSave>>,
+    /// Per organism, non-finite deltas neutralized over its lifetime.
+    pub faults: Vec<u32>,
+    pub counters: crate::plasticity::PlasticityCounters,
+    pub cost_milli: i128,
+}
+
 /// Complete logical world state in stable field order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveState {
@@ -138,6 +179,8 @@ pub struct SaveState {
     /// Present exactly when the config's genome2 section is enabled.
     pub schema2: Option<Schema2SaveState>,
     pub morphology: Option<MorphologySaveState>,
+    /// Present exactly when the config's plasticity section is enabled.
+    pub learn: Option<LearnSaveState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -243,6 +286,41 @@ impl World {
                     .collect(),
                 counters: state.counters,
             }),
+            // Phase 11 learned state, paired with the plans that name its
+            // slots. `zip` rather than two independent maps: the edge id for
+            // slot `n` is in the plan, the value is in the learned row, and a
+            // section that carried one without the other would be exactly the
+            // silent misalignment `from_state`'s id check exists to refuse.
+            //
+            // A plasticity world always has schema 2 - validation refuses the
+            // section otherwise - so the `and_then` cannot drop a live
+            // section; it is written this way because the two `Option`s are
+            // independent types and a `zip` states the dependency instead of
+            // asserting it.
+            learn: self.learn_state().and_then(|learn| {
+                let schema2 = self.schema2_state()?;
+                let mut edges = Vec::with_capacity(learn.len());
+                for index in 0..learn.len() {
+                    let plan = &schema2.plans[index];
+                    edges.push(
+                        plan.plastic_edges
+                            .iter()
+                            .enumerate()
+                            .map(|(slot, edge)| LearnedEdgeSave {
+                                edge_homology_id: edge.homology_id,
+                                learned_q16: learn.learned_q16[index][slot],
+                                trace_q16: learn.trace_q16[index][slot],
+                            })
+                            .collect(),
+                    );
+                }
+                Some(LearnSaveState {
+                    edges,
+                    faults: learn.faults.clone(),
+                    counters: learn.counters,
+                    cost_milli: learn.cost_milli,
+                })
+            }),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -313,11 +391,16 @@ impl World {
                 same_length(schema2.activation_prior.len(), "schema2.activation_prior")?;
                 same_length(schema2.activation_faults.len(), "schema2.activation_faults")?;
                 let caps = world.config().genome2.caps;
+                // The same budget the world runs, so a restored plan marks
+                // exactly the edges plastic that the saved one did. A plan
+                // compiled under a different budget would put an organism's
+                // learned deltas in different slots.
+                let budget = world.config().plasticity_budget();
                 let mut rebuilt = crate::schema2::Schema2State::with_capacity(population);
                 for (index, bytes) in schema2.genomes.iter().enumerate() {
                     let genome = crate::genome2::Genome2::decode(bytes, &caps)
                         .map_err(|error| RestoreError::StateInvalid(error.to_string()))?;
-                    if !rebuilt.push_organism(genome) {
+                    if !rebuilt.push_organism(genome, budget) {
                         return Err(RestoreError::InvalidGenome { index });
                     }
                 }
@@ -553,6 +636,88 @@ impl World {
             }
         };
 
+        // Phase 11 learned state. Presence must match the configuration on
+        // the same terms as every section above, and the contents are
+        // validated against the *rebuilt plans* rather than trusted, because
+        // this is the one section a wrong value in cannot be caught later:
+        // an out-of-clamp delta goes straight into `effective_weight`, and a
+        // row whose edges do not match the plan silently applies one edge's
+        // lifetime of learning to another.
+        let rebuilt_learn = match (world.config().plasticity.enabled, state.learn) {
+            (true, Some(learn)) => {
+                same_length(learn.edges.len(), "learn.edges")?;
+                same_length(learn.faults.len(), "learn.faults")?;
+                let Some(schema2) = rebuilt_schema2.as_ref() else {
+                    // Unreachable through `validate`, which refuses plasticity
+                    // without genome2. Fail closed anyway: without the plans
+                    // there is nothing to check the stored edge ids against,
+                    // and admitting the section unchecked is the one thing
+                    // this block exists to prevent.
+                    return Err(RestoreError::StateInvalid(
+                        "a plasticity save carries no schema-2 section".to_owned(),
+                    ));
+                };
+                let mut rebuilt = crate::learnstate::LearnState::with_capacity(population);
+                for (index, row) in learn.edges.iter().enumerate() {
+                    let plastic = &schema2.plans[index].plastic_edges;
+                    if row.len() != plastic.len() {
+                        return Err(RestoreError::StateInvalid(format!(
+                            "organism {index} saved {} learned edges and its rebuilt plan \
+                             has {}",
+                            row.len(),
+                            plastic.len()
+                        )));
+                    }
+                    // Positional identity, not set membership. Both lists are
+                    // in ascending `homology_id` - the plan by construction,
+                    // the save because `export_state` walks the plan - so
+                    // equality slot by slot is the check. A membership test
+                    // would accept a permutation, which is precisely the
+                    // silent misalignment being refused: the values would all
+                    // be legal, the lengths would agree, and every organism
+                    // would resume with its learning attached to the wrong
+                    // synapses.
+                    rebuilt.push_organism(row.len());
+                    for (slot, saved) in row.iter().enumerate() {
+                        let LearnedEdgeSave {
+                            edge_homology_id,
+                            learned_q16,
+                            trace_q16,
+                        } = *saved;
+                        if edge_homology_id != plastic[slot].homology_id {
+                            return Err(RestoreError::StateInvalid(format!(
+                                "organism {index} slot {slot} saved edge {edge_homology_id} \
+                                 and its rebuilt plan has {}",
+                                plastic[slot].homology_id
+                            )));
+                        }
+                        rebuilt.learned_q16[index][slot] = learned_q16;
+                        rebuilt.trace_q16[index][slot] = trace_q16;
+                    }
+                    rebuilt.faults[index] = learn.faults[index];
+                }
+                rebuilt.counters = learn.counters;
+                rebuilt.cost_milli = learn.cost_milli;
+                // The clamp, checked through the same predicate the running
+                // world's invariant uses rather than a second copy of the
+                // range. `accumulate_clamped` cannot produce a value outside
+                // it, so a violation here is a corrupted or hand-built save -
+                // which is exactly the input this function treats as hostile.
+                if let Some(index) = rebuilt.bounds_violation() {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "organism {index} carries a learned value outside the clamp"
+                    )));
+                }
+                Some(rebuilt)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "learn section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -584,6 +749,7 @@ impl World {
                 }
                 rebuilt_morphology
             },
+            rebuilt_learn,
         );
 
         world

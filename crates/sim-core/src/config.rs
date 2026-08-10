@@ -113,6 +113,16 @@ pub struct SimConfig {
     /// migration between them.
     pub genome2: Genome2Config,
     pub morphology: MorphologyConfig,
+    /// Phase 11 plasticity section, disabled by default. Same D-014 rule.
+    ///
+    /// This section is what `specifications/determinism-extensions.md` Rule 0
+    /// demands of Phase 11 by name: `PlasticityGenes` and
+    /// `EDGE_FLAG_PLASTIC` are already on every schema-2 edge, so an
+    /// implementation that acted on them **without its own gate** would move
+    /// the Phase 9 fixture while every section that was disabled stayed
+    /// disabled. Disabled, no edge compiles plastic, the learn phase writes
+    /// nothing, no learned state exists, and the checksum appends nothing.
+    pub plasticity: PlasticityConfig,
 }
 
 /// Versioned Phase 9 genome schema 2 policy.
@@ -173,6 +183,79 @@ impl MorphologyConfig {
             lattice: crate::morphology::LatticeKind::Square,
             caps: crate::morphology::MorphologyCaps::provisional(),
             base_node_budget: 4,
+        }
+    }
+}
+
+/// Versioned Phase 11 plasticity policy (`lifesim-plasticity-v1`).
+///
+/// The seam is as narrow as Phase 9's and Phase 10's, and for the same reason
+/// (D-072): enabling plasticity changes exactly **what an edge's weight is
+/// during evaluation** - the genome weight plus a per-organism learned delta
+/// instead of the genome weight alone - and adds one tick phase and one
+/// energy cost. Sensing, movement, feeding, pairing, contest, and physiology
+/// all run the same code and cannot tell which weight produced the intent.
+///
+/// # There is no reward here either
+///
+/// Nothing in this struct describes what an organism should learn, and
+/// nothing in it can. `plastic_edge_cost_milli_per_s` is a price, not a
+/// signal: it is charged for every plastic edge whatever that edge does, so
+/// it cannot reward an outcome. What gates learning is the organism's own
+/// modulatory node (`plasticity.rs`), and a config field that measured how
+/// well an organism was doing would be the prohibited thing rather than a
+/// refinement of it (`docs/02-scope-and-non-goals.md`, ADR-0014).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlasticityConfig {
+    pub enabled: bool,
+    /// Energy charged per plastic edge per simulated second.
+    ///
+    /// Nonzero on purpose. Without a cost every edge becomes plastic by
+    /// drift, the trait stops being informative, and C11.2's "is plasticity
+    /// under selection" has no direction it could answer in. With a cost the
+    /// plastic-edge count is itself under selection and "how much plasticity
+    /// does this environment pay for" becomes a measurable result.
+    pub plastic_edge_cost_milli_per_s: i64,
+    /// Hard ceiling on how many of one organism's expressed edges may be
+    /// plastic. Edges beyond it, in ascending `homology_id` order, compile
+    /// as ordinary fixed edges and are counted (`plastic_over_cap`).
+    ///
+    /// **Provisional.** C11.7 sets this from measurement: learned state is
+    /// the per-organism snapshot term this cap bounds, and the Phase 4 record
+    /// already has snapshots dominated by per-organism genome arrays with a
+    /// synchronous checkpoint on the tick thread. 32 is a placeholder chosen
+    /// to sit at a fifth of `GenomeCaps::provisional().max_edges` (160), not
+    /// a measured budget, and it must be restated once C11.7 has numbers -
+    /// exactly as the genome caps were restated once by C9.8.
+    pub max_plastic_edges: u32,
+    /// Q16 fraction of a parent's learned delta a child inherits.
+    ///
+    /// **Zero, and zero is not a tuning default.** Reset at birth is the
+    /// invariant that keeps Phase 13's question meaningful: if learned state
+    /// were inherited, a discovery would become a heritable trait and
+    /// transmission would be indistinguishable from inheritance. A nonzero
+    /// value is an explicit experimental condition that **must be reported in
+    /// every result derived from such a run**, never a default and never
+    /// silently enabled. The `PlasticityInit` RNG stream is reserved for the
+    /// policy that would implement it, so adopting one later cannot renumber
+    /// a stream.
+    pub lamarckian_fraction_q16: u32,
+}
+
+impl PlasticityConfig {
+    /// Documented conservative Phase 11 defaults (disabled by default).
+    pub fn plasticity_default() -> Self {
+        Self {
+            enabled: false,
+            // 2 milli-EU per plastic edge per second against a basal cost of
+            // 100: a fully capped 32-edge organism pays 64, about two thirds
+            // of basal. Provisional in the same sense the cap is - the pair
+            // sets the selective price of plasticity and C11.2 reads the
+            // answer off it, so it is a policy value to be reported, not a
+            // constant to be trusted.
+            plastic_edge_cost_milli_per_s: 2,
+            max_plastic_edges: 32,
+            lamarckian_fraction_q16: 0,
         }
     }
 }
@@ -591,7 +674,24 @@ impl SimConfig {
             physiology: PhysiologyConfig::physiology_default(),
             genome2: Genome2Config::genome2_default(),
             morphology: MorphologyConfig::morphology_default(),
+            plasticity: PlasticityConfig::plasticity_default(),
         }
+    }
+
+    /// Phase 11 defaults: the schema-2 world with plasticity live.
+    ///
+    /// Both flags, because either alone is a condition rather than the
+    /// treatment. `plasticity.enabled` without
+    /// `genome2.mutation.plasticity_enabled` is a world where plasticity runs
+    /// but no organism's plasticity genes can ever change - which is exactly
+    /// condition B, not condition A - and the mutation flag without the
+    /// section is genes that mutate and never act.
+    pub fn phase11_default(world_seed: u64) -> Self {
+        let mut config = Self::phase2_default(world_seed);
+        config.genome2.enabled = true;
+        config.genome2.mutation.plasticity_enabled = true;
+        config.plasticity.enabled = true;
+        config
     }
 
     /// Phase 7 defaults: the Phase 2 world with contest enabled.
@@ -771,6 +871,60 @@ impl SimConfig {
             let caps = &self.morphology.caps;
             if caps.max_modules == 0 || caps.lattice_radius <= 0 || caps.max_growth_steps == 0 {
                 return Err(ConfigError::PhysiologyRange("morphology cap is zero", 0));
+            }
+        }
+        // Phase 11. **Inside `validate_subsystems`, never appended to
+        // `validate_contest`** - that function early-returns on a disabled
+        // contest section, and D-084 records what appending checks there
+        // cost: three phases of cap validation that never ran in any world
+        // without contest, which is most of them.
+        let plasticity = &self.plasticity;
+        if plasticity.enabled {
+            // Plastic edges live on schema-2 edge loci and are gated by
+            // schema-2 modulatory nodes, so there is nothing for the section
+            // to act on without genome2. Refused rather than silently
+            // ignored, for the reason morphology is: a config that asks for
+            // learning and gets none would report plasticity metrics of zero
+            // and read as C11.1's null.
+            if !self.genome2.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "plasticity requires genome2",
+                    0,
+                ));
+            }
+            if plasticity.plastic_edge_cost_milli_per_s < 0 {
+                return Err(ConfigError::Negative("plastic_edge_cost_milli_per_s"));
+            }
+            if plasticity.max_plastic_edges == 0 {
+                return Err(ConfigError::PhysiologyRange("max_plastic_edges is zero", 0));
+            }
+            // A plastic-edge cap above the structural edge cap could never
+            // bind, which would make the field look enforced while being
+            // decorative - and C11.7 is going to set this number from a
+            // measurement of what it actually bounds.
+            if plasticity.max_plastic_edges > self.genome2.caps.max_edges {
+                return Err(ConfigError::PhysiologyRange(
+                    "max_plastic_edges exceeds genome2.caps.max_edges",
+                    i64::from(plasticity.max_plastic_edges),
+                ));
+            }
+            if plasticity.lamarckian_fraction_q16 > Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(
+                    "lamarckian_fraction_q16",
+                    plasticity.lamarckian_fraction_q16,
+                ));
+            }
+            // Nonzero Lamarckian inheritance is a declared experimental
+            // condition with a reporting obligation attached, and **no
+            // policy implements it yet**. Accepting the value silently would
+            // produce runs that look like the condition and are not it,
+            // which is worse than refusing them.
+            if plasticity.lamarckian_fraction_q16 != 0 {
+                return Err(ConfigError::PhysiologyRange(
+                    "lamarckian_fraction_q16 is nonzero but no inheritance policy is implemented; \
+                     see specifications/plasticity-and-learning.md",
+                    i64::from(plasticity.lamarckian_fraction_q16),
+                ));
             }
         }
         let physiology = &self.physiology;
@@ -1287,7 +1441,38 @@ impl SimConfig {
             hasher.update_u32(u32::from(caps.required_types_mask));
             hasher.update_u32(self.morphology.base_node_budget);
         }
+        // Phase 11 section, **appended last and hashed only when enabled**.
+        // Appended rather than slotted next to the genome2 block it depends
+        // on: the order of this function is the definition of every existing
+        // config hash, and inserting a section anywhere but the end would
+        // move worlds that do not have it. Enabling plasticity changes the
+        // hash and starts a new replay lineage, which is correct - a world
+        // whose weights change within a lifetime is not the same experiment.
+        if self.plasticity.enabled {
+            hasher.update(b"lifesim-plasticity-config");
+            hasher.update(crate::plasticity::PLASTICITY_POLICY_VERSION.as_bytes());
+            // The rule registry is part of what a plasticity gene means: the
+            // same `rule_id` under a different registry is a different rule,
+            // exactly as the same locus under a different channel registry
+            // describes a different organism.
+            hasher.update_u32(u32::from(crate::plasticity::RULE_REGISTRY_VERSION));
+            hasher.update_i64(self.plasticity.plastic_edge_cost_milli_per_s);
+            hasher.update_u32(self.plasticity.max_plastic_edges);
+            hasher.update_u32(self.plasticity.lamarckian_fraction_q16);
+        }
         hasher.finish()
+    }
+
+    /// How many plastic edges a network compiled for this world may carry.
+    ///
+    /// `None` when the plasticity section is disabled, which is **not** the
+    /// same as a budget of zero: with `None` no edge is compiled plastic at
+    /// all and nothing is counted as refused, so the compiled plan is
+    /// byte-identical to the one this world produced before Phase 11.
+    pub fn plasticity_budget(&self) -> crate::controller2::PlasticityBudget {
+        self.plasticity
+            .enabled
+            .then_some(self.plasticity.max_plastic_edges)
     }
 
     pub fn world_extent_x_fp(&self) -> i32 {
@@ -1492,6 +1677,110 @@ mod tests {
         let mut changed = base;
         changed.reproduction_enabled = false;
         assert_ne!(base.stable_hash(), changed.stable_hash());
+    }
+
+    #[test]
+    fn the_plasticity_section_is_inert_when_disabled_and_hashed_when_enabled() {
+        // D-014's rule at the config layer, and the two halves are separate
+        // claims. Disabled, the section must not touch the hash at all - the
+        // Phase 9 fixture depends on it. Enabled, every field must reach the
+        // hash, or two behaviorally different worlds would share a lineage.
+        let base = SimConfig::phase2_default(42);
+        let mut with_defaults = base;
+        with_defaults.plasticity = PlasticityConfig::plasticity_default();
+        assert_eq!(
+            base.stable_hash(),
+            with_defaults.stable_hash(),
+            "a disabled plasticity section reached the config hash"
+        );
+        // ...and it stays out even when its fields are moved, which is the
+        // assertion a `plasticity.enabled` check alone would not make.
+        let mut moved = base;
+        moved.plasticity.plastic_edge_cost_milli_per_s = 999;
+        moved.plasticity.max_plastic_edges = 7;
+        assert_eq!(base.stable_hash(), moved.stable_hash());
+
+        let enabled = SimConfig::phase11_default(42);
+        enabled.validate().expect("phase11 defaults are valid");
+        let reference = enabled.stable_hash();
+        assert_ne!(reference, base.stable_hash());
+        let mutators: [fn(&mut SimConfig); 2] = [
+            |config| config.plasticity.plastic_edge_cost_milli_per_s += 1,
+            |config| config.plasticity.max_plastic_edges += 1,
+        ];
+        for (index, mutate) in mutators.into_iter().enumerate() {
+            let mut changed = enabled;
+            mutate(&mut changed);
+            assert_ne!(changed.stable_hash(), reference, "field {index}");
+        }
+    }
+
+    #[test]
+    fn the_plasticity_section_is_validated_where_validation_actually_runs() {
+        // D-084: these checks live in `validate_subsystems`, not in
+        // `validate_contest`, which early-returns on a disabled contest
+        // section. **The contest section is disabled in every config below**,
+        // so a check appended to the wrong function would make every
+        // assertion here pass vacuously.
+        let mut config = SimConfig::phase2_default(1);
+        assert!(!config.contest.enabled);
+        config.plasticity.enabled = true;
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange(
+                "plasticity requires genome2",
+                0
+            ))
+        );
+
+        let mut config = SimConfig::phase11_default(1);
+        config.plasticity.max_plastic_edges = 0;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange("max_plastic_edges is zero", 0))
+        ));
+
+        let mut config = SimConfig::phase11_default(1);
+        config.plasticity.max_plastic_edges = config.genome2.caps.max_edges + 1;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange(
+                "max_plastic_edges exceeds genome2.caps.max_edges",
+                _
+            ))
+        ));
+
+        let mut config = SimConfig::phase11_default(1);
+        config.plasticity.plastic_edge_cost_milli_per_s = -1;
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::Negative("plastic_edge_cost_milli_per_s"))
+        );
+
+        // Nonzero Lamarckian inheritance is refused rather than silently
+        // accepted, because no policy implements it: a run that looked like
+        // the declared experimental condition and was not it is worse than a
+        // refused config.
+        let mut config = SimConfig::phase11_default(1);
+        config.plasticity.lamarckian_fraction_q16 = 1;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange(_, 1))
+        ));
+        let mut config = SimConfig::phase11_default(1);
+        config.plasticity.lamarckian_fraction_q16 = Q16_ONE + 1;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::FractionOutOfRange(
+                "lamarckian_fraction_q16",
+                _
+            ))
+        ));
+
+        // The budget is `None` when the section is off, which is not the same
+        // as a budget of zero: `None` compiles no plastic edge at all.
+        assert_eq!(SimConfig::phase2_default(1).plasticity_budget(), None);
+        assert_eq!(SimConfig::phase11_default(1).plasticity_budget(), Some(32));
     }
 
     #[test]
