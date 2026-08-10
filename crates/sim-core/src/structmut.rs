@@ -301,6 +301,28 @@ pub struct MutationConfig {
     /// redirecting the mutation elsewhere would raise the effective rate on
     /// every *other* locus type and make the control a different experiment.
     pub regulatory_enabled: bool,
+    /// Whether point mutation may alter a plasticity gene, the plastic flag,
+    /// or a node's role.
+    ///
+    /// This is Phase 11's condition B in one flag, and the reasoning above
+    /// transfers verbatim. With it false the plasticity genes are still
+    /// present, still inherited, still dominance-expressed - they simply
+    /// never change, so every organism carries the founder's plasticity for
+    /// the whole run and behavior can only change across generations.
+    ///
+    /// **The draws are consumed either way.** A point mutation that lands on
+    /// an edge or a node with this disabled still draws its target selector
+    /// and still lands on that locus; it moves the weight or the bias, which
+    /// is exactly what it did before Phase 11 existed. Redirecting the
+    /// mutation to another locus instead would raise the effective rate on
+    /// every *other* locus type and make the control a different experiment:
+    /// the same trap `regulatory_enabled` documents, and the reason C10.3's
+    /// control had to be rebuilt (D-086).
+    ///
+    /// Default **false**, matching the phase's disabled-by-default posture:
+    /// every world that exists today, the Phase 9 fixture included, runs
+    /// with plasticity genes frozen and hashes as it always did.
+    pub plasticity_enabled: bool,
     /// Longest contiguous run a duplication, deletion, or transposition may
     /// move.
     pub max_run: u32,
@@ -321,6 +343,10 @@ impl Default for MutationConfig {
             insertion_q16: 0,
             transposition_q16: 328, // 0.005
             regulatory_enabled: true,
+            // Off by default: Phase 11 is a config section that must be
+            // behaviorally inert until it is switched on, or every world
+            // that predates it changes meaning.
+            plasticity_enabled: false,
             max_run: 3,
             point_delta_q16: 3_277, // 0.05
         }
@@ -508,6 +534,33 @@ fn chromosome_pick(genome: &Genome2, value: u64) -> (usize, usize) {
 
 fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32) -> u64) -> bool {
     let (haplotype, chromosome) = chromosome_pick(genome, draw(1));
+    // **A modulator must name a node on the *same haplotype***, gathered
+    // here because the chromosome is about to be borrowed mutably and
+    // because `validate_structure` checks node presence per haplotype, not
+    // per chromosome.
+    //
+    // Getting this wrong is not a mild bug. A modulator pointing at the
+    // other haplotype's node is a `DanglingReference`, which fails
+    // validation, which `try_operator` reverts and files under
+    // `RejectReason::Invalid` - the one counter whose entire job is to mean
+    // "an operator produced something it was written never to produce". It
+    // would have climbed steadily and told us nothing, which is exactly what
+    // `Inapplicable` was split out of `Invalid` to stop (D-074).
+    //
+    // Collected only in the enabled arm: it is the only consumer, it draws
+    // nothing, and the control should not pay an allocation the treatment
+    // needs.
+    let modulator_candidates: Vec<u32> = if config.plasticity_enabled {
+        genome.haplotypes[haplotype]
+            .chromosomes
+            .iter()
+            .flatten()
+            .filter(|locus| matches!(locus.kind, LocusKind::Node { .. }))
+            .map(|locus| locus.homology_id)
+            .collect()
+    } else {
+        Vec::new()
+    };
     let loci = &mut genome.haplotypes[haplotype].chromosomes[chromosome];
     if loci.is_empty() {
         return false;
@@ -529,11 +582,107 @@ fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32
                 *dominance = (*dominance + delta).clamp(0.0, 1.0);
             }
         }
-        LocusKind::Node { bias, .. } => {
-            *bias = (*bias + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
+        LocusKind::Node { role, bias, .. } => {
+            // **Every draw this arm can need is taken here, before the gate
+            // and unconditionally.** That is what makes "the control
+            // consults the identical draw sequence" a property a test can
+            // check rather than a claim about intent: drawing 13 only in the
+            // treatment would leave the two arms consulting different stream
+            // positions, and the test that is supposed to catch a
+            // differently-parameterized control would have to be weakened
+            // until it caught nothing. `named_random` is keyed by draw index
+            // rather than consumed in sequence, so an unused draw costs one
+            // hash and shifts nothing.
+            const ROLES: [NodeRole; 4] = [
+                NodeRole::Input,
+                NodeRole::Hidden,
+                NodeRole::Output,
+                NodeRole::Modulatory,
+            ];
+            let redraw_role = draw(12) & 1 == 0;
+            let fresh_role = ROLES[(draw(13) % ROLES.len() as u64) as usize];
+            if config.plasticity_enabled && redraw_role {
+                // **Without this, `Modulatory` is unreachable by evolution.**
+                // No operator in the engine had ever written a `NodeRole`:
+                // `minimal_founder` writes Input/Hidden/Output, `duplicate`
+                // copies its source, `insert` makes edges. So rule forms 3
+                // and 4 - the modulated ones, the ones that make "what the
+                // organism treats as reinforcing" an evolved question rather
+                // than an authored one - were dead code no lineage could
+                // reach, and Phase 11 would have measured their absence and
+                // called it selection.
+                //
+                // A re-draw rather than a step, for the same reason a growth
+                // rule's condition kind is re-drawn: there is no small delta
+                // on a role.
+                *role = fresh_role;
+            } else {
+                *bias = (*bias + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
+            }
         }
-        LocusKind::Edge { weight, .. } => {
-            *weight = (*weight + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
+        LocusKind::Edge {
+            weight,
+            flags,
+            plasticity,
+            ..
+        } => {
+            // Taken before the gate and unconditionally, for the reason
+            // spelled out on the node arm above.
+            let target = draw(8) % 7;
+            let which_coefficient = (draw(9) % 4) as usize;
+            let fresh_rule = (draw(10) % u64::from(crate::genome2::PLASTICITY_RULE_COUNT)) as u8;
+            let modulator_pick = draw(11) as usize;
+            // Drawn from this haplotype's own node list, with 0 (ungated) as
+            // one more outcome so an edge can lose its modulator as easily
+            // as it gains one. An empty list means the haplotype has no
+            // nodes at all - which `min_nodes` forbids, and which is also
+            // what the disabled arm sees, since it does not collect the
+            // list - and 0 is the only value that cannot dangle.
+            let fresh_modulator = match modulator_candidates.len() {
+                0 => 0,
+                count => {
+                    let pick = modulator_pick % (count + 1);
+                    if pick == count {
+                        0
+                    } else {
+                        modulator_candidates[pick]
+                    }
+                }
+            };
+            if !config.plasticity_enabled {
+                // Plasticity mutation disabled: the target draw is spent,
+                // the mutation is **not** redirected to another locus, and
+                // the weight moves exactly as it did before Phase 11. That
+                // is what makes this the control rather than a different
+                // experiment.
+                *weight = (*weight + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
+            } else {
+                // Every field is clamped into the range `PlasticityGenes::
+                // valid` enforces at decode, not left to be normalized
+                // later: an out-of-range gene here would fail
+                // `validate_structure`, and `try_operator` would revert it
+                // and count it as `Invalid`. Normalization at expression is
+                // for bytes that arrive from storage, not a licence for the
+                // operators to emit values the codec refuses.
+                match target {
+                    0 => *weight = (*weight + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT),
+                    // Toggled rather than set, so plasticity is losable. A
+                    // flag that only ever turns on is a ratchet, and a
+                    // ratchet would make "the number of plastic edges is
+                    // under selection" untrue by construction - C11.2
+                    // predicts plasticity is selected *down* in a stationary
+                    // world, and a ratchet cannot produce that result.
+                    1 => *flags ^= crate::genome2::EDGE_FLAG_PLASTIC,
+                    2 => plasticity.rule_id = fresh_rule,
+                    3 => plasticity.eta = (plasticity.eta + delta).clamp(0.0, 1.0),
+                    4 => {
+                        plasticity.coefficients[which_coefficient] =
+                            (plasticity.coefficients[which_coefficient] + delta).clamp(-1.0, 1.0);
+                    }
+                    5 => plasticity.decay = (plasticity.decay + delta).clamp(0.0, 1.0),
+                    _ => plasticity.modulator_node = fresh_modulator,
+                }
+            }
         }
         LocusKind::IoBinding { gain, .. } => {
             *gain = (*gain + delta * VALUE_LIMIT).clamp(-VALUE_LIMIT, VALUE_LIMIT);
@@ -969,6 +1118,7 @@ mod tests {
             insertion_q16: 0,
             transposition_q16: 0,
             regulatory_enabled: true,
+            plasticity_enabled: false,
             max_run: 3,
             point_delta_q16: rate,
         }
@@ -1006,6 +1156,9 @@ mod tests {
             insertion_q16: 65_535,
             transposition_q16: 65_535,
             regulatory_enabled: true,
+            // On: the safety property has to cover the operators this phase
+            // added, not only the ones that existed when it was written.
+            plasticity_enabled: true,
             max_run: 3,
             point_delta_q16: 6_554,
         };
@@ -1368,6 +1521,7 @@ mod tests {
             insertion_q16: 0,
             transposition_q16: 0,
             regulatory_enabled: true,
+            plasticity_enabled: false,
             max_run: 2,
             point_delta_q16: 3_277,
         };
@@ -1405,5 +1559,520 @@ mod tests {
             lineage.encode().len()
         );
         assert!(counters.duplication_applied > 0 && counters.point_applied > 0);
+    }
+
+    // --- Phase 11: plasticity is reachable by evolution ---------------------
+    //
+    // Everything below exists because the backlog's claim that enabling
+    // plasticity was "a flag rather than a schema change" was false in four
+    // independent places, and the consequence was not a missing feature: it
+    // was a guaranteed null result on Phase 11's own primary endpoint, for a
+    // mechanical reason, that would have been read as a fact about selection.
+
+    fn plastic_config() -> MutationConfig {
+        MutationConfig {
+            point_q16: 65_535,
+            plasticity_enabled: true,
+            ..always(3_277)
+        }
+    }
+
+    /// Every locus, keyed by `(haplotype slot, homology_id)`. With only
+    /// point mutation running, the key set is stable across a mutation, so a
+    /// diff against the founder is exact rather than a best-effort match.
+    fn indexed(genome: &Genome2) -> Vec<((usize, u32), LocusKind)> {
+        let mut out = Vec::new();
+        for (slot, haplotype) in genome.haplotypes.iter().enumerate() {
+            for locus in haplotype.chromosomes.iter().flatten() {
+                out.push(((slot, locus.homology_id), locus.kind));
+            }
+        }
+        out.sort_by_key(|(key, _)| *key);
+        out
+    }
+
+    fn plasticity_of(kind: LocusKind) -> Option<(f32, PlasticityGenes, u8)> {
+        match kind {
+            LocusKind::Edge {
+                weight,
+                flags,
+                plasticity,
+                ..
+            } => Some((weight, plasticity, flags)),
+            _ => None,
+        }
+    }
+
+    #[test]
+    fn point_mutation_reaches_every_plasticity_field_and_the_plastic_flag() {
+        // Finding 3 of the audit: the only Edge arm was
+        // `LocusKind::Edge { weight, .. }`, so `eta` could never leave zero
+        // and neither could any other plasticity gene. An arm that exists
+        // but is unreachable would look identical from the outside, which is
+        // what this test is for: each target must be *observed* at least
+        // once, named individually, and a missing one names itself.
+        let config = plastic_config();
+        let mut counters = MutationCounters::default();
+        let before = indexed(&founder());
+
+        let mut weight_hits = 0_u32;
+        let mut flag_set = 0_u32;
+        let mut rule_hits = 0_u32;
+        let mut eta_hits = 0_u32;
+        let mut coefficient_hits = [0_u32; 4];
+        let mut decay_hits = 0_u32;
+        let mut modulator_hits = 0_u32;
+
+        for child in 0..4_000_u64 {
+            // A fresh founder each time, so at most one field moves and the
+            // classification below is unambiguous.
+            let mut subject = founder();
+            let _ = mutate(
+                &mut subject,
+                &config,
+                &caps(),
+                &mut counters,
+                101,
+                child,
+                child,
+            );
+            for (index, (key, kind)) in indexed(&subject).into_iter().enumerate() {
+                assert_eq!(key, before[index].0, "the locus key set moved");
+                let (Some((w0, p0, f0)), Some((w1, p1, f1))) =
+                    (plasticity_of(before[index].1), plasticity_of(kind))
+                else {
+                    continue;
+                };
+                if w0 != w1 {
+                    weight_hits += 1;
+                }
+                if f0 & crate::genome2::EDGE_FLAG_PLASTIC == 0
+                    && f1 & crate::genome2::EDGE_FLAG_PLASTIC != 0
+                {
+                    flag_set += 1;
+                }
+                if p0.rule_id != p1.rule_id {
+                    rule_hits += 1;
+                }
+                if p0.eta != p1.eta {
+                    eta_hits += 1;
+                }
+                for (slot, hits) in coefficient_hits.iter_mut().enumerate() {
+                    if p0.coefficients[slot] != p1.coefficients[slot] {
+                        *hits += 1;
+                    }
+                }
+                if p0.decay != p1.decay {
+                    decay_hits += 1;
+                }
+                if p0.modulator_node != p1.modulator_node {
+                    modulator_hits += 1;
+                    assert_ne!(
+                        p1.modulator_node, 0,
+                        "a modulator write of 0 is not a hit on the node list"
+                    );
+                }
+            }
+        }
+
+        assert!(
+            weight_hits > 0,
+            "weight stopped being a point-mutation target"
+        );
+        assert!(flag_set > 0, "EDGE_FLAG_PLASTIC is still never set");
+        assert!(rule_hits > 0, "rule_id is unreachable");
+        assert!(
+            eta_hits > 0,
+            "eta is unreachable - this is finding 3 unfixed"
+        );
+        for slot in 0..4 {
+            assert!(
+                coefficient_hits[slot] > 0,
+                "coefficient {slot} is unreachable: {coefficient_hits:?}"
+            );
+        }
+        assert!(decay_hits > 0, "decay is unreachable");
+        assert!(modulator_hits > 0, "modulator_node is unreachable");
+        // A modulator write that dangles is reverted by `try_operator` and
+        // filed under `Invalid`, poisoning the one counter whose job is to
+        // mean "an operator produced something it was written never to
+        // produce". Drawing from the same haplotype's node list is what
+        // stops that, and this is the assertion that it worked.
+        assert_eq!(
+            counters.rejected_invalid, 0,
+            "plasticity mutation produced genomes that fail validation: {counters:?}"
+        );
+    }
+
+    #[test]
+    fn the_plastic_flag_can_be_lost_as_well_as_gained() {
+        // The flag is toggled, not set, and the difference matters: C11.2
+        // predicts plasticity is selected *down* in a stationary world, and
+        // a ratchet cannot produce that result. The test above only ever
+        // sees 0 -> 1 because the founder starts at 0, so this starts from
+        // the other end.
+        let mut seeded = founder();
+        for locus in seeded.haplotypes.iter_mut().flat_map(|haplotype| {
+            haplotype
+                .chromosomes
+                .iter_mut()
+                .flat_map(|chromosome| chromosome.iter_mut())
+        }) {
+            if let LocusKind::Edge { flags, .. } = &mut locus.kind {
+                *flags |= crate::genome2::EDGE_FLAG_PLASTIC;
+            }
+        }
+        let config = plastic_config();
+        let mut counters = MutationCounters::default();
+        let mut cleared = 0;
+        for child in 0..2_000_u64 {
+            let mut subject = seeded.clone();
+            let _ = mutate(
+                &mut subject,
+                &config,
+                &caps(),
+                &mut counters,
+                103,
+                child,
+                child,
+            );
+            if subject.loci().any(|locus| match plasticity_of(locus.kind) {
+                Some((_, _, flags)) => flags & crate::genome2::EDGE_FLAG_PLASTIC == 0,
+                None => false,
+            }) {
+                cleared += 1;
+            }
+        }
+        assert!(
+            cleared > 0,
+            "the plastic flag is a ratchet: it never cleared"
+        );
+    }
+
+    #[test]
+    fn a_mutated_edge_is_actually_expressed_as_plastic() {
+        // Finding 2, end to end. `EDGE_FLAG_PLASTIC` was defined, masked,
+        // read by `express_network`, exported, and used in exactly one test
+        // - and no production path anywhere set it, so `ExpressedEdge.
+        // plastic` was false for every organism that has ever existed. This
+        // walks the whole path: mutation -> genome -> validation -> codec ->
+        // expression.
+        let config = plastic_config();
+        let mut counters = MutationCounters::default();
+        let mut expressed_plastic = 0;
+        let mut with_genes = 0;
+        for child in 0..4_000_u64 {
+            let mut subject = founder();
+            let _ = mutate(
+                &mut subject,
+                &config,
+                &caps(),
+                &mut counters,
+                107,
+                child,
+                child,
+            );
+            // Through the codec, so this is a property of a storable genome
+            // rather than of an in-memory one.
+            let decoded =
+                Genome2::decode(&subject.encode(), &caps()).expect("a mutated genome decodes");
+            for edge in decoded.express_network().edges {
+                if edge.plastic {
+                    expressed_plastic += 1;
+                }
+                if edge.plasticity != crate::genome2::PlasticityGenes::inert() {
+                    with_genes += 1;
+                }
+            }
+        }
+        assert!(
+            expressed_plastic > 0,
+            "no mutation ever produced an edge that expresses as plastic"
+        );
+        assert!(
+            with_genes > 0,
+            "no mutation ever produced an edge expressing non-inert plasticity genes"
+        );
+    }
+
+    #[test]
+    fn node_role_mutation_reaches_modulatory_and_it_is_expressed() {
+        // Finding 4. `NodeRole::Modulatory` has existed since Phase 9 and
+        // no operator could produce it, so rule forms 3 and 4 - the ones
+        // where what counts as reinforcing is an evolved output rather than
+        // an authored signal - were unreachable by any lineage.
+        let config = plastic_config();
+        let mut counters = MutationCounters::default();
+        let mut modulatory = 0;
+        let mut seen_roles = [false; 4];
+        for child in 0..4_000_u64 {
+            let mut subject = founder();
+            let _ = mutate(
+                &mut subject,
+                &config,
+                &caps(),
+                &mut counters,
+                109,
+                child,
+                child,
+            );
+            let decoded =
+                Genome2::decode(&subject.encode(), &caps()).expect("a mutated genome decodes");
+            for node in decoded.express_network().nodes {
+                seen_roles[usize::from(node.role.id()) - 1] = true;
+                if node.role == NodeRole::Modulatory {
+                    modulatory += 1;
+                }
+            }
+        }
+        assert!(
+            modulatory > 0,
+            "Modulatory is still unreachable, so rules 3 and 4 are still dead"
+        );
+        // The founder carries Input, Hidden and Output already, so the
+        // assertion above is the only one that says anything new - recorded
+        // here so a future reader does not mistake the coverage below for
+        // evidence that all four roles are *mutable*.
+        assert_eq!(seen_roles, [true; 4]);
+    }
+
+    #[test]
+    fn the_plasticity_control_consults_the_identical_draw_sequence() {
+        // The test D-086 says C10.3's control needed and did not have,
+        // written for this gate before the campaign rather than after it.
+        //
+        // A control that quietly consults a different draw sequence is a
+        // differently-parameterized experiment wearing a control's name, and
+        // nothing downstream would say so. Every draw either arm can need is
+        // taken before the gate, so this is an exact equality rather than a
+        // tolerance.
+        use std::cell::RefCell;
+        let mut differed = 0;
+        let mut sequences = 0;
+        for child in 0..500_u64 {
+            let run = |enabled: bool| {
+                let seen = RefCell::new(Vec::new());
+                let draw = |index: u32| {
+                    seen.borrow_mut().push(index);
+                    named_random(59, 11, RngSystem::Recombination, child, 0x1000 + index)
+                };
+                let mut genome = founder();
+                let config = MutationConfig {
+                    plasticity_enabled: enabled,
+                    ..always(3_277)
+                };
+                let changed = point_mutate(&mut genome, &config, &draw);
+                (seen.into_inner(), genome, changed)
+            };
+            let (indices_off, genome_off, changed_off) = run(false);
+            let (indices_on, genome_on, changed_on) = run(true);
+            assert_eq!(
+                indices_off, indices_on,
+                "child {child}: the control consults a different draw sequence"
+            );
+            assert_eq!(
+                changed_off, changed_on,
+                "child {child}: the arms disagree on whether anything changed"
+            );
+            if !indices_off.is_empty() {
+                sequences += 1;
+            }
+            if genome_off != genome_on {
+                differed += 1;
+            }
+        }
+        // **Non-vacuity, both directions.** Without the first assertion the
+        // equality above could be comparing two empty vectors; without the
+        // second it could be comparing two arms that behave identically, in
+        // which case it would still pass with the whole plasticity arm
+        // deleted.
+        assert!(sequences > 0, "no draws were ever recorded");
+        assert!(
+            differed > 0,
+            "the two arms never produced a different genome, so the equality above is between two no-ops"
+        );
+    }
+
+    #[test]
+    fn the_plasticity_control_leaves_every_plasticity_gene_frozen_over_a_long_run() {
+        // The other half of the control, and the half that duplication and
+        // deletion could have broken silently: they move *runs of loci*
+        // without knowing what kind they are, which is exactly how C10.3's
+        // fixed-morphology control diverged in 21 of 30 worlds (D-086).
+        //
+        // The finding here is that they cannot break this one, and the
+        // reason is worth writing down rather than assuming: duplication
+        // copies an edge's plasticity genes verbatim, deletion removes an
+        // edge whole, transposition moves it unchanged, and insertion
+        // authors a fresh edge with `inert()`. None of them *writes* a
+        // plasticity value. Point mutation is the only writer, and it is
+        // gated. So the snapshot-and-restore that `regulatory_enabled` needs
+        // is not needed here - but "not needed" is a claim, so it is
+        // checked with every operator running hot.
+        //
+        // **The founder is deliberately loud, not inert.** A control that
+        // starts at zero and ends at zero is the 0 == 0 assertion this
+        // project keeps finding: it would pass with the gate deleted.
+        let mut seeded = founder();
+        let hidden = STRUCTURAL_HOMOLOGY_BASE + 2_000;
+        let mut variant = 0.0_f32;
+        for slot in 0..2 {
+            for locus in seeded.haplotypes[slot].chromosomes.iter_mut().flatten() {
+                if let LocusKind::Edge { plasticity, .. } = &mut locus.kind {
+                    variant += 0.05;
+                    *plasticity = PlasticityGenes {
+                        rule_id: 3,
+                        eta: 0.25 + variant,
+                        coefficients: [0.5, -0.5 + variant, 0.125, -0.25],
+                        decay: 0.0625 + variant,
+                        modulator_node: hidden,
+                    };
+                }
+            }
+        }
+        seeded
+            .validate_structure(&caps())
+            .expect("the seed is valid");
+        let founder_genes: Vec<PlasticityGenes> = seeded
+            .loci()
+            .filter_map(|locus| plasticity_of(locus.kind).map(|(_, genes, _)| genes))
+            .collect();
+        assert!(
+            founder_genes
+                .iter()
+                .all(|genes| *genes != PlasticityGenes::inert()),
+            "the seed must be non-inert or this test asserts nothing"
+        );
+
+        let run = |enabled: bool| {
+            let config = MutationConfig {
+                point_q16: 65_535,
+                duplication_q16: 13_107,
+                deletion_q16: 6_554,
+                insertion_q16: 6_554,
+                transposition_q16: 0,
+                regulatory_enabled: true,
+                plasticity_enabled: enabled,
+                max_run: 2,
+                point_delta_q16: 3_277,
+            };
+            let mut counters = MutationCounters::default();
+            let mut lineage = seeded.clone();
+            let mut escaped = 0_u32;
+            let mut flags_moved = 0_u32;
+            for generation in 0..600_u64 {
+                lineage = crate::meiosis::recombine(
+                    (&lineage, 1),
+                    (&lineage, 2),
+                    &crate::meiosis::MeiosisConfig::default(),
+                    113,
+                    generation,
+                    generation,
+                );
+                if lineage.validate_structure(&caps()).is_err() {
+                    // Crossover can separate an edge from its modulator, and
+                    // the world refuses such a recombinant at pairing. Reset
+                    // to the seed rather than mutating an invalid genome,
+                    // which is what the birth path does in effect.
+                    lineage = seeded.clone();
+                    continue;
+                }
+                let _ = mutate(
+                    &mut lineage,
+                    &config,
+                    &caps(),
+                    &mut counters,
+                    113,
+                    generation,
+                    generation,
+                );
+                for locus in lineage.loci() {
+                    let Some((_, genes, flags)) = plasticity_of(locus.kind) else {
+                        continue;
+                    };
+                    // `inert()` is admitted because `insert` authors fresh
+                    // edges with it under *both* arms; that is edge
+                    // creation, not plasticity mutation.
+                    if genes != PlasticityGenes::inert() && !founder_genes.contains(&genes) {
+                        escaped += 1;
+                    }
+                    if flags & crate::genome2::EDGE_FLAG_PLASTIC != 0 {
+                        flags_moved += 1;
+                    }
+                }
+            }
+            (counters, escaped, flags_moved)
+        };
+
+        let (control_counters, control_escaped, control_flags) = run(false);
+        assert_eq!(
+            control_escaped, 0,
+            "the control invented a plasticity gene value the founder never had"
+        );
+        assert_eq!(
+            control_flags, 0,
+            "the control set EDGE_FLAG_PLASTIC on an edge"
+        );
+        // Non-vacuity: the control has to have been a real run, or "nothing
+        // changed" is a statement about a run that never happened.
+        assert!(
+            control_counters.point_applied > 0
+                && control_counters.duplication_applied > 0
+                && control_counters.deletion_applied > 0,
+            "the control never applied the operators that could have broken it: {control_counters:?}"
+        );
+
+        // **And the same run with the gate open must break it.** Without
+        // this, the assertions above pass on an engine where plasticity
+        // mutation does not exist at all - which is precisely the state this
+        // unit was written to leave behind.
+        let (_, treatment_escaped, treatment_flags) = run(true);
+        assert!(
+            treatment_escaped > 0 && treatment_flags > 0,
+            "the treatment changed nothing either, so the control proves nothing"
+        );
+    }
+
+    #[test]
+    fn the_plasticity_gate_moves_the_config_hash_only_when_it_is_on() {
+        // `MutationConfig` is hashed field by field in a hand-maintained
+        // list, which leaves two ways to be wrong and only one way to be
+        // right.
+        //
+        // Not hashing the field lets two behaviorally different worlds share
+        // a config hash. Hashing it unconditionally folds a Phase 11 field
+        // into every schema-2 world that already exists and moves the Phase
+        // 9 fixture, `0x9abc0cd47914127f`, which was pinned before the field
+        // existed. Hashing it only when true is D-014 at field granularity
+        // and is the only option that is neither.
+        let base = crate::config::SimConfig::phase1_default(0x5eed_cafe_f00d_beef);
+        let mut enabled_section = base;
+        enabled_section.phase2.enabled = true;
+        enabled_section.genome2.enabled = true;
+
+        let off = enabled_section.stable_hash();
+        let mut flipped = enabled_section;
+        flipped.genome2.mutation.plasticity_enabled = true;
+        let on = flipped.stable_hash();
+        assert_ne!(
+            off, on,
+            "flipping plasticity_enabled leaves the config hash alone, so the field is dead weight"
+        );
+
+        // Flipping back must restore the hash exactly, which is what says
+        // the difference is the flag and not an ordering accident.
+        flipped.genome2.mutation.plasticity_enabled = false;
+        assert_eq!(flipped.stable_hash(), off);
+
+        // The field lives inside the gated genome2 section, so a schema-1
+        // world cannot see it at all - the Phase 1 and Phase 2 fixtures are
+        // untouched by construction, not by inspection.
+        let mut schema1 = base;
+        schema1.genome2.mutation.plasticity_enabled = true;
+        assert_eq!(
+            schema1.stable_hash(),
+            base.stable_hash(),
+            "a schema-1 config's hash moved for a schema-2 field"
+        );
     }
 }

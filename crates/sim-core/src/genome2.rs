@@ -156,12 +156,41 @@ impl GenomeCaps {
     }
 }
 
+/// How many plasticity rule *forms* exist: `rule_id` 0 (static) through 4
+/// (eligibility trace). Rule 5 (observational) needs the Phase 13 social
+/// channel and is deliberately **not** counted, because a rule form that
+/// cannot be evaluated must not be reachable by mutation.
+///
+/// Declared here rather than imported from `plasticity.rs` because the
+/// genome layer must be able to reduce a stored `rule_id` whether or not the
+/// evaluator is compiled in - but two registries that must agree forever and
+/// are written down in two places is precisely the shape of the bug where a
+/// mutation names a rule the evaluator does not have. So the agreement is a
+/// compile error rather than a convention: see the `const _` below.
+pub const PLASTICITY_RULE_COUNT: u8 = 5;
+
+const _: () = assert!(
+    PLASTICITY_RULE_COUNT == crate::plasticity::RULE_COUNT,
+    "the genome's rule-id reduction and the evaluator's rule registry disagree, \
+     so some genome would express a rule form that cannot be evaluated"
+);
+
 /// Plasticity genes, carried by every edge whether or not it is plastic.
 ///
 /// Inherited, validated, dominance-expressed, and **behaviorally inert
 /// until Phase 11** - exactly the pattern thermal preference and defense
 /// tendency followed from Phase 2 to Phase 8. Occupying the space now means
 /// enabling plasticity is a flag flip rather than a schema change.
+///
+/// **That claim was false until Phase 11 checked it.** The genes were
+/// carried, inherited and validated, but `express_network` destructured the
+/// edge locus with a `..` that dropped them, `ExpressedEdge` had no field to
+/// put them in, no operator could move `eta` off zero, and no production
+/// path anywhere set `EDGE_FLAG_PLASTIC`. Every one of those is a mechanical
+/// gap rather than a design choice, and together they guaranteed the null
+/// result Phase 11's own risk table names as its most likely failure - which
+/// would have been read as a fact about selection rather than about the
+/// gather.
 #[derive(Clone, Copy, Debug, PartialEq)]
 pub struct PlasticityGenes {
     pub rule_id: u8,
@@ -185,6 +214,53 @@ impl PlasticityGenes {
         }
     }
 
+    /// Every field reduced into range rather than rejected.
+    ///
+    /// **Called at expression time, not at decode**, and the reasoning is
+    /// `develop::Regulatory::normalized`'s, which is already written down:
+    /// these fields are *mutation targets*, and a `rule_id` that had to name
+    /// a registry entry in order to decode would make most rule-id mutations
+    /// lethal for a reason that has nothing to do with learning. Reduction
+    /// keeps the genotype space total - every bit pattern names some rule.
+    ///
+    /// There is a second reason not to move it to decode, and it is the
+    /// stronger one: a schema-2 genome storing `rule_id = 7` decodes as 7
+    /// today, and normalizing at decode would make the same bytes mean 2.
+    /// Every genome ever written is bytes we are not free to reinterpret.
+    /// So the stored value is whatever was stored, and reduction happens on
+    /// the way to the phenotype - where `develop::Regulatory` differs only
+    /// because its normalization predates any stored genome.
+    pub fn normalized(self) -> Self {
+        // Destructured with no `..` (D-077): a field added to this struct
+        // fails to compile here until it is given a range or an explicit
+        // reason to have none, which is what stops the next field from
+        // reaching the phenotype unbounded.
+        let Self {
+            rule_id,
+            eta,
+            coefficients,
+            decay,
+            modulator_node,
+        } = self;
+        Self {
+            rule_id: rule_id % PLASTICITY_RULE_COUNT,
+            eta: clamp_finite(eta, 0.0, 1.0),
+            coefficients: [
+                clamp_finite(coefficients[0], -1.0, 1.0),
+                clamp_finite(coefficients[1], -1.0, 1.0),
+                clamp_finite(coefficients[2], -1.0, 1.0),
+                clamp_finite(coefficients[3], -1.0, 1.0),
+            ],
+            decay: clamp_finite(decay, 0.0, 1.0),
+            // Nothing to reduce: a modulator naming a node that is not on
+            // this haplotype is a `DanglingReference` at validation, which
+            // is a refusal rather than a value to be repaired. Silently
+            // rewriting it to 0 here would turn "this genome is malformed"
+            // into "this edge is ungated" and hide the malformation.
+            modulator_node,
+        }
+    }
+
     fn valid(&self) -> bool {
         self.eta.is_finite()
             && (0.0..=1.0).contains(&self.eta)
@@ -194,6 +270,20 @@ impl PlasticityGenes {
                 .coefficients
                 .iter()
                 .all(|value| value.is_finite() && (-1.0..=1.0).contains(value))
+    }
+}
+
+/// `f32::clamp` **propagates NaN** rather than removing it, so a clamp alone
+/// is not a bound. Decode already refuses a non-finite plasticity gene, so
+/// this is a backstop and not a live path - but expression is the last point
+/// before the value reaches the learning arithmetic and from there the
+/// checksum, and a backstop that never fires is cheaper than a checksum that
+/// has to be re-baselined.
+fn clamp_finite(value: f32, low: f32, high: f32) -> f32 {
+    if value.is_finite() {
+        value.clamp(low, high)
+    } else {
+        0.0
     }
 }
 
@@ -293,6 +383,16 @@ impl Locus {
                 hasher.update_u32(target);
                 // Only the delay bit is phenotype-relevant structure;
                 // `plastic` and `disabled` are expression state.
+                //
+                // **Phase 11 deliberately did not change this**, and the
+                // temptation was real: once an edge can evolve to be
+                // plastic, "is it plastic" starts to look structural. It is
+                // not admissible here for a reason that has nothing to do
+                // with taste - every signature ever computed would move,
+                // including the ones inside the Phase 9 fixture's lineage,
+                // and two loci that are the same edge would stop aligning
+                // because one of them learned. `PlasticityGenes` is dropped
+                // by the `..` above for the same reason a weight is.
                 hasher.update_u32(u32::from(flags & EDGE_FLAG_DELAYED));
             }
             LocusKind::IoBinding {
@@ -1084,6 +1184,11 @@ pub struct ExpressedEdge {
     pub disabled: bool,
     pub plastic: bool,
     pub delayed: bool,
+    /// Combined by the policy recorded on [`Genome2::express_network`], and
+    /// [`PlasticityGenes::normalized`] on the way out, so nothing downstream
+    /// ever sees a rule code the registry does not have. Present whether or
+    /// not `plastic` is set: `plastic` says the edge learns, these say how.
+    pub plasticity: PlasticityGenes,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -1099,8 +1204,8 @@ pub struct ExpressedBinding {
 type HaplotypePair<T> = [Option<T>; 2];
 /// `(role, activation_id, bias, time_constant, dominance)`
 type NodeAllele = (NodeRole, u8, f32, u16, f32);
-/// `(source, target, weight, flags, dominance)`
-type EdgeAllele = (u32, u32, f32, u8, f32);
+/// `(source, target, weight, flags, plasticity, dominance)`
+type EdgeAllele = (u32, u32, f32, u8, PlasticityGenes, f32);
 /// `(node, channel_id, gain, dominance)`
 type BindingAllele = (u32, u16, f32, f32);
 
@@ -1119,6 +1224,47 @@ pub fn blend_by_dominance(v0: f32, d0: f32, v1: f32, d1: f32) -> f32 {
         (d0 * v0 + d1 * v1) / total
     } else {
         0.5 * (v0 + v1)
+    }
+}
+
+/// Combine two edges' plasticity genes. The policy is recorded on
+/// [`Genome2::express_network`] next to the flag policy it extends.
+fn blend_plasticity(
+    left: PlasticityGenes,
+    d0: f32,
+    right: PlasticityGenes,
+    d1: f32,
+) -> PlasticityGenes {
+    // Both sides destructured with no `..` (D-077), so a field added to
+    // `PlasticityGenes` fails to compile here until it is assigned to the
+    // continuous half or the discrete half. A new field silently inheriting
+    // haplotype 0's value because it fell through a `..` is exactly the
+    // defect this whole unit exists to repair.
+    let PlasticityGenes {
+        rule_id,
+        eta: eta0,
+        coefficients: coefficients0,
+        decay: decay0,
+        modulator_node,
+    } = left;
+    let PlasticityGenes {
+        rule_id: _,
+        eta: eta1,
+        coefficients: coefficients1,
+        decay: decay1,
+        modulator_node: _,
+    } = right;
+    let mut coefficients = [0.0_f32; 4];
+    for index in 0..4 {
+        coefficients[index] =
+            blend_by_dominance(coefficients0[index], d0, coefficients1[index], d1);
+    }
+    PlasticityGenes {
+        rule_id,
+        eta: blend_by_dominance(eta0, d0, eta1, d1),
+        coefficients,
+        decay: blend_by_dominance(decay0, d0, decay1, d1),
+        modulator_node,
     }
 }
 
@@ -1166,6 +1312,27 @@ impl Genome2 {
     /// what makes a fresh duplication immediately hemizygous and
     /// heterozygous - the biological situation after a duplication, and the
     /// source of the divergence that follows.
+    ///
+    /// **Plasticity gene combination is policy on the same terms** (Phase
+    /// 11), and it splits by whether the field has a meaningful midpoint:
+    ///
+    /// - the continuous fields - `eta`, the four coefficients, `decay` - go
+    ///   through `blend_by_dominance`, which at the shipped structural
+    ///   dominance of 1.0 is the plain mean, i.e. codominance. That is what
+    ///   every other continuous field in this function already does, and a
+    ///   learning rate half way between the parents' is a learning rate;
+    /// - the discrete fields - `rule_id` and `modulator_node` - take the
+    ///   **haplotype-0** value, exactly as `role`, `activation_id`, `source`
+    ///   and `target` already do. Averaging two rule codes would name a
+    ///   third rule neither parent carried, and averaging two node homology
+    ///   IDs would name a node that may not exist. Haplotype 0 is the
+    ///   lower-ID parent's slot (determinism Rule 3), so the choice is a
+    ///   fixed function of the genome rather than of traversal order.
+    ///
+    /// The combined genes are then [`PlasticityGenes::normalized`], so a
+    /// stored `rule_id` outside the registry reaches the phenotype reduced
+    /// rather than reaching it at all. Normalizing here rather than at
+    /// decode is argued at that method.
     pub fn express_network(&self) -> ExpressedNetwork {
         let mut nodes: Vec<ExpressedNode> = Vec::new();
         let mut edges: Vec<ExpressedEdge> = Vec::new();
@@ -1205,18 +1372,23 @@ impl Genome2 {
                             (role, activation_id, bias, time_constant, dominance),
                         );
                     }
+                    // Destructured with no `..`. The `..` that used to be
+                    // here is finding 2 of Phase 11's audit: it dropped
+                    // `plasticity` on the floor, so the genes were
+                    // inherited, validated and never expressed, and no
+                    // amount of selection on them could have done anything.
                     LocusKind::Edge {
                         source,
                         target,
                         weight,
                         flags,
-                        ..
+                        plasticity,
                     } => {
                         upsert(
                             &mut edge_pairs,
                             locus.homology_id,
                             slot,
-                            (source, target, weight, flags, dominance),
+                            (source, target, weight, flags, plasticity, dominance),
                         );
                     }
                     LocusKind::IoBinding {
@@ -1255,8 +1427,8 @@ impl Genome2 {
             });
         }
         for (homology_id, sides) in edge_pairs {
-            let (source, target, weight, flags) = match (sides[0], sides[1]) {
-                (Some((s0, t0, w0, f0, d0)), Some((_, _, w1, f1, d1))) => {
+            let (source, target, weight, flags, plasticity) = match (sides[0], sides[1]) {
+                (Some((s0, t0, w0, f0, p0, d0)), Some((_, _, w1, f1, p1, d1))) => {
                     // `disabled` needs both; `plastic` and `delayed` need
                     // either. Recorded policy, not an accident of `&`/`|`.
                     let disabled = f0 & f1 & EDGE_FLAG_DISABLED;
@@ -1266,9 +1438,12 @@ impl Genome2 {
                         t0,
                         blend_by_dominance(w0, d0, w1, d1),
                         disabled | permissive,
+                        blend_plasticity(p0, d0, p1, d1),
                     )
                 }
-                (Some((s, t, w, f, _)), None) | (None, Some((s, t, w, f, _))) => (s, t, w, f),
+                (Some((s, t, w, f, p, _)), None) | (None, Some((s, t, w, f, p, _))) => {
+                    (s, t, w, f, p)
+                }
                 (None, None) => continue,
             };
             edges.push(ExpressedEdge {
@@ -1279,6 +1454,7 @@ impl Genome2 {
                 disabled: flags & EDGE_FLAG_DISABLED != 0,
                 plastic: flags & EDGE_FLAG_PLASTIC != 0,
                 delayed: flags & EDGE_FLAG_DELAYED != 0,
+                plasticity: plasticity.normalized(),
             });
         }
         for (homology_id, sides) in binding_pairs {
@@ -1316,5 +1492,302 @@ fn upsert<T: Copy>(store: &mut Vec<(u32, HaplotypePair<T>)>, key: u32, slot: usi
             sides[slot] = Some(value);
             store.insert(index, (key, sides));
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn caps() -> GenomeCaps {
+        GenomeCaps::provisional()
+    }
+
+    fn founder() -> Genome2 {
+        crate::structmut::minimal_founder(&[0.5; crate::genome::TRAIT_COUNT])
+    }
+
+    /// Deliberately unlike `inert()` in **every** field, including a
+    /// `rule_id` outside the registry and a `modulator_node` that names a
+    /// real node, so that "the genes survived" cannot be satisfied by a
+    /// function that returns zeros. `seed` shifts every value, so two calls
+    /// never collide.
+    fn loud(seed: f32, rule_id: u8, modulator_node: u32) -> PlasticityGenes {
+        PlasticityGenes {
+            rule_id,
+            eta: 0.25 + seed,
+            coefficients: [0.5 + seed, -0.5 + seed, 0.125 + seed, -0.25 + seed],
+            decay: 0.0625 + seed,
+            modulator_node,
+        }
+    }
+
+    /// The `homology_id`s `minimal_founder` gives its two edges and its
+    /// hidden node. Hard-coded rather than searched, so a change to the
+    /// founder shows up as a failing test rather than as a test that
+    /// quietly stops looking at an edge.
+    const FOUNDER_EDGE_A: u32 = STRUCTURAL_HOMOLOGY_BASE + 4_000;
+    const FOUNDER_HIDDEN: u32 = STRUCTURAL_HOMOLOGY_BASE + 2_000;
+
+    fn set_plasticity(genome: &mut Genome2, slot: usize, edge_id: u32, genes: PlasticityGenes) {
+        for locus in genome.haplotypes[slot].chromosomes.iter_mut().flatten() {
+            if locus.homology_id == edge_id
+                && let LocusKind::Edge { plasticity, .. } = &mut locus.kind
+            {
+                *plasticity = genes;
+                return;
+            }
+        }
+        panic!("no edge locus {edge_id} on haplotype {slot}");
+    }
+
+    fn expressed_edge(genome: &Genome2, edge_id: u32) -> ExpressedEdge {
+        *genome
+            .express_network()
+            .edges
+            .iter()
+            .find(|edge| edge.homology_id == edge_id)
+            .expect("the edge is expressed")
+    }
+
+    #[test]
+    fn plasticity_genes_reach_the_expressed_edge_instead_of_being_dropped() {
+        // Finding 1 of the Phase 11 audit, end to end. The gather used to
+        // destructure the edge locus with a `..` that discarded
+        // `plasticity`, and `ExpressedEdge` had nowhere to put it, so the
+        // genes were inherited and validated for two phases while being
+        // structurally incapable of affecting anything.
+        let genes = loud(0.0, 3, FOUNDER_HIDDEN);
+        assert_ne!(
+            genes,
+            PlasticityGenes::inert(),
+            "the probe must differ from inert, or this test passes on a stub"
+        );
+        let mut subject = founder();
+        set_plasticity(&mut subject, 0, FOUNDER_EDGE_A, genes);
+        set_plasticity(&mut subject, 1, FOUNDER_EDGE_A, genes);
+        subject.validate_structure(&caps()).expect("valid");
+        assert_eq!(expressed_edge(&subject, FOUNDER_EDGE_A).plasticity, genes);
+        // The untouched edge still expresses inert genes, so the assertion
+        // above is about this edge rather than about a global default.
+        assert_eq!(
+            expressed_edge(&subject, STRUCTURAL_HOMOLOGY_BASE + 5_000).plasticity,
+            PlasticityGenes::inert()
+        );
+    }
+
+    #[test]
+    fn a_heterozygote_blends_the_continuous_genes_and_takes_haplotype_zeros_discrete_ones() {
+        // The recorded combination policy. Every continuous field is given
+        // two *different* values so the mean is neither of them, and the two
+        // discrete fields are given different values so "takes haplotype 0"
+        // discriminates rather than being satisfied by chance.
+        let left = loud(0.0, 1, FOUNDER_HIDDEN);
+        let right = loud(0.5, 4, 0);
+        let mut subject = founder();
+        set_plasticity(&mut subject, 0, FOUNDER_EDGE_A, left);
+        set_plasticity(&mut subject, 1, FOUNDER_EDGE_A, right);
+        subject.validate_structure(&caps()).expect("valid");
+        let expressed = expressed_edge(&subject, FOUNDER_EDGE_A).plasticity;
+
+        // Structural dominance is 1.0 on both sides, so the blend is the
+        // plain mean - codominance, exactly as weight and bias already do.
+        assert_eq!(expressed.eta, 0.5 * (left.eta + right.eta));
+        assert_eq!(expressed.decay, 0.5 * (left.decay + right.decay));
+        for index in 0..4 {
+            let mean = 0.5 * (left.coefficients[index] + right.coefficients[index]);
+            assert_eq!(expressed.coefficients[index], mean);
+            assert_ne!(
+                mean, left.coefficients[index],
+                "coefficient {index} would pass by taking haplotype 0"
+            );
+            assert_ne!(
+                mean, right.coefficients[index],
+                "coefficient {index} would pass by taking haplotype 1"
+            );
+        }
+        // Discrete: haplotype 0 wins outright. Averaging `rule_id` would
+        // name a third rule neither parent carried; averaging two node IDs
+        // would name a node that need not exist.
+        assert_eq!(expressed.rule_id, left.rule_id);
+        assert_ne!(expressed.rule_id, right.rule_id);
+        assert_eq!(expressed.modulator_node, left.modulator_node);
+        assert_ne!(expressed.modulator_node, right.modulator_node);
+    }
+
+    #[test]
+    fn a_hemizygous_edge_expresses_its_single_allele_unblended() {
+        // The fresh-duplication case. An edge present on one haplotype only
+        // must not be blended toward an allele that does not exist, or a new
+        // duplicate would silently express half of whatever it carried.
+        let genes = loud(0.0, 2, FOUNDER_HIDDEN);
+        let mut subject = founder();
+        set_plasticity(&mut subject, 0, FOUNDER_EDGE_A, genes);
+        subject.haplotypes[1].chromosomes[0].retain(|locus| locus.homology_id != FOUNDER_EDGE_A);
+        subject.validate_structure(&caps()).expect("valid");
+        assert_eq!(expressed_edge(&subject, FOUNDER_EDGE_A).plasticity, genes);
+    }
+
+    #[test]
+    fn a_rule_id_outside_the_registry_is_reduced_at_expression_and_not_at_decode() {
+        // Both halves of the normalization policy, because each one alone is
+        // satisfiable by the wrong implementation.
+        //
+        // Half one: the *stored* byte survives a codec round trip unchanged.
+        // Normalizing at decode would make a genome that stores 7 start
+        // meaning 2, which reinterprets every schema-2 genome ever written.
+        //
+        // Half two: the *expressed* value is inside the registry, so nothing
+        // downstream can be handed a rule form the evaluator does not have.
+        let stored = 7_u8;
+        assert!(
+            stored >= PLASTICITY_RULE_COUNT,
+            "the probe must be outside the registry or this test asserts nothing"
+        );
+        let mut subject = founder();
+        let genes = PlasticityGenes {
+            rule_id: stored,
+            ..PlasticityGenes::inert()
+        };
+        set_plasticity(&mut subject, 0, FOUNDER_EDGE_A, genes);
+        set_plasticity(&mut subject, 1, FOUNDER_EDGE_A, genes);
+
+        let decoded = Genome2::decode(&subject.encode(), &caps()).expect("decodes");
+        let stored_again = decoded
+            .loci()
+            .filter_map(|locus| match locus.kind {
+                LocusKind::Edge { plasticity, .. } if locus.homology_id == FOUNDER_EDGE_A => {
+                    Some(plasticity.rule_id)
+                }
+                _ => None,
+            })
+            .collect::<Vec<u8>>();
+        assert_eq!(
+            stored_again,
+            vec![stored, stored],
+            "decode reinterpreted it"
+        );
+        assert_eq!(
+            expressed_edge(&decoded, FOUNDER_EDGE_A).plasticity.rule_id,
+            stored % PLASTICITY_RULE_COUNT
+        );
+    }
+
+    #[test]
+    fn normalization_removes_a_non_finite_gene_rather_than_propagating_it() {
+        // `f32::clamp` propagates NaN, so a clamp on its own is not a bound.
+        // Decode refuses a non-finite gene, so this is a backstop and cannot
+        // be reached through the codec - which is why it is asserted on the
+        // function directly rather than through a genome.
+        let poisoned = PlasticityGenes {
+            rule_id: 0,
+            eta: f32::NAN,
+            coefficients: [f32::INFINITY, f32::NEG_INFINITY, f32::NAN, 5.0],
+            decay: f32::NEG_INFINITY,
+            modulator_node: 0,
+        }
+        .normalized();
+        assert_eq!(poisoned.eta, 0.0);
+        assert_eq!(poisoned.decay, 0.0);
+        assert_eq!(poisoned.coefficients, [0.0, 0.0, 0.0, 1.0]);
+    }
+
+    #[test]
+    fn a_genome_carrying_non_inert_plasticity_genes_round_trips_byte_for_byte() {
+        // The wire codec needed no change for Phase 11 -
+        // `PlasticityGenes::ENCODED_LEN` was already in the edge payload -
+        // but "already round-trips" was an untested claim about a field that
+        // had only ever been written as zeros. Zeros round-trip through a
+        // codec that drops the field entirely.
+        let mut subject = founder();
+        set_plasticity(
+            &mut subject,
+            0,
+            FOUNDER_EDGE_A,
+            loud(0.0, 9, FOUNDER_HIDDEN),
+        );
+        set_plasticity(&mut subject, 1, FOUNDER_EDGE_A, loud(0.125, 4, 0));
+        // Every field at its bound, so a codec that silently truncated a
+        // coefficient would show up.
+        set_plasticity(
+            &mut subject,
+            0,
+            STRUCTURAL_HOMOLOGY_BASE + 5_000,
+            PlasticityGenes {
+                rule_id: u8::MAX,
+                eta: 1.0,
+                coefficients: [1.0, -1.0, 1.0, -1.0],
+                decay: 1.0,
+                modulator_node: FOUNDER_HIDDEN,
+            },
+        );
+        subject.validate_structure(&caps()).expect("valid");
+
+        let bytes = subject.encode();
+        let decoded = Genome2::decode(&bytes, &caps()).expect("decodes");
+        assert_eq!(decoded, subject);
+        assert_eq!(decoded.encode(), bytes);
+        // Non-vacuity: the genome under test is not the inert one.
+        assert_ne!(subject, founder());
+    }
+
+    #[test]
+    fn plasticity_is_deliberately_absent_from_the_structural_signature() {
+        // Guards an instruction that is easy to undo by accident. Once an
+        // edge can evolve to be plastic, "is it plastic" starts to look
+        // structural - and admitting it would move every signature ever
+        // computed and stop two loci that are the same edge from aligning
+        // during meiosis because one of them learned.
+        let plain = Locus {
+            homology_id: FOUNDER_EDGE_A,
+            gene_lineage_id: 1,
+            mutation_event_id: 2,
+            kind: LocusKind::Edge {
+                source: 10,
+                target: 20,
+                weight: 1.0,
+                flags: 0,
+                plasticity: PlasticityGenes::inert(),
+            },
+        };
+        let with_genes = Locus {
+            kind: LocusKind::Edge {
+                source: 10,
+                target: 20,
+                weight: 1.0,
+                flags: 0,
+                plasticity: loud(0.0, 3, 20),
+            },
+            ..plain
+        };
+        let flagged = Locus {
+            kind: LocusKind::Edge {
+                source: 10,
+                target: 20,
+                weight: 1.0,
+                flags: EDGE_FLAG_PLASTIC,
+                plasticity: PlasticityGenes::inert(),
+            },
+            ..plain
+        };
+        assert_eq!(
+            plain.structural_signature(),
+            with_genes.structural_signature()
+        );
+        assert_eq!(plain.structural_signature(), flagged.structural_signature());
+        // ...and the delay bit still *is* structural, so the assertions
+        // above are about plasticity rather than about a signature that
+        // ignores flags altogether.
+        let delayed = Locus {
+            kind: LocusKind::Edge {
+                source: 10,
+                target: 20,
+                weight: 1.0,
+                flags: EDGE_FLAG_DELAYED,
+                plasticity: PlasticityGenes::inert(),
+            },
+            ..plain
+        };
+        assert_ne!(plain.structural_signature(), delayed.structural_signature());
     }
 }

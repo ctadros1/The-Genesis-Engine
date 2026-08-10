@@ -400,6 +400,14 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u32(genome2.mutation.max_run);
     writer.u32(genome2.mutation.point_delta_q16);
     writer.u8(u8::from(genome2.mutation.regulatory_enabled));
+    // Phase 11's mutation gate, and the **third** time a config flag has been
+    // added without this function (D-065, then Phase 10's morphology block
+    // immediately below). Its absence is worse than the others: a plasticity
+    // treatment run that is checkpointed and resumed comes back with
+    // plasticity mutation silently **off**, which turns condition A into
+    // condition B mid-run and would be reported as "plasticity was not
+    // selected for".
+    writer.u8(u8::from(genome2.mutation.plasticity_enabled));
     // Phase 10 morphology config. Absent from the first cut of this
     // function, which meant a restored world had morphology **disabled**:
     // it rebuilt no bodies, its census came back empty, and the analysis
@@ -582,6 +590,7 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.genome2.mutation.max_run = reader.u32()?;
     config.genome2.mutation.point_delta_q16 = reader.u32()?;
     config.genome2.mutation.regulatory_enabled = reader.u8()? != 0;
+    config.genome2.mutation.plasticity_enabled = reader.u8()? != 0;
     config.morphology.enabled = reader.u8()? != 0;
     let lattice_id = reader.u8()?;
     config.morphology.lattice = sim_core::LatticeKind::from_id(lattice_id)

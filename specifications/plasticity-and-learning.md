@@ -103,16 +103,56 @@ Per tick, for each plastic edge, in ascending edge `homology_id` order:
    modulator node's activation (clamped to [-1, 1]).
 3. Convert to Q16 with round-half-away-from-zero:
    `delta_q16 = trunc(delta * 65536.0 + copysign(0.5, delta))`.
-4. Apply decay: `learned_q16 -= (learned_q16 * decay_q16) >> 16`, integer
-   arithmetic, truncating toward zero.
+4. Apply decay: `learned_q16 -= (learned_q16 * decay_q16) / 65536`, integer
+   arithmetic, **truncating toward zero**, with the product taken in `i64`.
 5. Accumulate and clamp: `learned_q16 = clamp(learned_q16 + delta_q16,
-   -LEARN_LIMIT_Q16, LEARN_LIMIT_Q16)`.
+   -LEARN_LIMIT_Q16, LEARN_LIMIT_Q16)`, with the sum taken in `i64`.
+
+**Corrected 2026-08-10.** Step 4 previously read `>> 16` *and* "truncating
+toward zero", and those are not the same operation. An arithmetic right
+shift **floors**: at a half decay, `-3` loses 2 units under the shift and 1
+under truncation, so a shift decays negative learned weights faster than
+positive ones. That asymmetry is precisely the float-to-fixed bias this
+phase's risk table says the rounding rule is specified to avoid, and it
+would have applied to every plastic edge for its whole lifetime. The prose
+was right and the formula was wrong; the formula now matches the prose.
+
+Both steps are widened to `i64` before narrowing, and neither widening is
+cosmetic. `LEARN_LIMIT_Q16 * ONE_Q16` is 2^35, which wraps to **exactly
+zero** in `i32` - so a full-strength decay would silently become no decay at
+the clamp. And `delta_q16` can saturate to `i32::MAX`, where an `i32` sum
+wraps and inverts the sign of a runaway update. Both are silent in release
+builds.
 
 Steps 1 through 3 are f32 and therefore same-build deterministic under
 ADR-0011. Step 4 and 5 are integer, so nothing accumulates float error
 across a lifetime. A non-finite `delta` is neutralized to zero, counted, and
 evented as a plasticity fault, following the existing controller-fault
 policy exactly.
+
+### Rule 4's underspecification, resolved
+
+The registry gives rule 4 as "rule 1 accumulated into a per-edge trace with
+decay, applied when the modulator fires", which leaves four things open.
+Resolved as follows, because an implementation cannot decline to choose:
+
+- **The trace shares the `decay` gene.** There is no second decay gene and
+  adding one would change the genome layout.
+- **"Fires" is the continuous clamped modulator activation, not a
+  threshold.** A threshold would be an authored constant deciding what
+  counts as reinforcing, which is the single thing this design exists to
+  keep out of our hands.
+- **Order is: decay the trace, add this tick's eligibility, then
+  discharge** - so a cue and a modulator arriving on the same tick still
+  learn.
+- **`eta` is charged once**, on entry to the trace, not again on discharge.
+
+### A modulated rule whose `modulator_node` is zero
+
+The gene table gives `0` as "ungated", which for rules 3 and 4 would read as
+"always on" and make rule 3 identical to rule 1. It does not: a modulated
+rule with no modulator receives a modulator activation of `0.0` and is
+therefore **inert**. Only rules 1 and 2 are genuinely ungated.
 
 The clamp in step 5 is what bounds the learned contribution and keeps
 `w_eff` inside the range every downstream bound already assumes.

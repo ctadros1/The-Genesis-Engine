@@ -379,7 +379,7 @@ mod tests {
     use super::*;
     use crate::genome2::{
         ExpressedBinding, ExpressedEdge, ExpressedNode, Genome2, Haplotype, Locus, LocusKind,
-        STRUCTURAL_HOMOLOGY_BASE, VALUE_LIMIT,
+        PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, VALUE_LIMIT,
     };
 
     fn node(homology_id: u32, role: NodeRole, activation: Activation, bias: f32) -> ExpressedNode {
@@ -401,6 +401,10 @@ mod tests {
             disabled: false,
             plastic: false,
             delayed: false,
+            // Phase 11 gave `ExpressedEdge` a plasticity payload; these
+            // fixtures are about evaluation order and bounds, so they take
+            // the inert genes a pre-Phase-11 edge always expressed.
+            plasticity: PlasticityGenes::inert(),
         }
     }
 

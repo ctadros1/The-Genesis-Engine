@@ -32,6 +32,14 @@ pub enum RngSystem {
     /// (Phase 9). Value mutation stays on `Recombination` (6), preserving
     /// the existing convention.
     StructuralMutation = 9,
+    /// Initial plastic-state seeding at birth (Phase 11). Allocated now and
+    /// **unused**: the default policy zeroes `learned_q16` and `trace_q16`
+    /// at birth, and that zero is an invariant rather than a default - if
+    /// learned state were inherited, a discovery would become a heritable
+    /// trait and Phase 13's transmission question would be unaskable. The
+    /// stream exists so that adopting the `lamarckian_fraction_q16`
+    /// experimental condition later cannot renumber an existing stream.
+    PlasticityInit = 10,
     /// Age-dependent and extrinsic mortality hazard draws (Phase 8).
     /// Senescence uses draw index 0 and extrinsic hazard draw index 1;
     /// those indices are as permanent as the stream value itself, because

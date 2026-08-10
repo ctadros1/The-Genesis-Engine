@@ -33,6 +33,7 @@ mod morphstate;
 mod origin;
 mod phase2;
 mod physiology;
+mod plasticity;
 mod registry;
 mod rng;
 mod save;
@@ -107,6 +108,13 @@ pub use physiology::{
     HazardOutcome, PHYSIOLOGY_POLICY_VERSION, PhysiologyState, allometry_multiplier_milli,
     hazard_draw, pow_quarter_milli, preferred_temperature_milli, senescence_hazard_q16_per_s,
     thermal_cost_milli,
+};
+pub use plasticity::{
+    EdgeSignals, LEARN_LIMIT_Q16, LearnedState, ONE_Q16, PLASTICITY_POLICY_VERSION,
+    PlasticityCounters, PlasticityRule, RULE_COUNT, RULE_ELIGIBILITY_TRACE, RULE_HEBBIAN,
+    RULE_MODULATED_HEBBIAN, RULE_OJA, RULE_REGISTRY_VERSION, RULE_STATIC, StepKind, StepOutcome,
+    accumulate_clamped, decay_to_q16, decay_toward_zero, effective_weight, q16_to_f32,
+    rule_in_registry, rule_is_modulated, step as plasticity_step, to_q16, to_q16_checked,
 };
 pub use registry::{
     ACTIVATION_LINEAR, ACTIVATION_REGISTRY_VERSION, ACTIVATION_TANH, Activation,

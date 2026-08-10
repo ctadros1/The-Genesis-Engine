@@ -117,6 +117,33 @@ fn perturbed() -> SimConfig {
     config.physiology.senescence_hazard_q16_per_s = 656;
     config.physiology.extrinsic_hazard_q16_per_s = 14;
     config.physiology.juvenile_hazard_multiplier_q16 = 3 * 65_536;
+    // Phase 9 genome 2. **The whole section was missing from this list**,
+    // which is the same defect as the morphology one below wearing different
+    // clothes: every genome2 field sat at its default, so a field dropped by
+    // the codec compared default-to-default and round-tripped "successfully".
+    // `regulatory_enabled` - C10.3's entire control - was undefended for two
+    // phases, and `plasticity_enabled` was silently dropped on save when it
+    // was added, which would have turned a plasticity treatment run into a
+    // control across any checkpoint. Perturb every field, including both
+    // gates, and set each away from its default so absence is detectable.
+    config.genome2.enabled = true;
+    config.genome2.caps.max_chromosomes = 3;
+    config.genome2.caps.max_loci_per_chromosome = 151;
+    config.genome2.caps.max_nodes = 149;
+    config.genome2.caps.max_edges = 147;
+    config.genome2.caps.max_edges_per_node = 29;
+    config.genome2.caps.max_genome_bytes = 15_360;
+    config.genome2.caps.min_nodes = 3;
+    config.genome2.meiosis.max_extra_crossovers = 2;
+    config.genome2.mutation.point_q16 = 5_555;
+    config.genome2.mutation.duplication_q16 = 777;
+    config.genome2.mutation.deletion_q16 = 555;
+    config.genome2.mutation.insertion_q16 = 333;
+    config.genome2.mutation.transposition_q16 = 222;
+    config.genome2.mutation.max_run = 4;
+    config.genome2.mutation.point_delta_q16 = 4_444;
+    config.genome2.mutation.regulatory_enabled = false;
+    config.genome2.mutation.plasticity_enabled = true;
     // Phase 10 morphology. Added because the first version of this test
     // predated the section and therefore passed while the morphology config
     // was silently dropped on save - a restored world came back with

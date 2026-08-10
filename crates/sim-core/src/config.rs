@@ -1246,6 +1246,28 @@ impl SimConfig {
             hasher.update_u32(mutation.max_run);
             hasher.update_u32(mutation.point_delta_q16);
             hasher.update_u32(u32::from(mutation.regulatory_enabled));
+            // Phase 11's plasticity-mutation gate: **hashed only when it is
+            // true**, and appended after every field that existed before it.
+            //
+            // Both obvious choices are wrong. Omitting it would let two
+            // behaviorally different worlds - one whose plasticity genes
+            // evolve, one whose do not - share a config hash, which is a
+            // real defect and the thing this hand-maintained list exists to
+            // prevent. Hashing it unconditionally would fold a Phase 11
+            // field into every schema-2 world that already exists and move
+            // the Phase 9 fixture (config `0x9abc0cd47914127f`), which was
+            // pinned before the field existed.
+            //
+            // This is D-014's "a section is folded in only when enabled"
+            // applied at **field** granularity rather than section
+            // granularity, which is what the situation actually needs: the
+            // genome2 section *is* enabled in those worlds, and the field
+            // is not. Its own tag keeps it self-describing, so a later
+            // Phase 11 config block appending here cannot alias it.
+            if mutation.plasticity_enabled {
+                hasher.update(b"lifesim-plasticity-mutation-v1");
+                hasher.update_u32(1);
+            }
         }
         // Phase 10 section, on the same terms: hashed only when enabled, so
         // every earlier fixture survives untouched (D-014).

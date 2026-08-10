@@ -288,6 +288,9 @@ config_fields! {
     "genome2.mutation.transposition_q16" => genome2.mutation.transposition_q16: u32,
     "genome2.mutation.max_run" => genome2.mutation.max_run: u32,
     "genome2.mutation.regulatory_enabled" => genome2.mutation.regulatory_enabled: bool,
+    // Phase 11's A/B ablation lives on this one flag, so without the entry
+    // the phase's two conditions are not expressible as a campaign at all.
+    "genome2.mutation.plasticity_enabled" => genome2.mutation.plasticity_enabled: bool,
     "morphology.enabled" => morphology.enabled: bool,
     "morphology.base_node_budget" => morphology.base_node_budget: u32,
     "morphology.caps.max_modules" => morphology.caps.max_modules: u16,

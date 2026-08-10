@@ -99,6 +99,12 @@ fn point_only() -> MutationConfig {
         // growth rule does, so a run with regulatory mutation disabled would
         // measure nothing at all.
         regulatory_enabled: true,
+        // Phase 11's gate stays *off* here, and that is not incidental: with
+        // it on, a share of the point mutations this file counts would land
+        // on a plasticity gene or a node role instead of on a growth rule,
+        // and C10.4's effective-mutation count would silently drop for a
+        // reason that has nothing to do with morphology.
+        plasticity_enabled: false,
         max_run: 1,
         point_delta_q16: 3_277,
     }
