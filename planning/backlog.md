@@ -43,6 +43,33 @@ every phase's Benchmark Impact section.
 
 ## Current Status
 
+**Phase 11's kernel is built; five of eight criteria are met** (2026-08-10),
+benchmark schema 7. Met: C11.3, C11.4, C11.5, C11.6 (10^6 ticks, 18,971,594
+plasticity updates, ledger exact), C11.8. C11.7 partial - snapshot budget and
+`learn` p50/p95 measured, checkpoint stall not measured through
+`AsyncCheckpointer`. **C11.1 and C11.2 are NOT MEASURED**, which is
+deliberately different from unmet: nothing was observed and no threshold was
+tested. They need four things that do not exist - scripted-intervention
+machinery, a relocatable resource patch, per-organism action counting, and a
+neutral marker locus (`docs/21-open-questions.md`).
+
+**What is not claimed.** The phase built the mechanism and measured its cost,
+safety and persistence. It has *not* shown that anything learns anything
+useful or that plasticity is selected for. The two numbers that exist point
+the other way - 1 plastic edge across 500 organisms after 30,000 ticks, and
+the founders' 400 plastic edges gone by 10^6 - but neither had a control or a
+pre-registered threshold, so neither is a result.
+
+**Three defects worth carrying.** The snapshot loader **failed open on
+hostile input in five sections since Phase 6**: every allocation bound read
+`count.checked_mul(size) > Some(body_len)`, and `None > Some(_)` is false, so
+overflowing counts reached `Vec::with_capacity` (D-091). The plasticity genes
+were a reserved schema slot rather than a mechanism - nothing wrote
+`EDGE_FLAG_PLASTIC` at all, so the phase's most likely predicted failure was
+mechanically guaranteed. And the shipped per-tick plasticity cost is **zero**:
+`2 milli/s` at `dt_ms 100` truncates to 0, so "plasticity is under selection"
+is false as configured (D-092).
+
 **Phase 10 is complete except C10.3** (2026-08-06), benchmark schema 6.
 C10.1, C10.2, C10.4, C10.5, C10.6, C10.7, C10.8, C10.9, C10.10 and C10.11
 are met. Phase 11 has not been started.
