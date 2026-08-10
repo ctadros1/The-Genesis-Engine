@@ -18,7 +18,17 @@ use std::fmt;
 
 /// Bumped whenever the logical field set or meaning changes; recorded by
 /// the on-disk format alongside its own framing version.
-pub const SAVE_STATE_VERSION: u16 = 1;
+///
+/// **Version 2, Phase 12.** The logical state gained a terrain-modification
+/// section and a composed terrain checksum, which is a change of *meaning*
+/// and not only of framing: version 1 said "terrain is a pure function of
+/// `(seed, config)`" and version 2 says "terrain is that baseline composed
+/// with a stored, verified delta". The framing version moves with it, to
+/// ALIF format 4 (`crates/sim-persist/src/codec.rs`); the two numbers are
+/// deliberately separate axes, because a framing change that carries the
+/// same logical fields (format 3, which only split a section's two counts)
+/// must not claim the logical state changed.
+pub const SAVE_STATE_VERSION: u16 = 2;
 
 /// Per-organism Phase 2 logical state.
 #[derive(Clone, Debug, PartialEq)]
@@ -161,7 +171,22 @@ pub struct SaveState {
     pub paused: bool,
     pub extinct: bool,
     pub next_entity_id: u64,
+    /// The **baseline** terrain checksum: `worldgen(seed, config)`, the
+    /// number the format 1 fail-closed check has always compared against.
+    /// Unchanged in meaning and unchanged in placement (it stays in the
+    /// 112-byte snapshot header), because that check is the property the
+    /// whole mutable-world design is built to preserve rather than replace.
     pub terrain_checksum: u64,
+    /// The **composed** terrain checksum: the baseline with every stored
+    /// override applied, over the terrain an observer would actually see.
+    ///
+    /// Equals `terrain_checksum` exactly when `worldmod` is `None` or its
+    /// set is empty - `TerrainModState::composed_checksum` reuses the
+    /// generator's tag and byte layout precisely so that identity holds.
+    /// That is what lets the registered format 3 to format 4 migration write
+    /// `composed := baseline` for a file that predates the layer, which is
+    /// the only honest value such a file can be given.
+    pub composed_terrain_checksum: u64,
 
     pub ids: Vec<u64>,
     pub x_fp: Vec<i32>,
@@ -185,19 +210,58 @@ pub struct SaveState {
     pub morphology: Option<MorphologySaveState>,
     /// Present exactly when the config's plasticity section is enabled.
     pub learn: Option<LearnSaveState>,
+    /// Phase 12 terrain modification set. Present exactly when the config's
+    /// worldmod section is enabled.
+    ///
+    /// **The live type, not a parallel `TerrainModSaveState`.** Every other
+    /// section here has a save-shaped twin because the live struct carries
+    /// something derived (compiled plans, spatial buckets, a classified biome
+    /// cache) that must not be trusted from a file. `TerrainModState` carries
+    /// nothing derived: it is three sorted arrays, one accumulator, and nine
+    /// counters, all of them logical state. A twin would add a field-by-field
+    /// conversion in each direction, which is precisely the shape that dropped
+    /// two counters in Phase 9 and the whole morphology config in Phase 10.
+    /// Reusing the type means there is no conversion to leave a field out of.
+    ///
+    /// It is still untrusted input: `from_state` checks sortedness,
+    /// uniqueness, and every value's domain before the set reaches a world,
+    /// and then verifies the composed checksum over the result.
+    pub worldmod: Option<crate::terrainmod::TerrainModState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum RestoreError {
     InvalidConfig(String),
     WorldGenFailed(String),
-    TerrainChecksumMismatch { recorded: u64, regenerated: u64 },
-    LengthMismatch { field: &'static str },
+    TerrainChecksumMismatch {
+        recorded: u64,
+        regenerated: u64,
+    },
+    /// The stored modification set, applied to a baseline that already
+    /// matched, did not reproduce the recorded composed checksum.
+    ///
+    /// Distinct from `TerrainChecksumMismatch` on purpose. That one says
+    /// "this save belongs to a different generated world"; this one says
+    /// "this save belongs to *this* world and its delta has been altered".
+    /// Collapsing them would report a tampered modification section as a
+    /// seed/config mismatch and send a reader looking in the wrong place.
+    ComposedTerrainChecksumMismatch {
+        recorded: u64,
+        composed: u64,
+    },
+    LengthMismatch {
+        field: &'static str,
+    },
     EntityOrder,
-    InvalidGenome { index: usize },
+    InvalidGenome {
+        index: usize,
+    },
     ClimateInvalid(String),
     StateInvalid(String),
-    StateChecksumMismatch { recorded: u64, actual: u64 },
+    StateChecksumMismatch {
+        recorded: u64,
+        actual: u64,
+    },
 }
 
 impl fmt::Display for RestoreError {
@@ -237,6 +301,12 @@ impl World {
             extinct: self.is_extinct(),
             next_entity_id: self.next_entity_id_value(),
             terrain_checksum: self.terrain().terrain_checksum,
+            // A full recompute over every cell, paid once per save and never
+            // in a tick; see `TerrainModState::composed_checksum` for why an
+            // incremental FNV-1a does not exist. Measured at roughly 1 ms per
+            // 65,536 cells, which is noise next to encoding a population's
+            // genomes.
+            composed_terrain_checksum: self.composed_terrain_checksum(),
             ids: self.organism_ids().to_vec(),
             x_fp: self.positions_x().to_vec(),
             y_fp: self.positions_y().to_vec(),
@@ -326,6 +396,10 @@ impl World {
                     cost_milli: learn.cost_milli,
                 })
             }),
+            // Cloned wholesale rather than rebuilt field by field: the
+            // section is logical state end to end, so there is no conversion
+            // here for a field to fall out of.
+            worldmod: self.worldmod_state().cloned(),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -736,6 +810,43 @@ impl World {
             }
         };
 
+        // Phase 12 terrain modification. Presence must match the
+        // configuration on the same terms as every section above, and the
+        // payload is checked before it can reach a world rather than after.
+        //
+        // **Sortedness and uniqueness are checked here, not only by
+        // `check_invariants` afterwards.** They are what make `get` a binary
+        // search, and a binary search over an unsorted array does not fail -
+        // it silently finds the wrong cell or no cell at all. The invariant
+        // check at the end of this function would catch the disorder, but
+        // only after `composed_terrain_checksum` had already walked the set
+        // and produced a number that means nothing, so the error a reader
+        // would see is a composed-checksum mismatch on a save whose real
+        // defect is its ordering.
+        let rebuilt_worldmod = match (world.config().worldmod.enabled, state.worldmod) {
+            (true, Some(worldmod)) => {
+                if let Some(index) = worldmod.order_violation() {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "terrain modification entry {index} breaks strict ascending \
+                         (layer, cell) order or duplicates its predecessor"
+                    )));
+                }
+                if let Some(index) = worldmod.bounds_violation(world.terrain().cell_count()) {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "terrain modification entry {index} carries a layer id, cell index, \
+                         or value outside its domain"
+                    )));
+                }
+                Some(worldmod)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "worldmod section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -768,7 +879,34 @@ impl World {
                 rebuilt_morphology
             },
             rebuilt_learn,
+            rebuilt_worldmod,
         );
+
+        // Step 5 of the restore order in
+        // `specifications/mutable-world-state.md`: the baseline was verified
+        // above, the delta has been applied, and the composed field is now
+        // checked before anything else looks at it.
+        //
+        // **The two checks are not redundant and neither subsumes the
+        // other.** The baseline check catches a save presented against a
+        // different generated world and cannot see the delta at all. This one
+        // catches a delta that was altered after the save was written, which
+        // leaves the baseline perfectly intact. Both fail closed; together
+        // they restore the format 1 guarantee - "a restore either reproduces
+        // the exact recorded world or fails with a typed error" - for a world
+        // whose terrain is no longer a pure function of `(seed, config)`.
+        //
+        // Runs for a disabled world too, where both sides are the baseline
+        // checksum. That is not a wasted comparison: it is what makes a
+        // composed checksum smuggled into the metadata of a world that has no
+        // modification section a decode failure instead of an ignored field.
+        let composed = world.composed_terrain_checksum();
+        if composed != state.composed_terrain_checksum {
+            return Err(RestoreError::ComposedTerrainChecksumMismatch {
+                recorded: state.composed_terrain_checksum,
+                composed,
+            });
+        }
 
         world
             .check_invariants()

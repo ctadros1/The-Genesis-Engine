@@ -16,8 +16,10 @@ mod store;
 pub use checkpoint::{AsyncCheckpointer, CheckpointOutcome, CheckpointRequest, SubmitResult};
 
 pub use codec::{
-    CodecError, FLAG_ZSTD, FORMAT_VERSION, MAX_STORED_LEN, MAX_UNCOMPRESSED_LEN, SNAPSHOT_MAGIC,
-    SnapshotInfo, crc32, decode_snapshot, encode_snapshot, read_info,
+    CodecError, FLAG_ZSTD, FORMAT_VERSION, FORMAT_VERSION_3, MAX_STORED_LEN, MAX_UNCOMPRESSED_LEN,
+    SAVE_STATE_VERSION_3, SNAPSHOT_MAGIC, SnapshotInfo, crc32, decode_snapshot,
+    decode_snapshot_format3, encode_snapshot, encode_snapshot_format3, peek_format_version,
+    read_info,
 };
 pub use eventlog::{
     EVENT_LOG_FORMAT_VERSION, EVENT_LOG_MAGIC, EventLogError, EventLogInfo, EventLogRecorder,
@@ -34,6 +36,6 @@ pub use spatial::{
     decode_spatial_prefix, read_spatial_info,
 };
 pub use store::{
-    BUILD_VERSION, RecoveryReport, SaveRecord, SnapshotStore, StoreError, VerifyReport,
-    migration_for,
+    BUILD_VERSION, MigratedSave, Migration, RecoveryReport, SaveRecord, SnapshotStore, StoreError,
+    VerifyReport, decode_snapshot_migrating, migration_for,
 };

@@ -24,8 +24,13 @@ pub enum StoreError {
     Catalog(String),
     Codec(CodecError),
     Restore(sim_core::RestoreError),
-    ChecksumMismatch { recorded: u64, restored: u64 },
+    ChecksumMismatch {
+        recorded: u64,
+        restored: u64,
+    },
     UnknownSave(i64),
+    /// No registered transform for the file's declared format version.
+    Migration(String),
 }
 
 impl fmt::Display for StoreError {
@@ -40,6 +45,7 @@ impl fmt::Display for StoreError {
                 "state checksum mismatch: recorded 0x{recorded:016x}, restored 0x{restored:016x}"
             ),
             Self::UnknownSave(id) => write!(formatter, "unknown save id {id}"),
+            Self::Migration(reason) => write!(formatter, "migration: {reason}"),
         }
     }
 }
@@ -326,7 +332,11 @@ impl SnapshotStore {
             .find(|record| record.save_id == save_id)
             .ok_or(StoreError::UnknownSave(save_id))?;
         let bytes = self.read_bytes(&record)?;
-        let (info, state) = codec::decode_snapshot(&bytes)?;
+        // Through the registry, not through the current-format reader: a
+        // restored backup set can legitimately contain a file this build no
+        // longer writes, and verifying it is exactly what this function is
+        // for.
+        let (info, state) = decode_snapshot_migrating(&bytes)?;
         let world = World::from_state(state).map_err(StoreError::Restore)?;
         let restored_checksum = world.state_checksum();
         if restored_checksum != info.state_checksum {
@@ -359,7 +369,7 @@ impl SnapshotStore {
     /// server from a save). Fail-closed; checksum-verified.
     pub fn load_world(path: &Path) -> Result<(SnapshotInfo, World), StoreError> {
         let bytes = fs::read(path).map_err(io_error)?;
-        let (info, state) = codec::decode_snapshot(&bytes)?;
+        let (info, state) = decode_snapshot_migrating(&bytes)?;
         let world = World::from_state(state).map_err(StoreError::Restore)?;
         let restored = world.state_checksum();
         if restored != info.state_checksum {
@@ -404,20 +414,155 @@ pub struct VerifyReport {
     pub population: usize,
 }
 
-/// Explicit migration registry. Format 1 is current; every other version
-/// fails closed with an actionable reason. Transforms register here when a
-/// future format exists — nothing migrates implicitly.
-pub fn migration_for(format_version: u16) -> Result<(), String> {
+/// The result of running a registered migration: the source file's header,
+/// the logical state in the current shape, and the re-encoded current-format
+/// bytes.
+///
+/// All three, because a migration has two consumers with different needs. A
+/// loader wants the state and nothing else. A tool that rewrites a save
+/// archive wants the bytes. And the acceptance test wants to decode the bytes
+/// back through the **current** reader and compare the result against what
+/// the legacy reader produced from the original file - which is the only
+/// version of "byte-identical to a format 3 load" that exercises the new
+/// codec rather than asserting the transform equals itself.
+#[derive(Clone, Debug)]
+pub struct MigratedSave {
+    /// The header of the file as it was found, so a caller reports the
+    /// provenance of the save it actually read.
+    pub source: SnapshotInfo,
+    pub state: SaveState,
+    /// The same state re-encoded at `codec::FORMAT_VERSION`.
+    pub bytes: Vec<u8>,
+}
+
+/// One registered format transform.
+///
+/// `migration_for` used to return `Result<(), String>` and had no transform
+/// type at all, so "a registered migration" was not expressible: the registry
+/// could say yes or no to a version and nothing else. The type is the point
+/// of this struct; the fields around it are what a migration has to declare
+/// under `specifications/world-save-format.md` - source format, target
+/// format, and what is lost.
+pub struct Migration {
+    pub from_format: u16,
+    pub to_format: u16,
+    /// What the transform invents, if anything. `""` means nothing: the
+    /// 3-to-4 transform writes an absent modification section and a composed
+    /// checksum equal to the baseline, and both are *identities* for a file
+    /// with no overrides rather than data conjured to fill a field.
+    pub expected_loss: &'static str,
+    pub transform: fn(&[u8]) -> Result<MigratedSave, StoreError>,
+}
+
+impl fmt::Debug for Migration {
+    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
+        formatter
+            .debug_struct("Migration")
+            .field("from_format", &self.from_format)
+            .field("to_format", &self.to_format)
+            .field("expected_loss", &self.expected_loss)
+            .finish_non_exhaustive()
+    }
+}
+
+/// Format 3 to format 4.
+///
+/// **The only migration there is, and the only one there will be.** Formats 1
+/// and 2 have none, by design and by physics: a format 1 file cannot say what
+/// its climate settings were, and a format 2 schema-2 file does not contain
+/// the per-organism state format 3 added, because format 2 drove that loop
+/// from a count that is zero in a schema-2 world. Transforming either would
+/// mean inventing state, which is exactly the "never alter meaning during
+/// load" rule this crate exists to keep. They fail closed, permanently, and
+/// the actionable advice is to keep the file and use a build that reads it.
+///
+/// Format 3 is different in kind: everything in a format 3 file is still
+/// present in a format 4 file with the same meaning, and the two Phase 12
+/// additions have honest values for a world that predates them. An absent
+/// modification section is what a world with no overrides has, and
+/// `composed := baseline` is not a guess but the identity
+/// `TerrainModState::composed_checksum` is written to satisfy for the empty
+/// set. Nothing is inferred and nothing is lost.
+static FORMAT3_TO_FORMAT4: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_3,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format3_to_format4,
+};
+
+fn migrate_format3_to_format4(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format3(bytes)?;
+    // **Written out rather than inherited from the decoder.** The format 3
+    // reader already resolves both fields this way, and stating them here
+    // anyway is what makes this a transform with a policy instead of a
+    // wrapper around a reader: if the reader's resolution ever changed, the
+    // migration's contract would not silently change with it.
+    state.worldmod = None;
+    state.composed_terrain_checksum = state.terrain_checksum;
+    // Compression is preserved as a property, not as a level: no file records
+    // the level it was written at, so a migrated file may differ in size from
+    // its source. Size is not part of the contract; the decoded state is.
+    let compression = source.compressed.then_some(MIGRATION_COMPRESSION_LEVEL);
+    let bytes = codec::encode_snapshot(
+        &state,
+        source.world_id,
+        source.parent_world_id,
+        source.state_checksum,
+        &source.build_version,
+        source.event_log_offset,
+        compression,
+    )?;
+    Ok(MigratedSave {
+        source,
+        state,
+        bytes,
+    })
+}
+
+/// zstd level used when a migrated file's source was compressed. Matches the
+/// level the checkpointer uses, so a migrated archive is not an outlier.
+const MIGRATION_COMPRESSION_LEVEL: i32 = 3;
+
+/// Explicit migration registry.
+///
+/// `Ok(None)` means the file is already at the current format and is decoded
+/// natively. `Ok(Some(migration))` names a registered transform. `Err` is
+/// fail-closed with an actionable reason, and it is what every unregistered
+/// version gets - nothing migrates implicitly, and a version this build has
+/// never heard of is refused rather than read hopefully.
+pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, String> {
     match format_version {
-        codec::FORMAT_VERSION => Ok(()),
+        codec::FORMAT_VERSION => Ok(None),
+        codec::FORMAT_VERSION_3 => Ok(Some(&FORMAT3_TO_FORMAT4)),
         older if older < codec::FORMAT_VERSION => Err(format!(
-            "no registered migration from format {older} to {}; preserve the save read-only \
-             and use a compatible binary",
+            "no registered migration from format {older} to {}; a format 1 or 2 file does not \
+             contain the state later formats require and cannot be transformed without \
+             inventing it. Preserve the save read-only and use a compatible binary",
             codec::FORMAT_VERSION
         )),
         newer => Err(format!(
             "save format {newer} is newer than this build's {}; upgrade the binary",
             codec::FORMAT_VERSION
         )),
+    }
+}
+
+/// Decode a snapshot of any registered format, applying a migration when the
+/// file needs one.
+///
+/// This is the function every loader should call. `codec::decode_snapshot` is
+/// the current-format reader and refuses anything else, which is right for a
+/// codec and wrong for a loader: the CLI's `verify-save` called `read_info`
+/// first and `migration_for` second, so an old file failed with
+/// `UnsupportedFormat` before the registry it was about to consult ever ran -
+/// the registry was unreachable from the one command that existed to use it.
+pub fn decode_snapshot_migrating(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), StoreError> {
+    let format = codec::peek_format_version(bytes)?;
+    match migration_for(format).map_err(StoreError::Migration)? {
+        None => Ok(codec::decode_snapshot(bytes)?),
+        Some(migration) => {
+            let migrated = (migration.transform)(bytes)?;
+            Ok((migrated.source, migrated.state))
+        }
     }
 }

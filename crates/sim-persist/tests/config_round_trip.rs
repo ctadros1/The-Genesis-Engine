@@ -175,6 +175,25 @@ fn perturbed() -> SimConfig {
     config.plasticity.plastic_edge_cost_milli_per_s = 37;
     config.plasticity.max_plastic_edges = 19;
     config.plasticity.lamarckian_fraction_q16 = 12_345;
+    // Phase 12 mutable world. All nine fields, and the fifth section to join
+    // this list. It is also the first one added *before* the defect shipped
+    // rather than after: `config_field_coverage.rs` walks `FIELD_NAMES` and
+    // failed the moment the fields were registered and left out of the codec,
+    // which is the whole argument for driving that sweep from the registry
+    // instead of from a list somebody remembers to extend.
+    //
+    // Every value is off its default, including the three caps, which are
+    // equal to each other by default - so a codec that wrote one of them
+    // three times would round-trip successfully.
+    config.worldmod.enabled = true;
+    config.worldmod.dense_threshold_q16 = 41_000;
+    config.worldmod.max_traversable_overrides = 511;
+    config.worldmod.max_capacity_overrides = 1_023;
+    config.worldmod.max_material_overrides = 2_047;
+    config.worldmod.patch_enabled = true;
+    config.worldmod.relocate_interval_ticks = 1_777;
+    config.worldmod.patch_radius_cells = 9;
+    config.worldmod.patch_capacity_scale_q16 = 5 * 65_536;
     config
 }
 
@@ -738,7 +757,16 @@ fn every_declared_count_is_bounded_before_allocation() {
     // Sections whose body starts with a `u64` count. The world-meta, ledger,
     // config and morphology sections start with data, not a count, and are
     // skipped by tag rather than by luck.
-    const COUNT_LED: [u16; 8] = [3, 4, 6, 7, 8, 9, 10, 12];
+    //
+    // Tag 13, the Phase 12 modification section, is count-led in a sense the
+    // sweep below covers only partly: its body begins with **layer 0's**
+    // count, and layers 1 and 2 declare their own further in. The first word
+    // is patched here with everything else; the inner two are patched by
+    // `phase12_format4.rs::every_per_layer_count_in_the_modification_section_
+    // is_bounded`, which also does it in both representations. The split
+    // mirrors the learn section's, whose inner plastic-edge count has its own
+    // test for the same reason.
+    const COUNT_LED: [u16; 9] = [3, 4, 6, 7, 8, 9, 10, 12, 13];
 
     let mut worlds = Vec::new();
     // A plasticity world: organisms, biomass, phase 2, schema 2, learn.
@@ -762,6 +790,32 @@ fn every_declared_count_is_bounded_before_allocation() {
         ecology.step();
     }
     worlds.push(ecology);
+    // ...and one carrying the Phase 12 modification section. The relocating
+    // patch is what fills it: a world with the section merely enabled writes
+    // an empty one, and a section with three zero counts is a section whose
+    // bounds cannot be probed.
+    let mut config = SimConfig::phase1_default(0x120d);
+    config.cells_x = 64;
+    config.cells_y = 64;
+    config.initial_organisms = 60;
+    config.max_entities = 600;
+    config.worldmod.enabled = true;
+    config.worldmod.patch_enabled = true;
+    config.worldmod.patch_radius_cells = 12;
+    config.worldmod.relocate_interval_ticks = 150;
+    let mut mutable = sim_core::World::new(config).expect("world builds");
+    for _ in 0..600 {
+        mutable.step();
+    }
+    assert!(
+        mutable
+            .worldmod_state()
+            .expect("the section is enabled")
+            .len()
+            > 16,
+        "the patch wrote nothing, so the modification section would be swept empty"
+    );
+    worlds.push(mutable);
 
     let mut seen: Vec<u16> = Vec::new();
     for world in &worlds {

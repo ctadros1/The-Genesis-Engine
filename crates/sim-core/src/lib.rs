@@ -41,6 +41,7 @@ mod save;
 mod schema2;
 mod similarity;
 mod structmut;
+mod terrainmod;
 mod world;
 mod worldgen;
 
@@ -51,8 +52,9 @@ pub use climate::{
 };
 pub use config::{
     BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
-    Genome2Config, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config,
-    PhysiologyConfig, PlasticityConfig, SimConfig, WorldgenVersion,
+    Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig,
+    PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig, PlasticityConfig, SimConfig,
+    WorldModConfig, WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -138,6 +140,10 @@ pub use structmut::{
     DUPLICATE_SPAN, MutationConfig, MutationCounters, MutationReport, OP_DELETION, OP_DUPLICATION,
     OP_INSERTION, OP_POINT, OP_TRANSPOSITION, RejectReason, STRUCTMUT_POLICY_VERSION,
     minimal_founder, mutate,
+};
+pub use terrainmod::{
+    LAYER_CAPACITY_SCALE, LAYER_COUNT, LAYER_MATERIAL_YIELD, LAYER_TRAVERSABLE, ModOutcome,
+    TerrainModCounters, TerrainModState, WORLDMOD_POLICY_VERSION, scale_capacity, value_in_domain,
 };
 pub use world::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation,

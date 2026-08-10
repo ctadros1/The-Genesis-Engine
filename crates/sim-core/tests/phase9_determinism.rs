@@ -205,6 +205,7 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         extinct: _,
         next_entity_id: _,
         terrain_checksum: _,
+        composed_terrain_checksum: _,
         biomass_milli: _,
         ledger: _,
         counters: _,
@@ -213,6 +214,8 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         // No per-organism array: development is a pure function of the genome,
         // so this section carries counters only.
         morphology: _,
+        // Per cell and per layer, not per organism.
+        worldmod: _,
 
         ids,
         x_fp,
@@ -412,11 +415,15 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         extinct: _,
         next_entity_id: _,
         terrain_checksum: _,
+        composed_terrain_checksum: _,
         biomass_milli: _,
         ledger: _,
         counters: _,
         climate: _,
         morphology: _,
+        // Per cell and per layer, not per organism: the terrain delta is
+        // world state that no permutation of the population can touch.
+        worldmod: _,
         ids,
         x_fp,
         y_fp,

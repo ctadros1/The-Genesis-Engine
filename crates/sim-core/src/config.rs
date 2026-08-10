@@ -123,6 +123,141 @@ pub struct SimConfig {
     /// disabled. Disabled, no edge compiles plastic, the learn phase writes
     /// nothing, no learned state exists, and the checksum appends nothing.
     pub plasticity: PlasticityConfig,
+    /// Phase 12 mutable-world section, disabled by default. Same D-014 rule,
+    /// and here it carries the heaviest obligation any section has carried:
+    /// C12.8 requires **four** fixtures to reproduce exactly with this
+    /// disabled - Phase 1, Phase 2, Phase 9, and Phase 11. Disabled, no
+    /// modification state exists, both composed accessors on `World` return
+    /// the raw terrain value through the pre-Phase-12 code path, nothing is
+    /// appended to the config hash or the state checksum, and the relocation
+    /// schedule never runs.
+    pub worldmod: WorldModConfig,
+}
+
+/// Versioned Phase 12 mutable-world policy (`lifesim-worldmod-v1`).
+///
+/// The seam is as narrow as Phase 9's, 10's, and 11's, and for the same
+/// reason (D-072): enabling this changes exactly **what a cell's
+/// traversability and carrying capacity are** - the baseline value composed
+/// with a stored override instead of the baseline value alone - and adds one
+/// declarative schedule in the `Commands` phase. Sensing, movement, feeding,
+/// pairing, contest, and physiology all read the composed accessors and
+/// cannot tell whether an override was involved.
+///
+/// # There is no reward here either
+///
+/// Nothing in this struct describes a world an organism should build. The
+/// relocating patch is a property of the *environment*, drawn from
+/// `(world_seed, tick)` and blind to every organism: it moves on a schedule
+/// whether the population is thriving or extinct. A field that moved the
+/// patch toward or away from organisms would be an authored objective
+/// delivered through the terrain, which is the prohibited thing rather than
+/// a refinement of it (`docs/02-scope-and-non-goals.md`, ADR-0014).
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct WorldModConfig {
+    pub enabled: bool,
+
+    /// Q16 fraction of a layer's cell count above which the **dense**
+    /// representation is chosen for that layer in the save.
+    ///
+    /// Persistence policy, read by the encoder in stage 2 and by nothing in
+    /// the tick: the two representations restore to identical worlds by
+    /// construction, so this trades snapshot bytes against nothing else. It
+    /// is versioned config rather than a magic number because
+    /// `specifications/mutable-world-state.md` requires the chosen
+    /// representation to be recorded so a reader never guesses, and a
+    /// threshold that lived in the encoder would be a silent format
+    /// parameter.
+    pub dense_threshold_q16: u32,
+
+    /// Per-layer caps on the number of stored overrides. Separate rather
+    /// than one shared budget because the layers have unrelated cost models:
+    /// a traversability override is one bit of meaning and a material yield
+    /// is a depleting integrator, and a shared cap would let a heavily-dug
+    /// world stop being able to block a cell.
+    pub max_traversable_overrides: u32,
+    pub max_capacity_overrides: u32,
+    pub max_material_overrides: u32,
+
+    /// The relocating resource patch: a periodic, declarative move of a
+    /// high- (or equal-) capacity region.
+    ///
+    /// **This is Phase 11's C11.1 dependency**, which is why the mutable
+    /// world half is built before the artifact half. A world whose resources
+    /// never move gives lifetime learning nothing to learn: the optimal
+    /// policy is fixed at birth and an evolved constant beats any learner
+    /// that pays for plasticity.
+    ///
+    /// Gated separately from `enabled` because a world can have the section
+    /// on for organism-driven modification with no environmental schedule at
+    /// all, and because the phase's control arm needs the schedule *on*.
+    pub patch_enabled: bool,
+    /// Ticks between relocations. The patch centre is a pure function of
+    /// `(world_seed, epoch)` where `epoch = tick / relocate_interval_ticks`,
+    /// so the schedule needs no save section - only the override set it
+    /// produces does.
+    pub relocate_interval_ticks: u64,
+    /// Patch half-width in cells; the footprint is `(2r+1)^2` cells before
+    /// the habitable filter.
+    pub patch_radius_cells: u32,
+    /// Q16 multiplier applied to the carrying capacity of every habitable
+    /// cell in the patch.
+    ///
+    /// **`Q16_ONE` is the control arm and it is not a disabled arm.** A
+    /// schedule-free world is the wrong control: relocating a patch trims
+    /// biomass into the loss sink every time it leaves a cell, so a
+    /// treatment arm carries a lower standing biomass than a schedule-free
+    /// arm for a reason that has nothing to do with what is being measured.
+    /// At 1.0 the schedule runs identically - same draws, same override set,
+    /// same entry count, same code path - and composes to exactly the
+    /// baseline capacity, so the two arms are matched on everything but the
+    /// magnitude of the move. `worldmod_capacity_loss_milli` is zero in the
+    /// control and nonzero in the treatment, and a test asserts it.
+    pub patch_capacity_scale_q16: u32,
+}
+
+/// Largest patch half-width a config may ask for. The footprint is
+/// quadratic, so this is the bound that keeps one relocation's write list -
+/// and therefore one tick's worst case - bounded by something other than the
+/// map size.
+pub const MAX_PATCH_RADIUS_CELLS: u32 = 64;
+
+/// Largest capacity scale a config may ask for, matching the stored value
+/// domain in `terrainmod::value_in_domain`. Two places state it because one
+/// is config validation and the other is decode validation of an untrusted
+/// payload; they are checked against each other in a test.
+pub const MAX_CAPACITY_SCALE_Q16: u32 = 256 * Q16_ONE;
+
+impl WorldModConfig {
+    /// Documented conservative Phase 12 defaults (disabled by default).
+    pub fn worldmod_default() -> Self {
+        Self {
+            enabled: false,
+            // Half the cells of a layer: past that a dense field of i64 is
+            // smaller than a sparse list of (u8, u32, i64) triples.
+            dense_threshold_q16: Q16_ONE / 2,
+            // 4,096 of a 65,536-cell default map, per layer. Provisional in
+            // the sense every cap in this repo is: the number that will
+            // replace it comes from the snapshot-size measurement Phase 12's
+            // benchmark section demands, not from taste.
+            max_traversable_overrides: 4_096,
+            max_capacity_overrides: 4_096,
+            max_material_overrides: 4_096,
+            patch_enabled: false,
+            // 2,000 ticks is 200 simulated seconds at the default 100 ms
+            // tick: long enough that an organism can reach a patch and feed,
+            // short enough that several relocations happen inside one
+            // lifetime (`max_age_ticks` is 36,000). Both halves matter - a
+            // schedule slower than a lifetime is a constant world with extra
+            // steps, and one faster than a crossing is noise.
+            relocate_interval_ticks: 2_000,
+            // 15 cells at the default 4 m cell is a 124 m square patch, 961
+            // cells before the habitable filter, comfortably under the cap.
+            patch_radius_cells: 15,
+            // 2.0. The treatment magnitude; the control sets 65_536.
+            patch_capacity_scale_q16: 2 * Q16_ONE,
+        }
+    }
 }
 
 /// Versioned Phase 9 genome schema 2 policy.
@@ -675,6 +810,7 @@ impl SimConfig {
             genome2: Genome2Config::genome2_default(),
             morphology: MorphologyConfig::morphology_default(),
             plasticity: PlasticityConfig::plasticity_default(),
+            worldmod: WorldModConfig::worldmod_default(),
         }
     }
 
@@ -691,6 +827,24 @@ impl SimConfig {
         config.genome2.enabled = true;
         config.genome2.mutation.plasticity_enabled = true;
         config.plasticity.enabled = true;
+        config
+    }
+
+    /// Phase 12 mutable-world defaults: the Phase 11 world with the terrain
+    /// modification section and the relocating resource patch live.
+    ///
+    /// Built on `phase11_default` rather than on `phase2_default` because the
+    /// patch exists to serve C11.1: a world whose resources move is what
+    /// makes lifetime learning able to beat an evolved constant, and a
+    /// relocating patch in a world with no learner is a schedule with nothing
+    /// to measure. Nothing stops a Phase 1 world from enabling the section -
+    /// the validation above requires no other section - and the kernel tests
+    /// use exactly that, because it isolates the terrain arithmetic from
+    /// every genome-driven source of variance.
+    pub fn phase12_default(world_seed: u64) -> Self {
+        let mut config = Self::phase11_default(world_seed);
+        config.worldmod.enabled = true;
+        config.worldmod.patch_enabled = true;
         config
     }
 
@@ -925,6 +1079,103 @@ impl SimConfig {
                      see specifications/plasticity-and-learning.md",
                     i64::from(plasticity.lamarckian_fraction_q16),
                 ));
+            }
+        }
+        // Phase 12. **Inside `validate_subsystems`, never appended to
+        // `validate_contest`** - D-084 records that appending checks there
+        // cost three phases of cap validation that never ran in any world
+        // without contest, which is most of them. Every check below is
+        // reachable from a world with nothing else enabled, which is the
+        // configuration the relocating patch is meant to be studied in.
+        let worldmod = &self.worldmod;
+        if worldmod.enabled {
+            if worldmod.dense_threshold_q16 > Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(
+                    "worldmod.dense_threshold_q16",
+                    worldmod.dense_threshold_q16,
+                ));
+            }
+            if worldmod.max_traversable_overrides == 0
+                || worldmod.max_capacity_overrides == 0
+                || worldmod.max_material_overrides == 0
+            {
+                return Err(ConfigError::PhysiologyRange("worldmod cap is zero", 0));
+            }
+            if worldmod.patch_enabled {
+                if worldmod.relocate_interval_ticks == 0 {
+                    return Err(ConfigError::NonPositive("relocate_interval_ticks"));
+                }
+                if worldmod.patch_radius_cells == 0
+                    || worldmod.patch_radius_cells > MAX_PATCH_RADIUS_CELLS
+                {
+                    return Err(ConfigError::PhysiologyRange(
+                        "patch_radius_cells",
+                        i64::from(worldmod.patch_radius_cells),
+                    ));
+                }
+                if worldmod.patch_capacity_scale_q16 == 0
+                    || worldmod.patch_capacity_scale_q16 > MAX_CAPACITY_SCALE_Q16
+                {
+                    return Err(ConfigError::PhysiologyRange(
+                        "patch_capacity_scale_q16",
+                        i64::from(worldmod.patch_capacity_scale_q16),
+                    ));
+                }
+                // A patch wider than the map would wrap its own clamp and
+                // stop being a patch. Refused rather than clamped: a config
+                // that asks for a patch covering everything is asking for a
+                // different experiment than the one it would get.
+                let span = 2 * worldmod.patch_radius_cells + 1;
+                if span >= self.cells_x || span >= self.cells_y {
+                    return Err(ConfigError::PhysiologyRange(
+                        "patch_radius_cells spans the map",
+                        i64::from(worldmod.patch_radius_cells),
+                    ));
+                }
+                // The footprint has to fit under the layer's cap, or the
+                // schedule would silently run against a full layer from its
+                // first relocation - a run pressed against a cap that looks
+                // exactly like a run that chose a smaller patch (C12.7).
+                if u64::from(span) * u64::from(span) > u64::from(worldmod.max_capacity_overrides) {
+                    return Err(ConfigError::PhysiologyRange(
+                        "patch footprint exceeds max_capacity_overrides",
+                        i64::from(span) * i64::from(span),
+                    ));
+                }
+                // **A raising override is inert in a climate world, and this
+                // refuses the combination rather than letting it read as a
+                // null.**
+                //
+                // Measured, not suspected. `ClimateWorld::step` trims every
+                // cell's biomass down to the **biome** capacity on the
+                // reclassification cadence (100 ticks by default) and ledgers
+                // the excess into its own sink. It derives that capacity
+                // itself and knows nothing about this section, so a cell whose
+                // composed capacity is 4x its biome capacity is cut back to 1x
+                // every hundred ticks: the patch's headroom is harvested as
+                // fast as `grow_food` fills it. A 4x patch measured over 4,900
+                // ticks filled to 1.000 of its composed capacity without
+                // climate and to 0.256 - which is 1/4, the biome ceiling -
+                // with it.
+                //
+                // The fix belongs in `climate.rs`: `ClimateWorld::step` has to
+                // trim against the composed capacity rather than derive its
+                // own, which changes a signature in a file this phase was
+                // scoped out of. Until it lands, a campaign that enabled both
+                // would report a treatment arm indistinguishable from its
+                // control and read it as "the relocating patch had no effect"
+                // - the exact shape of null the morphology and plasticity
+                // gates above exist to refuse. **Lowering** overrides are
+                // unaffected and stay legal: a composed capacity below the
+                // biome capacity is never reached by the climate trim.
+                if self.climate.enabled && worldmod.patch_capacity_scale_q16 > Q16_ONE {
+                    return Err(ConfigError::PhysiologyRange(
+                        "a patch_capacity_scale_q16 above 1.0 is inert while the climate section \
+                         is enabled: ClimateWorld::step trims biomass to the biome capacity and \
+                         does not compose terrain overrides",
+                        i64::from(worldmod.patch_capacity_scale_q16),
+                    ));
+                }
             }
         }
         let physiology = &self.physiology;
@@ -1460,6 +1711,31 @@ impl SimConfig {
             hasher.update_u32(self.plasticity.max_plastic_edges);
             hasher.update_u32(self.plasticity.lamarckian_fraction_q16);
         }
+        // Phase 12 section, **appended after Phase 11's and hashed only when
+        // enabled**. Appended for the reason every section before it was:
+        // the order of this function is the definition of every existing
+        // config hash, and inserting a section anywhere but the end would
+        // move worlds that do not have it - here, four of them. Enabling the
+        // mutable world changes the hash and starts a new replay lineage,
+        // which is correct: a world whose terrain organisms can edit is not
+        // the same experiment as one whose terrain is a function of its seed.
+        if self.worldmod.enabled {
+            hasher.update(b"lifesim-worldmod-config");
+            hasher.update(crate::terrainmod::WORLDMOD_POLICY_VERSION.as_bytes());
+            // The layer registry is part of what an override means: the same
+            // `(layer_id, value)` under a different layer assignment
+            // describes a different world, exactly as the same locus under a
+            // different channel registry describes a different organism.
+            hasher.update_u32(u32::from(crate::terrainmod::LAYER_COUNT));
+            hasher.update_u32(self.worldmod.dense_threshold_q16);
+            hasher.update_u32(self.worldmod.max_traversable_overrides);
+            hasher.update_u32(self.worldmod.max_capacity_overrides);
+            hasher.update_u32(self.worldmod.max_material_overrides);
+            hasher.update_u32(u32::from(self.worldmod.patch_enabled));
+            hasher.update_u64(self.worldmod.relocate_interval_ticks);
+            hasher.update_u32(self.worldmod.patch_radius_cells);
+            hasher.update_u32(self.worldmod.patch_capacity_scale_q16);
+        }
         hasher.finish()
     }
 
@@ -1781,6 +2057,205 @@ mod tests {
         // as a budget of zero: `None` compiles no plastic edge at all.
         assert_eq!(SimConfig::phase2_default(1).plasticity_budget(), None);
         assert_eq!(SimConfig::phase11_default(1).plasticity_budget(), Some(32));
+    }
+
+    #[test]
+    fn the_worldmod_section_is_inert_when_disabled_and_hashed_when_enabled() {
+        // D-014 at the config layer, and the disabled half is what four
+        // fixtures depend on: Phase 1, Phase 2, Phase 9, and Phase 11 were
+        // all pinned before this section existed.
+        let base = SimConfig::phase1_default(42);
+        let mut with_defaults = base;
+        with_defaults.worldmod = WorldModConfig::worldmod_default();
+        assert_eq!(
+            base.stable_hash(),
+            with_defaults.stable_hash(),
+            "a disabled worldmod section reached the config hash"
+        );
+        // ...and it stays out even when every field is moved, which is the
+        // assertion a `worldmod.enabled` check alone would not make.
+        let mut moved = base;
+        moved.worldmod.dense_threshold_q16 = 1;
+        moved.worldmod.max_capacity_overrides = 9;
+        moved.worldmod.patch_enabled = true;
+        moved.worldmod.relocate_interval_ticks = 3;
+        moved.worldmod.patch_radius_cells = 2;
+        moved.worldmod.patch_capacity_scale_q16 = 7;
+        assert_eq!(base.stable_hash(), moved.stable_hash());
+
+        let mut enabled = base;
+        enabled.worldmod.enabled = true;
+        enabled.worldmod.patch_enabled = true;
+        enabled.validate().expect("worldmod defaults are valid");
+        let reference = enabled.stable_hash();
+        assert_ne!(reference, base.stable_hash());
+        // Every settable field, one at a time. The control arm differs from
+        // the treatment arm in `patch_capacity_scale_q16` alone, so a field
+        // that missed the hash here would give the two arms one config hash
+        // and one replay lineage - the exact defect the hand-maintained list
+        // exists to prevent.
+        let mutators: [fn(&mut SimConfig); 8] = [
+            |config| config.worldmod.dense_threshold_q16 -= 1,
+            |config| config.worldmod.max_traversable_overrides -= 1,
+            |config| config.worldmod.max_capacity_overrides -= 1,
+            |config| config.worldmod.max_material_overrides -= 1,
+            |config| config.worldmod.patch_enabled = false,
+            |config| config.worldmod.relocate_interval_ticks += 1,
+            |config| config.worldmod.patch_radius_cells -= 1,
+            |config| config.worldmod.patch_capacity_scale_q16 = Q16_ONE,
+        ];
+        for (index, mutate) in mutators.into_iter().enumerate() {
+            let mut changed = enabled;
+            mutate(&mut changed);
+            assert_ne!(changed.stable_hash(), reference, "field {index}");
+        }
+    }
+
+    #[test]
+    fn the_worldmod_section_is_validated_where_validation_actually_runs() {
+        // D-084 again: **the contest section is disabled in every config
+        // below**, so a check appended to `validate_contest` would make every
+        // assertion here pass vacuously. `phase1_default` also leaves phase2,
+        // genome2, morphology and plasticity off, so this is the narrowest
+        // world the section can be validated in.
+        let enabled = || {
+            let mut config = SimConfig::phase1_default(1);
+            assert!(!config.contest.enabled);
+            config.worldmod.enabled = true;
+            config.worldmod.patch_enabled = true;
+            config
+        };
+        enabled().validate().expect("valid by default");
+
+        let mut config = enabled();
+        config.worldmod.dense_threshold_q16 = Q16_ONE + 1;
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::FractionOutOfRange(
+                "worldmod.dense_threshold_q16",
+                Q16_ONE + 1
+            ))
+        );
+
+        let mut config = enabled();
+        config.worldmod.max_material_overrides = 0;
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange("worldmod cap is zero", 0))
+        );
+
+        let mut config = enabled();
+        config.worldmod.relocate_interval_ticks = 0;
+        assert_eq!(
+            config.validate(),
+            Err(ConfigError::NonPositive("relocate_interval_ticks"))
+        );
+
+        let mut config = enabled();
+        config.worldmod.patch_radius_cells = MAX_PATCH_RADIUS_CELLS + 1;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange("patch_radius_cells", _))
+        ));
+
+        let mut config = enabled();
+        config.worldmod.patch_capacity_scale_q16 = 0;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange("patch_capacity_scale_q16", _))
+        ));
+        let mut config = enabled();
+        config.worldmod.patch_capacity_scale_q16 = MAX_CAPACITY_SCALE_Q16 + 1;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange("patch_capacity_scale_q16", _))
+        ));
+
+        // A patch that cannot fit under its own layer cap would press
+        // against it from the first relocation and look like a smaller
+        // patch, which is exactly the invisible-cap failure C12.7 names.
+        let mut config = enabled();
+        config.worldmod.max_capacity_overrides = 100;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange(
+                "patch footprint exceeds max_capacity_overrides",
+                _
+            ))
+        ));
+
+        // A patch as wide as the map is a different experiment from the one
+        // its author wrote down.
+        let mut config = enabled();
+        config.cells_x = 16;
+        config.cells_y = 16;
+        config.worldmod.patch_radius_cells = 8;
+        config.worldmod.max_capacity_overrides = 4_096;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange(
+                "patch_radius_cells spans the map",
+                _
+            ))
+        ));
+
+        // The schedule's own gate: with `patch_enabled` false none of the
+        // patch fields is validated, because none of them is read.
+        let mut config = enabled();
+        config.worldmod.patch_enabled = false;
+        config.worldmod.relocate_interval_ticks = 0;
+        config.worldmod.patch_radius_cells = 0;
+        config.validate().expect("an unread field is not validated");
+    }
+
+    #[test]
+    fn a_raising_patch_is_refused_while_climate_is_enabled() {
+        // The measured interaction defect, made fail-closed. `ClimateWorld::
+        // step` trims biomass to the biome capacity on its reclassification
+        // cadence and composes no terrain override, so a patch above 1.0 is
+        // harvested as fast as it grows: 4x filled to 1.000 of composed
+        // capacity without climate and 0.256 with it, over 4,900 ticks.
+        let mut config = SimConfig::phase6_default(7);
+        config.worldmod.enabled = true;
+        config.worldmod.patch_enabled = true;
+        config.worldmod.patch_capacity_scale_q16 = 2 * Q16_ONE;
+        assert!(matches!(
+            config.validate(),
+            Err(ConfigError::PhysiologyRange(message, _))
+                if message.contains("inert while the climate section")
+        ));
+
+        // The zero-magnitude control and every lowering scale stay legal: a
+        // composed capacity at or below the biome capacity is never reached
+        // by the climate trim, so the interaction cannot arise.
+        config.worldmod.patch_capacity_scale_q16 = Q16_ONE;
+        config.validate().expect("a 1.0 control is unaffected");
+        config.worldmod.patch_capacity_scale_q16 = Q16_ONE / 2;
+        config.validate().expect("a lowering patch is unaffected");
+
+        // ...and without climate the raising patch is the ordinary treatment.
+        let mut plain = SimConfig::phase1_default(7);
+        plain.worldmod.enabled = true;
+        plain.worldmod.patch_enabled = true;
+        plain.worldmod.patch_capacity_scale_q16 = 2 * Q16_ONE;
+        plain.validate().expect("no climate, no interaction");
+    }
+
+    #[test]
+    fn the_config_scale_ceiling_matches_the_stored_value_domain() {
+        // Two statements of the same bound: config validation refuses a
+        // scale above `MAX_CAPACITY_SCALE_Q16`, and `value_in_domain`
+        // refuses a decoded override above the same number. If they drifted
+        // apart, either a legal config would produce an illegal world or a
+        // decoded payload could exceed what the arithmetic was checked for.
+        assert!(crate::terrainmod::value_in_domain(
+            crate::terrainmod::LAYER_CAPACITY_SCALE,
+            i64::from(MAX_CAPACITY_SCALE_Q16)
+        ));
+        assert!(!crate::terrainmod::value_in_domain(
+            crate::terrainmod::LAYER_CAPACITY_SCALE,
+            i64::from(MAX_CAPACITY_SCALE_Q16) + 1
+        ));
     }
 
     #[test]

@@ -40,6 +40,25 @@ pub enum RngSystem {
     /// stream exists so that adopting the `lamarckian_fraction_q16`
     /// experimental condition later cannot renumber an existing stream.
     PlasticityInit = 10,
+    /// Terrain modification schedules (Phase 12): today, the relocating
+    /// resource patch's centre.
+    ///
+    /// **11 and 12 are skipped and 13 and 14 are not taken.**
+    /// `planning/phase-12-mutable-world-and-artifacts.md` reserves `Artifact`
+    /// = 13 and `MaterialYield` = 14 for the artifact half, so this stream
+    /// takes 15 rather than the next free value. Stream numbers are
+    /// permanent - renumbering one silently changes every world that draws on
+    /// it - so taking 13 now and discovering the artifact half needs it later
+    /// would be a lineage break for no reason. 11 and 12 are left free
+    /// deliberately, as spare capacity between the organism streams and the
+    /// world streams.
+    ///
+    /// Keyed on the *epoch* (`tick / relocate_interval_ticks`) as the
+    /// subject, not on a cell or an organism, which is what makes the patch a
+    /// pure function of `(world_seed, epoch)`: the schedule needs no save
+    /// section because any tick can recompute where the patch is and where it
+    /// was.
+    TerrainMod = 15,
     /// Age-dependent and extrinsic mortality hazard draws (Phase 8).
     /// Senescence uses draw index 0 and extrinsic hazard draw index 1;
     /// those indices are as permanent as the stream value itself, because

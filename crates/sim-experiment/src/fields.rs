@@ -305,6 +305,22 @@ config_fields! {
     "plasticity.plastic_edge_cost_milli_per_s" => plasticity.plastic_edge_cost_milli_per_s: i64,
     "plasticity.max_plastic_edges" => plasticity.max_plastic_edges: u32,
     "plasticity.lamarckian_fraction_q16" => plasticity.lamarckian_fraction_q16: u32,
+    // Phase 12. `worldmod.enabled` and `worldmod.patch_enabled` are separate
+    // fields on purpose, and so is the scale: the phase's three arms are
+    // "section off", "section on, schedule on, scale 1.0" and "section on,
+    // schedule on, scale 2.0", and only the last two are matched. A control
+    // that turned the schedule *off* would differ from its treatment by the
+    // whole capacity-loss sink as well as by the move, so the arm that
+    // matters is expressible only because the scale is its own field.
+    "worldmod.enabled" => worldmod.enabled: bool,
+    "worldmod.dense_threshold_q16" => worldmod.dense_threshold_q16: u32,
+    "worldmod.max_traversable_overrides" => worldmod.max_traversable_overrides: u32,
+    "worldmod.max_capacity_overrides" => worldmod.max_capacity_overrides: u32,
+    "worldmod.max_material_overrides" => worldmod.max_material_overrides: u32,
+    "worldmod.patch_enabled" => worldmod.patch_enabled: bool,
+    "worldmod.relocate_interval_ticks" => worldmod.relocate_interval_ticks: u64,
+    "worldmod.patch_radius_cells" => worldmod.patch_radius_cells: u32,
+    "worldmod.patch_capacity_scale_q16" => worldmod.patch_capacity_scale_q16: u32,
     "morphology.enabled" => morphology.enabled: bool,
     "morphology.base_node_budget" => morphology.base_node_budget: u32,
     "morphology.caps.max_modules" => morphology.caps.max_modules: u16,

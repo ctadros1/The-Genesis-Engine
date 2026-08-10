@@ -26,6 +26,10 @@ use crate::plasticity::{self, EdgeSignals, LearnedState};
 use crate::rng::{RngSystem, named_random};
 use crate::schema2::Schema2State;
 use crate::structmut::MutationCounters;
+use crate::terrainmod::{
+    LAYER_CAPACITY_SCALE, LAYER_COUNT, LAYER_TRAVERSABLE, ModOutcome, TerrainModState,
+    scale_capacity, value_in_domain,
+};
 use crate::worldgen::{self, Terrain, WorldGenError};
 use std::fmt;
 
@@ -475,6 +479,30 @@ pub struct MetricsSnapshot {
     /// inside `Ledger::spent_milli`; reported separately because "the ledger
     /// balances" and "plasticity cost what we think" are different claims.
     pub plasticity_cost_milli: i64,
+    /// Phase 12. Zero when the mutable-world section is disabled.
+    pub worldmod_enabled: bool,
+    /// Stored overrides, in total and per layer in layer-id order. Per layer
+    /// as well as in total because the layers mean unrelated things and a
+    /// single count is how a full traversability layer hides behind an empty
+    /// material one.
+    pub worldmod_overrides: u64,
+    pub worldmod_overrides_by_layer: [u64; LAYER_COUNT as usize],
+    /// Relocations of the resource patch that have run.
+    pub worldmod_relocations: u64,
+    /// Biomass trimmed because a modification lowered a cell's capacity below
+    /// its standing biomass, and the number of cells it came off.
+    ///
+    /// **The quantity that defines this phase's control arm.** A control
+    /// running the identical schedule at scale 1.0 reports zero here and a
+    /// treatment does not, which is what makes their standing biomass
+    /// comparable; a schedule-free control would differ by this sink for
+    /// reasons unrelated to anything being measured.
+    pub worldmod_capacity_loss_milli: i64,
+    pub worldmod_cells_trimmed: u64,
+    /// Modification writes refused for any reason - cap, occupancy, or an
+    /// invalid layer/cell/value. C12.7: a run silently pressed against a cap
+    /// must be visible in its report.
+    pub worldmod_refusals: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -578,6 +606,25 @@ pub enum InvariantViolation {
     CarcassLedgerMismatch {
         expected: i128,
         actual: i128,
+    },
+    /// The Phase 12 modification set is not strictly ascending by
+    /// `(layer_id, cell_index)`, duplicates a key, or has ragged arrays.
+    ///
+    /// The counterpart of `EntityOrder` for the other sorted array in the
+    /// world, and it is checked for the same reason: sortedness is what makes
+    /// application a deterministic ordered scan and what makes a logical
+    /// modification set have exactly one encoding. `set` and `clear` cannot
+    /// break it, so the path this defends is a restore decoding an untrusted
+    /// payload - which is the path that matters, because a modification
+    /// section is the one part of a Phase 12 save that is not regenerated.
+    TerrainModOrder {
+        index: usize,
+    },
+    /// A modification's layer id, cell index, or value is outside its
+    /// documented domain. Same provenance as `TerrainModOrder`: the writers
+    /// validate, so this is a decoded payload or a future producer.
+    TerrainModBounds {
+        index: usize,
     },
 }
 
@@ -711,6 +758,15 @@ pub struct World {
     /// plastic edge, runs an empty learn phase, and appends nothing to the
     /// checksum.
     learn: Option<LearnState>,
+    /// Phase 12 terrain modification set; `None` exactly when
+    /// `config.worldmod.enabled` is false.
+    ///
+    /// The `None` arm is what preserves four fixtures. Both composed
+    /// accessors match on this option and their `None` arms are the
+    /// pre-Phase-12 expressions unchanged, character for character, so a
+    /// disabled world does not merely *compute* the same capacity - it runs
+    /// the same code.
+    worldmod: Option<TerrainModState>,
 }
 
 impl World {
@@ -791,6 +847,18 @@ impl World {
             schema2: None,
             morphology: None,
             learn: None,
+            // Built here rather than after the population, because it is
+            // empty either way: the relocation schedule first fires at tick
+            // `relocate_interval_ticks`, so a freshly generated world's
+            // terrain is exactly its baseline. That is deliberate - founder
+            // placement, initial biomass seeding, and the worldgen
+            // validations are all generation-time properties, and a patch
+            // that existed at tick 0 would make a world's biomes depend on a
+            // schedule rather than on its seed.
+            worldmod: config
+                .worldmod
+                .enabled
+                .then(crate::terrainmod::TerrainModState::default),
             config,
         };
 
@@ -1209,6 +1277,19 @@ impl World {
                 _ => 0,
             },
             plasticity_cost_milli: self.learn.as_ref().map_or(0, |l| l.cost_milli as i64),
+            worldmod_enabled: self.worldmod.is_some(),
+            worldmod_overrides: self.worldmod.as_ref().map_or(0, |s| s.len() as u64),
+            worldmod_overrides_by_layer: self
+                .worldmod
+                .as_ref()
+                .map_or([0; LAYER_COUNT as usize], |s| s.layer_counts()),
+            worldmod_relocations: self.worldmod.as_ref().map_or(0, |s| s.counters.relocations),
+            worldmod_capacity_loss_milli: self.worldmod_capacity_loss_milli() as i64,
+            worldmod_cells_trimmed: self
+                .worldmod
+                .as_ref()
+                .map_or(0, |s| s.counters.cells_trimmed),
+            worldmod_refusals: self.worldmod.as_ref().map_or(0, |s| s.counters.refusals()),
         }
     }
 
@@ -1494,6 +1575,15 @@ impl World {
         &self.ids
     }
 
+    /// The cell a fixed-point position falls in. The tick's own `cell_of`,
+    /// exposed so a caller outside this module - a terrain-modification
+    /// producer, or a test asking which cell an organism stands on - derives
+    /// the index the same way the tick does rather than reimplementing the
+    /// clamp and getting the rim wrong.
+    pub fn cell_index_of(&self, x_fp: i32, y_fp: i32) -> usize {
+        self.cell_of(x_fp, y_fp)
+    }
+
     fn index_of(&self, id: u64) -> Option<usize> {
         self.ids.binary_search(&id).ok()
     }
@@ -1549,6 +1639,7 @@ impl World {
         schema2: Option<Schema2State>,
         morphology: Option<MorphologyState>,
         learn: Option<LearnState>,
+        worldmod: Option<TerrainModState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -1581,6 +1672,19 @@ impl World {
         // edge id against the rebuilt plan's plastic edges *before* this
         // point, so what arrives here is checked, not trusted.
         self.learn = learn;
+        // The terrain delta comes from the save for the same reason the
+        // learned state does: it cannot be recomputed from anything. A fresh
+        // `World::new` built an *empty* set here, and for one stage that empty
+        // set is what a restore installed - which dropped every override
+        // silently in a control world (scale 1.0 composes to the baseline, so
+        // nothing failed) and failed closed only by accident in a treatment
+        // world, where biomass grown into a raised capacity exceeded the
+        // baseline and tripped `BiomassOutOfBounds`. A fail-open in the arm
+        // whose whole point is that it changes nothing measurable is the worst
+        // possible place for one. The caller has already checked ordering,
+        // uniqueness, and every value's domain, and verifies the composed
+        // checksum immediately after this returns.
+        self.worldmod = worldmod;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -1694,10 +1798,15 @@ impl World {
         let next_tick = self.tick + 1;
         self.events.clear();
 
-        // Canonical phase 1: apply validated queued commands. Project
-        // Phase 1 defines no in-tick commands (pause/resume act between
-        // ticks); the phase stays explicit so the canonical order is stable.
+        // Canonical phase 1: apply validated queued commands. Phase 1 defined
+        // no in-tick commands (pause/resume act between ticks) and the phase
+        // stayed explicit so the canonical order was stable; Phase 12 is the
+        // first thing to put work in it. The relocating resource patch is a
+        // command the world issues to itself on a schedule, and it lands here
+        // so the new capacity is in place before `Environment` grows into it
+        // on the same tick. Empty and free when the section is disabled.
         observer.phase_started(TickPhase::Commands);
+        self.relocate_patch(next_tick);
         observer.phase_finished(TickPhase::Commands);
 
         observer.phase_started(TickPhase::Environment);
@@ -1749,15 +1858,337 @@ impl World {
         observer.phase_finished(TickPhase::Finalize);
     }
 
-    /// Carrying capacity for one cell after biome scaling.
+    /// Carrying capacity for one cell after biome scaling and after any
+    /// stored capacity override.
     ///
-    /// Without the climate section this is the terrain's own
-    /// elevation-derived capacity, so the Phase 1/2 arithmetic is unchanged
-    /// byte for byte.
+    /// Without the climate section the baseline is the terrain's own
+    /// elevation-derived capacity, and without the worldmod section the
+    /// override arm does not exist, so the Phase 1/2 arithmetic is unchanged
+    /// byte for byte. **The `None` arm below is the whole of C12.8 for this
+    /// accessor**: it returns the identical expression a pre-Phase-12 build
+    /// evaluated, so a disabled world is not merely numerically equal, it
+    /// runs the same code.
     pub fn effective_capacity_milli(&self, cell: usize) -> i64 {
-        match self.climate.as_ref() {
+        let baseline = match self.climate.as_ref() {
             Some(climate) => climate.capacity_milli(&self.terrain, &self.config.climate, cell),
             None => self.terrain.capacity_milli[cell],
+        };
+        match self.worldmod.as_ref() {
+            Some(state) => match state.get(LAYER_CAPACITY_SCALE, cell as u32) {
+                Some(scale) => scale_capacity(baseline, scale),
+                None => baseline,
+            },
+            None => baseline,
+        }
+    }
+
+    /// Whether a cell may be moved into, after any stored traversability
+    /// override.
+    ///
+    /// The override is bidirectional: it can block a land cell and it can
+    /// permit a water cell. Absent - which is every cell in a world without
+    /// the section, and every unmodified cell in a world with it - this is
+    /// `Terrain::land`, the expression every movement, birth-placement, and
+    /// invariant site read directly before Phase 12.
+    ///
+    /// **Layer 0 has no producer yet.** Blocking objects and digging are
+    /// artifact-half actions. The consumer is written now, and every read
+    /// site routed through it now, because routing a read site is where the
+    /// mistakes are: a site left on `Terrain::land` would be a cell an
+    /// organism could walk into after the world said it could not, and it
+    /// would be invisible until the artifact half started writing the layer.
+    pub fn effective_traversable(&self, cell: usize) -> bool {
+        match self.worldmod.as_ref() {
+            Some(state) => match state.get(LAYER_TRAVERSABLE, cell as u32) {
+                Some(value) => value != 0,
+                None => self.terrain.land[cell],
+            },
+            None => self.terrain.land[cell],
+        }
+    }
+
+    /// Read-only view of the modification set. `None` when the section is
+    /// disabled.
+    pub fn worldmod_state(&self) -> Option<&TerrainModState> {
+        self.worldmod.as_ref()
+    }
+
+    /// Biomass removed because a modification lowered a cell's capacity below
+    /// its standing biomass. Zero without the section.
+    ///
+    /// **This is the number the zero-magnitude control is defined by.** A
+    /// control arm running the identical relocation schedule at scale 1.0
+    /// keeps this at exactly zero while the treatment's climbs, which is what
+    /// makes the two arms comparable on standing biomass at all.
+    pub fn worldmod_capacity_loss_milli(&self) -> i128 {
+        self.worldmod
+            .as_ref()
+            .map_or(0, |state| state.capacity_loss_milli)
+    }
+
+    /// The composed terrain checksum: baseline plus every override.
+    ///
+    /// A **full recompute**, on demand, over every cell. No tick calls it;
+    /// see `TerrainModState::composed_checksum` for why an incremental
+    /// version of an FNV-1a chain does not exist and what is owed to the
+    /// specification because of that. Equals `terrain().terrain_checksum`
+    /// exactly when the section is disabled or the set is empty, which is
+    /// what the format 3 to format 4 migration writes.
+    pub fn composed_terrain_checksum(&self) -> u64 {
+        match self.worldmod.as_ref() {
+            Some(state) => state.composed_checksum(&self.terrain),
+            None => self.terrain.terrain_checksum,
+        }
+    }
+
+    /// Apply one terrain modification, enforcing every policy the layer has.
+    ///
+    /// **The single entry point for terrain modification**, used by the
+    /// relocating schedule below and, when the artifact half lands, by
+    /// organism actions. Public so the safety policies are reachable from a
+    /// test rather than only from a producer that does not exist yet: a
+    /// refusal path nothing can call is a refusal path nothing has checked.
+    ///
+    /// `value` of `None` clears the override and returns the cell to
+    /// baseline. Callers must invoke this in ascending `(layer_id,
+    /// cell_index)` order within a tick, which is what the specification
+    /// requires of the per-tick modification buffer and what makes two
+    /// organisms editing the same cell compose in a fixed order regardless of
+    /// which was visited first.
+    ///
+    /// The two policies that live here rather than in `TerrainModState`,
+    /// because both need the *world* and not just the set:
+    ///
+    /// 1. **A cell an organism is standing on may not become
+    ///    non-traversable** (`ModOutcome::RefusedOccupied` states the policy
+    ///    and the two resolutions it was chosen over), in either
+    ///    direction: blocking a land cell and un-permitting a water cell
+    ///    strand an organism identically.
+    /// 2. **Lowering a capacity below the standing biomass trims the excess
+    ///    and ledgers it.** Copied in shape from `ClimateWorld::step`, which
+    ///    has the same problem for the same reason: `check_invariants`
+    ///    refuses biomass above capacity with no tolerance, so the excess has
+    ///    to go somewhere, and the only honest somewhere is a named sink
+    ///    inside the conservation identity. Raising a capacity needs nothing:
+    ///    the new headroom fills through `grow_food`'s ordinary
+    ///    `grown_milli` term.
+    pub fn apply_terrain_modification(
+        &mut self,
+        layer: u8,
+        cell: usize,
+        value: Option<i64>,
+    ) -> ModOutcome {
+        let Some(state) = self.worldmod.as_mut() else {
+            return ModOutcome::RefusedInvalid;
+        };
+        if layer >= LAYER_COUNT || cell >= self.terrain.capacity_milli.len() {
+            state.counters.refused_invalid += 1;
+            return ModOutcome::RefusedInvalid;
+        }
+        if let Some(value) = value
+            && !value_in_domain(layer, value)
+        {
+            state.counters.refused_invalid += 1;
+            return ModOutcome::RefusedInvalid;
+        }
+        if layer == LAYER_TRAVERSABLE {
+            // Would the composed view of this cell be non-traversable after
+            // the write? Computed from the write rather than from the state,
+            // because a clear reverts to the baseline and a set does not.
+            let after = match value {
+                Some(value) => value != 0,
+                None => self.terrain.land[cell],
+            };
+            if !after && self.cell_is_occupied(cell) {
+                if let Some(state) = self.worldmod.as_mut() {
+                    state.counters.refused_occupied += 1;
+                }
+                return ModOutcome::RefusedOccupied;
+            }
+        }
+        let cap = match layer {
+            LAYER_TRAVERSABLE => self.config.worldmod.max_traversable_overrides,
+            LAYER_CAPACITY_SCALE => self.config.worldmod.max_capacity_overrides,
+            _ => self.config.worldmod.max_material_overrides,
+        };
+        let state = self.worldmod.as_mut().expect("checked above");
+        let outcome = match value {
+            Some(value) => state.set(layer, cell as u32, value, cap),
+            None => state.clear(layer, cell as u32),
+        };
+        if layer == LAYER_CAPACITY_SCALE
+            && matches!(
+                outcome,
+                ModOutcome::Inserted | ModOutcome::Replaced | ModOutcome::Cleared
+            )
+        {
+            self.trim_biomass_to_capacity(cell);
+        }
+        outcome
+    }
+
+    /// Remove biomass a capacity change left stranded above the new ceiling,
+    /// into the modification set's own loss sink.
+    fn trim_biomass_to_capacity(&mut self, cell: usize) {
+        let capacity = self.effective_capacity_milli(cell);
+        let biomass = self.biomass_milli[cell];
+        if biomass <= capacity {
+            return;
+        }
+        let excess = biomass - capacity;
+        self.biomass_milli[cell] = capacity;
+        if let Some(state) = self.worldmod.as_mut() {
+            state.capacity_loss_milli += i128::from(excess);
+            state.counters.cells_trimmed += 1;
+        }
+    }
+
+    /// Whether any living organism currently occupies `cell`.
+    ///
+    /// A linear scan over positions. That is the right cost here and would be
+    /// the wrong cost in a loop: the only caller is the traversability write
+    /// path, which has no producer yet, and the artifact half's bulk producer
+    /// must build an occupancy map once per batch rather than call this per
+    /// cell. Said here because the linear scan is exactly the kind of thing a
+    /// later caller copies without reading.
+    fn cell_is_occupied(&self, cell: usize) -> bool {
+        (0..self.ids.len()).any(|index| self.cell_of(self.x_fp[index], self.y_fp[index]) == cell)
+    }
+
+    /// Where the resource patch sits during `epoch`, as a baseline cell
+    /// index. `None` for epoch 0, which is the interval before the first
+    /// relocation and has no patch.
+    ///
+    /// A pure function of `(world_seed, epoch)`, and drawn over **baseline**
+    /// habitable cells rather than composed ones. That is deliberate and it
+    /// is the difference between an environment and a feedback loop: if the
+    /// draw ranged over composed capacity, where the patch goes next would
+    /// depend on where it has been, and on whatever the organisms have done
+    /// to the terrain - which would make the schedule an authored response to
+    /// the population rather than a property of the world.
+    fn patch_centre_cell(&self, epoch: u64) -> Option<usize> {
+        if epoch == 0 {
+            return None;
+        }
+        let habitable = u64::from(self.terrain.habitable_cells);
+        if habitable == 0 {
+            return None;
+        }
+        let draw = named_random(
+            self.config.world_seed,
+            epoch * self.config.worldmod.relocate_interval_ticks,
+            RngSystem::TerrainMod,
+            epoch,
+            0,
+        );
+        // The nth habitable cell in ascending index order. A scan rather
+        // than a precomputed table: it runs once per relocation, not once
+        // per tick, and a table would be derived state to keep in lockstep
+        // with terrain for no gain.
+        let mut remaining = draw % habitable;
+        for cell in 0..self.terrain.capacity_milli.len() {
+            if self.terrain.capacity_milli[cell] > 0 {
+                if remaining == 0 {
+                    return Some(cell);
+                }
+                remaining -= 1;
+            }
+        }
+        None
+    }
+
+    /// The habitable cells covered by a patch centred on `centre`, ascending.
+    ///
+    /// Water and zero-capacity cells are excluded rather than written with an
+    /// inert override: an override on a zero-capacity cell composes to zero
+    /// whatever the scale, so it would cost an entry, a checksum, and a
+    /// snapshot byte to say nothing.
+    fn patch_cells(&self, centre: usize) -> Vec<u32> {
+        let radius = self.config.worldmod.patch_radius_cells as i64;
+        let cells_x = i64::from(self.terrain.cells_x);
+        let cells_y = i64::from(self.terrain.cells_y);
+        let centre_x = (centre as i64) % cells_x;
+        let centre_y = (centre as i64) / cells_x;
+        let mut cells = Vec::new();
+        for offset_y in -radius..=radius {
+            let cell_y = centre_y + offset_y;
+            if cell_y < 0 || cell_y >= cells_y {
+                continue;
+            }
+            for offset_x in -radius..=radius {
+                let cell_x = centre_x + offset_x;
+                if cell_x < 0 || cell_x >= cells_x {
+                    continue;
+                }
+                let cell = (cell_y * cells_x + cell_x) as usize;
+                if self.terrain.capacity_milli[cell] > 0 {
+                    cells.push(cell as u32);
+                }
+            }
+        }
+        cells
+    }
+
+    /// Move the resource patch, if this tick is a relocation tick.
+    ///
+    /// Runs in the `Commands` phase, which had no work in it before: a
+    /// declarative environmental schedule is a command the world issues to
+    /// itself, and putting it there means it lands before `Environment` grows
+    /// food into the new capacity in the same tick.
+    ///
+    /// The write list is the **union** of the leaving patch's cells and the
+    /// arriving patch's, applied in ascending cell order with each cell's
+    /// final value decided before any write. Applying a clear pass and then a
+    /// set pass would leave the overlap's outcome dependent on pass order,
+    /// which is exactly the ordering ambiguity the specification's ascending
+    /// `(layer_id, cell_index)` rule exists to remove.
+    fn relocate_patch(&mut self, next_tick: u64) {
+        let worldmod = self.config.worldmod;
+        if !worldmod.enabled || !worldmod.patch_enabled {
+            return;
+        }
+        if !next_tick.is_multiple_of(worldmod.relocate_interval_ticks) {
+            return;
+        }
+        let epoch = next_tick / worldmod.relocate_interval_ticks;
+        let leaving = self
+            .patch_centre_cell(epoch - 1)
+            .map(|centre| self.patch_cells(centre))
+            .unwrap_or_default();
+        let arriving = self
+            .patch_centre_cell(epoch)
+            .map(|centre| self.patch_cells(centre))
+            .unwrap_or_default();
+        let scale = i64::from(worldmod.patch_capacity_scale_q16);
+
+        // Merge two ascending, duplicate-free lists into one ascending list
+        // of (cell, final value). A cell in both lists takes the arriving
+        // value; a cell only in the leaving list returns to baseline.
+        let mut writes: Vec<(u32, Option<i64>)> =
+            Vec::with_capacity(leaving.len() + arriving.len());
+        let (mut left, mut right) = (0_usize, 0_usize);
+        while left < leaving.len() || right < arriving.len() {
+            let take_left = right >= arriving.len()
+                || (left < leaving.len() && leaving[left] <= arriving[right]);
+            if take_left {
+                let cell = leaving[left];
+                if right < arriving.len() && arriving[right] == cell {
+                    writes.push((cell, Some(scale)));
+                    right += 1;
+                } else {
+                    writes.push((cell, None));
+                }
+                left += 1;
+            } else {
+                writes.push((arriving[right], Some(scale)));
+                right += 1;
+            }
+        }
+        for (cell, value) in writes {
+            self.apply_terrain_modification(LAYER_CAPACITY_SCALE, cell as usize, value);
+        }
+        if let Some(state) = self.worldmod.as_mut() {
+            state.counters.relocations += 1;
         }
     }
 
@@ -1855,7 +2286,11 @@ impl World {
                     continue;
                 }
                 let neighbor = (neighbor_y as usize) * cells_x as usize + neighbor_x as usize;
-                if !self.terrain.land[neighbor] {
+                // Composed, not baseline: the gradient scan must not steer an
+                // organism toward a cell the movement pass will then refuse
+                // to let it enter, which is what a raw `terrain.land` read
+                // here would do once layer 0 has a producer.
+                if !self.effective_traversable(neighbor) {
                     continue;
                 }
                 if self.biomass_milli[neighbor] > best_biomass {
@@ -1944,8 +2379,10 @@ impl World {
             let new_y =
                 (i64::from(self.y_fp[index]) + step_y).clamp(0, i64::from(extent_y) - 1) as i32;
             // A move into water is rejected: the organism stays and pays no
-            // movement cost (policy v1).
-            if self.terrain.land[self.cell_of(new_x, new_y)] {
+            // movement cost (policy v1). Phase 12 makes "water" the composed
+            // view rather than the baseline one, so a blocked land cell
+            // refuses the same way and a permitted water cell admits.
+            if self.effective_traversable(self.cell_of(new_x, new_y)) {
                 self.x_fp[index] = new_x;
                 self.y_fp[index] = new_y;
                 moved[index] = true;
@@ -2112,7 +2549,8 @@ impl World {
                     continue;
                 }
                 let neighbor = (neighbor_y as usize) * cells_x as usize + neighbor_x as usize;
-                if !self.terrain.land[neighbor] {
+                // Composed, for the reason the schema-1 scan above is.
+                if !self.effective_traversable(neighbor) {
                     continue;
                 }
                 if self.biomass_milli[neighbor] > best_biomass {
@@ -2127,6 +2565,19 @@ impl World {
             inputs[4] = best_dy as f32 * component;
 
             // 6: terrain suitability (own-cell capacity fraction).
+            //
+            // **Left on the raw baseline capacity, deliberately, and this is
+            // a pre-existing inconsistency rather than a Phase 12 choice.**
+            // This sensor has read `terrain.capacity_milli` since Phase 2, so
+            // it has ignored the climate section's biome scaling since Phase
+            // 6: in a climate world an organism already senses the elevation
+            // capacity of its cell, not the capacity that actually feeds it.
+            // Routing it through `effective_capacity_milli` would fix that
+            // and would change the input vector of **every climate-enabled
+            // world from Phase 6 onward**, which is a behavior change to a
+            // perception channel - a policy-version matter with its own
+            // control, not a drive-by inside a phase about terrain storage.
+            // Recorded here and reported; not changed.
             inputs[5] = (self.terrain.capacity_milli[own_cell] as f32
                 / self.config.cell_capacity_milli as f32)
                 .clamp(0.0, 1.0);
@@ -2396,7 +2847,8 @@ impl World {
                 (i64::from(self.x_fp[index]) + step_x).clamp(0, i64::from(extent_x) - 1) as i32;
             let new_y =
                 (i64::from(self.y_fp[index]) + step_y).clamp(0, i64::from(extent_y) - 1) as i32;
-            if self.terrain.land[self.cell_of(new_x, new_y)] {
+            // Composed, exactly as the schema-1 movement pass is.
+            if self.effective_traversable(self.cell_of(new_x, new_y)) {
                 self.x_fp[index] = new_x;
                 self.y_fp[index] = new_y;
                 p2.speed_milli[index] = speed;
@@ -2916,7 +3368,11 @@ impl World {
             let offset_y = (draw_y % span) as i64 - radius_fp;
             let x = (i64::from(parent_x_fp) + offset_x).clamp(0, extent_x - 1) as i32;
             let y = (i64::from(parent_y_fp) + offset_y).clamp(0, extent_y - 1) as i32;
-            if self.terrain.land[self.cell_of(x, y)] {
+            // Composed: a child may not be placed where its parent could not
+            // walk. Founder placement, by contrast, stays on the baseline -
+            // it is a generation-time property, and composing it would make a
+            // world's founding depend on a schedule.
+            if self.effective_traversable(self.cell_of(x, y)) {
                 return Some((x, y));
             }
         }
@@ -3701,6 +4157,21 @@ impl World {
         if let Some(learn) = self.learn.as_ref() {
             learn.hash_into(&mut hasher);
         }
+        // Phase 12, appended after Phase 11's for the same reason Phase 11's
+        // was appended after everything else: a section added to the end
+        // never changes the checksum of a world that lacks it, and four
+        // fixtures lack this one.
+        //
+        // The **composed terrain checksum is deliberately not hashed here**.
+        // It is a pure function of `terrain_checksum` - already hashed above -
+        // and the modification set - hashed on the line below - so it would
+        // add no discriminating power at a cost of one pass over every cell
+        // per checksum call. That is the same argument that keeps developed
+        // bodies out of the Phase 10 section. It is still computed and
+        // verified where it means something: in the save, against the file.
+        if let Some(worldmod) = self.worldmod.as_ref() {
+            worldmod.hash_into(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -3716,7 +4187,14 @@ impl World {
                 || y < 0
                 || x >= self.config.world_extent_x_fp()
                 || y >= self.config.world_extent_y_fp()
-                || !self.terrain.land[self.cell_of(x, y)]
+                // Composed. The permit direction is why this cannot stay on
+                // the baseline: an organism legally standing on a water cell
+                // that a modification made traversable would otherwise be an
+                // invariant violation. The block direction is safe because
+                // `apply_terrain_modification` refuses to make an occupied
+                // cell non-traversable, so this check is strictly stronger
+                // than the one it replaces rather than weaker.
+                || !self.effective_traversable(self.cell_of(x, y))
             {
                 return Err(InvariantViolation::PositionInvalid {
                     id: self.ids[index],
@@ -3774,9 +4252,19 @@ impl World {
             .climate
             .as_ref()
             .map_or(0, |climate| climate.capacity_loss_milli);
+        // Phase 12 opens a second sink of the same shape and it is a separate
+        // term rather than an addition to the climate one. Two reasons, and
+        // the first is the ordinary one: a climate-disabled world has no
+        // `ClimateWorld` to put it on. The second is that they answer
+        // different questions - "biomes drifted and the world got poorer" and
+        // "something edited the terrain" - and a single total is how a signal
+        // becomes noise (D-074). The control arm of the relocating patch is
+        // *defined* by this term staying at zero.
+        let worldmod_capacity_loss = self.worldmod_capacity_loss_milli();
         let expected_biomass = self.ledger.initial_biomass_milli + self.ledger.grown_milli
             - self.ledger.consumed_biomass_milli
-            - capacity_loss;
+            - capacity_loss
+            - worldmod_capacity_loss;
         let actual_biomass: i128 = self
             .biomass_milli
             .iter()
@@ -3868,6 +4356,22 @@ impl World {
                 return Err(InvariantViolation::LearnBounds {
                     id: self.ids[index],
                 });
+            }
+        }
+        // Phase 12. Not a lockstep check - the modification set is indexed by
+        // cell, not by organism - but the same idea applied to the two
+        // properties the rest of the phase is built on top of. Sortedness and
+        // uniqueness make application deterministic and the encoding unique;
+        // the domains make the composition arithmetic total. Both are checked
+        // rather than trusted because a restore writes this array from a
+        // payload, and the payload is the one part of a Phase 12 save that
+        // cannot be regenerated and compared.
+        if let Some(worldmod) = self.worldmod.as_ref() {
+            if let Some(index) = worldmod.order_violation() {
+                return Err(InvariantViolation::TerrainModOrder { index });
+            }
+            if let Some(index) = worldmod.bounds_violation(self.terrain.cell_count()) {
+                return Err(InvariantViolation::TerrainModBounds { index });
             }
         }
         // Phase 10, on the same terms. Bodies are derived rather than stored,
@@ -4066,6 +4570,70 @@ mod tests {
             out_of_bounds.check_invariants(),
             Err(InvariantViolation::LearnBounds { .. })
         ));
+    }
+
+    #[test]
+    fn the_worldmod_invariants_fire_on_a_payload_the_writers_cannot_produce() {
+        // `set` and `clear` cannot produce an unsorted, duplicated, or
+        // out-of-domain modification set, so the *only* way one enters a
+        // world is a restore decoding an untrusted section - which is the
+        // path that matters, because the modification set is the one part of
+        // a Phase 12 save that cannot be regenerated and compared. Injected
+        // directly here, for the reason the learn-state test above exists:
+        // an invariant nobody has watched fail is an invariant nobody knows
+        // works, and the corruption is unreachable from the public API.
+        let mut config = small_config();
+        config.worldmod.enabled = true;
+        let mut world = World::new(config).unwrap();
+        for cell in [10_u32, 40, 900] {
+            assert_eq!(
+                world.apply_terrain_modification(LAYER_CAPACITY_SCALE, cell as usize, Some(Q16)),
+                ModOutcome::Inserted
+            );
+        }
+        world
+            .check_invariants()
+            .expect("a written set is consistent");
+
+        let mut unsorted = world.clone();
+        unsorted.worldmod.as_mut().unwrap().cells.swap(0, 1);
+        assert_eq!(
+            unsorted.check_invariants(),
+            Err(InvariantViolation::TerrainModOrder { index: 1 })
+        );
+
+        let mut duplicated = world.clone();
+        duplicated.worldmod.as_mut().unwrap().cells[1] = 10;
+        assert_eq!(
+            duplicated.check_invariants(),
+            Err(InvariantViolation::TerrainModOrder { index: 1 })
+        );
+
+        // Out of domain in each of the three ways: an unknown layer id, a
+        // cell past the end of the map, and a negative capacity scale, which
+        // would make the biomass bounds check unsatisfiable rather than
+        // merely wrong.
+        let mut bad_layer = world.clone();
+        bad_layer.worldmod.as_mut().unwrap().layers[2] = LAYER_COUNT;
+        assert_eq!(
+            bad_layer.check_invariants(),
+            Err(InvariantViolation::TerrainModBounds { index: 2 })
+        );
+
+        let mut past_the_end = world.clone();
+        let cells = past_the_end.terrain.cell_count() as u32;
+        past_the_end.worldmod.as_mut().unwrap().cells[2] = cells;
+        assert_eq!(
+            past_the_end.check_invariants(),
+            Err(InvariantViolation::TerrainModBounds { index: 2 })
+        );
+
+        let mut negative = world.clone();
+        negative.worldmod.as_mut().unwrap().values[0] = -1;
+        assert_eq!(
+            negative.check_invariants(),
+            Err(InvariantViolation::TerrainModBounds { index: 0 })
+        );
     }
 
     #[test]

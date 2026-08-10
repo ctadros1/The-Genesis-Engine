@@ -1401,20 +1401,35 @@ fn command_verify_events(args: Vec<String>) -> Result<(), String> {
 fn command_verify_save(args: Vec<String>) -> Result<(), String> {
     let path = args.first().ok_or_else(usage)?;
     let bytes = fs::read(path).map_err(|error| error.to_string())?;
-    let info = sim_persist::read_info(&bytes).map_err(|error| format!("invalid save: {error}"))?;
-    sim_persist::migration_for(info.format_version)?;
-    let (_, world) = sim_persist::SnapshotStore::load_world(std::path::Path::new(path))
+    // **Peek the version, then consult the registry, then read.** The order
+    // used to be the other way round: `read_info` ran first and refuses any
+    // version but the current one, so `migration_for` was dead code from the
+    // day it was written - an old file failed with `UnsupportedFormat` before
+    // the registry that exists to handle it was ever asked. The only command
+    // in the product that consults the registry could not reach it.
+    let format_version = sim_persist::peek_format_version(&bytes)
+        .map_err(|error| format!("invalid save: {error}"))?;
+    let migration = sim_persist::migration_for(format_version)?;
+    let (info, world) = sim_persist::SnapshotStore::load_world(std::path::Path::new(path))
         .map_err(|error| format!("restore failed: {error}"))?;
     println!(
         concat!(
-            "{{\"verify_schema_version\":1,\"path\":\"{}\",\"format_version\":{},",
-            "\"compressed\":{},\"world_id\":{},\"tick\":{},\"seed\":\"0x{:016x}\",",
+            "{{\"verify_schema_version\":2,\"path\":\"{}\",\"format_version\":{},",
+            "\"migrated_to\":{},\"compressed\":{},\"world_id\":{},\"tick\":{},",
+            "\"seed\":\"0x{:016x}\",",
             "\"config_hash\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
             "\"terrain_checksum\":\"0x{:016x}\",\"build_version\":\"{}\",",
             "\"population\":{},\"result\":\"ok\"}}"
         ),
         json_escape(path),
-        info.format_version,
+        format_version,
+        // `null` when the file was already current, so a reader can tell a
+        // native load from a migrated one without comparing version numbers
+        // against a build constant it does not have.
+        match migration {
+            Some(migration) => migration.to_format.to_string(),
+            None => "null".to_owned(),
+        },
         info.compressed,
         info.world_id,
         info.tick,

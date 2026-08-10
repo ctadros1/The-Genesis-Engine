@@ -1,4 +1,4 @@
-//! ALIF world snapshot format version 1.
+//! ALIF world snapshot format, version 4.
 //!
 //! Layout (all little-endian, matching the kernel's canonical hashing):
 //!
@@ -17,13 +17,57 @@
 //! allocation or decompression, checksums verify before parsing, and
 //! unknown versions/sections fail closed with typed errors. Loaders never
 //! repair data.
+//!
+//! # Where the two terrain checksums live, and why they are not together
+//!
+//! `specifications/mutable-world-state.md` says "both checksums are recorded
+//! in the header". The **baseline** one is, exactly where it has always been
+//! and with its fail-closed check untouched - that check is the property the
+//! whole design exists to preserve. The **composed** one is in
+//! `SECTION_WORLD_META` instead, and the deviation is deliberate:
+//!
+//! - The header is a fixed 112 bytes and `read_info` asserts that length
+//!   exactly, so a tenth field means a longer header, and a longer header
+//!   means every existing reader's `BadHeaderLength` fires on every new file.
+//!   The version bump would cover that, but it would also mean the cheap
+//!   header-only provenance read stops being comparable across formats.
+//! - The composed check cannot run at header time anyway. It is meaningful
+//!   only after the modification section has been decoded and applied, which
+//!   is step 5 of the restore order; `SECTION_WORLD_META` is where the rest of
+//!   the state the restore order needs already lives.
+//!
+//! The word is written **only when the snapshot carries a modification
+//! section**, so a world with the section disabled produces a payload that is
+//! byte-identical to the one format 3 wrote for it. That is not a
+//! micro-optimisation: it is what makes the format 3 to format 4 migration
+//! testable against a real legacy file, and what lets C12.8's "a disabled
+//! world encodes as it always did" be asserted rather than argued.
 
 use sim_core::{
-    GENOME_SCHEMA_VERSION, Ledger, Phase2SaveState, SAVE_STATE_VERSION, SaveState, TRAIT_COUNT,
+    GENOME_SCHEMA_VERSION, LAYER_COUNT, Ledger, Phase2SaveState, SAVE_STATE_VERSION, SaveState,
+    TRAIT_COUNT, TerrainModCounters, TerrainModState,
 };
 use std::fmt;
 
 pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
+/// Format 4 stores terrain modifications and the composed terrain checksum.
+///
+/// **It is 4 and not 2, and the difference is not bookkeeping.** Every
+/// sentence in `specifications/mutable-world-state.md`, in
+/// `specifications/world-save-format.md`, and in ADR-0015 that calls the
+/// mutable-world successor "format 2" was written before formats 2 and 3
+/// existed; both shipped for reasons that have nothing to do with terrain,
+/// and both are documented below. Writing a migration registry against a
+/// version number that is already taken is the specific mistake this
+/// paragraph exists to have prevented.
+///
+/// The one registered migration is **3 to 4**. Formats 1 and 2 have none,
+/// by design and by physics rather than by neglect - see their notes below.
+/// `decode_snapshot_format3` and `encode_snapshot_format3` stay in the build
+/// permanently, because the acceptance requirement for the migration is byte
+/// identity against what the format 3 reader produces, and a comparison you
+/// have deleted one side of is not a comparison.
+pub const FORMAT_VERSION: u16 = 4;
 /// Format 3 makes the Phase 2 section describe its own two counts.
 ///
 /// Format 2 wrote one count and drove the per-organism loop from
@@ -49,7 +93,12 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// a format-1 file cannot say what its climate settings were, so inventing
 /// them is exactly the "never alter meaning during load" rule this crate
 /// exists to keep.
-pub const FORMAT_VERSION: u16 = 3;
+pub const FORMAT_VERSION_3: u16 = 3;
+/// The logical state version format 3 pairs with. Pinned as its own constant
+/// rather than read as `SAVE_STATE_VERSION - 1`: the two axes move
+/// independently, and format 3 has been paired with logical version 1 for its
+/// whole life whatever the current version becomes.
+pub const SAVE_STATE_VERSION_3: u16 = 1;
 pub const FLAG_ZSTD: u32 = 1;
 const HEADER_LEN: usize = 112;
 const MAX_BUILD_LEN: usize = 64;
@@ -89,6 +138,66 @@ const SECTION_MORPHOLOGY: u16 = 11;
 /// Sparse: only plastic edges are stored, each naming the edge it belongs to
 /// rather than a slot index. See `LearnSaveState`.
 const SECTION_LEARN: u16 = 12;
+/// Phase 12 terrain modification. Optional on the same terms as every
+/// section above - present exactly when `config.worldmod.enabled` - which is
+/// what makes a snapshot of a disabled world byte-identical to a format 3
+/// snapshot of the same world.
+///
+/// Unlike every section above, this one uses the section **flags** word, and
+/// it is the reason that word stopped being ignored; see
+/// `SECTION_FLAG_DENSE_LAYER0`.
+const SECTION_WORLDMOD: u16 = 13;
+/// Bytes per sparse override inside the modification section: cell index and
+/// value. The layer id is not stored, because the layer is implied by which
+/// per-layer block the entry sits in. Used to bound an allocation, never to
+/// assert an exact length (D-075).
+const WORLDMOD_SPARSE_BYTES_PER_ENTRY: u64 = 4 + 8;
+/// Bytes per cell in a dense layer block.
+const WORLDMOD_DENSE_BYTES_PER_CELL: u64 = 8;
+/// The dense sentinel: "this cell has no override on this layer".
+///
+/// `-1` is unambiguous for every layer that exists or is reserved, because
+/// `sim_core::value_in_domain` requires a non-negative value on all three -
+/// traversability is `0..=1`, a capacity scale is a non-negative Q16
+/// multiplier, and a material yield is a non-negative quantity. A layer with
+/// a signed domain would need a presence bitmap instead, and adding one is a
+/// format change, which is exactly the kind of thing a format version is for.
+const WORLDMOD_DENSE_ABSENT: i64 = -1;
+
+/// Section flags bit 0: layer 0 is stored densely rather than sparsely. Bits
+/// 1 and 2 say the same of layers 1 and 2.
+///
+/// **This is the field that closed a fail-open.** Every section has carried a
+/// 16-bit flags word since format 1; every writer wrote a literal zero and
+/// the reader bound it to `_flags` and never looked at it. Any value at all
+/// was accepted and silently ignored, so a section could have claimed any
+/// property it liked and the loader would have agreed. Now each tag declares
+/// the bits it understands (`section_flags_allowed`) and anything else is
+/// refused with a typed error, on the same pattern the header's `FLAG_ZSTD`
+/// has used since format 1.
+///
+/// One bit per layer rather than one bit for the whole section, because
+/// `specifications/mutable-world-state.md` selects the representation "when
+/// the modified cell count exceeds `dense_threshold_q16` of the cell count
+/// **for that layer**" - and the layers have wildly different occupancies. A
+/// world with a dense capacity patch and three blocked cells would otherwise
+/// store a full-map traversability field to say almost nothing.
+const SECTION_FLAG_DENSE_LAYER0: u16 = 1;
+
+/// The flag bits a given section tag understands. Everything else is refused.
+///
+/// A whitelist rather than a blacklist, and per tag rather than global: a bit
+/// that means "dense layer 0" in the modification section must not quietly
+/// mean anything at all in the organism table.
+fn section_flags_allowed(tag: u16) -> u16 {
+    match tag {
+        SECTION_WORLDMOD => {
+            // One bit per reserved layer.
+            (1_u16 << LAYER_COUNT) - 1
+        }
+        _ => 0,
+    }
+}
 /// Smallest number of bytes one organism's learn record can occupy: its
 /// plastic-edge count word and its fault word, with no plastic edges at all.
 /// Used to bound the allocation a declared organism count implies, never to
@@ -109,16 +218,34 @@ pub enum CodecError {
     BuildStringTooLong(usize),
     StoredTooLarge(u64),
     UncompressedTooLarge(u64),
-    LengthMismatch { expected: usize, actual: usize },
+    LengthMismatch {
+        expected: usize,
+        actual: usize,
+    },
     PayloadChecksumMismatch,
     SectionChecksumMismatch(u16),
     DecompressionFailed,
-    DecompressedLengthMismatch { declared: u64, actual: usize },
+    DecompressedLengthMismatch {
+        declared: u64,
+        actual: usize,
+    },
     TruncatedSection,
     UnknownSection(u16),
     MissingSection(u16),
     DuplicateSection(u16),
     ValueOutOfRange(&'static str),
+    /// A section's flags word carried a bit the tag does not define.
+    UnknownSectionFlags {
+        tag: u16,
+        flags: u16,
+    },
+    /// A section that does not exist in the format version the file claims.
+    /// A format 3 file carrying a format 4 section is lying about one of the
+    /// two, and either way it is not a format 3 file.
+    SectionNotInFormat {
+        tag: u16,
+        format: u16,
+    },
 }
 
 impl fmt::Display for CodecError {
@@ -221,6 +348,14 @@ impl<'a> Reader<'a> {
     fn done(&self) -> bool {
         self.offset == self.bytes.len()
     }
+    /// Bytes left in this section body. Used by exactly one caller, the
+    /// world-metadata section's optional trailing composed checksum, and
+    /// safe there only because `done()` is asserted at the end of every
+    /// section: a body with 4 or 12 spare bytes is a decode failure, so
+    /// "8 bytes remain" cannot mean anything but "the word is present".
+    fn remaining(&self) -> usize {
+        self.bytes.len() - self.offset
+    }
 }
 
 pub fn crc32(bytes: &[u8]) -> u32 {
@@ -266,9 +401,20 @@ fn allocation_fits(count: u64, per_item: u64, extra: u64, body_len: usize) -> bo
     }
 }
 
-fn write_section(out: &mut Vec<u8>, tag: u16, body: Vec<u8>) {
+/// Write one section with an explicit flags word.
+///
+/// `flags` was a hard-coded zero here until Phase 12; it is a parameter now
+/// so that a writer has to state what it means, and the reader refuses
+/// anything `section_flags_allowed` does not define. Callers that carry no
+/// flags pass `0` and are byte-identical to what they always wrote.
+fn write_section(out: &mut Vec<u8>, tag: u16, flags: u16, body: Vec<u8>) {
+    debug_assert_eq!(
+        flags & !section_flags_allowed(tag),
+        0,
+        "section {tag} wrote a flag bit its own reader will refuse"
+    );
     out.extend_from_slice(&tag.to_le_bytes());
-    out.extend_from_slice(&0_u16.to_le_bytes());
+    out.extend_from_slice(&flags.to_le_bytes());
     out.extend_from_slice(&(body.len() as u64).to_le_bytes());
     let checksum = crc32(&body);
     out.extend_from_slice(&body);
@@ -486,6 +632,32 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.i64(plasticity.plastic_edge_cost_milli_per_s);
     writer.u32(plasticity.max_plastic_edges);
     writer.u32(plasticity.lamarckian_fraction_q16);
+    // Phase 12 mutable world. **The fifth config section to need this
+    // function, and the first one whose absence was caught before it
+    // shipped** - by `config_field_coverage.rs`, which walks `FIELD_NAMES`
+    // rather than a hand-maintained list, and which failed the moment the
+    // fields were registered and left unencoded. Every previous instance
+    // (D-065's climate/origin/contest, Phase 10's morphology,
+    // `mutation.plasticity_enabled`, Phase 11's plasticity) was found after
+    // the fact, two of them phases later.
+    //
+    // The consequence would have been the same class as the plasticity one
+    // and one step worse. `World::from_state` refuses a save whose worldmod
+    // section presence does not match the configuration, so a snapshot of a
+    // mutable world decoded with `enabled` back at its `false` default does
+    // not restore a quietly static world - it **refuses to restore at all**,
+    // and the message names a section rather than the config field that was
+    // dropped.
+    let worldmod = &config.worldmod;
+    writer.u8(u8::from(worldmod.enabled));
+    writer.u32(worldmod.dense_threshold_q16);
+    writer.u32(worldmod.max_traversable_overrides);
+    writer.u32(worldmod.max_capacity_overrides);
+    writer.u32(worldmod.max_material_overrides);
+    writer.u8(u8::from(worldmod.patch_enabled));
+    writer.u64(worldmod.relocate_interval_ticks);
+    writer.u32(worldmod.patch_radius_cells);
+    writer.u32(worldmod.patch_capacity_scale_q16);
     writer.0
 }
 
@@ -671,12 +843,36 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.plasticity.plastic_edge_cost_milli_per_s = reader.i64()?;
     config.plasticity.max_plastic_edges = reader.u32()?;
     config.plasticity.lamarckian_fraction_q16 = reader.u32()?;
+    config.worldmod.enabled = reader.u8()? != 0;
+    config.worldmod.dense_threshold_q16 = reader.u32()?;
+    config.worldmod.max_traversable_overrides = reader.u32()?;
+    config.worldmod.max_capacity_overrides = reader.u32()?;
+    config.worldmod.max_material_overrides = reader.u32()?;
+    config.worldmod.patch_enabled = reader.u8()? != 0;
+    config.worldmod.relocate_interval_ticks = reader.u64()?;
+    config.worldmod.patch_radius_cells = reader.u32()?;
+    config.worldmod.patch_capacity_scale_q16 = reader.u32()?;
     Ok(config)
 }
 
+/// Encode the payload for a given framing version.
+///
+/// `format` is a parameter rather than a constant because the format 3 writer
+/// is a permanent part of the build: it is one half of the migration's
+/// byte-identity comparison, and a comparison against a reimplementation of
+/// the old writer would test the reimplementation. The only differences it
+/// makes are the two Phase 12 additions below, and both are gated on the
+/// *state* rather than on the version, so a format 4 file for a world without
+/// the section is byte-identical to the format 3 file for the same world -
+/// which `encode_snapshot_format3` asserts by construction.
 fn encode_payload(state: &SaveState) -> Vec<u8> {
     let mut payload = Vec::new();
-    write_section(&mut payload, SECTION_CONFIG, encode_config(&state.config));
+    write_section(
+        &mut payload,
+        SECTION_CONFIG,
+        0,
+        encode_config(&state.config),
+    );
 
     let mut meta = Writer(Vec::new());
     meta.u64(state.tick);
@@ -684,7 +880,16 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
     meta.u8(u8::from(state.extinct));
     meta.u64(state.next_entity_id);
     meta.u64(state.terrain_checksum);
-    write_section(&mut payload, SECTION_WORLD_META, meta.0);
+    if state.worldmod.is_some() {
+        // Written only alongside a modification section, so a world without
+        // one produces the metadata section it always produced. A reader that
+        // finds no word takes the baseline as the composed value, which is
+        // the identity `TerrainModState::composed_checksum` guarantees for an
+        // empty set - so the field is never *inferred*, only omitted where
+        // the two numbers are provably the same.
+        meta.u64(state.composed_terrain_checksum);
+    }
+    write_section(&mut payload, SECTION_WORLD_META, 0, meta.0);
 
     let mut organisms = Writer(Vec::new());
     organisms.u64(state.ids.len() as u64);
@@ -696,14 +901,14 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         organisms.u64(state.age_ticks[index]);
         organisms.u64(state.cooldown_ticks[index]);
     }
-    write_section(&mut payload, SECTION_ORGANISMS, organisms.0);
+    write_section(&mut payload, SECTION_ORGANISMS, 0, organisms.0);
 
     let mut biomass = Writer(Vec::new());
     biomass.u64(state.biomass_milli.len() as u64);
     for &value in &state.biomass_milli {
         biomass.i64(value);
     }
-    write_section(&mut payload, SECTION_BIOMASS, biomass.0);
+    write_section(&mut payload, SECTION_BIOMASS, 0, biomass.0);
 
     let mut ledger = Writer(Vec::new());
     ledger.i128(state.ledger.initial_energy_milli);
@@ -718,7 +923,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
     ledger.u64(state.counters.deaths_old_age_total);
     ledger.u64(state.counters.capacity_rejections_total);
     ledger.u64(state.counters.dropped_events_total);
-    write_section(&mut payload, SECTION_LEDGER, ledger.0);
+    write_section(&mut payload, SECTION_LEDGER, 0, ledger.0);
 
     if let Some(phase2) = &state.phase2 {
         let mut section = Writer(Vec::new());
@@ -764,7 +969,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.u64(phase2.counters.controller_faults_total);
         section.u64(phase2.counters.mutated_trait_genes_total);
         section.u64(phase2.counters.mutated_neural_genes_total);
-        write_section(&mut payload, SECTION_PHASE2, section.0);
+        write_section(&mut payload, SECTION_PHASE2, 0, section.0);
     }
     if let Some(climate) = state.climate.as_ref() {
         let mut section = Writer(Vec::new());
@@ -780,7 +985,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
             section.u8(*biome as u8);
         }
         section.i128(climate.capacity_loss_milli);
-        write_section(&mut payload, SECTION_CLIMATE, section.0);
+        write_section(&mut payload, SECTION_CLIMATE, 0, section.0);
     }
     if let Some(contest) = state.contest.as_ref() {
         let mut section = Writer(Vec::new());
@@ -804,7 +1009,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.i128(contest.damage_dealt_milli);
         section.u64(contest.deaths_by_damage_total);
         section.i128(contest.healed_milli);
-        write_section(&mut payload, SECTION_CONTEST, section.0);
+        write_section(&mut payload, SECTION_CONTEST, 0, section.0);
     }
     if let Some(physiology) = state.physiology.as_ref() {
         let mut section = Writer(Vec::new());
@@ -817,7 +1022,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         section.u64(physiology.deaths_juvenile_total);
         section.i128(physiology.thermal_cost_milli);
         section.i128(physiology.allometric_cost_milli);
-        write_section(&mut payload, SECTION_PHYSIOLOGY, section.0);
+        write_section(&mut payload, SECTION_PHYSIOLOGY, 0, section.0);
     }
     if let Some(schema2) = state.schema2.as_ref() {
         let mut section = Writer(Vec::new());
@@ -876,7 +1081,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         ] {
             section.u64(value);
         }
-        write_section(&mut payload, SECTION_SCHEMA2, section.0);
+        write_section(&mut payload, SECTION_SCHEMA2, 0, section.0);
     }
     if let Some(morphology) = state.morphology.as_ref() {
         let mut section = Writer(Vec::new());
@@ -912,7 +1117,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         ] {
             section.u64(value);
         }
-        write_section(&mut payload, SECTION_MORPHOLOGY, section.0);
+        write_section(&mut payload, SECTION_MORPHOLOGY, 0, section.0);
     }
     if let Some(learn) = state.learn.as_ref() {
         let mut section = Writer(Vec::new());
@@ -970,12 +1175,195 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
             section.u64(value);
         }
         section.i128(learn.cost_milli);
-        write_section(&mut payload, SECTION_LEARN, section.0);
+        write_section(&mut payload, SECTION_LEARN, 0, section.0);
+    }
+    if let Some(worldmod) = state.worldmod.as_ref() {
+        let (flags, body) = encode_worldmod(worldmod, state);
+        write_section(&mut payload, SECTION_WORLDMOD, flags, body);
     }
     payload
 }
 
-fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecError> {
+/// Encode the terrain modification section, choosing sparse or dense per
+/// layer, and return the flags word that says which was chosen.
+///
+/// # Both representations exist because the spec requires both, and they are
+/// required to be indistinguishable after a restore
+///
+/// The sparse form is a sorted `(cell, value)` list per layer; the dense form
+/// is one `i64` per cell with `WORLDMOD_DENSE_ABSENT` marking "no override".
+/// They decode to the same `TerrainModState` and therefore to the same world
+/// and the same composed checksum - that is C12.5's representation-
+/// equivalence clause, and it is asserted rather than assumed.
+///
+/// # The threshold, and a measured caveat on its default
+///
+/// The choice is `layer_len / cell_count > dense_threshold_q16 / 65536`,
+/// evaluated exactly in `u128` so a large map cannot overflow the numerator.
+/// It is versioned config rather than a constant here because the
+/// specification requires the representation to be recorded rather than
+/// guessed, and a threshold living in the encoder would be a silent format
+/// parameter.
+///
+/// **The shipped default is below the byte-for-byte crossover and that is
+/// worth stating rather than hiding.** A sparse entry costs 12 bytes and a
+/// dense cell costs 8, so dense is smaller only past 8/12 = 2/3 occupancy,
+/// while `worldmod_default()` sets the threshold at 1/2 with a comment
+/// computing the crossover from a 13-byte entry - the flat layout that
+/// carried its own layer id, before the per-layer blocks made that byte
+/// redundant. At the default a layer between 1/2 and 2/3 occupancy therefore
+/// encodes dense and slightly larger. It is a size choice and never a
+/// correctness one, both arms round-trip identically, and the number belongs
+/// to `sim-core`'s config rather than to this crate; measured figures are in
+/// `tests/bench_phase12_snapshot.rs`.
+fn encode_worldmod(worldmod: &TerrainModState, state: &SaveState) -> (u16, Vec<u8>) {
+    // The map's cell count, taken from the biomass field rather than from the
+    // config's `cells_x * cells_y`: `from_state` already validates that array
+    // against the regenerated terrain, so this is the one length in the save
+    // that is checked against the world rather than declared by it.
+    let cell_count = state.biomass_milli.len() as u64;
+    let threshold = u128::from(state.config.worldmod.dense_threshold_q16);
+    let mut flags = 0_u16;
+    let mut writer = Writer(Vec::new());
+    for layer in 0..LAYER_COUNT {
+        let range = worldmod.layer_range(layer);
+        let dense = cell_count > 0
+            && u128::from(range.len() as u64) * 65_536 > threshold * u128::from(cell_count);
+        if dense {
+            flags |= SECTION_FLAG_DENSE_LAYER0 << layer;
+            writer.u64(cell_count);
+            let mut cursor = range.start;
+            for cell in 0..cell_count as u32 {
+                while cursor < range.end && worldmod.cells[cursor] < cell {
+                    cursor += 1;
+                }
+                if cursor < range.end && worldmod.cells[cursor] == cell {
+                    writer.i64(worldmod.values[cursor]);
+                } else {
+                    writer.i64(WORLDMOD_DENSE_ABSENT);
+                }
+            }
+        } else {
+            writer.u64(range.len() as u64);
+            for index in range {
+                writer.u32(worldmod.cells[index]);
+                writer.i64(worldmod.values[index]);
+            }
+        }
+    }
+    writer.i128(worldmod.capacity_loss_milli);
+    // Exhaustive destructuring with no `..`, for the reason the schema-2 and
+    // learn blocks give: these counters are hashed into the state checksum,
+    // so one dropped on save makes a restored world's checksum differ from
+    // the one it was saved from with nothing in the file to point at.
+    let TerrainModCounters {
+        writes_inserted,
+        writes_replaced,
+        writes_cleared,
+        writes_no_change,
+        refused_cap,
+        refused_occupied,
+        refused_invalid,
+        relocations,
+        cells_trimmed,
+    } = worldmod.counters;
+    for value in [
+        writes_inserted,
+        writes_replaced,
+        writes_cleared,
+        writes_no_change,
+        refused_cap,
+        refused_occupied,
+        refused_invalid,
+        relocations,
+        cells_trimmed,
+    ] {
+        writer.u64(value);
+    }
+    (flags, writer.0)
+}
+
+/// Decode the terrain modification section into the flat sorted arrays the
+/// kernel keeps it in.
+///
+/// Cross-layer ordering is a property of this loop - layers are read in
+/// ascending id and appended in order - so only ordering *within* a layer can
+/// come from the file. It is not checked here: `World::from_state` runs
+/// `order_violation` and `bounds_violation` over the whole set before it
+/// reaches a world, and duplicating the check would be a second copy of the
+/// ordering rule to keep in step with `terrainmod.rs`. What is checked here
+/// is framing: every declared count is capped against the section body before
+/// anything is allocated (D-075), and the count is never asserted to equal a
+/// field count.
+fn decode_worldmod(
+    reader: &mut Reader,
+    flags: u16,
+    body_len: usize,
+) -> Result<TerrainModState, CodecError> {
+    let mut state = TerrainModState::default();
+    for layer in 0..LAYER_COUNT {
+        let dense = flags & (SECTION_FLAG_DENSE_LAYER0 << layer) != 0;
+        let declared = reader.u64()?;
+        if dense {
+            if !allocation_fits(declared, WORLDMOD_DENSE_BYTES_PER_CELL, 0, body_len) {
+                return Err(CodecError::ValueOutOfRange("worldmod dense cells"));
+            }
+            if declared > u64::from(u32::MAX) {
+                return Err(CodecError::ValueOutOfRange("worldmod dense cell index"));
+            }
+            for cell in 0..declared as u32 {
+                let value = reader.i64()?;
+                // The sentinel is checked before the domain, because "absent"
+                // is deliberately outside every layer's domain and would
+                // otherwise be refused as an illegal value.
+                if value == WORLDMOD_DENSE_ABSENT {
+                    continue;
+                }
+                state.layers.push(layer);
+                state.cells.push(cell);
+                state.values.push(value);
+            }
+        } else {
+            if !allocation_fits(declared, WORLDMOD_SPARSE_BYTES_PER_ENTRY, 0, body_len) {
+                return Err(CodecError::ValueOutOfRange("worldmod sparse entries"));
+            }
+            state.layers.reserve(declared as usize);
+            state.cells.reserve(declared as usize);
+            state.values.reserve(declared as usize);
+            for _ in 0..declared {
+                state.layers.push(layer);
+                state.cells.push(reader.u32()?);
+                state.values.push(reader.i64()?);
+            }
+        }
+    }
+    state.capacity_loss_milli = reader.i128()?;
+    let mut counters = TerrainModCounters::default();
+    for slot in [
+        &mut counters.writes_inserted,
+        &mut counters.writes_replaced,
+        &mut counters.writes_cleared,
+        &mut counters.writes_no_change,
+        &mut counters.refused_cap,
+        &mut counters.refused_occupied,
+        &mut counters.refused_invalid,
+        &mut counters.relocations,
+        &mut counters.cells_trimmed,
+    ] {
+        *slot = reader.u64()?;
+    }
+    state.counters = counters;
+    Ok(state)
+}
+
+/// Decode a payload written under framing version `format`.
+///
+/// The version gates *which sections may appear*, not how any of them is
+/// parsed. A format 3 file that carries a format 4 section is refused rather
+/// than read leniently: leniency there would mean a file whose header says 3
+/// and whose body says 4 loads as whichever the reader felt like, and the
+/// whole point of a registry is that nothing migrates implicitly.
+fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<SaveState, CodecError> {
     let mut offset = 0_usize;
     let mut config = None;
     let mut climate: Option<sim_core::ClimateSaveState> = None;
@@ -984,7 +1372,9 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
     let mut morphology: Option<sim_core::MorphologySaveState> = None;
     let mut learn: Option<sim_core::LearnSaveState> = None;
     let mut contest: Option<sim_core::ContestSaveState> = None;
-    let mut meta: Option<(u64, bool, bool, u64, u64)> = None;
+    let mut worldmod: Option<TerrainModState> = None;
+    type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
+    let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
     let mut organisms: Option<OrganismColumns> = None;
     let mut biomass = None;
@@ -996,7 +1386,19 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
             return Err(CodecError::TruncatedSection);
         }
         let tag = u16::from_le_bytes(bytes[offset..offset + 2].try_into().unwrap());
-        let _flags = u16::from_le_bytes(bytes[offset + 2..offset + 4].try_into().unwrap());
+        // **Validated, not bound to `_` and forgotten.** Every section has
+        // carried this word since format 1 and no reader had ever looked at
+        // it, so any value was silently accepted - a fail-open that cost
+        // nothing only because nothing had ever written one. It carries the
+        // modification section's per-layer representation now, so it has to
+        // mean exactly what the tag says it can mean.
+        let section_flags = u16::from_le_bytes(bytes[offset + 2..offset + 4].try_into().unwrap());
+        if section_flags & !section_flags_allowed(tag) != 0 {
+            return Err(CodecError::UnknownSectionFlags {
+                tag,
+                flags: section_flags,
+            });
+        }
         let length = u64::from_le_bytes(bytes[offset + 4..offset + 12].try_into().unwrap());
         if length > MAX_SECTION_LEN {
             return Err(CodecError::ValueOutOfRange("section length"));
@@ -1031,12 +1433,30 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 if meta.is_some() {
                     return Err(CodecError::DuplicateSection(tag));
                 }
+                let tick = reader.u64()?;
+                let paused = reader.u8()? != 0;
+                let extinct = reader.u8()? != 0;
+                let next_entity_id = reader.u64()?;
+                let terrain_checksum = reader.u64()?;
+                // The composed terrain checksum, present only in a snapshot
+                // that carries a modification section. Absent is not a
+                // default: it is resolved to the baseline below, which is
+                // provably the composed value of an empty set, and the
+                // resolution is then verified by `World::from_state` like any
+                // other. A body with any other number of spare bytes is
+                // rejected by the trailing-bytes check every section runs.
+                let composed = if reader.remaining() >= 8 {
+                    Some(reader.u64()?)
+                } else {
+                    None
+                };
                 meta = Some((
-                    reader.u64()?,
-                    reader.u8()? != 0,
-                    reader.u8()? != 0,
-                    reader.u64()?,
-                    reader.u64()?,
+                    tick,
+                    paused,
+                    extinct,
+                    next_entity_id,
+                    terrain_checksum,
+                    composed,
                 ));
             }
             SECTION_ORGANISMS => {
@@ -1447,6 +1867,15 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     cost_milli: reader.i128()?,
                 });
             }
+            SECTION_WORLDMOD => {
+                if format < FORMAT_VERSION {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if worldmod.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                worldmod = Some(decode_worldmod(&mut reader, section_flags, body.len())?);
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -1455,7 +1884,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
     }
 
     let config = config.ok_or(CodecError::MissingSection(SECTION_CONFIG))?;
-    let (tick, paused, extinct, next_entity_id, terrain_checksum) =
+    let (tick, paused, extinct, next_entity_id, terrain_checksum, composed) =
         meta.ok_or(CodecError::MissingSection(SECTION_WORLD_META))?;
     let (ids, x_fp, y_fp, energy_milli, age_ticks, cooldown_ticks) =
         organisms.ok_or(CodecError::MissingSection(SECTION_ORGANISMS))?;
@@ -1470,6 +1899,8 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
         extinct,
         next_entity_id,
         terrain_checksum,
+        composed_terrain_checksum: composed.unwrap_or(terrain_checksum),
+        worldmod,
         ids,
         x_fp,
         y_fp,
@@ -1500,6 +1931,69 @@ pub fn encode_snapshot(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// Encode a **format 3** snapshot.
+///
+/// Kept in the build permanently, alongside `decode_snapshot_format3`, for
+/// the reason `specifications/world-save-format.md` gives: the acceptance
+/// requirement for the 3-to-4 migration is byte identity against a real
+/// legacy file, so a legacy file has to be constructible. Nothing in the
+/// engine calls this outside migration tests, and it refuses to write a state
+/// that carries a modification section, because a format 3 file cannot
+/// express one and silently dropping it would be the "never alter meaning"
+/// rule broken on the write side.
+pub fn encode_snapshot_format3(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    if state.worldmod.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_WORLDMOD,
+            format: FORMAT_VERSION_3,
+        });
+    }
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_3,
+        SAVE_STATE_VERSION_3,
+    )
+}
+
+#[allow(clippy::too_many_arguments)]
+fn encode_snapshot_versioned(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+    format_version: u16,
+    save_state_version: u16,
+) -> Result<Vec<u8>, CodecError> {
     let build = build_version.as_bytes();
     if build.len() > MAX_BUILD_LEN {
         return Err(CodecError::BuildStringTooLong(build.len()));
@@ -1517,7 +2011,7 @@ pub fn encode_snapshot(
 
     let mut out = Writer(Vec::with_capacity(HEADER_LEN + build.len() + stored.len()));
     out.0.extend_from_slice(SNAPSHOT_MAGIC);
-    out.u16(FORMAT_VERSION);
+    out.u16(format_version);
     out.u16(HEADER_LEN as u16);
     out.u32(flags);
     out.u64(world_id);
@@ -1525,7 +2019,7 @@ pub fn encode_snapshot(
     out.u64(state.tick);
     out.u64(state.config.world_seed);
     out.u64(state.config.stable_hash());
-    out.u16(SAVE_STATE_VERSION);
+    out.u16(save_state_version);
     out.u16(GENOME_SCHEMA_VERSION);
     out.u16(build.len() as u16);
     out.u16(0);
@@ -1545,8 +2039,34 @@ pub fn encode_snapshot(
     Ok(out.0)
 }
 
+/// The framing version a file claims, without validating it.
+///
+/// The one read that is allowed to see a version this build does not decode,
+/// because it is what the migration registry is consulted with. `read_info`
+/// refuses an unsupported version by design, which is correct and is also why
+/// `migration_for` was **unreachable** from `lifesim verify-save` before this
+/// existed: the CLI called `read_info` first, so an old file failed with
+/// `UnsupportedFormat` and the registry it was about to consult never ran.
+pub fn peek_format_version(bytes: &[u8]) -> Result<u16, CodecError> {
+    if bytes.len() < HEADER_LEN {
+        return Err(CodecError::TooShort);
+    }
+    if &bytes[0..4] != SNAPSHOT_MAGIC {
+        return Err(CodecError::BadMagic);
+    }
+    Ok(u16::from_le_bytes(bytes[4..6].try_into().unwrap()))
+}
+
 /// Parse and validate only the header (cheap integrity/provenance check).
 pub fn read_info(bytes: &[u8]) -> Result<SnapshotInfo, CodecError> {
+    read_info_versioned(bytes, FORMAT_VERSION, SAVE_STATE_VERSION)
+}
+
+fn read_info_versioned(
+    bytes: &[u8],
+    expected_format: u16,
+    expected_save_state: u16,
+) -> Result<SnapshotInfo, CodecError> {
     if bytes.len() < HEADER_LEN {
         return Err(CodecError::TooShort);
     }
@@ -1558,7 +2078,7 @@ pub fn read_info(bytes: &[u8]) -> Result<SnapshotInfo, CodecError> {
         offset: 0,
     };
     let format_version = reader.u16()?;
-    if format_version != FORMAT_VERSION {
+    if format_version != expected_format {
         return Err(CodecError::UnsupportedFormat(format_version));
     }
     let header_len = usize::from(reader.u16()?);
@@ -1575,7 +2095,7 @@ pub fn read_info(bytes: &[u8]) -> Result<SnapshotInfo, CodecError> {
     let seed = reader.u64()?;
     let config_hash = reader.u64()?;
     let save_state_version = reader.u16()?;
-    if save_state_version != SAVE_STATE_VERSION {
+    if save_state_version != expected_save_state {
         return Err(CodecError::UnsupportedSaveState(save_state_version));
     }
     let genome_schema_version = reader.u16()?;
@@ -1635,7 +2155,33 @@ pub fn read_info(bytes: &[u8]) -> Result<SnapshotInfo, CodecError> {
 
 /// Full decode to logical state (header validation included).
 pub fn decode_snapshot(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
-    let info = read_info(bytes)?;
+    decode_snapshot_versioned(bytes, FORMAT_VERSION, SAVE_STATE_VERSION)
+}
+
+/// Full decode of a **format 3** snapshot.
+///
+/// Permanent, not transitional. This is the reader the 3-to-4 migration's
+/// byte-identity requirement is stated against
+/// (`specifications/world-save-format.md`), and it stays in the build for as
+/// long as that requirement does - which is forever, because the alternative
+/// is a migration whose correctness rests on the assertion that it was
+/// correct on the day it was written.
+///
+/// It produces the current `SaveState` type with the two Phase 12 fields
+/// resolved the only way a format 3 file allows: no modification section, and
+/// a composed checksum equal to the baseline. That is not an invention of
+/// missing data - it is the identity an empty modification set satisfies, and
+/// `World::from_state` re-derives and verifies it rather than trusting it.
+pub fn decode_snapshot_format3(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_3, SAVE_STATE_VERSION_3)
+}
+
+fn decode_snapshot_versioned(
+    bytes: &[u8],
+    expected_format: u16,
+    expected_save_state: u16,
+) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    let info = read_info_versioned(bytes, expected_format, expected_save_state)?;
     let stored = &bytes[HEADER_LEN + info.build_version.len()..];
     let payload = if info.compressed {
         let decompressed = zstd::bulk::decompress(stored, info.uncompressed_len as usize)
@@ -1656,6 +2202,6 @@ pub fn decode_snapshot(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecE
         }
         stored.to_vec()
     };
-    let state = decode_payload(&payload, info.state_checksum)?;
+    let state = decode_payload(&payload, info.format_version, info.state_checksum)?;
     Ok((info, state))
 }
