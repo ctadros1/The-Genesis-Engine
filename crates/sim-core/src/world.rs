@@ -672,10 +672,20 @@ pub struct World {
     move_cost_tick: i64,
     crowding_cost_tick: i64,
     intake_tick: i64,
-    /// Energy one plastic edge costs per tick, derived by the same
-    /// `milli_per_s * dt / 1000` idiom as every other per-tick cost so the
-    /// truncation behaves identically. Zero when plasticity is disabled.
-    plastic_edge_cost_tick: i64,
+    /// Energy one plastic edge costs per tick, in **thousandths of a
+    /// milli-EU** - the numerator `milli_per_s * dt_ms`, kept undivided.
+    ///
+    /// Every other per-tick cost here divides by 1000 and truncates, and for
+    /// them that is right: they are charged once per organism and the
+    /// truncation is a fixed fraction of a large number. Plasticity is
+    /// charged per *edge*, so the truncation lands on a small number many
+    /// times over, and at the shipped rate of 2 milli/s with `dt_ms = 100`
+    /// it landed on **zero** - a plastic edge was free, and 10 milli/s was
+    /// the cheapest rate that charged anything at all. The division happens
+    /// at the debit site instead, against a carried remainder, so the price
+    /// of an edge can be a fraction of a milli. Zero when plasticity is
+    /// disabled.
+    plastic_edge_cost_milli_thousandths: i64,
     crowding_radius_fp: i64,
 
     /// Phase 2 state; `None` exactly when `config.phase2.enabled` is false.
@@ -766,8 +776,8 @@ impl World {
             move_cost_tick: config.move_cost_milli_per_s * dt / 1000,
             crowding_cost_tick: config.crowding_cost_milli_per_s * dt / 1000,
             intake_tick: config.intake_rate_milli_per_s * dt / 1000,
-            plastic_edge_cost_tick: if config.plasticity.enabled {
-                config.plasticity.plastic_edge_cost_milli_per_s * dt / 1000
+            plastic_edge_cost_milli_thousandths: if config.plasticity.enabled {
+                config.plasticity.plastic_edge_cost_milli_per_s * dt
             } else {
                 0
             },
@@ -3236,7 +3246,7 @@ impl World {
             self.learn = Some(learn);
             return;
         };
-        let cost_per_edge = self.plastic_edge_cost_tick;
+        let cost_per_edge_thousandths = self.plastic_edge_cost_milli_thousandths;
 
         for index in 0..self.ids.len() {
             let plan = &schema2.plans[index];
@@ -3304,7 +3314,22 @@ impl World {
             // nothing: the cost is the price of carrying the machinery, and
             // charging only edges that moved would make "turn the rule off"
             // a free way to keep the flag.
-            let cost = plan.plastic_edges.len() as i64 * cost_per_edge;
+            // **Exact, with the sub-milli remainder carried rather than
+            // discarded.** The owed amount is in thousandths of a milli; it
+            // is added to what this organism already owed, divided once, and
+            // the leftover kept. So `n` edges at a rate that rounds to zero
+            // per tick still cost `n * rate * dt / 1000` milli over time,
+            // and the total charged is never more than one milli behind the
+            // true cost. Truncating each tick instead - which is what every
+            // other cost in this file does, correctly, because they are
+            // charged once per organism against a large number - made a
+            // plastic edge free at the shipped rate.
+            let owed = plan.plastic_edges.len() as i64 * cost_per_edge_thousandths
+                + i64::from(learn.cost_remainder[index]);
+            let cost = owed / 1_000;
+            // Non-negative by construction: both terms are non-negative, so
+            // the remainder needs no sign handling and stays inside 0..1000.
+            learn.cost_remainder[index] = (owed % 1_000) as u32;
             if cost > 0 {
                 // `min(cost, energy)` with the paired ledger add, never a
                 // debit without one: `check_invariants` compares the ledger

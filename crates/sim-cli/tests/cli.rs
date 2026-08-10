@@ -308,9 +308,9 @@ fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
     for expected in [
         "\"fixture_schema_version\":5",
         "\"phase\":\"phase11\"",
-        "\"plasticity_policy\":\"lifesim-plasticity-v1\"",
+        "\"plasticity_policy\":\"lifesim-plasticity-v2\"",
         "\"rule_registry\":1",
-        "\"config_hash\":\"0xa1ad80da0cf6790e\"",
+        "\"config_hash\":\"0xae34cd2b6f7a3e13\"",
         // One organism, alive at the end, with both edges plastic and the
         // learn phase having fired on every one of them: 2 edges x 200,000
         // ticks. Any of these at zero and the checksum above would still

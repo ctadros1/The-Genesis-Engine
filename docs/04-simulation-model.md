@@ -61,7 +61,7 @@ precedence over anything in this document that contradicts it.
 | Health, damage, contest, carcasses | `contest-behavior-v1` | 7 | `planning/phase-7-territory-and-conflict.md` |
 | Diploid variable-topology genome | `lifesim-genome-v2` | 9 | `specifications/genome-schema-2.md` |
 | Modular morphology and development | `lifesim-morphology-v1` | 10 | `specifications/morphology-and-development.md` |
-| Synaptic plasticity | `lifesim-plasticity-v1` | 11 | `specifications/plasticity-and-learning.md` |
+| Synaptic plasticity | `lifesim-plasticity-v2` | 11 | `specifications/plasticity-and-learning.md` |
 | Perception and signalling | `lifesim-social-v1` | 13 | `specifications/social-signal-channel.md` |
 | Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v1`, `lifesim-worldmod-v1` | 12 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
 | Allometry, thermoregulation, senescence, extrinsic mortality | `lifesim-demography-v1` | 8 (executes after 7) | `planning/phase-8-demography-and-life-history.md` |

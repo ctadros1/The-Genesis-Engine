@@ -1,7 +1,7 @@
 # Plasticity And Learning Specification
 
 Status: design specification, not implemented. Phase 11. Policy version
-`lifesim-plasticity-v1`. Depends on genome schema 2
+`lifesim-plasticity-v2`. Depends on genome schema 2
 (`specifications/genome-schema-2.md`).
 
 ## Problem
@@ -188,6 +188,38 @@ existing energy ledger as an action cost. Without a cost, everything becomes
 plastic by drift and the trait is uninformative. With a cost, the number of
 plastic edges is itself under selection, and "how much plasticity does this
 environment pay for" becomes a measurable result.
+
+### The charge carries its remainder (`lifesim-plasticity-v2`, 2026-08-10)
+
+The per-tick debit is
+
+    owed_thousandths = plastic_edges * cost_milli_per_s * dt_ms + remainder
+    charge_milli     = owed_thousandths / 1000
+    remainder        = owed_thousandths % 1000
+
+with `remainder` carried per organism, saved, checksummed, and **reset at
+birth** with the rest of the learned state.
+
+v1 computed `plastic_edges * (cost_milli_per_s * dt_ms / 1000)` and threw the
+remainder away every tick. Every other per-tick cost in the kernel truncates
+the same way and is right to: they are charged once per organism against a
+large number. Plasticity is charged **per edge**, so the same truncation
+lands on a small number many times over - and at the shipped rate of 2
+milli/s with `dt_ms = 100` it landed on **zero**. A plastic edge was free,
+10 milli/s was the cheapest rate that charged anything at all (a tenth of
+basal, per edge), and the only expressible prices were "free" and "ruinous".
+
+That is not a rounding nicety. C11.2 asks whether plasticity is selected for,
+and the interesting regime - many cheap plastic edges - had no price at all,
+so the criterion could not answer its own question in the direction that
+matters. Carrying the remainder makes the total charged differ from the true
+cost by less than one milli per organism at any instant, which is exact
+enough that the number of plastic edges is genuinely under selection at any
+rate the config can express.
+
+The remainder is a *fraction* of a milli by definition, so a restored value
+at or above 1000 is a whole milli that was never charged, and is refused
+rather than normalized.
 
 ## Reset At Birth: No Lamarckian Inheritance
 

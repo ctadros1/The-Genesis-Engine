@@ -152,6 +152,40 @@ Every change must add or update tests at the appropriate layer:
 
 Run the smallest relevant suite first, then the phase-required suite. Report commands and results honestly. A test that was not run is not a passing test.
 
+### Three Standing Rules, Adopted 2026-08-10
+
+Each exists because the same class of defect got through more than once. They
+are obligations, not suggestions.
+
+1. **A load-bearing test is not finished until you have broken the thing it
+   tests and watched it fail.** Write the test, inject the defect it exists to
+   catch, confirm the failure, revert, confirm green. Report which mutations
+   you tried. This is what separates a test from a hopeful assertion, and it
+   is how every vacuous test in this repo's history would have been caught the
+   day it was written - the reverse-then-sort permutation tests, the fixture
+   whose horizon made it a control, the round trip that compared zero to zero.
+
+2. **A decode-path test patches declared counts and lengths to adversarial
+   values; flipping bits is not enough.** Set each declared count to
+   `u64::MAX`, to `u64::MAX / item_size`, and to the body length, and reseal
+   every CRC so the value is reached rather than rejected as corruption. The
+   2,000-flip corruption sweep ran for four phases and could never have found
+   the fail-open allocation bound (D-091): a handful of flipped bits does not
+   produce a count near 2^61, and a panic *aborts* a sweep rather than
+   counting as a rejection. Bit-flipping tests framing; only structural
+   mutation tests the bounds.
+
+3. **The config round-trip sweep is driven from `FIELD_NAMES`, never from a
+   hand-maintained list.** `crates/sim-experiment/tests/config_field_coverage.rs`
+   walks the field registry, perturbs every entry, round-trips it through the
+   real codec, and asserts each field comes back. A hand-maintained
+   perturbation list defends only the fields somebody remembered, and a field
+   left at its default compares default-to-default and passes whether or not
+   the codec ever wrote it - which is how a config section was lost in D-065,
+   again in D-086, and again with the plasticity gate. Adding a settable field
+   now protects it automatically; adding a config field that is *not* settable
+   is a visible gap rather than a silent one.
+
 ## Performance Rules
 
 - No claims about organism count, tick rate, bandwidth, memory use, GPU gain, or speedup without a recorded benchmark.

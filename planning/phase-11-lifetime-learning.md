@@ -1,6 +1,6 @@
 # Phase 11: Lifetime Learning
 
-Status: in progress from 2026-08-10. Policy version `lifesim-plasticity-v1`.
+Status: in progress from 2026-08-10. Policy version `lifesim-plasticity-v2`.
 Specification: `specifications/plasticity-and-learning.md`.
 
 ## Scope Correction, 2026-08-10: The Genes Are A Reserved Slot, Not A Mechanism
@@ -171,7 +171,7 @@ Criteria:
       which two cancelling organisms could also produce.
 - [x] **C11.5 Numeric safety. Met.** The 10^6-tick single-organism trace
       reproduces bit-identically across two clean processes (fixture schema 5,
-      config `0xa1ad80da0cf6790e`, state `0xe6541fee2698286e`, 2,000,000
+      config `0xae34cd2b6f7a3e13`, state `0x53b354bd94e82bcf`, 2,000,000
       updates, 0 faults). `learned_q16` stays inside its clamp and effective
       weight inside [-8, 8] under an adversarial sweep of 2,592,000 `step`
       calls and in a running population. Non-finite deltas are neutralized,

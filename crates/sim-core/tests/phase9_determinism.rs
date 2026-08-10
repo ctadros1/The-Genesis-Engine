@@ -309,12 +309,14 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         let sim_core::LearnSaveState {
             edges,
             faults,
+            cost_remainder,
             // Aggregate, not per organism.
             counters: _,
             cost_milli: _,
         } = learn;
         per_organism!("learn.edges", edges);
         per_organism!("learn.faults", faults);
+        per_organism!("learn.cost_remainder", cost_remainder);
     }
     // `permutation_config` is a **Phase 9** world and leaves plasticity off,
     // so the branch above does not run here and these two arrays contribute
@@ -510,11 +512,13 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         let sim_core::LearnSaveState {
             edges,
             faults,
+            cost_remainder,
             counters: _,
             cost_milli: _,
         } = learn;
         reorder(edges, order);
         reorder(faults, order);
+        reorder(cost_remainder, order);
     }
 }
 

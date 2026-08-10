@@ -93,7 +93,7 @@ const SECTION_LEARN: u16 = 12;
 /// plastic-edge count word and its fault word, with no plastic edges at all.
 /// Used to bound the allocation a declared organism count implies, never to
 /// assert an exact length (D-075).
-const LEARN_MIN_PER_ORGANISM: u64 = 4 + 4;
+const LEARN_MIN_PER_ORGANISM: u64 = 4 + 4 + 4;
 /// Bytes per stored plastic edge: homology id, learned delta, trace.
 const LEARN_BYTES_PER_EDGE: u64 = 4 + 4 + 4;
 
@@ -945,6 +945,7 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
                 section.i32(trace_q16);
             }
             section.u32(learn.faults[index]);
+            section.u32(learn.cost_remainder[index]);
         }
         // Exhaustive destructuring with no `..`, for the reason the schema-2
         // block states: these counters are hashed into the state checksum, so
@@ -1402,6 +1403,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 }
                 let mut edges = Vec::with_capacity(organisms as usize);
                 let mut faults = Vec::with_capacity(organisms as usize);
+                let mut cost_remainder = Vec::with_capacity(organisms as usize);
                 for _ in 0..organisms {
                     let plastic = u64::from(reader.u32()?);
                     if !allocation_fits(plastic, LEARN_BYTES_PER_EDGE, 0, body.len()) {
@@ -1417,6 +1419,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                     }
                     edges.push(row);
                     faults.push(reader.u32()?);
+                    cost_remainder.push(reader.u32()?);
                 }
                 let mut counters = sim_core::PlasticityCounters::default();
                 for slot in [
@@ -1439,6 +1442,7 @@ fn decode_payload(bytes: &[u8], state_checksum: u64) -> Result<SaveState, CodecE
                 learn = Some(sim_core::LearnSaveState {
                     edges,
                     faults,
+                    cost_remainder,
                     counters,
                     cost_milli: reader.i128()?,
                 });

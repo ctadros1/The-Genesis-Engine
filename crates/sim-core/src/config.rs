@@ -187,7 +187,7 @@ impl MorphologyConfig {
     }
 }
 
-/// Versioned Phase 11 plasticity policy (`lifesim-plasticity-v1`).
+/// Versioned Phase 11 plasticity policy (`lifesim-plasticity-v2`).
 ///
 /// The seam is as narrow as Phase 9's and Phase 10's, and for the same reason
 /// (D-072): enabling plasticity changes exactly **what an edge's weight is

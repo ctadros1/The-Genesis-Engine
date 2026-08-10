@@ -966,3 +966,109 @@ fn an_eligibility_trace_survives_the_round_trip_as_well_as_the_learned_delta() {
     }
     assert_eq!(world.state_checksum(), restored.state_checksum());
 }
+
+#[test]
+fn a_cheap_plastic_edge_costs_something_instead_of_nothing() {
+    // The defect this closes: the per-edge debit was
+    // `edges * milli_per_s * dt_ms / 1000` truncated to whole milli every
+    // tick, with the remainder discarded. At the **shipped default** of 2
+    // milli/s and `dt_ms = 100` that is `200 / 1000 = 0`, so a plastic edge
+    // was free - and 10 milli/s was the cheapest rate that charged anything
+    // at all, a tenth of basal per edge. The only expressible prices were
+    // "free" and "ruinous", so "many cheap plastic edges" had no price and
+    // C11.2 could not ask its own question.
+    //
+    // The remainder is now carried, so the charge is exact.
+    let mut config = learning_config(SEED);
+    config.plasticity.plastic_edge_cost_milli_per_s = SimConfig::phase11_default(SEED)
+        .plasticity
+        .plastic_edge_cost_milli_per_s;
+    let rate = config.plasticity.plastic_edge_cost_milli_per_s;
+    let dt = i64::from(config.dt_ms);
+    assert!(
+        rate * dt / 1_000 == 0,
+        "this test is about a rate that truncates to zero per tick; at {rate} \
+         milli/s and dt {dt} ms it does not, so it proves nothing"
+    );
+
+    // One plastic edge that nothing reads, so the only difference from the
+    // control is the debit itself.
+    let mut world = neutral_plastic_world(config, RULE_HEBBIAN, 0.0);
+    let population = world.population() as i128;
+    assert!(population > 0);
+
+    // Exactly one tick: still below a whole milli, so nothing is charged yet
+    // and the remainder is carrying it.
+    world.step();
+    assert_eq!(
+        world.metrics().plasticity_cost_milli,
+        0,
+        "a single tick at a sub-milli rate should charge nothing yet"
+    );
+
+    // Five ticks at 200 thousandths each is exactly 1000, so exactly one
+    // milli per organism - the first tick at which the old model and the new
+    // one differ, and the whole point of the change.
+    for _ in 0..4 {
+        world.step();
+    }
+    let after_five = i128::from(world.metrics().plasticity_cost_milli);
+    assert_eq!(
+        after_five, population,
+        "five ticks at {rate} milli/s should charge exactly one milli per \
+         organism; the old model charged zero forever"
+    );
+
+    // ...and it keeps accruing at the exact rate rather than drifting. 100
+    // ticks is 20 milli per organism, with no remainder left over.
+    for _ in 0..95 {
+        world.step();
+    }
+    let expected = i128::from(100 * rate * dt / 1_000) * population;
+    assert_eq!(
+        i128::from(world.metrics().plasticity_cost_milli),
+        expected,
+        "the accumulated charge drifted from the exact cost"
+    );
+    world.check_invariants().expect("the ledger balances");
+}
+
+#[test]
+fn the_cost_remainder_survives_a_save_and_is_refused_when_it_is_not_a_fraction() {
+    // The remainder is lifetime-accumulating state, so dropping it on save
+    // would restart every organism's bill at zero - a slow, invisible refund
+    // that no checksum comparison at rest would catch, because a restored
+    // world would agree with itself.
+    let mut config = learning_config(SEED);
+    config.plasticity.plastic_edge_cost_milli_per_s = 2;
+    let mut world = neutral_plastic_world(config, RULE_HEBBIAN, 0.0);
+    // Three ticks leaves 600 thousandths owed: mid-fraction, so a codec that
+    // dropped the field would restore a *different* number rather than the
+    // same zero it started at.
+    for _ in 0..3 {
+        world.step();
+    }
+    let state = world.export_state();
+    let learn = state.learn.as_ref().expect("a plasticity world");
+    assert!(
+        learn.cost_remainder.iter().all(|value| *value == 600),
+        "the fixture must carry a mid-fraction remainder or this is 0 == 0; \
+         got {:?}",
+        &learn.cost_remainder[..learn.cost_remainder.len().min(4)]
+    );
+
+    let restored = World::from_state(state.clone()).expect("restore");
+    assert_eq!(restored.state_checksum(), world.state_checksum());
+
+    // A remainder of a whole milli or more is a milli that was never
+    // charged. Refused rather than normalized, because normalizing forgives
+    // it silently.
+    let mut tampered = state;
+    tampered.learn.as_mut().expect("learn").cost_remainder[0] = 1_000;
+    let error = World::from_state(tampered).expect_err("a whole milli is not a fraction");
+    assert!(
+        matches!(&error, RestoreError::StateInvalid(message)
+            if message.contains("cost remainder")),
+        "expected a typed refusal naming the remainder, got {error:?}"
+    );
+}

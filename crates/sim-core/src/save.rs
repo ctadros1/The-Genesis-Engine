@@ -145,6 +145,10 @@ pub struct LearnSaveState {
     pub edges: Vec<Vec<LearnedEdgeSave>>,
     /// Per organism, non-finite deltas neutralized over its lifetime.
     pub faults: Vec<u32>,
+    /// Per organism, sub-milli energy owed for plastic edges, in thousandths
+    /// of a milli-EU. Dropping it on save would restart every organism's
+    /// bill at zero, which over a long run is a slow, invisible refund.
+    pub cost_remainder: Vec<u32>,
     pub counters: crate::plasticity::PlasticityCounters,
     pub cost_milli: i128,
 }
@@ -317,6 +321,7 @@ impl World {
                 Some(LearnSaveState {
                     edges,
                     faults: learn.faults.clone(),
+                    cost_remainder: learn.cost_remainder.clone(),
                     counters: learn.counters,
                     cost_milli: learn.cost_milli,
                 })
@@ -647,6 +652,7 @@ impl World {
             (true, Some(learn)) => {
                 same_length(learn.edges.len(), "learn.edges")?;
                 same_length(learn.faults.len(), "learn.faults")?;
+                same_length(learn.cost_remainder.len(), "learn.cost_remainder")?;
                 let Some(schema2) = rebuilt_schema2.as_ref() else {
                     // Unreachable through `validate`, which refuses plasticity
                     // without genome2. Fail closed anyway: without the plans
@@ -695,6 +701,18 @@ impl World {
                         rebuilt.trace_q16[index][slot] = trace_q16;
                     }
                     rebuilt.faults[index] = learn.faults[index];
+                    // The remainder is a *fraction* of a milli by definition,
+                    // so a value at or above 1000 is a whole milli that was
+                    // never charged - refused rather than normalized, because
+                    // normalizing would silently forgive it.
+                    let remainder = learn.cost_remainder[index];
+                    if remainder >= 1_000 {
+                        return Err(RestoreError::StateInvalid(format!(
+                            "organism {index} saved a plasticity cost remainder of \
+                             {remainder}, which is not a fraction of a milli"
+                        )));
+                    }
+                    rebuilt.cost_remainder[index] = remainder;
                 }
                 rebuilt.counters = learn.counters;
                 rebuilt.cost_milli = learn.cost_milli;

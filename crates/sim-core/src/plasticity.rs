@@ -57,7 +57,15 @@ use crate::checksum::Fnv1a64;
 /// Policy version for the rule registry and the update arithmetic. Enters
 /// the canonical config hash only when the plasticity section is enabled, so
 /// a world without plasticity is unaffected (Rule 0, Rule 9).
-pub const PLASTICITY_POLICY_VERSION: &str = "lifesim-plasticity-v1";
+/// Policy version. **v2 from 2026-08-10.**
+///
+/// v1 charged `edges * milli_per_s * dt_ms / 1000` in whole milli-EU and
+/// discarded the remainder every tick, which made a plastic edge cost
+/// exactly zero at the shipped rate. v2 carries the remainder per organism,
+/// so the charge is exact to within one milli. A world replayed under v2
+/// spends differently from the same world under v1, which is precisely what
+/// Rule 9 says must not share a policy string.
+pub const PLASTICITY_POLICY_VERSION: &str = "lifesim-plasticity-v2";
 
 /// Registry version, folded into the config hash alongside the policy
 /// string. Adding rule 5 later increments this rather than redefining it.
@@ -626,7 +634,7 @@ mod tests {
     fn registry_is_bounded_and_observational_is_absent() {
         assert_eq!(RULE_COUNT, 5);
         assert_eq!(RULE_REGISTRY_VERSION, 1);
-        assert_eq!(PLASTICITY_POLICY_VERSION, "lifesim-plasticity-v1");
+        assert_eq!(PLASTICITY_POLICY_VERSION, "lifesim-plasticity-v2");
         for rule_id in 0..RULE_COUNT {
             assert!(rule_in_registry(rule_id));
         }

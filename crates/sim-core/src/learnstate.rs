@@ -62,6 +62,26 @@ pub(crate) struct LearnState {
     /// counterpart of `ActivationState::faults`, and the value the
     /// `PlasticityFault` event reports the per-tick delta of.
     pub faults: Vec<u32>,
+    /// Sub-milli energy owed for plastic edges, in thousandths of a
+    /// milli-EU, always in `0..1000`.
+    ///
+    /// **The reason this field exists is that without it the cost model
+    /// cannot price the regime the phase is about.** The debit was
+    /// `edges * milli_per_s * dt_ms / 1000` in whole milli, truncated every
+    /// tick and the remainder thrown away, so at the shipped default of 2
+    /// milli/s and `dt_ms = 100` a plastic edge cost **exactly zero** and 10
+    /// milli/s was the cheapest rate that charged anything at all - a tenth
+    /// of basal, per edge. So the only expressible prices were "free" and
+    /// "ruinous", and "many cheap plastic edges" - the biologically
+    /// interesting case, and the one C11.2 asks about - had no price at all.
+    ///
+    /// Carrying the remainder makes the charge exact: over any run the total
+    /// charged differs from the true cost by less than one milli, at any
+    /// instant, per organism. It is lifetime-accumulating state, so by Rule 7
+    /// it is integer, and by Rule 8 it is saved and checksummed; and it
+    /// resets at birth with everything else here, because a child inherits
+    /// no part of its parent's bill.
+    pub cost_remainder: Vec<u32>,
     pub counters: PlasticityCounters,
     /// Total energy charged for plastic edges, milli-EU.
     ///
@@ -80,6 +100,7 @@ impl LearnState {
             learned_q16: Vec::with_capacity(capacity),
             trace_q16: Vec::with_capacity(capacity),
             faults: Vec::with_capacity(capacity),
+            cost_remainder: Vec::with_capacity(capacity),
             counters: PlasticityCounters::default(),
             cost_milli: 0,
         }
@@ -110,6 +131,7 @@ impl LearnState {
         self.learned_q16.push(vec![0; plastic_edges]);
         self.trace_q16.push(vec![0; plastic_edges]);
         self.faults.push(0);
+        self.cost_remainder.push(0);
     }
 
     /// Compact after deaths, copying `Schema2State::retain` exactly.
@@ -126,6 +148,7 @@ impl LearnState {
                     self.learned_q16.swap(write, read);
                     self.trace_q16.swap(write, read);
                     self.faults.swap(write, read);
+                    self.cost_remainder.swap(write, read);
                 }
                 write += 1;
             }
@@ -133,6 +156,7 @@ impl LearnState {
         self.learned_q16.truncate(write);
         self.trace_q16.truncate(write);
         self.faults.truncate(write);
+        self.cost_remainder.truncate(write);
     }
 
     /// Whether every stored value is inside the clamp the update arithmetic
@@ -166,6 +190,7 @@ impl LearnState {
             learned_q16,
             trace_q16,
             faults,
+            cost_remainder,
             counters,
             cost_milli,
         } = self;
@@ -182,6 +207,7 @@ impl LearnState {
                 hasher.update_i32(*value);
             }
             hasher.update_u32(faults[index]);
+            hasher.update_u32(cost_remainder[index]);
         }
         counters.hash_into(hasher);
         hasher.update_i128(*cost_milli);

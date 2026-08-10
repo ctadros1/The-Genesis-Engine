@@ -31,8 +31,8 @@ trap 'rm -rf "$phase11_tmp"' EXIT HUP INT TERM
 
 phase11_seed=0x5eedcafef00dbeef
 phase11_ticks=1000000
-phase11_config=0xa1ad80da0cf6790e
-phase11_state=0xe6541fee2698286e
+phase11_config=0xae34cd2b6f7a3e13
+phase11_state=0x53b354bd94e82bcf
 # The mid-run horizon exists only to prove the trace is still moving at the
 # end; see the accumulation clause below.
 phase11_short_ticks=100000

@@ -324,7 +324,7 @@ canonical config hash only when their section is enabled:
 | `uniform-bounded-v1` | `lifesim-meiosis-v1` | Recombination and crossover (Phase 9) |
 | - | `lifesim-structmut-v1` | Structural mutation operators (Phase 9) |
 | - | `lifesim-pairkey-v1` | Pairwise draw subject derivation (Phase 7) |
-| - | `lifesim-plasticity-v1` | Learning rule registry and update arithmetic (Phase 11) |
+| - | `lifesim-plasticity-v2` | Learning rule registry and update arithmetic (Phase 11) |
 | - | `lifesim-social-v1` | Perception and signalling (Phase 13) |
 | - | `lifesim-material-v1` | Material registry and properties (Phase 12) |
 | - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 12) |
