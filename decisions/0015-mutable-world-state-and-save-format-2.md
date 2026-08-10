@@ -33,12 +33,14 @@ longer a pure function of `(seed, config)`.
 - **Reinterpret format 1 to mean "baseline" and add a delta section.**
   Rejected outright: format 1 files would silently acquire a new meaning,
   which is exactly the reinterpretation the project's rules forbid.
-- **Baseline plus verified delta, as a new format 2 with a registered
+- **Baseline plus verified delta, as a new format (see the version note) with a registered
   migration.**
 
 ## Proposed Decision
 
-Adopt baseline-plus-verified-delta as ALIF format 2, specified in
+Adopt baseline-plus-verified-delta as **ALIF format 4** (corrected from
+"format 2" on 2026-08-10: formats 2 and 3 shipped for unrelated reasons and
+the shipped version is 3), specified in
 `specifications/mutable-world-state.md` and
 `specifications/world-save-format.md`.
 
@@ -142,5 +144,5 @@ to measure.
   with realistic object counts and modification density.
 - A corruption sweep of at least 20,000 cases over the object table and
   modification section with zero panics.
-- The Phase 4 restore-from-backup integration test extended to format 2.
+- The Phase 4 restore-from-backup integration test extended to format 4.
 - Explicit approval, since this changes durable data semantics.

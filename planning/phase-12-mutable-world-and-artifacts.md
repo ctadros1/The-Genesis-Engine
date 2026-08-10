@@ -1,7 +1,8 @@
 # Phase 12: Mutable World And Artifacts
 
 Status: planned, not started. Policy versions `lifesim-material-v1`,
-`lifesim-artifact-v1`, `lifesim-worldmod-v1`. Introduces ALIF format 2.
+`lifesim-artifact-v1`, `lifesim-worldmod-v1`. Introduces **ALIF format 4**
+(see the version correction below).
 Specifications: `specifications/artifact-and-material-ontology.md`,
 `specifications/mutable-world-state.md`,
 `specifications/world-save-format.md`.
@@ -51,6 +52,33 @@ Two consequences of the correction, recorded rather than silently applied:
   Phase 1, Phase 2 and Phase 9. The criterion is not weakened by this - it is
   strengthened, because four fixtures must survive rather than one.
 
+## Version Correction, 2026-08-10
+
+Recorded before any code, because getting it wrong would write a migration
+registry against a version that already exists.
+
+Every sentence in this plan, in `specifications/mutable-world-state.md`, in
+`specifications/world-save-format.md` and in ADR-0015 that says **"ALIF
+format 2"** predates formats 2 and 3, both of which shipped for reasons
+unrelated to terrain: format 2 added the Phase 6/7/8 config sections, format
+3 split the Phase 2 section's two counts (D-076). The shipped version is
+**3**, so the mutable-world successor is **format 4**, and
+`SAVE_STATE_VERSION` goes 1 to 2.
+
+**The "format 1 to format 2 migration" this plan demands is not
+implementable and never was.** A format-1 file cannot say what its climate
+settings were, and a format-2 schema-2 file physically does not contain the
+per-organism state format 3 added - so neither can be transformed into a
+later format without inventing data. Formats 1 and 2 therefore have **no
+registered migration, by design**. The real obligation is **3 to 4**, and
+C12.5's byte-identity target is the **format-3 reader**, which stays in the
+build permanently.
+
+Also found: `migration_for` returns `Result<(), String>` and has no
+transform type at all, so a "registered migration" is not currently
+expressible. Building one is part of this phase rather than an assumed
+prerequisite.
+
 ## Scope
 
 - A bounded material registry with physical properties and affordances.
@@ -65,7 +93,7 @@ Two consequences of the correction, recorded rather than silently applied:
   material yield.
 - Carcasses become real objects, joining Phase 7's carcass work to the
   object system.
-- ALIF format 2 with a registered format 1 migration.
+- ALIF format 4 with a registered format 3 migration.
 
 ## Non-Goals
 
@@ -193,7 +221,7 @@ Criteria:
 
 - Codec: bounded fail-closed decode of the object table and modification
   section; seeded corruption sweep of at least 20,000 cases, zero panics.
-- Migration: format 1 to format 2 equality test; unknown format versions
+- Migration: format 3 to format 4 equality test; unknown format versions
   still fail closed through the registry.
 - Ledger: combine-fracture round trip; carcass energy never exceeds source;
   long-run exactness.
@@ -204,7 +232,7 @@ Criteria:
 - Behavioral: the C12.1 and C12.2 probes as scripted deterministic
   scenarios across all four conditions.
 - Restore-from-backup: extend the existing Phase 4 isolated restore test to
-  format 2 with a nonempty modification set and composite objects.
+  format 4 with a nonempty modification set and composite objects.
 
 ## Benchmark Impact
 
@@ -243,7 +271,7 @@ carcasses), `docs/12-data-storage-and-saves.md`,
 | Risk | Mitigation |
 |---|---|
 | Snapshot growth from objects plus modified terrain plus schema 2 genomes plus learned state breaks the checkpoint budget | Measured here explicitly rather than assumed; sparse representations; asynchronous checkpointing; object count caps |
-| Save format 2 migration risk: a subtle difference between the migrated and native paths corrupts historical worlds | C12.5's byte-identity requirement is the guard; format 1 readers stay in the build; migration is registered and fail-closed, never inferred |
+| Save format 4 migration risk: a subtle difference between the migrated and native paths corrupts historical worlds | C12.5's byte-identity requirement is the guard; format 1 readers stay in the build; migration is registered and fail-closed, never inferred |
 | Object churn dominates the tick | Decay is a bounded per-cell sweep, not a per-object scan, wherever possible; measured before adoption |
 | C12.3 returns null and the phase looks like a failure | It is stated in advance as the likely outcome. The phase's value is C12.1 and C12.2 plus a measured negative on C12.3 |
 | Organisms make regions uninhabitable and drive local extinction | Not a bug. Extinction is already a valid, savable, observable, latched state. Worth reporting, not preventing |
@@ -252,7 +280,7 @@ carcasses), `docs/12-data-storage-and-saves.md`,
 ## Rollback
 
 Objects and mutable world are separate config sections and can be disabled
-independently. Disabled, every existing fixture reproduces exactly. ALIF format
-1 remains readable forever; format 2 saves of worlds with both sections
+independently. Disabled, every existing fixture reproduces exactly. The format
+3 reader remains in the build forever; format 4 saves of worlds with both sections
 disabled carry empty object and modification sections and restore
 identically to a format 1 save of the same world.
