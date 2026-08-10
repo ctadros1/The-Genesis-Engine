@@ -138,7 +138,7 @@ fn c10_4_single_locus_mutations_do_not_produce_unrelated_bodies() {
 
         let mut child = parent.clone();
         let mut child_counters = sim_core::MutationCounters::default();
-        mutate(
+        let _ = mutate(
             &mut child,
             &point_only(),
             &sim_core::GenomeCaps::provisional(),

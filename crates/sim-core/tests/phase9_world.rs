@@ -310,3 +310,89 @@ fn the_invalid_counter_stays_zero_because_it_is_the_bug_signal() {
          non-zero the founder layout changed and C9.5's operator set with it"
     );
 }
+
+#[test]
+fn every_structural_rejection_is_evented_as_well_as_counted() {
+    // C9.6's remaining half. The criterion asks that a cap "reject
+    // deterministically, count, *and* event"; the counters and the checksum
+    // had it and the event log did not, so a cap that bound was invisible to
+    // every offline analysis that reads the log rather than the snapshot.
+    //
+    // The assertion that makes this worth having is the **reconciliation**:
+    // the events emitted must equal the counters, class by class. A test
+    // that only checked "at least one event appeared" would pass while seven
+    // of the eight reasons were silently dropped, and a test that compared
+    // totals would pass while two classes were swapped.
+    use sim_core::{EventKind, RejectReason};
+
+    let mut config = schema2_config(13);
+    config.cells_x = 64;
+    config.cells_y = 64;
+    config.cell_capacity_milli = 120_000;
+    // Every operator at a rate high enough that rejections actually happen.
+    config.genome2.mutation.duplication_q16 = 6_554;
+    config.genome2.mutation.insertion_q16 = 6_554;
+    config.genome2.mutation.transposition_q16 = 6_554;
+
+    let mut world = World::new(config).expect("world");
+    // Indexed by `RejectReason::code() - 1`, which is the permanent wire
+    // code rather than a declaration order.
+    let mut evented = [0_u64; 8];
+    for _ in 0..10_000 {
+        world.step();
+        for event in world.events() {
+            if let EventKind::StructuralMutationRejected {
+                operator, reason, ..
+            } = event.kind
+            {
+                assert!(
+                    (sim_core::OP_POINT..=sim_core::OP_TRANSPOSITION).contains(&operator),
+                    "operator code {operator} is not one of the five"
+                );
+                evented[usize::from(reason.code() - 1)] += 1;
+            }
+        }
+    }
+
+    let counters = world.mutation_counters().expect("schema 2 is enabled");
+    assert_eq!(
+        world.counters().dropped_events_total,
+        0,
+        "events were dropped, so the reconciliation below would compare a \
+         truncated stream against a complete counter and could not fail"
+    );
+
+    let expected = [
+        (RejectReason::HomologyCollision, counters.rejected_homology_collision),
+        (RejectReason::Orphaned, counters.rejected_orphaned),
+        (RejectReason::MinNodes, counters.rejected_min_nodes),
+        (RejectReason::NoBindings, counters.rejected_no_bindings),
+        (RejectReason::Cap, counters.rejected_cap),
+        (RejectReason::Inapplicable, counters.rejected_inapplicable),
+        (RejectReason::Cycle, counters.rejected_cycle),
+        (RejectReason::Invalid, counters.rejected_invalid),
+    ];
+    for (reason, counted) in expected {
+        assert_eq!(
+            evented[usize::from(reason.code() - 1)],
+            counted,
+            "{reason:?}: {counted} counted but \
+             {} evented - the log and the checksum disagree",
+            evented[usize::from(reason.code() - 1)]
+        );
+    }
+
+    // ...and the run must actually have produced rejections, or every
+    // equality above is 0 == 0 and the test defends nothing. This is the
+    // trap that made `every_rejection_is_counted_rather_than_silent` drive a
+    // cap until it bound rather than trusting a quiet run.
+    assert!(
+        counters.total_rejected() > 0,
+        "no structural rejection occurred, so this test is vacuous"
+    );
+    assert!(
+        evented.iter().filter(|count| **count > 0).count() >= 2,
+        "only one rejection class was exercised, so a per-class mix-up \
+         would still pass; counts were {evented:?}"
+    );
+}

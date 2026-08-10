@@ -76,12 +76,21 @@ events never alters simulation state. The full envelope (event_id,
 world_id, config hash) remains a Phase 3+ transport concern; in-kernel
 events carry tick and typed payload only.
 
-## Planned Successor: Event Schema Version 3
+## Planned Successor: Event Schema Versions 3 And Up
 
-`EVENT_SCHEMA_VERSION` becomes 3 across Phases 7 to 13. Version 2 payloads
-are unchanged; version 3 is additive. A reader that encounters an unknown
+`EVENT_SCHEMA_VERSION` reached 3 with Phase 7 and **4 with Phase 9's
+`StructuralMutationRejected`**. Earlier payloads are unchanged at every
+step; each increment is additive. A reader that encounters an unknown
 event type fails closed rather than skipping it, because a silently skipped
 event would corrupt any analysis that counts rates.
+
+**The version is matched exactly on read, not accepted as a lower bound**,
+and that is deliberate. An additive schema *could* be read leniently -
+every version 3 tag decodes identically under version 4 - but a leniently
+read version 3 log reconstructs `structural_rejections_total` as **0**, and
+"this log predates the event" and "no rejection happened" are opposite
+conclusions that a zero cannot distinguish. Refusing the older version says
+which one it is. See D-088.
 
 New bounded payloads, grouped by the phase that adds them:
 
@@ -91,7 +100,7 @@ New bounded payloads, grouped by the phase that adds them:
 | 7 | `DeathByDamage` | organism, attacker, final state summary |
 | 7 | `CarcassCreated` / `CarcassConsumed` | source organism, object ID, transferable energy |
 | 9 | `StructuralMutation` | child, operator class, locus count affected, new homology-ID range |
-| 9 | `StructuralRejected` | child, cap class that rejected it |
+| 9 | `StructuralMutationRejected` **(shipped, tag 12, version 4)** | child, operator code, typed reject reason |
 | 11 | `PlasticityFault` | organism, neutralized non-finite count |
 | 13 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
 | 13 | `PerceptionFault` | organism, neutralized count |

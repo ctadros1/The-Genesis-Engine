@@ -270,8 +270,8 @@ Criteria:
       documentation of the shipped rates, which are now known to sit below
       the threshold at which duplication produces population-level structural
       change in 60,000 ticks.
-- [~] **C9.6 Bounded and fail-closed. Codec half met; the cap half counts
-      but does not event.** 100,000 seeded malformed cases produced zero
+- [x] **C9.6 Bounded and fail-closed. Met 2026-08-10; the event half was
+      the last piece.** 100,000 seeded malformed cases produced zero
       panics and zero invalid admissions, with every accept re-validated and
       round-tripped (4,777 accepts, so structural validation is genuinely
       exercised rather than everything dying at the checksum).
@@ -284,11 +284,29 @@ Criteria:
       that does not hold, and `Cycle` for an insertion that would close one
       (D-074).
 
-      **What is missing is the event.** The criterion says caps must reject,
-      count, *and* event, and no `EventKind` carries a structural rejection,
-      so a cap that binds is visible in the counters and in the checksum but
-      not in the event log. That is the remaining half and it is why this
-      stays partial.
+      **The event now exists.** `EventKind::StructuralMutationRejected`
+      (event log tag 12, event schema version 4) carries the child, the
+      operator code, and the typed reason. `mutate` returns a fixed-size
+      allocation-free `MutationReport` and the caller events it, so the
+      kernel keeps its existing shape: `structmut` still knows nothing about
+      the world or the log.
+
+      **Every typed rejection is evented, not only `RejectReason::Cap`.**
+      The criterion's wording is cap-specific ("no cap is ever silently
+      exceeded") but the counters it names are per-class, and a log that
+      carried a strict subset of the counters could not be reconciled
+      against them. The reason field makes the cap subset filterable, and
+      the classes that are expected rather than alarming - `Inapplicable`,
+      `Cycle` - are exactly the ones whose *rate* is worth watching.
+
+      That reconciliation is the test.
+      `every_structural_rejection_is_evented_as_well_as_counted` runs 10,000
+      ticks with every operator at a rate that makes rejections happen, and
+      asserts the evented count equals the counter **class by class** - a
+      total would agree while two classes were swapped - with
+      `dropped_events_total == 0` so the comparison is against a complete
+      stream, and a guard that at least two classes were exercised so the
+      equalities are not all `0 == 0`.
 - [~] **C9.7 Determinism and fixtures. Fixture half met; the rest is
       unwritten and is not claimed.** A schema-1 configured world still
       reproduces `0xff9dfcff5dffbf42` and a Phase 1 world still reproduces

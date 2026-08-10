@@ -39,7 +39,7 @@
 
 use sim_core::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, MAX_EVENTS_PER_TICK,
-    PairRejectReason, Phase2Counters, World,
+    OP_POINT, OP_TRANSPOSITION, PairRejectReason, Phase2Counters, RejectReason, World,
 };
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -77,6 +77,8 @@ const TAG_DAMAGE: u8 = 8;
 const TAG_DEATH_BY_DAMAGE: u8 = 9;
 const TAG_CARCASS_CREATED: u8 = 10;
 const TAG_CARCASS_CONSUMED: u8 = 11;
+// Phase 9 C9.6, event schema 4. Additive; tags 1-11 are unchanged.
+const TAG_STRUCTURAL_MUTATION_REJECTED: u8 = 12;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -170,6 +172,11 @@ pub struct ReconstructedCounters {
     pub deaths_by_damage_total: u64,
     pub carcasses_created_total: u64,
     pub carcasses_consumed_total: u64,
+    /// Phase 9 C9.6. Indexed by `RejectReason::code() - 1`, so the array
+    /// position is the permanent wire code rather than a declaration order
+    /// that could be reshuffled.
+    pub structural_rejections_by_reason: [u64; 8],
+    pub structural_rejections_total: u64,
 }
 
 impl ReconstructedCounters {
@@ -219,6 +226,16 @@ impl ReconstructedCounters {
             EventKind::DeathByDamage { .. } => self.deaths_by_damage_total += 1,
             EventKind::CarcassCreated { .. } => self.carcasses_created_total += 1,
             EventKind::CarcassConsumed { .. } => self.carcasses_consumed_total += 1,
+            // Reconstructed per class, so the log can be checked against
+            // `MutationCounters` reason by reason rather than only in total
+            // - a single total would agree while two classes were swapped.
+            EventKind::StructuralMutationRejected { reason, .. } => {
+                self.structural_rejections_total += 1;
+                let slot = usize::from(reason.code() - 1);
+                if let Some(counter) = self.structural_rejections_by_reason.get_mut(slot) {
+                    *counter += 1;
+                }
+            }
         }
     }
 }
@@ -526,6 +543,19 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&consumer.to_le_bytes());
             out.extend_from_slice(&energy_milli.to_le_bytes());
         }
+        EventKind::StructuralMutationRejected {
+            child_id,
+            operator,
+            reason,
+        } => {
+            out.push(TAG_STRUCTURAL_MUTATION_REJECTED);
+            out.extend_from_slice(&child_id.to_le_bytes());
+            out.push(operator);
+            // The reason's own stable code, not the discriminant: a variant
+            // inserted into the middle of `RejectReason` must not silently
+            // change what an already-written log means.
+            out.push(reason.code());
+        }
     }
 }
 
@@ -759,6 +789,25 @@ fn decode_events_into(
                 consumer: short!(cursor.u64()),
                 energy_milli: short!(cursor.i64()),
             },
+            TAG_STRUCTURAL_MUTATION_REJECTED => {
+                let child_id = short!(cursor.u64());
+                let operator = short!(cursor.u8());
+                let code = short!(cursor.u8());
+                // Fail closed on both fields. An operator code the build
+                // does not know is a log from a different lineage, not a
+                // record to guess at.
+                if !(OP_POINT..=OP_TRANSPOSITION).contains(&operator) {
+                    return Err(EventLogError::ValueOutOfRange("structural operator"));
+                }
+                let Some(reason) = RejectReason::from_code(code) else {
+                    return Err(EventLogError::ValueOutOfRange("structural reject reason"));
+                };
+                EventKind::StructuralMutationRejected {
+                    child_id,
+                    operator,
+                    reason,
+                }
+            }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.
             other => return Err(EventLogError::UnknownEventType { tick, tag: other }),
@@ -1045,6 +1094,7 @@ impl EventLogRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sim_core::OP_DUPLICATION;
 
     fn info() -> EventLogInfo {
         EventLogInfo {
@@ -1108,6 +1158,26 @@ mod tests {
                 tick,
                 kind: EventKind::Extinction,
             },
+            // Phase 9 C9.6. Two of them, with *different* reasons, so the
+            // per-class reconstruction is exercised rather than only the
+            // total - a single sample would let two classes be swapped and
+            // still round-trip.
+            Event {
+                tick,
+                kind: EventKind::StructuralMutationRejected {
+                    child_id: 21,
+                    operator: OP_DUPLICATION,
+                    reason: RejectReason::Cap,
+                },
+            },
+            Event {
+                tick,
+                kind: EventKind::StructuralMutationRejected {
+                    child_id: 22,
+                    operator: OP_TRANSPOSITION,
+                    reason: RejectReason::Inapplicable,
+                },
+            },
         ]
     }
 
@@ -1124,7 +1194,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 21);
+        assert_eq!(scan.events, 27);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());
@@ -1140,6 +1210,24 @@ mod tests {
         assert_eq!(scan.counters.controller_faults_total, 6);
         assert_eq!(scan.counters.mutated_trait_genes_total, 9);
         assert_eq!(scan.counters.mutated_neural_genes_total, 33);
+        // C9.6: reconstructed per class, not only in total. Three ticks of
+        // one `Cap` and one `Inapplicable` each.
+        assert_eq!(scan.counters.structural_rejections_total, 6);
+        assert_eq!(
+            scan.counters.structural_rejections_by_reason[usize::from(RejectReason::Cap.code() - 1)],
+            3
+        );
+        assert_eq!(
+            scan.counters.structural_rejections_by_reason
+                [usize::from(RejectReason::Inapplicable.code() - 1)],
+            3
+        );
+        assert_eq!(
+            scan.counters.structural_rejections_by_reason
+                [usize::from(RejectReason::Invalid.code() - 1)],
+            0,
+            "a class that never occurred must stay zero, or the indexing is wrong"
+        );
 
         let expected: Vec<Event> = (1..=3_u64).flat_map(sample_events).collect();
         assert_eq!(events, expected);

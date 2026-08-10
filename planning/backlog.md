@@ -70,12 +70,13 @@ a fixed-morphology control that was not fixed, and an analysis that swallowed
 restore failures (D-086).
 
 
-**Phase 9 is complete except two partial criteria** (2026-08-05). C9.1 to
-C9.5 and C9.8 are met. **C9.6 is partial**: structural-cap rejections are
-typed, counted, and checksummed, but emit no event, and the criterion asks
-for all three. **C9.7 is partial**: a Phase 9 fixture, storage-permutation
-equality, and the compaction test are unwritten. Both are in the deferred
-backlog. Phase 10 has not been started.
+**Phase 9 is complete except C9.7** (C9.6 closed 2026-08-10). C9.1 to C9.6
+and C9.8 are met. **C9.6 is met**: structural rejections now carry
+`EventKind::StructuralMutationRejected` (log tag 12, event schema 4) as
+well as being typed, counted, and checksummed, and the test that matters is
+the reconciliation - evented equals counted, class by class (D-088).
+**C9.7 is partial**: a Phase 9 fixture, storage-permutation equality, and
+the compaction test are unwritten, and remain in the deferred backlog.
 
 Two results carry forward, and both were found by measurement rather than by
 inspection.
@@ -246,17 +247,12 @@ Carried forward unchanged unless noted:
   statistic - 33 distinct bodies against the founder's one - answers a
   better-posed question. The rule was not revised after the run and should
   not be; what should change is how the *next* such criterion is written.
-- **Finish C9.6: emit an event when a structural cap rejects.** Rejections
-  are typed, counted, and in the checksum; the criterion also asks for an
-  event, and there is no `EventKind` for one. Until there is, a cap that
-  binds is invisible to any analysis that reads the event log rather than
-  the snapshot.
 - **Finish C9.7: a Phase 9 fixture with clean-process replay, storage
   permutation equality, and the compaction test.** The canonical
   topological order and the `homology_id`-ordered edge summation are
   implemented and unit-tested, but the compaction test is the one that would
   catch a *future* layout change, which is what the criterion is for. This
-  is the only Phase 9 criterion not met.
+  is now the only Phase 9 criterion not met.
 - **The manifest carries no per-class mutation rejection counters.** It has
   a total, in which a cap rejection and a self-loop draw are the same
   number. The Phase 9 analysis works around this by reading the counters out

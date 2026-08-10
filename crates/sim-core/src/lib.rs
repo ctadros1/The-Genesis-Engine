@@ -124,8 +124,9 @@ pub use schema2::{
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use structmut::{
-    DUPLICATE_SPAN, MutationConfig, MutationCounters, OP_DELETION, OP_DUPLICATION, OP_INSERTION,
-    OP_POINT, OP_TRANSPOSITION, RejectReason, STRUCTMUT_POLICY_VERSION, minimal_founder, mutate,
+    DUPLICATE_SPAN, MutationConfig, MutationCounters, MutationReport, OP_DELETION, OP_DUPLICATION,
+    OP_INSERTION, OP_POINT, OP_TRANSPOSITION, RejectReason, STRUCTMUT_POLICY_VERSION,
+    minimal_founder, mutate,
 };
 pub use world::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation, Ledger,

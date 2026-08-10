@@ -105,6 +105,74 @@ pub enum RejectReason {
     Invalid,
 }
 
+impl RejectReason {
+    /// Stable wire code. Permanent, like an operator code and an RNG stream
+    /// value: these are written into the event log, so renumbering one would
+    /// silently change the meaning of every rejection ever recorded.
+    pub fn code(self) -> u8 {
+        match self {
+            Self::HomologyCollision => 1,
+            Self::Orphaned => 2,
+            Self::MinNodes => 3,
+            Self::NoBindings => 4,
+            Self::Cap => 5,
+            Self::Inapplicable => 6,
+            Self::Cycle => 7,
+            Self::Invalid => 8,
+        }
+    }
+
+    pub fn from_code(code: u8) -> Option<Self> {
+        Some(match code {
+            1 => Self::HomologyCollision,
+            2 => Self::Orphaned,
+            3 => Self::MinNodes,
+            4 => Self::NoBindings,
+            5 => Self::Cap,
+            6 => Self::Inapplicable,
+            7 => Self::Cycle,
+            8 => Self::Invalid,
+            _ => return None,
+        })
+    }
+}
+
+/// What `mutate` refused, so the caller can event it (C9.6).
+///
+/// Bounded by construction and allocation-free: each of the five operators
+/// is attempted at most once per reproduction, so a single call can produce
+/// at most five rejections. The counters record *how many* of each class
+/// happened; this records *which* ones happened on this reproduction, which
+/// is what an event needs and an aggregate cannot reconstruct.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MutationReport {
+    entries: [Option<(u8, RejectReason)>; 5],
+    len: u8,
+}
+
+impl MutationReport {
+    fn push(&mut self, operator: u8, reason: RejectReason) {
+        let slot = self.len as usize;
+        debug_assert!(slot < self.entries.len(), "at most one rejection per operator");
+        if slot < self.entries.len() {
+            self.entries[slot] = Some((operator, reason));
+            self.len += 1;
+        }
+    }
+
+    /// The rejections, in the fixed order the operators are attempted, which
+    /// is the order the events must be emitted in.
+    pub fn rejections(&self) -> impl Iterator<Item = (u8, RejectReason)> + '_ {
+        self.entries[..self.len as usize]
+            .iter()
+            .filter_map(|entry| *entry)
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len == 0
+    }
+}
+
 /// Per-class rejection counters. World state, hashed into the checksum, so
 /// a campaign cannot silently run against a cap.
 #[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
@@ -126,23 +194,56 @@ pub struct MutationCounters {
 }
 
 impl MutationCounters {
+    /// Every counter, split into the applied half and the rejected half.
+    ///
+    /// **Destructured with no `..`, never field-accessed** (D-077). A
+    /// counter added to the struct fails to compile here until it is put in
+    /// one bucket or the other, which is what stops it from silently
+    /// vanishing out of the totals, the checksum, and the manifest - the
+    /// exact defect that made two restored checksums differ in Phase 9.
+    fn partitioned(&self) -> ([u64; 5], [u64; 8]) {
+        let Self {
+            point_applied,
+            duplication_applied,
+            deletion_applied,
+            insertion_applied,
+            transposition_applied,
+            rejected_homology_collision,
+            rejected_orphaned,
+            rejected_min_nodes,
+            rejected_no_bindings,
+            rejected_cap,
+            rejected_inapplicable,
+            rejected_cycle,
+            rejected_invalid,
+        } = *self;
+        (
+            [
+                point_applied,
+                duplication_applied,
+                deletion_applied,
+                insertion_applied,
+                transposition_applied,
+            ],
+            [
+                rejected_homology_collision,
+                rejected_orphaned,
+                rejected_min_nodes,
+                rejected_no_bindings,
+                rejected_cap,
+                rejected_inapplicable,
+                rejected_cycle,
+                rejected_invalid,
+            ],
+        )
+    }
+
     pub fn total_applied(&self) -> u64 {
-        self.point_applied
-            + self.duplication_applied
-            + self.deletion_applied
-            + self.insertion_applied
-            + self.transposition_applied
+        self.partitioned().0.iter().sum()
     }
 
     pub fn total_rejected(&self) -> u64 {
-        self.rejected_homology_collision
-            + self.rejected_orphaned
-            + self.rejected_min_nodes
-            + self.rejected_no_bindings
-            + self.rejected_cap
-            + self.rejected_inapplicable
-            + self.rejected_cycle
-            + self.rejected_invalid
+        self.partitioned().1.iter().sum()
     }
 
     fn reject(&mut self, reason: RejectReason) {
@@ -159,22 +260,12 @@ impl MutationCounters {
     }
 
     pub fn hash_into(&self, hasher: &mut crate::checksum::Fnv1a64) {
+        // The hashed order is the declaration order and is permanent: it is
+        // the same order `partitioned` returns, so the compiler enforces
+        // that a new counter reaches the checksum.
+        let (applied, rejected) = self.partitioned();
         hasher.update(b"lifesim-structmut-counters-v1");
-        for value in [
-            self.point_applied,
-            self.duplication_applied,
-            self.deletion_applied,
-            self.insertion_applied,
-            self.transposition_applied,
-            self.rejected_homology_collision,
-            self.rejected_orphaned,
-            self.rejected_min_nodes,
-            self.rejected_no_bindings,
-            self.rejected_cap,
-            self.rejected_inapplicable,
-            self.rejected_cycle,
-            self.rejected_invalid,
-        ] {
+        for value in applied.into_iter().chain(rejected) {
             hasher.update_u64(value);
         }
     }
@@ -239,6 +330,13 @@ impl Default for MutationConfig {
 /// its own rate. Each is applied to a working copy and validated; a result
 /// that fails is reverted and counted, so the genome returned is always
 /// valid and the reason it is not something else is always recorded.
+///
+/// Returns the rejections this reproduction produced so the caller can
+/// event them (C9.6). The counters answer "how often did a cap bind across
+/// the run"; the event answers "which organism, at which tick, on which
+/// operator" - and a cap that is counted but never evented is exactly what
+/// left C9.6 partial.
+#[must_use]
 pub fn mutate(
     genome: &mut Genome2,
     config: &MutationConfig,
@@ -247,7 +345,7 @@ pub fn mutate(
     world_seed: u64,
     tick: u64,
     child_id: u64,
-) {
+) -> MutationReport {
     let draw = |index: u32| {
         named_random(
             world_seed,
@@ -301,19 +399,27 @@ pub fn mutate(
             .collect()
     });
 
+    let mut report = MutationReport::default();
+
     // 1. Point mutation.
     if fires(config.point_q16, value_draw(0)) {
-        try_operator(genome, caps, counters, RejectReason::Invalid, |working| {
+        match try_operator(genome, caps, counters, RejectReason::Invalid, |working| {
             point_mutate(working, config, &value_draw)
-        })
-        .then(|| counters.point_applied += 1);
+        }) {
+            Ok(true) => counters.point_applied += 1,
+            Ok(false) => {}
+            Err(reason) => report.push(OP_POINT, reason),
+        }
     }
 
     // 2. Duplication: the growth mechanism.
     if fires(config.duplication_q16, draw(0)) {
         match duplicate(genome, config, caps, world_seed, tick, child_id, &draw) {
             Ok(()) => counters.duplication_applied += 1,
-            Err(reason) => counters.reject(reason),
+            Err(reason) => {
+                counters.reject(reason);
+                report.push(OP_DUPLICATION, reason);
+            }
         }
     }
 
@@ -321,7 +427,10 @@ pub fn mutate(
     if fires(config.deletion_q16, draw(16)) {
         match delete(genome, config, caps, &draw) {
             Ok(()) => counters.deletion_applied += 1,
-            Err(reason) => counters.reject(reason),
+            Err(reason) => {
+                counters.reject(reason);
+                report.push(OP_DELETION, reason);
+            }
         }
     }
 
@@ -329,7 +438,10 @@ pub fn mutate(
     if fires(config.insertion_q16, draw(32)) {
         match insert(genome, caps, world_seed, tick, child_id, &draw) {
             Ok(()) => counters.insertion_applied += 1,
-            Err(reason) => counters.reject(reason),
+            Err(reason) => {
+                counters.reject(reason);
+                report.push(OP_INSERTION, reason);
+            }
         }
     }
 
@@ -337,7 +449,10 @@ pub fn mutate(
     if fires(config.transposition_q16, draw(48)) {
         match transpose(genome, config, caps, &draw) {
             Ok(()) => counters.transposition_applied += 1,
-            Err(reason) => counters.reject(reason),
+            Err(reason) => {
+                counters.reject(reason);
+                report.push(OP_TRANSPOSITION, reason);
+            }
         }
     }
 
@@ -354,6 +469,8 @@ pub fn mutate(
             }
         }
     }
+
+    report
 }
 
 /// Apply an edit to a working copy, keep it only if it validates.
@@ -363,17 +480,20 @@ fn try_operator(
     counters: &mut MutationCounters,
     reason: RejectReason,
     edit: impl FnOnce(&mut Genome2) -> bool,
-) -> bool {
+) -> Result<bool, RejectReason> {
     let mut working = genome.clone();
     if !edit(&mut working) {
-        return false;
+        // The operator declined to change anything. That is not a
+        // rejection and must not be counted or evented as one - the
+        // distinction is the whole point of `Inapplicable` (D-074).
+        return Ok(false);
     }
     if working.validate_structure(caps).is_err() {
         counters.reject(reason);
-        return false;
+        return Err(reason);
     }
     *genome = working;
-    true
+    Ok(true)
 }
 
 fn chromosome_pick(genome: &Genome2, value: u64) -> (usize, usize) {
@@ -889,7 +1009,7 @@ mod tests {
         let mut counters = MutationCounters::default();
         for child in 0..2_000_u64 {
             let mut subject = founder();
-            mutate(
+            let _ = mutate(
                 &mut subject,
                 &config,
                 &caps(),
@@ -924,8 +1044,8 @@ mod tests {
             let mut second = founder();
             let mut counters_a = MutationCounters::default();
             let mut counters_b = MutationCounters::default();
-            mutate(&mut first, &config, &caps(), &mut counters_a, 3, 9, child);
-            mutate(&mut second, &config, &caps(), &mut counters_b, 3, 9, child);
+            let _ = mutate(&mut first, &config, &caps(), &mut counters_a, 3, 9, child);
+            let _ = mutate(&mut second, &config, &caps(), &mut counters_b, 3, 9, child);
             assert_eq!(first, second, "child {child} is not reproducible");
             assert_eq!(counters_a, counters_b);
         }
@@ -945,7 +1065,7 @@ mod tests {
         for child in 0..500_u64 {
             let before = founder();
             let mut after = before.clone();
-            mutate(
+            let _ = mutate(
                 &mut after,
                 &config,
                 &caps(),
@@ -1000,7 +1120,7 @@ mod tests {
         for child in 0..200_u64 {
             let before = founder();
             let mut after = before.clone();
-            mutate(
+            let _ = mutate(
                 &mut after,
                 &config,
                 &caps(),
@@ -1051,7 +1171,7 @@ mod tests {
         let mut counters = MutationCounters::default();
         for child in 0..400_u64 {
             let mut subject = founder();
-            mutate(
+            let _ = mutate(
                 &mut subject,
                 &config,
                 &tight,
@@ -1083,7 +1203,7 @@ mod tests {
         let mut counters = MutationCounters::default();
         for child in 0..200_u64 {
             let mut subject = founder();
-            mutate(
+            let _ = mutate(
                 &mut subject,
                 &config,
                 &tiny,
@@ -1118,7 +1238,7 @@ mod tests {
         let mut moved = 0;
         for child in 0..300_u64 {
             let mut subject = two_chromosome.clone();
-            mutate(
+            let _ = mutate(
                 &mut subject,
                 &config,
                 &caps(),
@@ -1157,7 +1277,7 @@ mod tests {
         for child in 0..300_u64 {
             let before = founder();
             let mut after = before.clone();
-            mutate(
+            let _ = mutate(
                 &mut after,
                 &config,
                 &caps(),
@@ -1195,7 +1315,7 @@ mod tests {
         let mut counters = MutationCounters::default();
         let mut subject = founder();
         for child in 0..3_000_u64 {
-            mutate(
+            let _ = mutate(
                 &mut subject,
                 &config,
                 &caps(),
@@ -1261,7 +1381,7 @@ mod tests {
                 generation,
             );
             lineage = child;
-            mutate(
+            let _ = mutate(
                 &mut lineage,
                 &config,
                 &caps(),

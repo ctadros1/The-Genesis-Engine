@@ -146,9 +146,10 @@ impl DeathCause {
 
 /// Event payloads. Version 1 covered Birth/Death/CapacityRejected/
 /// Extinction; version 2 added the Phase 2 variants; version 3 adds the
-/// Phase 7 contest variants. Version 3 is additive: every version 2 payload
-/// is unchanged. Reading events never alters simulation state.
-pub const EVENT_SCHEMA_VERSION: u32 = 3;
+/// Phase 7 contest variants; version 4 adds the structural-mutation
+/// rejection (C9.6). Every increment is additive: earlier payloads are
+/// unchanged. Reading events never alters simulation state.
+pub const EVENT_SCHEMA_VERSION: u32 = 4;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -210,6 +211,27 @@ pub enum EventKind {
         id: u64,
         consumer: u64,
         energy_milli: i64,
+    },
+    /// A structural mutation operator was attempted on a child genome and
+    /// refused (Phase 9, C9.6).
+    ///
+    /// The counters answer "how often did this class of rejection happen
+    /// across the run", which is what a campaign needs; this answers "which
+    /// child, at which tick, on which operator", which is what a *diagnosis*
+    /// needs and no aggregate can reconstruct. Both are required: a cap that
+    /// binds must reject, count, **and** event.
+    ///
+    /// Every typed rejection is carried, not only `RejectReason::Cap`. The
+    /// reason field makes the cap subset filterable, and the classes that
+    /// are expected rather than alarming (`Inapplicable`, `Cycle`) are
+    /// exactly the ones whose *rate* is worth watching in a log.
+    StructuralMutationRejected {
+        /// The child whose mutation was refused. It is still born; the
+        /// operator reverted, so the genome is its unmutated recombinant.
+        child_id: u64,
+        /// One of the `OP_*` codes in `structmut`.
+        operator: u8,
+        reason: crate::structmut::RejectReason,
     },
 }
 
@@ -2363,6 +2385,10 @@ impl World {
             // Schema 2 replaces per-gene independent choice with meiosis
             // plus structural mutation. `child_genome2` is `Some` exactly
             // when the schema-2 section is enabled.
+            // Carried out of the `schema2` borrow so the rejections can be
+            // evented once `state` is released; `MutationReport` is `Copy`
+            // and fixed-size, so this costs nothing.
+            let mut mutation_report = crate::structmut::MutationReport::default();
             let (genome, variation, child_genome2, genome_hash, phenotype) =
                 match self.schema2.as_mut() {
                     Some(state) => {
@@ -2387,7 +2413,7 @@ impl World {
                         // sequence, so an unmutated child leaves every other
                         // organism's draws exactly where they were.
                         if child.validate_structure(&self.config.genome2.caps).is_ok() {
-                            crate::structmut::mutate(
+                            mutation_report = crate::structmut::mutate(
                                 &mut child,
                                 &self.config.genome2.mutation,
                                 &self.config.genome2.caps,
@@ -2421,6 +2447,22 @@ impl World {
                         (Some(genome), variation, None, hash, phenotype)
                     }
                 };
+
+            // C9.6: emitted here rather than after the viability checks
+            // below, because the rejection happened and was counted whether
+            // or not this pairing goes on to produce a child. Emitting it
+            // only for surviving children would make the event and the
+            // counter disagree, and the counter is in the checksum.
+            for (operator, reason) in mutation_report.rejections() {
+                self.push_event(
+                    next_tick,
+                    EventKind::StructuralMutationRejected {
+                        child_id,
+                        operator,
+                        reason,
+                    },
+                );
+            }
             // **Meiosis can produce a genome that is not viable, and nothing
             // upstream checks.** Crossover cuts at an arbitrary point, so a
             // gamete can carry an edge whose node stayed on the other side
