@@ -1,7 +1,57 @@
 # Phase 11: Lifetime Learning
 
-Status: planned, not started. Policy version `lifesim-plasticity-v1`.
+Status: in progress from 2026-08-10. Policy version `lifesim-plasticity-v1`.
 Specification: `specifications/plasticity-and-learning.md`.
+
+## Scope Correction, 2026-08-10: The Genes Are A Reserved Slot, Not A Mechanism
+
+Recorded **before** any measurement, because it changes what this phase has
+to build and because getting it wrong would have produced a confident null.
+
+The backlog said `PlasticityGenes` had been "carried, inherited, and
+validated since Phase 9 precisely so that enabling it is a flag rather than
+a schema change." Carried and inherited, yes. **Reachable, no.** Verified
+against the shipped code:
+
+- `PlasticityGenes` is **discarded during diploid expression** - the gather
+  destructures `LocusKind::Edge { source, target, weight, flags, .. }` and
+  the `..` drops it. `ExpressedEdge` has no plasticity field.
+- **No production path anywhere writes `EDGE_FLAG_PLASTIC`.** It is defined,
+  masked, read during expression, and exported; it is written in exactly one
+  test. `insert` writes `EDGE_FLAG_DELAYED`, `minimal_founder` writes
+  `flags: 0`, `duplicate` copies its source. **No edge can become plastic.**
+- `point_mutate`'s only `Edge` arm assigns `weight`. **`eta` can never leave
+  zero.**
+- `NodeRole` is never mutated, so `Modulatory` is unreachable by evolution
+  and **rule forms 3 and 4 are dead on arrival**.
+
+This is not a bookkeeping correction. The Risks table below names
+"plasticity is selected to zero and the phase returns a null result" as
+**the single most likely failure in this phase**. On the code as it stood
+that null was mechanically guaranteed, and it would have been reported as a
+finding about this world's structure. It is trap 16 in the evidence list:
+inheritance and validation say nothing about whether anything can ever
+*change* a field.
+
+Therefore in scope, and not previously counted as such: expressing the genes
+under a stated dominance policy, a point-mutation path that reaches every
+plasticity field and the plastic flag, a node-role redraw so `Modulatory` is
+reachable, and a `plasticity_enabled` gate that **consumes its draws either
+way** so condition B is matched on total mutational input - the discipline
+D-086 records for C10.3's control, which failed for the mirror-image reason.
+
+## Numbering Corrections, 2026-08-10
+
+- **Benchmark schema 7**, not the 5 stated below. Schema 5 was never emitted
+  by any script; 6 is the highest in use (Phase 10). Recorded so nobody
+  hunts for a 5 that does not exist.
+- Event schema is already **4** as of C9.6, so a plasticity fault event is
+  log tag **13** and event schema **5**.
+- Snapshot section tag **12**; format version stays 3, since an absent
+  optional section stays readable by every existing build.
+- `RngSystem::PlasticityInit = 10` is reserved in
+  `specifications/determinism-extensions.md` but **absent from the enum**;
+  this phase adds it, unused.
 
 ## Problem
 
@@ -145,7 +195,7 @@ of plastic-edge fractions; the additional per-organism snapshot bytes; the
 checkpoint stall delta; allocation behavior in the learn path (must remain
 zero per organism per tick).
 
-Benchmark schema 5.
+Benchmark schema 7 (see Numbering Corrections above; 5 was never used).
 
 ## Documentation Updates
 
