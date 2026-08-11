@@ -88,9 +88,69 @@ An unanswered question is not permission to invent production behavior. If it af
 | Proposed VM | No host or VM was accessed | Every VM acceptance checklist item remains open |
 | Authentication boundary | Not exercised by these local spikes | Observer/admin decision remains open |
 
-## A second confound in C11.1's pairing, unexplained (2026-08-11)
+## A second confound in C11.1's pairing: DIAGNOSED (2026-08-11)
 
-**Status: open. Blocks any future positive claim from C11.1.**
+**Status: diagnosed, and it is structural rather than a bug. The per-world
+count rule is not an identified estimate and cannot be made one by choosing a
+better stratifying variable. The seed-paired between-arm contrast IS
+identified, is already computed, and is null.**
+
+### The diagnosis
+
+Measured, not argued, by the same method that found D-100. A world was built
+whose behaviour is a pure function of the **absolute window index** with no
+age dependence at all - every organism alive in a given window behaves
+identically whatever its age - and in which nothing happens at the event tick.
+The age-stratified statistic reads **rho 47 against a null of 35** there: a
+manufactured false positive, in the same sense D-100's +158 was.
+(`a_calendar_trend_reaches_the_statistic_and_age_stratification_cannot_remove_it`.)
+
+**Why no stratification can fix it.** For a fixed organism, age and calendar
+time advance together. An event observation and a control observation that
+share an age stratum came from organisms born `relocate / 2` apart and are
+read `relocate / 2` apart in absolute time, so **matching age necessarily
+unmatches calendar time**. Stratifying on absolute tick instead puts every
+event and every control in disjoint strata, because event boundaries are
+always at multiples of `relocate` and control boundaries always at the
+midpoints - the two labels are perfectly separated by phase. There is no third
+variable that separates them, because the label *is* the phase.
+
+Direction matches the campaign: with the calendar trend decaying, `event_wins`
+500 against `control_wins` 320; with it accelerating, 120 against 500 - the
+campaign's own direction, `control_wins` above `event_wins` in all four arms.
+
+**A trap found on the way, worth its own line:** the pooled rank correlation
+and the paired win counts can disagree. The accelerating world's control side
+wins four times as often while pooled rho is +25 - not significant, and not
+the sign the paired view implies - because 1,300 of 1,920 pairs are tied.
+Neither summary is broken; they answer different questions and must not be
+read as a readout of each other.
+
+### What follows
+
+**The identified comparison already exists and is already null.** Avar and
+Bvar share the seed, the terrain, the relocation schedule and therefore the
+entire phase structure, differing only in plasticity. The calendar confound is
+common to both arms and cancels in the seed-paired difference, which the
+report computes: **+3 milli, 95 percent CI [-1, +8], 14 of 30 directed,
+p = 0.707**. That is C11.1's honest answer on this data, and it is a null.
+
+**Proposed for a future pre-registration, not applied here:** C11.1 should be
+decided on the seed-paired between-arm contrast rather than on a per-world
+count of worlds clearing a within-world null. The per-world rule was written
+before the confound was known and cannot be repaired in place. Changing it is
+a criterion change and needs its own pre-registration; it must NOT be swapped
+in silently, and the existing 0-of-30 result stays on the record either way.
+
+**The alternative, if the within-world statistic is wanted at all:** jitter the
+relocation schedule so that "is this boundary a relocation" stops being a
+deterministic function of the tick's phase. That is a kernel change to
+`worldmod` scheduling, not an analysis change, and it is the only way to make
+event and control boundaries comparable at the same phase.
+
+### Superseded framing
+
+
 
 D-100's age offset is fixed and the fix is proven on a synthetic tripwire:
 where the age offset is the only difference and no event exists, the

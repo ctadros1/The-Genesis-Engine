@@ -2035,6 +2035,149 @@ mod tests {
         scan_of(samples)
     }
 
+    /// The same rolling-cohort demography, but behaviour is a function of the
+    /// **absolute window index** rather than of the organism's age.
+    ///
+    /// Every organism alive in absolute window `m` spends the same
+    /// `turn_ticks(m)` of it turning, whatever its age. So this world has a
+    /// calendar trend and **no age trend whatever** - the exact complement of
+    /// `rolling_cohort_scan`, which has an age trend and no calendar trend.
+    ///
+    /// It exists to test the confound age-stratification cannot reach. For a
+    /// fixed organism, age and calendar time advance together, so an event
+    /// observation and a control observation that share an age stratum came
+    /// from organisms born `relocate / 2` apart and are read at absolute
+    /// ticks `relocate / 2` apart. Matching one unmatches the other.
+    fn calendar_cohort_scan(turn_ticks: TurnSchedule, lanes: u64) -> ActionLogScan {
+        let mut samples = Vec::new();
+        for step in 1..=(AGE_HORIZON / W) {
+            let tick = step * W;
+            let mut records = Vec::new();
+            for birth in step.saturating_sub(AGE_COHORT)..step {
+                let age = tick - birth * W;
+                if age > AGE_LIFESPAN {
+                    continue;
+                }
+                for lane in 0..lanes {
+                    let mut counts = [0_u32; ACTION_CLASS_COUNT];
+                    for k in 0..(age / W) {
+                        // `birth + k` is the absolute window index; the age
+                        // version passes `k`. That single substitution is the
+                        // whole difference between the two constructions.
+                        let turn = turn_ticks(birth + k, lane);
+                        counts[sim_core::ActionClass::TurnRight as usize] += turn as u32;
+                        counts[sim_core::ActionClass::MoveAhead as usize] += (W - turn) as u32;
+                    }
+                    counts[sim_core::ActionClass::Mate as usize] += age as u32;
+                    records.push(sim_persist::ActionRecord {
+                        id: birth * lanes + lane + 1,
+                        age_ticks: age,
+                        counts,
+                    });
+                }
+            }
+            records.sort_by_key(|record| record.id);
+            samples.push(sim_persist::ActionSampleSet { tick, records });
+        }
+        scan_of(samples)
+    }
+
+    /// Calendar change that **decays** with absolute time: the world settles.
+    fn calendar_decaying(m: u64, lane: u64) -> u64 {
+        let scale = 20 + lane;
+        W * scale / (scale + m)
+    }
+
+    /// Calendar change that **accelerates** with absolute time: quadratic, so
+    /// the window-to-window increment grows linearly with the index. It is the
+    /// increment the statistic reads, not the level, which is why a saturating
+    /// curve is not the complement of a decaying one however it is shaped.
+    fn calendar_accelerating(m: u64, lane: u64) -> u64 {
+        let span = 60 + lane;
+        (m * m * W / (span * span)).min(W)
+    }
+
+    #[test]
+    fn a_calendar_trend_reaches_the_statistic_and_age_stratification_cannot_remove_it() {
+        // **The second confound, and it is not fixable by stratifying harder.**
+        // D-100 was an age offset and the age-stratified null removes it
+        // completely. This world is the exact complement: behaviour is a pure
+        // function of the ABSOLUTE window index and has no age dependence at
+        // all, every organism alive in a given window behaving identically
+        // whatever its age. Nothing happens at the event tick here either.
+        //
+        // The statistic reads it anyway, because for a fixed organism age and
+        // calendar time advance together. An event observation and a control
+        // observation that share an age stratum came from organisms born
+        // `relocate / 2` apart and are read `relocate / 2` apart in absolute
+        // time. **Matching age unmatches calendar time, necessarily.** No
+        // choice of stratifying variable fixes this: stratifying on absolute
+        // tick instead would put every event and every control in disjoint
+        // strata, because event boundaries are always at multiples of
+        // `relocate` and control boundaries always at the midpoints.
+        //
+        // This is why C11.1's per-world count is not an identified estimate
+        // and must not be re-run for a positive claim. See
+        // docs/21-open-questions.md.
+        let plan = age_plan();
+
+        // 1. A decaying calendar trend clears its own null in a world with no
+        //    event and no age structure. This is a manufactured false
+        //    positive, in the same sense D-100's +158 was.
+        let decaying = world_shift(
+            &calendar_cohort_scan(calendar_decaying, AGE_LANES),
+            R,
+            &plan,
+            101,
+        )
+        .expect("computable");
+        assert_eq!((decaying.rho_milli, decaying.null_p95_milli), (47, 35));
+        assert!(decaying.rho_milli > decaying.null_p95_milli);
+        assert!(decaying.event_wins > decaying.control_wins);
+
+        // 2. Reversing the calendar curvature reverses which side of the pair
+        //    moves more, which is what says the statistic is reading the trend
+        //    rather than the construction. The decaying world has
+        //    `event_wins` 620 against `control_wins` 160; the accelerating one
+        //    has 120 against 500 - **the campaign's direction**, where
+        //    `control_wins` exceeds `event_wins` in all four arms.
+        let accelerating = world_shift(
+            &calendar_cohort_scan(calendar_accelerating, AGE_LANES),
+            R,
+            &plan,
+            101,
+        )
+        .expect("computable");
+        assert_eq!(
+            (accelerating.event_wins, accelerating.control_wins),
+            (120, 500)
+        );
+        assert_eq!((decaying.event_wins, decaying.control_wins), (500, 320));
+
+        //    Recorded because it is a live trap rather than a detail: the
+        //    pooled rank correlation and the paired win counts **disagree**
+        //    here. The accelerating world's control side wins four times as
+        //    often, and its pooled rho is nonetheless +25 against a null of
+        //    32 - not significant, and not even the same sign the paired view
+        //    implies. With 1,300 of 1,920 pairs tied, the two summaries are
+        //    answering different questions, and a reader who takes
+        //    `event_wins` and `control_wins` as a readout of `rho_milli` will
+        //    be wrong. Neither is broken; they must not be conflated.
+        assert_eq!(
+            (accelerating.rho_milli, accelerating.null_p95_milli),
+            (25, 32)
+        );
+        assert!(accelerating.rho_milli < accelerating.null_p95_milli);
+        assert!(accelerating.ties > accelerating.event_wins + accelerating.control_wins);
+
+        // 3. The age-stratified null is doing its job on the age axis at the
+        //    same time, so this is a second confound rather than the first one
+        //    resurfacing: the pure-age world still reads exactly zero.
+        let pure_age = world_shift(&rolling_cohort_scan(settling, AGE_LANES), R, &plan, 101)
+            .expect("computable");
+        assert_eq!(pure_age.rho_milli, 0);
+    }
+
     fn age_plan() -> PlasticityPlan {
         PlasticityPlan {
             burn_in_ticks: AGE_BURN_IN,
