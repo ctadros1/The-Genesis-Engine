@@ -1,0 +1,280 @@
+# Phase 11 confirmatory campaign: C11.1 and C11.2.
+#
+# ============================================================
+# PRE-REGISTRATION. Committed before the campaign was run.
+# ============================================================
+#
+# WHAT THIS CAMPAIGN IS FOR. C11.1 and C11.2 have stood at NOT MEASURED
+# since the phase opened, and `planning/phase-11-lifetime-learning.md` is
+# explicit that this is different from unmet: nothing was observed and no
+# threshold was tested. Four things had to exist first. Three now do - the
+# relocating resource patch (Phase 12's mutable-world half), per-organism
+# action counting, and a neutral marker locus - and the fourth, the analysis
+# that reduces a per-individual shift to a world-level rate, is
+# `sim-analysis::plasticity`, whose bars are restated below and echoed into
+# every report it prints.
+#
+# THE PHASE'S OWN PRIOR IS UNFAVOURABLE AND IS RECORDED HERE RATHER THAN
+# DISCOVERED LATER. The Risks table names "plasticity is selected to zero
+# and the phase returns a null result" as the single most likely failure of
+# this phase, and two measurements already point that way: 1 plastic edge
+# across 500 organisms after 30,000 ticks, and the founders' 400 plastic
+# edges gone by 10^6. This campaign exists to give those numbers a control
+# and a threshold, not to overturn them. A null here is a result and will be
+# reported as one.
+#
+# ------------------------------------------------------------
+# CONDITIONS. Two factors crossed, four arms, 30 seeds each.
+# ------------------------------------------------------------
+#
+#   Avar  plasticity on,  E-variable  (patch relocates and its magnitude bites)
+#   Astat plasticity on,  E-stationary (patch relocates at zero magnitude)
+#   Bvar  plasticity off, E-variable
+#   Bstat plasticity off, E-stationary
+#
+# THE PLASTICITY FACTOR is two fields and both are set together:
+# `plasticity.enabled` (the learn phase, the learned-state section and the
+# per-plastic-edge energy cost) and `genome2.mutation.plasticity_enabled`
+# (whether point mutation can reach `eta` and `EDGE_FLAG_PLASTIC` at all).
+# Under B every founder's `eta` is 0.0 and no mutation can move it, so
+# behaviour can change only across generations - the plan's own wording. The
+# mutation gate **consumes its draws either way** (D-086), so the two arms
+# are matched on total mutational input and differ only in what the draws are
+# allowed to write.
+#
+# THE ENVIRONMENT FACTOR IS A ZERO-MAGNITUDE SCHEDULE, NOT A SCHEDULE-FREE
+# WORLD. This is the single most important control in the design and it is
+# not the obvious one. Relocating a patch trims biomass into a ledgered loss
+# sink every time capacity leaves a cell, so an arm with no schedule would
+# carry a different standing biomass for a reason that has nothing to do with
+# learning. At `patch_capacity_scale_q16 = 65536` the schedule runs
+# identically - same draws, same override set, same entry count, same code
+# path - and composes to exactly the baseline capacity, so E-stationary and
+# E-variable are matched on everything except the magnitude of the move.
+# `the_zero_magnitude_control_runs_the_identical_schedule_and_loses_no_biomass`
+# asserts the control's loss sink stays at zero.
+#
+# WHY THE B ARM IS INDISPENSABLE, STATED BEFORE THE RESULT. The founder
+# genome binds input channel 1 (`energy_fraction`) through one hidden node to
+# output channel 101 (`turn`). An organism's turn intent therefore moves
+# whenever its energy moves - with or without plasticity, and a relocating
+# patch moves energy. So **an action-distribution change across a relocation
+# is expected under B as well**, and it is not evidence of lifetime learning:
+# it is the same fixed policy emitting different actions because the input
+# changed. C11.1's claim is that plasticity produced the change, so the
+# criterion is conjunctive: the treatment must clear the bar **and the
+# control must not**. If both clear it, C11.1 is unmet, and the honest
+# reading is that the world showed stimulus-driven behavioural change and
+# nothing this campaign can attribute to learning.
+#
+# ------------------------------------------------------------
+# SEEDS
+# ------------------------------------------------------------
+#
+# The first 30 in ascending order from 6001 that world generation accepts,
+# which at this map size is 6001..6030 with **no exclusions**: preflight over
+# 6001..6060 at this exact config refused none of them. The rule is stated in
+# the same outcome-blind form Phase 8 and Phase 10 used - it depends only on
+# terrain, before any condition is applied - because a rule that is only
+# written down when it has to exclude something is not a rule. Preflight is
+# still run and still fails the campaign closed if it refuses anything, which
+# is what stops a declared 30-seed design quietly executing as a 25-seed one.
+#
+# Disjoint from every seed used anywhere else: Phase 9's 1..8, 2002..2011 and
+# 3001..3030; Phase 10's 4001..4031; this phase's own pilot at 9001..9004 and
+# the CLI test's 5101..5103.
+#
+# ------------------------------------------------------------
+# TWO CALIBRATIONS TAKEN FROM A PILOT, AND THE RULE EACH USED
+# ------------------------------------------------------------
+#
+# Both were fixed on pilot seeds 9001..9004, which are disjoint from the set
+# above, and both rules are stated in terms of a **control** rather than of
+# either criterion's outcome.
+#
+# 1. THE POINT-MUTATION RATE IS 65535, NOT THE SHIPPED 6554. Rule: the
+#    neutral marker's alleles must actually move, because a drift control
+#    that never drifts cannot bound drift and C11.2 would be undefined in
+#    every world for a reason that is about the mutation rate rather than
+#    about plasticity. Measured on the pilot at 20,000 ticks: at 6554, **0**
+#    marker alleles had left the founder value across the four A-worlds; at
+#    65535, **126**. This is D-079 and D-080's lesson applied before the fact
+#    - at shipped rates the measured outcome is the effective mutation rate,
+#    not the mechanism - and it is the same reason Phase 10 ran duplication
+#    at ten times its default. `point_delta_q16` is pinned at its documented
+#    3,277 because C11.2's threshold is computed from it.
+#
+# 2. THE PATCH IS RADIUS 32 AND SCALE 4.0, NOT THE DEFAULT 15 AND 2.0. Rule:
+#    the schedule must measurably change the world, or E-variable is an
+#    inert treatment and the whole environmental factor is decoration. At
+#    radius 32 the footprint is 4,225 cells of a 16,384-cell map before the
+#    habitable filter, and on all four pilot seeds the E-variable arm ends
+#    with a higher population than its seed-matched E-stationary arm (5,363
+#    against 2,993; 1,353 against 1,156; 2,575 against 1,000; 1,621 against
+#    1,155) and a different standing biomass (higher in three, lower in one).
+#    This is a property of the environment, measured in the A and B arms
+#    alike, and it does not depend on either criterion's statistic.
+#    `worldmod.max_capacity_overrides` is raised to 8,192 so the larger
+#    footprint fits inside the per-layer cap rather than being silently
+#    clipped.
+#
+# WHAT THE PILOT ALSO SHOWED, DISCLOSED HERE RATHER THAN AFTER THE FACT: the
+# association between a relocation and an individual's behavioural change ran
+# **negative** in both arms - behaviour was slightly *more* stable across a
+# relocation than across a matched boundary inside one epoch. The directed
+# decision rule below is retained unchanged. C11.1's claim is that plasticity
+# produces behavioural change in response to the event; an event that makes
+# behaviour more stable is an association but it is not that claim. The
+# two-sided count is reported for every condition so a sign-reversed
+# association is visible rather than hidden, and it decides nothing.
+#
+# ------------------------------------------------------------
+# THE MEASUREMENT
+# ------------------------------------------------------------
+#
+# A relocation happens on every tick that is a multiple of
+# `relocate_interval_ticks` (2,000). Action samples are written every 500
+# ticks, so 2,000 / 2 = 1,000 is a whole number of sample windows and the
+# matched control boundary lands exactly on a sample.
+#
+# For each relocation tick T and each organism present at all six sample
+# ticks it needs, with the ages to prove it lived every tick between them:
+#
+#   event pair    windows [T-500, T] and [T, T+500]        - straddles the move
+#   control pair  windows [T+500, T+1000] and [T+1000, T+1500] - inside one epoch
+#
+# Each window's seven counts are normalized by that window's own locomotion
+# total, in milli, and the distance is the L1 over the normalized vector.
+# The locomotion columns partition the tick so half their L1 is a genuine
+# total variation between two behaviour policies; the three indicators are
+# independent and are reported separately. Everything is integer.
+#
+# The world statistic is the rank correlation between "was this boundary a
+# relocation" and the distance, over every (individual, boundary) observation
+# after burn-in. The null shuffles the labels 199 times and takes the 95th
+# percentile of the absolute correlation. That destroys the event-distance
+# link while preserving both marginals - Phase 10's permutation argument and
+# Phase 10's code.
+#
+# A world whose distances never vary is reported as `no_variance` and counted
+# separately, never as a failure. This is not a formality: Phase 11's own
+# substrate measurement found `Eat` and `Mate` saturated and `Rest` and
+# `TurnLeft` empty in a founder-dominated world, so a degenerate controller
+# could otherwise stand in for a refutation of lifetime learning. Every
+# report line carries the per-column occupancy so a null can be attributed to
+# the right cause.
+#
+# C11.2 reads the final genomes. `eta` and `EDGE_FLAG_PLASTIC` both start at
+# the founder value - 0.0 and clear - and the neutral marker locus starts at
+# exactly the same two values, mutates on exactly the same draws with exactly
+# the same delta and clamp, sits between the two founder edges so it is as
+# tightly linked to each as they are to each other, and is never expressed.
+# Its mutation is deliberately **not** gated on
+# `genome2.mutation.plasticity_enabled`, so the control drifts in the B arm
+# too and the B arm measures drift with plasticity provably frozen. Both
+# quantities are averaged per organism first and then across organisms, so a
+# genome that duplicated its way to forty edges does not outvote thirty
+# founders (ADR-0022 A5, one level down).
+#
+# ------------------------------------------------------------
+# DECISION RULES AND EVERY THRESHOLD, FIXED HERE BEFORE THE RUN
+# ------------------------------------------------------------
+#
+#   burn_in_ticks         6000   three whole relocation epochs
+#   sample interval       500    ticks between action samples
+#   relocation interval   2000   ticks between patch moves
+#   min_individuals       8      distinct organisms before a world's
+#                                correlation is read at all
+#   permutations          199    so the 95th percentile is the exact 190th
+#                                order statistic, with no interpolation
+#   drift_margin_milli    25     one expected mutational step: a point
+#                                mutation's delta is uniform on +/- 0.05 of
+#                                the value's range at the pinned
+#                                point_delta_q16 = 3277, so E|delta| = 25
+#                                milli. An excess smaller than one typical
+#                                step is not an effect worth naming.
+#   analysis_seed         0x9e3779b97f4a7c15
+#
+#   C11.1  Under Avar, in at least **20 of 30** worlds, the signed rank
+#          correlation between the relocation label and the per-individual
+#          window distance must exceed the 95th percentile of its own
+#          permutation null. Under Bvar the same count must be **below 20**.
+#          Met only if both hold.
+#
+#   C11.2  Under Avar, in at least **20 of 30** worlds, either the mean `eta`
+#          or the plastic-allele fraction must exceed the neutral marker's
+#          matched quantity by at least 25 milli. Under Bvar the same count
+#          must be **below 20**. Either quantity, not both: `eta` and
+#          `EDGE_FLAG_PLASTIC` are two independently reachable fields of one
+#          mechanism, and requiring both would make the criterion a test of
+#          which mutation target happened to be hit - C9.1's "nodes or
+#          edges" reasoning.
+#
+# The Astat and Bstat arms are reported in full and decide nothing. They are
+# the environmental control: if Avar clears the bar, Astat is what says
+# whether the relocation schedule's magnitude was necessary.
+#
+# NO THRESHOLD ABOVE MAY BE CHANGED AFTER THE DATA IS SEEN. A null is a
+# result.
+#
+# CAPS AND RATES PINNED EXPLICITLY, so a later revision of a default cannot
+# move this campaign's effective config - the coupling D-078 removed for
+# Phase 9.
+campaign phase11-c111-confirmatory
+ticks 60000
+workers 8
+seeds 6001..6030
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base probe.enabled true
+base probe.action_census_enabled true
+base probe.marker_locus_enabled true
+base worldmod.enabled true
+base worldmod.patch_enabled true
+base worldmod.relocate_interval_ticks 2000
+base worldmod.patch_radius_cells 32
+base worldmod.max_capacity_overrides 8192
+base plasticity.max_plastic_edges 32
+base plasticity.plastic_edge_cost_milli_per_s 2
+base plasticity.lamarckian_fraction_q16 0
+condition Avar
+condition Astat
+condition Bvar
+condition Bstat
+set Avar plasticity.enabled true
+set Avar genome2.mutation.plasticity_enabled true
+set Avar worldmod.patch_capacity_scale_q16 262144
+set Astat plasticity.enabled true
+set Astat genome2.mutation.plasticity_enabled true
+set Astat worldmod.patch_capacity_scale_q16 65536
+set Bvar plasticity.enabled false
+set Bvar genome2.mutation.plasticity_enabled false
+set Bvar worldmod.patch_capacity_scale_q16 262144
+set Bstat plasticity.enabled false
+set Bstat genome2.mutation.plasticity_enabled false
+set Bstat worldmod.patch_capacity_scale_q16 65536
+vary plasticity.enabled
+vary genome2.mutation.plasticity_enabled
+vary worldmod.patch_capacity_scale_q16
+output events off
+output snapshots on
+output actions 500
