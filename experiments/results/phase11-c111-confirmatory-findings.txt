@@ -1,0 +1,213 @@
+Phase 11 confirmatory campaign: C11.1 and C11.2. Findings.
+
+Campaign source   experiments/phase11-c111-confirmatory.campaign
+Pre-registered in commit 4b160fe, before the campaign was run.
+Campaign hash     0x96ed767dbd9060e6
+Raw artifacts     phase11-c111-confirmatory-manifest.txt
+                  phase11-c111-confirmatory-plasticity.txt
+Analysis version  lifesim-plasticity-analysis-v1
+Census policy     lifesim-action-census-v1
+Analysis seed     0x9e3779b97f4a7c15, 199 permutations
+Run               120 worlds (4 conditions x 30 seeds), 60,000 ticks each,
+                  8 workers, 4,512.9 s wall, 1,595.4 aggregate ticks/s,
+                  0 failed. Preflight refused no seed. 1.8 GB of artifacts.
+Analysis          45.3 s wall over 120 worlds.
+
+================================================================
+BOTH CRITERIA ARE UNMET. BOTH ARE MEASURED NULLS WITH CONTROLS.
+================================================================
+
+  C11.1  Avar 0 of 30, Bvar 0 of 30. Bar 20, control ceiling 20. UNMET.
+  C11.2  Avar 8 of 30, Bvar 0 of 30. Bar 20, control ceiling 20. UNMET.
+
+No threshold was changed after the data was seen. The Risks table in
+`planning/phase-11-lifetime-learning.md` names "plasticity is selected to
+zero and the phase returns a null result" as the single most likely failure
+of this phase. That is what happened, and it now has a control, a
+pre-registered threshold and an effect size instead of two anecdotes.
+
+----------------------------------------------------------------
+1. THE NUMBER THAT EXPLAINS EVERYTHING ELSE
+----------------------------------------------------------------
+
+In the Avar arm the learn phase ran **1,109,373,897 times** across 30
+worlds, over **48,119 plastic edges** in 166,271 living organisms, and the
+final mean absolute learned delta was **0 milli in every one of the 30
+worlds** (range [0, 0]). Astat: 657,346,916 updates, 24,376 plastic edges,
+again 0 milli in all 30. The B arms ran the mechanism zero times by
+construction.
+
+So the null is not "learning happened and did not change behaviour". It is
+**"the mechanism executed a billion times and moved no weight by as much as
+one part in a thousand"**. Every downstream number follows from that, and it
+is the number a later revision should start from.
+
+The reason is visible in the founder genotype and is a rate problem, not a
+bug. `PlasticityGenes::inert()` starts every field at zero: `rule_id` 0,
+all four coefficients 0, `decay` 0, `eta` 0. A plastic edge only moves its
+weight when `eta` **and** the rule's coefficients are both off zero, and
+point mutation reaches them one draw at a time. After 60,000 ticks at ten
+times the shipped point rate, 26,654 of 684,370 edge alleles (3.9%) had
+`eta` off zero at all, and the joint event needed for a nonzero update
+stayed rare enough that the population mean never reached one milli.
+
+----------------------------------------------------------------
+2. C11.1 - WITHIN-LIFETIME BEHAVIOURAL CHANGE. UNMET.
+----------------------------------------------------------------
+
+Decision rule, from the pre-registration: under Avar, in at least 20 of 30
+worlds, the signed rank correlation between the relocation label and the
+per-individual window distance must exceed the 95th percentile of its own
+permutation null; under Bvar the same count must be below 20.
+
+                       Avar     Astat    Bvar     Bstat
+  worlds                 30        30       30        30
+  extinct                 1         0        0         0
+  boundaries used       780       780      780       780
+  individuals       560,994   358,584  595,158   377,174
+  matched pairs     782,755   533,155  832,481   561,377
+  discarded       2,154,437 1,230,966 2,272,981 1,292,285
+  median rho (milli)    -50       -58      -57       -64
+  rho range        [-72, 0] [-79,-41] [-85,-19] [-87,-44]
+  null p95 range    [6, 54]   [8, 13]  [7, 11]   [7, 14]
+  DIRECTED count (bar)    0         0        0         0
+  two-sided count        29        30       30        30
+  event_wins        225,253   174,609  240,026   182,438
+  control_wins      277,768   224,453  298,069   239,149
+  ties              279,734   134,093  294,386   139,790
+  event win share     0.448     0.438    0.446     0.433
+
+Seed-paired Avar against Bvar on the correlation itself: mean difference
++3 milli, 95% interval [-1, +8], 14 of 30 worlds directed, p = 0.707. There
+is no plasticity effect on this statistic of any size the campaign could
+resolve.
+
+**The two-sided count of 29-30 of 30 in every arm is an artefact, and the
+E-stationary arm is what proves it.** The association is real, strong and
+consistent - individuals' action distributions are *more* stable across a
+relocation boundary than across the matched within-epoch boundary - but it
+is **strongest in Bstat**, the arm with plasticity disabled *and* a
+zero-magnitude schedule, where nothing whatever happens at the relocation
+tick. An association that survives the removal of the event cannot have been
+caused by the event. What is left is a property of where the two boundaries
+sit inside the epoch, which the pre-registered design treats as matched and
+which this campaign shows is not: the control boundary sits 1,000 ticks
+later in each organism's life than the event boundary it is paired with.
+
+That is a defect in the C11.1 statistic, discovered by its own environmental
+control, and it is reported rather than smoothed over. It does not change
+the decision - the directed count is 0 of 30 in every arm and the criterion
+is unmet either way - but it means the two-sided column must not be read as
+evidence of anything, and a future revision of C11.1 needs a control
+boundary matched on age as well as on epoch position.
+
+**Whether the instrument could have varied at all**, which is the check a
+null of this kind is worthless without. Column occupancy over every window
+used, summed across the 30 Avar worlds:
+
+  rest              0
+  move_ahead       93,611,688
+  turn_left         3,845,475
+  turn_right    1,468,052,837
+  eat           1,565,510,000   (saturated: equals the organism-ticks)
+  mate          1,565,510,000   (saturated)
+  attack            0
+
+Three of seven columns carry variation and `varying_columns` is 3 in the
+median world of every arm, so the measurement was not taken against a
+constant - which is what the substrate was rebuilt to guarantee. But
+`turn_right` is 94% of all locomotion ticks and `rest`, `turn_left` at 0.25%
+and `attack` are effectively unreachable, so the behavioural space this
+criterion could observe is thin. The median per-individual distance is 0 in
+both E-variable arms: most organisms hold one heading band across both
+windows and contribute a tie. C11.1's null is therefore a null about a
+narrow behavioural repertoire, and that limitation belongs on the result.
+
+----------------------------------------------------------------
+3. C11.2 - LEARNING UNDER SELECTION. UNMET.
+----------------------------------------------------------------
+
+Decision rule: under Avar, in at least 20 of 30 worlds, either the mean
+`eta` or the plastic-allele fraction must exceed the neutral marker's
+matched quantity by at least 25 milli; under Bvar the same count must be
+below 20.
+
+                                    Avar   Astat    Bvar   Bstat
+  worlds counted (eta or flag)         8       8       0       0
+  worlds on the eta scale              0       0       0       0
+  worlds on the plastic-flag scale     8       8       0       0
+  drift undefined (no variance)        1       0       0       0
+  median mean eta (milli)              0       0       0       0
+  median marker value (milli)          0       0       1       0
+  median eta excess (milli)            0       0      -1       0
+  eta excess range                [-2, 1] [-2, 4] [-4, 0] [-1, 0]
+  median plastic fraction (milli)     75      68       0       0
+  median marker set fraction (milli)  61      61      72      68
+  median plastic excess (milli)        1      -2     -76     -68
+  plastic excess range        [-108, 79] [-118,138] [-203,-27] [-193,-12]
+  edge alleles                   684,370 375,318 684,525 361,486
+  marker alleles                 366,871 201,117 373,882 193,543
+  eta alleles off founder value   26,654  15,699       0       0
+  marker alleles off founder      13,751   6,975  20,967   6,580
+
+**The drift control is live and it is what the criterion is decided
+against.** In Bvar, `eta` and `EDGE_FLAG_PLASTIC` are frozen by
+construction - 0 of 684,525 edge alleles moved, 0 plastic edges - while
+20,967 marker alleles moved and 7.2% of marker alleles carry the neutral
+flag. So the marker experiences the real population size, the real variance
+in reproductive success, the real linkage and the real mutation regime, and
+under those forces a neutral flag reaches roughly 7% of alleles in 60,000
+ticks by drift alone. That is the empirical bar.
+
+Against that bar, plasticity in the Avar arm reaches **the same place**: the
+plastic-allele fraction is 75 milli against the marker's 61 in the median
+world, an excess of +1 milli, against a 25-milli bar that is one expected
+mutational step. Eight worlds clear it (excesses +29 to +79 milli), eight
+worlds in the E-stationary arm clear it too, and the excess is negative in
+about as many. The `eta` scale does not move at all: 0 of 30 in every arm,
+median excess 0, whole-campaign range [-4, +4] milli.
+
+**One contrast in the raw report must not be misread.** `contrast
+treatment=Avar control=Bvar quantity=plastic_excess_milli` shows a mean
+difference of +83 milli with a 95% interval of [62, 105] and p = 0. That is
+**mechanically guaranteed by the gate and is not evidence for C11.2**: under
+Bvar the plastic fraction is pinned at zero, so its "excess" is just minus
+the marker's fraction. The comparison that decides C11.2 is Avar's excess
+over its *own* marker, and that is +1 milli.
+
+Reading: plasticity spread at the drift rate and not above it. It was not
+selected away either - the flag is as common as its neutral twin - which is
+consistent with a trait that costs almost nothing because it does almost
+nothing. With `mean_abs_learned_milli` at 0 in all 60 A-arm worlds, a
+plastic edge in this campaign is very nearly a neutral marker itself, and
+the criterion is measuring two neutral loci against each other.
+
+----------------------------------------------------------------
+4. THE ENVIRONMENTAL FACTOR DID BITE
+----------------------------------------------------------------
+
+Median final population: Avar 5,964, Astat 2,846, Bvar 5,653, Bstat 2,716.
+The E-variable arms carry roughly twice the population of their
+zero-magnitude controls at the same seeds, so the relocation schedule's
+magnitude is a real ecological treatment and not a decoration. The
+pre-registered calibration rule for the patch is therefore satisfied by the
+confirmatory run as well as by the pilot.
+
+One Avar world (seed 0x1786) went extinct; its allele census is empty and it
+is reported as `drift_no_variance`, not as a C11.2 failure.
+
+----------------------------------------------------------------
+5. WHAT IS NOT CLAIMED
+----------------------------------------------------------------
+
+- Nothing here shows that lifetime learning is impossible in this world. It
+  shows that under this genotype, this mutation regime and this 60,000-tick
+  horizon, the learn phase produced no measurable learned state and the
+  plastic-edge trait spread at exactly the rate a neutral locus does.
+- The two-sided behavioural association is not a finding about relocation.
+  Its own zero-magnitude control reproduces it.
+- The eight Avar worlds that cleared the C11.2 flag bar are not eight
+  positive results. Eight E-stationary worlds cleared it as well, and the
+  campaign's own decision rule requires 20.
+- No claim is made about cognition, about learning anything useful, or about
+  behaviour changing in a way selection did not produce.
