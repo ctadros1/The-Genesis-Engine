@@ -272,6 +272,56 @@ impl LearnState {
             .sum();
         total * 1_000 / 65_536 / count
     }
+
+    /// How many plastic edges alive hold a learned delta that is not exactly
+    /// zero.
+    ///
+    /// Reported beside `mean_abs_learned_milli` because a mean over every
+    /// plastic edge cannot represent a rare phenomenon, and in this project
+    /// it already failed to. Phase 11's confirmatory campaign ended with 25
+    /// of 48,119 plastic edges holding a nonzero learned weight - the largest
+    /// 15,054 Q16, or 229 milli against a clamp of 8,000 - while
+    /// `mean_abs_learned_milli` read 0 in all 30 worlds, because
+    /// `139,116 Q16 / 48,119 rows` truncates to zero. The findings file
+    /// concluded from that mean that the mechanism "moved no weight by as
+    /// much as one part in a thousand", which was false (D-098).
+    ///
+    /// This is D-074's split applied to the learned state instead of the
+    /// anomaly counters: a count and a mean answer different questions, and
+    /// a single number that can only answer one of them will be read as
+    /// answering both.
+    pub fn count_nonzero_learned(&self) -> u64 {
+        self.learned_q16
+            .iter()
+            .flat_map(|edges| edges.iter())
+            .filter(|value| **value != 0)
+            .count() as u64
+    }
+
+    /// The largest absolute learned delta over every plastic edge alive, in
+    /// milli weight units against the same clamp of 8000 that bounds
+    /// `mean_abs_learned_milli`.
+    ///
+    /// The count's companion in the other direction: the count says how many
+    /// edges learned at all, this says whether any of them learned enough to
+    /// matter. Neither implies the other, and the pair is what makes a
+    /// population of many tiny deltas distinguishable from a population with
+    /// one large one.
+    ///
+    /// Note the deliberate asymmetry with `count_nonzero_learned`: this
+    /// truncates to milli, so a world where every learned delta is under
+    /// 66 Q16 reports a max of 0 with a nonzero count. That combination is
+    /// information, not a defect - it says "something learned, none of it by
+    /// a part in a thousand" - and it is the statement the campaign's mean
+    /// was mistaken for.
+    pub fn max_abs_learned_milli(&self) -> u64 {
+        self.learned_q16
+            .iter()
+            .flat_map(|edges| edges.iter())
+            .map(|value| u64::from(value.unsigned_abs()) * 1_000 / 65_536)
+            .max()
+            .unwrap_or(0)
+    }
 }
 
 #[cfg(test)]
@@ -401,5 +451,91 @@ mod tests {
         // desync, and an observer reports zero rather than panicking.
         assert_eq!(state.mean_plastic_fraction_milli(&[4]), 0);
         assert_eq!(LearnState::default().mean_plastic_fraction_milli(&[]), 0);
+    }
+
+    /// D-098, reconstructed from the campaign's own numbers.
+    ///
+    /// This is not a hypothetical about means. Phase 11's confirmatory
+    /// campaign reported `mean_abs_learned_milli` = 0 across 30 treatment
+    /// worlds and its findings file concluded that the mechanism "moved no
+    /// weight by as much as one part in a thousand". A census of the same
+    /// snapshots found 25 of 48,119 plastic edges holding a nonzero learned
+    /// weight, the largest of them 15,054 Q16. The mean was right and the
+    /// sentence drawn from it was false.
+    ///
+    /// The test plants exactly that shape - one real learner in a large
+    /// population - and asserts that the mean still reads zero while the
+    /// count and the max do not. The mean's zero is deliberately asserted
+    /// rather than treated as the bug: it is arithmetically correct, and a
+    /// fix that moved it would be hiding the truncation instead of
+    /// reporting alongside it.
+    #[test]
+    fn a_lone_learner_in_a_large_population_is_invisible_to_the_mean_and_visible_to_the_count() {
+        let mut state = LearnState::with_capacity(1);
+        state.push_organism(2_000);
+        state.learned_q16[0][1_234] = 15_054;
+
+        assert_eq!(state.total_plastic_edges(), 2_000);
+        // 15_054 * 1000 / 65_536 = 229, and 229 / 2000 truncates to 0.
+        assert_eq!(state.mean_abs_learned_milli(), 0);
+        // The two fields that can tell this world from one where nothing
+        // learned at all.
+        assert_eq!(state.count_nonzero_learned(), 1);
+        assert_eq!(state.max_abs_learned_milli(), 229);
+
+        // And the world the campaign's mean was mistaken for: same size,
+        // same mean, nothing learned. Every field the fixture line carried
+        // before this change is identical between the two.
+        let mut nothing = LearnState::with_capacity(1);
+        nothing.push_organism(2_000);
+        assert_eq!(nothing.total_plastic_edges(), state.total_plastic_edges());
+        assert_eq!(
+            nothing.mean_abs_learned_milli(),
+            state.mean_abs_learned_milli()
+        );
+        assert_eq!(nothing.count_nonzero_learned(), 0);
+        assert_eq!(nothing.max_abs_learned_milli(), 0);
+    }
+
+    /// The count and the max are not substitutes for each other, in either
+    /// direction, and the documented asymmetry at the milli boundary is
+    /// pinned rather than left to be rediscovered.
+    #[test]
+    fn the_count_and_the_max_each_catch_what_the_other_misses() {
+        // Many tiny deltas: something is learning, none of it by a part in a
+        // thousand. The count is the only field that sees it - the max
+        // truncates to zero exactly as the mean does.
+        let mut tiny = LearnState::with_capacity(1);
+        tiny.push_organism(8);
+        for slot in 0..8 {
+            tiny.learned_q16[0][slot] = 30;
+        }
+        assert_eq!(tiny.count_nonzero_learned(), 8);
+        assert_eq!(tiny.max_abs_learned_milli(), 0);
+        assert_eq!(tiny.mean_abs_learned_milli(), 0);
+
+        // One large delta: the max is the only field that separates this
+        // from the case above, because both have the same nonzero count in
+        // the same population when the count alone is consulted.
+        let mut one_large = LearnState::with_capacity(1);
+        one_large.push_organism(8);
+        for slot in 0..7 {
+            one_large.learned_q16[0][slot] = 30;
+        }
+        one_large.learned_q16[0][7] = LEARN_LIMIT_Q16;
+        assert_eq!(one_large.count_nonzero_learned(), 8);
+        assert_eq!(one_large.max_abs_learned_milli(), 8_000);
+
+        // Sign is not magnitude: a negative delta is learning too, and a max
+        // that forgot the absolute value would report 0 here.
+        let mut negative = LearnState::with_capacity(1);
+        negative.push_organism(2);
+        negative.learned_q16[0][0] = -LEARN_LIMIT_Q16;
+        assert_eq!(negative.count_nonzero_learned(), 1);
+        assert_eq!(negative.max_abs_learned_milli(), 8_000);
+
+        // Nothing plastic at all: both report zero, and neither panics.
+        assert_eq!(LearnState::default().count_nonzero_learned(), 0);
+        assert_eq!(LearnState::default().max_abs_learned_milli(), 0);
     }
 }

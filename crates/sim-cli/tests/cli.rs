@@ -306,7 +306,7 @@ fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
     assert_eq!(stdout(&first), stdout(&second));
     let line = stdout(&first);
     for expected in [
-        "\"fixture_schema_version\":5",
+        "\"fixture_schema_version\":6",
         "\"phase\":\"phase11\"",
         "\"plasticity_policy\":\"lifesim-plasticity-v2\"",
         "\"rule_registry\":1",
@@ -318,6 +318,12 @@ fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
         "\"population\":1",
         "\"plastic_edges_total\":2",
         "\"plasticity_updates_total\":400000",
+        // Both plastic edges actually moved. `plastic_edges_total` says how
+        // many edges *could* learn and this says how many *did*, which is the
+        // distinction D-098 was published for want of: a mean over all the
+        // edges that could learn reads zero whether none of them did or a
+        // few of them did a great deal.
+        "\"learned_edges_nonzero\":2",
         "\"plasticity_anomalies_total\":0",
         "\"controller_faults_total\":0}",
     ] {
@@ -326,6 +332,15 @@ fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
     assert!(
         !line.contains("\"mean_abs_learned_milli\":0,"),
         "the trace learned nothing: {line}"
+    );
+    // The count and the max are independent of the mean and of each other,
+    // and each is asserted against the thing only it can catch. A max of zero
+    // with a nonzero count would mean every delta is under 66 Q16 - a live
+    // mechanism that never accumulates - which reproduces just as well as a
+    // healthy one and would read as success in every other field on the line.
+    assert!(
+        !line.contains("\"max_abs_learned_milli\":0,"),
+        "no edge learned by as much as one part in a thousand: {line}"
     );
 
     // **The accumulation clause.** A plastic edge with decay settles at an

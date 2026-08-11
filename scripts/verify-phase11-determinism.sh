@@ -80,7 +80,8 @@ for forbidden in \
   '"population":0,' \
   '"plastic_edges_total":0,' \
   '"plasticity_updates_total":0,' \
-  '"mean_abs_learned_milli":0,'
+  '"mean_abs_learned_milli":0,' \
+  '"learned_edges_nonzero":0,'
 do
   if grep -q "$forbidden" "$phase11_tmp/first.json"; then
     printf 'phase11 trace is vacuous: FAIL\n' >&2

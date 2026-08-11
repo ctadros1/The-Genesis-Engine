@@ -1927,6 +1927,16 @@ fn command_fixture(options: Options) -> Result<(), String> {
         // `mean_abs_learned_milli` are what make a zero visible, and
         // `verify-phase11-determinism.sh` refuses each of them.
         //
+        // Schema 6 adds `learned_edges_nonzero` and `max_abs_learned_milli`
+        // beside the mean. The mean alone is not sufficient and this fixture
+        // is the reason to say so here: it is a mean over every plastic edge
+        // alive, so a run in which a handful of edges learned substantially
+        // reports the same 0 as a run in which nothing learned at all. That
+        // is not hypothetical - it is what Phase 11's confirmatory campaign
+        // published (D-098). The count is the field that can distinguish
+        // them, so the count is the one the verify script now refuses at
+        // zero.
+        //
         // `plasticity_anomalies_total` is reported rather than asserted
         // nonzero: it counts faults and clamp saturations, and both are
         // *supposed* to stay at zero here. It is in the line so that a run
@@ -1934,7 +1944,7 @@ fn command_fixture(options: Options) -> Result<(), String> {
         let (channel_registry, activation_registry) = registry_versions();
         println!(
             concat!(
-                "{{\"fixture_schema_version\":5,\"phase\":\"phase11\",",
+                "{{\"fixture_schema_version\":6,\"phase\":\"phase11\",",
                 "\"behavior_policy\":\"{}\",\"genome2_policy\":\"{}\",",
                 "\"meiosis_policy\":\"{}\",\"structmut_policy\":\"{}\",",
                 "\"controller2_policy\":\"{}\",\"plasticity_policy\":\"{}\",",
@@ -1945,6 +1955,7 @@ fn command_fixture(options: Options) -> Result<(), String> {
                 "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
                 "\"plastic_edges_total\":{},\"plasticity_updates_total\":{},",
                 "\"plasticity_anomalies_total\":{},\"mean_abs_learned_milli\":{},",
+                "\"learned_edges_nonzero\":{},\"max_abs_learned_milli\":{},",
                 "\"plasticity_cost_milli\":{},\"controller_faults_total\":{}}}"
             ),
             PHASE2_BEHAVIOR_POLICY_VERSION,
@@ -1968,6 +1979,8 @@ fn command_fixture(options: Options) -> Result<(), String> {
             metrics.plasticity_updates_total,
             metrics.plasticity_anomalies_total,
             metrics.mean_abs_learned_milli,
+            metrics.learned_edges_nonzero,
+            metrics.max_abs_learned_milli,
             metrics.plasticity_cost_milli,
             metrics.controller_faults_total
         );

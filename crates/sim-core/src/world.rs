@@ -503,10 +503,29 @@ pub struct MetricsSnapshot {
     pub plastic_edges_total: u64,
     pub mean_plastic_fraction_milli: u64,
     /// Mean absolute learned delta over every plastic edge alive, in milli
-    /// weight units against a clamp of 8000. This is the "did anything
-    /// actually learn" number: a population full of plastic edges whose
-    /// deltas are all zero is C11.1's null with C11.2's positive.
+    /// weight units against a clamp of 8000. A population full of plastic
+    /// edges whose deltas are all zero is C11.1's null with C11.2's positive.
+    ///
+    /// **This is not on its own the "did anything actually learn" number and
+    /// must never again be read as one.** It is a mean over every plastic
+    /// edge alive, so a handful of edges that learned substantially inside a
+    /// large population truncates it to zero. Read it with the two fields
+    /// below or not at all.
     pub mean_abs_learned_milli: u64,
+    /// The count and the extreme, beside the mean, because the mean alone
+    /// published a false claim. Phase 11's confirmatory campaign reported
+    /// `mean_abs_learned_milli` = 0 in all 30 treatment worlds and concluded
+    /// that the mechanism "moved no weight by as much as one part in a
+    /// thousand"; a census of the same snapshots found 25 of 48,119 plastic
+    /// edges holding a nonzero learned weight, the largest at 229 milli
+    /// (D-098). The mean was arithmetically correct and the conclusion drawn
+    /// from it was wrong, which is the failure mode a second number prevents.
+    ///
+    /// This is the same split, for the same reason, that separated
+    /// `plasticity_faults_total` and `plasticity_saturations_total` out of
+    /// `plasticity_anomalies_total` under D-074.
+    pub learned_edges_nonzero: u64,
+    pub max_abs_learned_milli: u64,
     /// Plastic-edge updates applied, and the anomaly half - faults plus
     /// clamp saturations. Runaway plasticity destabilizing controllers into
     /// noise is a named risk of this phase and this is its measurement.
@@ -1351,6 +1370,8 @@ impl World {
                 .learn
                 .as_ref()
                 .map_or(0, |l| l.mean_abs_learned_milli()),
+            learned_edges_nonzero: self.learn.as_ref().map_or(0, |l| l.count_nonzero_learned()),
+            max_abs_learned_milli: self.learn.as_ref().map_or(0, |l| l.max_abs_learned_milli()),
             plasticity_updates_total: self
                 .learn
                 .as_ref()
