@@ -50,6 +50,56 @@
 //!   within-pair permutation would - conservative, again in the direction that
 //!   matters.
 //!
+//! # The matched control is **not** age-matched, and that is a defect
+//!
+//! Recorded here rather than in a report because the code still carries it.
+//! The control boundary is `event + relocate / 2`, so a control window pair
+//! lies `relocate / 2` ticks later in **every** organism's life than the
+//! event pair it is matched to, and it also sits at a different phase of the
+//! epoch - immediately after the event pair's own post-window rather than
+//! straddling anything. Any quantity that varies with age therefore enters
+//! the correlation with the event label, and the pooled permutation null
+//! cannot see it: the null shuffles labels against distances and every draw
+//! carries the same age imbalance the observed statistic does.
+//!
+//! Measured rather than argued, in
+//! `the_matched_control_is_not_age_matched_and_the_offset_alone_clears_c11_1`.
+//! A stationary rolling cohort - one in which nothing happens at the event
+//! tick, the population's age profile is identical at every sample, and
+//! behaviour is a pure function of age - reports:
+//!
+//! - `rho = +158` against a null of `30`, and **passes
+//!   [`WorldPlasticity::within_lifetime_shift`]**, when the window-to-window
+//!   behavioural change decays with age;
+//! - `rho = -154` when it grows with age, which is the sign the confirmatory
+//!   campaign measured;
+//! - `rho = 0` exactly when the change is age-dependent but has no curvature,
+//!   so what the statistic reads is curvature in the age trend and not the
+//!   cohort construction;
+//! - `76, 158, 334, 700` at offsets of `500, 1_000, 2_000, 4_000` ticks -
+//!   each doubling of the offset roughly doubles the correlation, at
+//!   ratios of 2.08, 2.11 and 2.10. A dose-response over an eightfold
+//!   range is what identifies the offset as the mechanism rather than
+//!   leaving it an interpretation.
+//!
+//! The artifact is a fixed effect size while the null shrinks with the pooled
+//! count, so it decides more worlds the more data there is: at the campaign's
+//! ~27,000 pairs per world the null p95 fell as low as 6 milli and the measured
+//! `rho` was -50 to -64 median **in all four arms, including `Bstat`**, where
+//! plasticity is disabled and the relocation has zero magnitude. The directed
+//! rule refused every one of them, so the recorded verdict does not change;
+//! but the sign is a property of this substrate's age trend rather than of
+//! the design, and the same defect with the opposite trend would have
+//! produced a false pass. **The directed statistic is not identified.**
+//!
+//! The pre-registered decision rule is left exactly as it was - a threshold
+//! is never changed after the data is seen - and the correction a future
+//! pre-registration needs is specified in D-100 rather than applied here.
+//! The one age-free reading available from the campaign as it stands is the
+//! seed-paired contrast of `rho` between arms, which the report already
+//! prints and which is null: Avar minus Bvar is +3 milli, 95 percent
+//! interval [-1, +8], p = 0.707.
+//!
 //! # The observed statistic is signed and the null is two-sided, on purpose
 //!
 //! `morph.rs` compares `|rho|` against the p95 of `|rho|` because C10.3b
@@ -1259,6 +1309,34 @@ mod tests {
             boundaries(2_000, 500, 0, 2_000),
             Err(ShiftRefusal::NoBoundaries)
         );
+
+        // R = 1500, W = 500: the interval **is** a whole number of windows,
+        // so a guard that checked only that would accept it - and the
+        // control at T + 750 would then fall between two samples, every pair
+        // would be discarded, and the world would come back refused as
+        // `too_few_individuals`. Two layers refusing the same input means
+        // neither is pinned by the other's test (D-097), so the alignment
+        // guard is pinned here by the diagnostic only it prints.
+        assert_eq!(
+            boundaries(1_500, 500, 0, 20_000),
+            Err(ShiftRefusal::Misaligned {
+                relocate: 1_500,
+                window: 500
+            })
+        );
+
+        // The horizon bound is inclusive: a boundary whose control window
+        // ends exactly on the last sample is readable and must be kept. A
+        // strict comparison here silently drops a whole boundary from every
+        // world whose run length lands on the bound.
+        let flush = boundaries(2_000, 500, 0, 19_500).expect("aligned");
+        assert_eq!(
+            flush.last().copied(),
+            Some(Boundary {
+                event_tick: 18_000,
+                control_tick: 19_000
+            })
+        );
     }
 
     // --- C11.1: a synthetic `.alac` series -------------------------------
@@ -1305,6 +1383,11 @@ mod tests {
                 samples.push(sim_persist::ActionSampleSet { tick, records });
             }
         }
+        scan_of(samples)
+    }
+
+    /// The provenance block every synthetic series in this module shares.
+    fn scan_of(samples: Vec<sim_persist::ActionSampleSet>) -> ActionLogScan {
         ActionLogScan {
             info: sim_persist::ActionLogInfo {
                 format_version: sim_persist::ACTION_LOG_FORMAT_VERSION,
@@ -1314,7 +1397,7 @@ mod tests {
                 terrain_checksum: 0,
                 class_count: ACTION_CLASS_COUNT as u32,
                 sample_interval_ticks: W as u32,
-                max_organisms: 1_000,
+                max_organisms: 100_000,
                 policy_hash: sim_persist::action_policy_hash(),
                 build_version: "test".to_owned(),
             },
@@ -1570,6 +1653,435 @@ mod tests {
                 individuals: 2,
                 required: plan.min_individuals
             })
+        );
+        // ...and exactly `min_individuals` is enough. The bar is "fewer
+        // than", so the world at the bar is read rather than refused, and
+        // the boundary is the only place the two readings differ.
+        let exact = scan_from(
+            plan.min_individuals as u64,
+            HORIZON,
+            epoch_locked,
+            |_, _| true,
+        );
+        let shift = world_shift(&exact, R, &plan, 33).expect("the bar itself is enough");
+        assert_eq!(shift.individuals, plan.min_individuals);
+    }
+
+    // --- The matched control is offset in age, and that is enough --------
+    //
+    // `boundaries` puts the control at `event + relocate / 2`, so a control
+    // window pair lies `relocate / 2` ticks later in **every** organism's
+    // life than that organism's own event window pair. Nothing else about
+    // the two pairs differs. The series below makes the age offset the only
+    // difference there is: no relocation is simulated, nothing whatever
+    // happens at the event tick, and the world is stationary in absolute
+    // time, so any statistic the analysis reports here is the offset and
+    // nothing else.
+    //
+    // The construction is a rolling cohort. `AGE_LANES` organisms are born
+    // every `W` ticks and each lives exactly `AGE_LIFESPAN`, so at every
+    // sample tick the population holds exactly the same multiset of ages -
+    // `AGE_COHORT` of them, `W` apart - and no world-level quantity moves
+    // with the tick at all. Each organism spends `turn_ticks(k)` of its
+    // `k`-th window of life turning right and the rest moving ahead, so
+    // `window_distance` is exactly `4 * |turn_ticks(k) - turn_ticks(k + 1)|`
+    // and a pure function of age.
+
+    const AGE_LANES: u64 = 8;
+    const AGE_COHORT: u64 = 24;
+    const AGE_LIFESPAN: u64 = AGE_COHORT * W;
+    const AGE_HORIZON: u64 = 40_000;
+    const AGE_BURN_IN: u64 = 14_000;
+
+    /// Ticks of `TurnRight` in the `k`-th window of one organism's life.
+    type TurnSchedule = fn(u64, u64) -> u64;
+
+    fn rolling_cohort_scan(turn_ticks: TurnSchedule, lanes: u64) -> ActionLogScan {
+        let mut samples = Vec::new();
+        for step in 1..=(AGE_HORIZON / W) {
+            let tick = step * W;
+            let mut records = Vec::new();
+            for birth in step.saturating_sub(AGE_COHORT)..step {
+                let age = tick - birth * W;
+                if age > AGE_LIFESPAN {
+                    continue;
+                }
+                for lane in 0..lanes {
+                    let mut counts = [0_u32; ACTION_CLASS_COUNT];
+                    for k in 0..(age / W) {
+                        let turn = turn_ticks(k, lane);
+                        counts[sim_core::ActionClass::TurnRight as usize] += turn as u32;
+                        counts[sim_core::ActionClass::MoveAhead as usize] += (W - turn) as u32;
+                    }
+                    // `Mate` saturated, as in every world Phase 11 measured.
+                    counts[sim_core::ActionClass::Mate as usize] += age as u32;
+                    records.push(sim_persist::ActionRecord {
+                        id: birth * lanes + lane + 1,
+                        age_ticks: age,
+                        counts,
+                    });
+                }
+            }
+            records.sort_by_key(|record| record.id);
+            samples.push(sim_persist::ActionSampleSet { tick, records });
+        }
+        scan_of(samples)
+    }
+
+    fn age_plan() -> PlasticityPlan {
+        PlasticityPlan {
+            burn_in_ticks: AGE_BURN_IN,
+            ..PlasticityPlan::default()
+        }
+    }
+
+    /// Window-to-window change that **decays** with age: the organism
+    /// settles down. `t(k) = W * K / (K + k)`.
+    fn settling(k: u64, lane: u64) -> u64 {
+        let scale = 20 + lane;
+        W * scale / (scale + k)
+    }
+
+    /// The same curve run backwards: change that **grows** with age.
+    fn unsettling(k: u64, lane: u64) -> u64 {
+        settling(30_u64.saturating_sub(k), lane)
+    }
+
+    /// An age trend with no curvature: the turn fraction moves by a fixed
+    /// number of ticks every window for the whole of life, so behaviour
+    /// depends on age but the window-to-window change does not.
+    fn linear_in_age(k: u64, lane: u64) -> u64 {
+        480 - (lane + 2) * k
+    }
+
+    #[test]
+    fn the_matched_control_is_not_age_matched_and_the_offset_alone_clears_c11_1() {
+        // **This test records a defect, not a property.** It is the number
+        // the campaign's own control was pointing at: the two-sided
+        // association appears in all four arms including `Bstat`, where
+        // plasticity is disabled and the relocation has zero magnitude, so
+        // nothing happens at the event tick at all. An association that
+        // survives removing the event was not caused by the event.
+        //
+        // If a future pre-registration changes the control boundary, this
+        // test is **expected to fail** and its numbers are what the change
+        // must be measured against. Do not silence it; re-measure it.
+        let plan = age_plan();
+
+        // 1. Behaviour that settles with age. The event windows are the
+        //    younger pair, and the younger pair moves more, so the
+        //    correlation is positive - and it clears the criterion's own
+        //    directed decision rule in a world with no event in it.
+        let scan = rolling_cohort_scan(settling, AGE_LANES);
+        let settled = world_shift(&scan, R, &plan, 101).expect("computable");
+        assert_eq!((settled.rho_milli, settled.null_p95_milli), (158, 30));
+        let world = WorldPlasticity {
+            shift: Ok(settled.clone()),
+            ..world_for(AlleleCensus::default())
+        };
+        assert!(
+            world.within_lifetime_shift(&plan),
+            "the age offset alone did not reproduce the criterion's own pass condition"
+        );
+
+        // 2. The same construction with the age trend reversed reverses the
+        //    sign, which is what says the statistic is reading the trend and
+        //    not the construction. This is the sign the campaign measured in
+        //    all four arms.
+        let scan = rolling_cohort_scan(unsettling, AGE_LANES);
+        let unsettled = world_shift(&scan, R, &plan, 101).expect("computable");
+        assert_eq!((unsettled.rho_milli, unsettled.null_p95_milli), (-154, 28));
+        let world = WorldPlasticity {
+            shift: Ok(unsettled),
+            ..world_for(AlleleCensus::default())
+        };
+        assert!(world.behaviour_associated(&plan));
+        assert!(!world.within_lifetime_shift(&plan));
+
+        // 3. The control that makes the first two mean something. Behaviour
+        //    still depends on age, and still changes every window of every
+        //    life - but by the *same amount* at every age. The offset then
+        //    has nothing to read and the correlation is exactly zero. So the
+        //    rolling cohort does not manufacture an association by itself:
+        //    what the statistic reports is curvature in the age trend.
+        let scan = rolling_cohort_scan(linear_in_age, AGE_LANES);
+        let flat = world_shift(&scan, R, &plan, 101).expect("computable");
+        assert_eq!(flat.rho_milli, 0);
+        assert!(!flat.no_variance, "the distances must actually vary");
+        assert!(flat.distinct_distances > 1);
+        assert_eq!(flat.ties, flat.pairs);
+        let world = WorldPlasticity {
+            shift: Ok(flat),
+            ..world_for(AlleleCensus::default())
+        };
+        assert!(!world.behaviour_associated(&plan));
+
+        // 4. Dose-response on the offset itself. The control sits at
+        //    `relocate / 2`, so widening the relocation interval widens the
+        //    age gap and nothing else. The correlation scales with it,
+        //    roughly doubling for each doubling of the gap. That is what
+        //    identifies the age offset as the mechanism rather than leaving
+        //    it as an interpretation.
+        let scan = rolling_cohort_scan(settling, AGE_LANES);
+        let dose: Vec<(u64, i64)> = [1_000_u64, 2_000, 4_000, 8_000]
+            .into_iter()
+            .map(|relocate| {
+                let shift = world_shift(&scan, relocate, &plan, 101).expect("computable");
+                (relocate / 2, shift.rho_milli)
+            })
+            .collect();
+        assert_eq!(
+            dose,
+            vec![(500, 76), (1_000, 158), (2_000, 334), (4_000, 700)]
+        );
+
+        // 5. And the reason it decides worlds rather than being lost in the
+        //    noise: the artifact is a fixed effect size, while the
+        //    permutation null shrinks with the number of pooled
+        //    observations. The campaign pooled about 27,000 pairs per world
+        //    and reported null p95 values as low as 6 milli, so an age trend
+        //    far smaller than this one clears the bar in every world.
+        let scale: Vec<(usize, i64, i64)> = [1_u64, 2, 8, 32]
+            .into_iter()
+            .map(|lanes| {
+                let scan = rolling_cohort_scan(settling, lanes);
+                let shift = world_shift(&scan, R, &plan, 101).expect("computable");
+                (shift.pairs, shift.rho_milli, shift.null_p95_milli)
+            })
+            .collect();
+        assert_eq!(
+            scale,
+            vec![
+                (240, 163, 85),
+                (480, 160, 59),
+                (1_920, 158, 30),
+                (7_680, 139, 15),
+            ]
+        );
+    }
+
+    #[test]
+    fn the_analysis_keys_on_the_entity_id_and_not_on_the_row_it_arrived_in() {
+        // The property the module's own documentation says the entity id is
+        // in the file for, and which nothing tested: every synthetic series
+        // here writes records in ascending id order with identical ages, so
+        // keying on the array slot and keying on the id agree everywhere.
+        //
+        // Reversing the records inside *alternate* samples changes no id, no
+        // age and no count - it changes only which row an organism arrived
+        // in - and a slot-keyed analysis then compares one organism's
+        // pre-window with another's post-window without any age check being
+        // able to notice, because in this series every organism is exactly
+        // as old as every other.
+        let plan = PlasticityPlan::default();
+        let ordered = scan_from(12, HORIZON, epoch_locked, |_, _| true);
+        let mut shuffled = ordered.clone();
+        for sample in shuffled.samples.iter_mut() {
+            if sample.tick.is_multiple_of(2 * W) {
+                sample.records.reverse();
+            }
+        }
+        assert!(
+            shuffled
+                .samples
+                .iter()
+                .zip(ordered.samples.iter())
+                .any(|(left, right)| left
+                    .records
+                    .iter()
+                    .map(|record| record.id)
+                    .ne(right.records.iter().map(|record| record.id))),
+            "the reordering did not reorder anything, so the comparison is vacuous"
+        );
+        assert_eq!(
+            world_shift(&ordered, R, &plan, 41),
+            world_shift(&shuffled, R, &plan, 41),
+            "the result moved when only the row order moved"
+        );
+    }
+
+    /// Locomotion pinned to one column for every organism at every tick,
+    /// with the `Eat` indicator held for a whole epoch and redrawn at each
+    /// relocation. The behavioural change is real and is carried entirely by
+    /// an indicator column.
+    fn indicator_only_scan(organisms: u64, horizon: u64) -> ActionLogScan {
+        let mut cumulative: BTreeMap<u64, [u32; ACTION_CLASS_COUNT]> = BTreeMap::new();
+        let mut samples = Vec::new();
+        for tick in 1..=horizon {
+            for id in 1..=organisms {
+                let row = cumulative.entry(id).or_insert([0; ACTION_CLASS_COUNT]);
+                row[sim_core::ActionClass::MoveAhead as usize] += 1;
+                row[sim_core::ActionClass::Mate as usize] += 1;
+                if (tick / R + id).is_multiple_of(2) {
+                    row[sim_core::ActionClass::Eat as usize] += 1;
+                }
+            }
+            if tick.is_multiple_of(W) {
+                samples.push(sim_persist::ActionSampleSet {
+                    tick,
+                    records: (1..=organisms)
+                        .map(|id| sim_persist::ActionRecord {
+                            id,
+                            age_ticks: tick,
+                            counts: cumulative[&id],
+                        })
+                        .collect(),
+                });
+            }
+        }
+        scan_of(samples)
+    }
+
+    #[test]
+    fn a_change_carried_entirely_by_an_indicator_column_still_reaches_the_statistic() {
+        // The pooled statistic correlates the **full** L1, not the
+        // locomotion half of it. Every other series in this module leaves
+        // the indicator block constant, so `l1_milli` there is exactly twice
+        // `locomotion_tv_milli` - a monotone transform, identical ranks, and
+        // therefore a world in which correlating on either one gives the
+        // same answer. Here locomotion never moves at all, so an analysis
+        // that dropped the indicators would report a world with no
+        // behavioural variance rather than a planted response.
+        let plan = PlasticityPlan::default();
+        let scan = indicator_only_scan(12, HORIZON);
+        let shift = world_shift(&scan, R, &plan, 47).expect("computable");
+        assert!(!shift.no_variance);
+        assert_eq!(shift.median_event_milli, 998);
+        assert_eq!(shift.median_control_milli, 0);
+        assert_eq!(shift.median_event_locomotion_tv_milli, 0);
+        assert!(shift.rho_milli > shift.null_p95_milli, "{shift:?}");
+
+        // And the per-column occupancy is normalized by the locomotion block
+        // alone, which is what keeps a constant locomotion column reading as
+        // constant while a co-occurring indicator moves. Normalized by every
+        // column instead, `move_ahead` and `mate` would both start varying
+        // because the denominator itself would move with `Eat`.
+        assert_eq!(
+            shift.varying_columns, 1,
+            "only `eat` varies; a denominator that moves with the indicators \
+             would make the constant columns vary too"
+        );
+    }
+
+    #[test]
+    fn the_permutation_null_is_a_function_of_the_recorded_analysis_seed() {
+        // The plan records `analysis_seed` and the report echoes it, on the
+        // stated ground that the null is a function of the data and that
+        // value only. Nothing checked that the value reached the shuffle:
+        // a null computed from a constant seed is equally reproducible and
+        // makes the recorded number a decoration.
+        let plan = PlasticityPlan::default();
+        let scan = scan_from(12, HORIZON, window_locked, |_, _| true);
+        let read = |seed: u64| world_shift(&scan, R, &plan, seed).expect("computable");
+        let nulls: Vec<i64> = (1..=11_u64).map(|seed| read(seed).null_p95_milli).collect();
+        let observed: Vec<i64> = (1..=11_u64).map(|seed| read(seed).rho_milli).collect();
+        assert!(
+            observed.iter().all(|rho| *rho == observed[0]),
+            "the observed statistic moved with the permutation seed: {observed:?}"
+        );
+        assert!(
+            nulls.iter().any(|null| *null != nulls[0]),
+            "the null never moved across eleven seeds, so the recorded seed is not \
+             the one the shuffle used: {nulls:?}"
+        );
+        assert_eq!(
+            read(1),
+            world_shift(&scan, R, &plan, 1).expect("computable"),
+            "the same seed did not reproduce the same report"
+        );
+    }
+
+    #[test]
+    fn a_correlation_exactly_at_the_null_does_not_clear_it() {
+        // The pre-registration says the correlation "must exceed the 95th
+        // percentile of its own permutation null". Equality is the boundary
+        // and it is not reachable from any synthetic series, so it needs a
+        // constructed record - the same argument as
+        // `an_undefined_world_cannot_pass_even_with_a_correlation_attached`.
+        let plan = PlasticityPlan::default();
+        let at = |rho: i64| WorldPlasticity {
+            shift: Ok(ShiftResult {
+                rho_milli: rho,
+                null_p95_milli: 120,
+                individuals: 50,
+                pairs: 50,
+                distinct_distances: 9,
+                ..ShiftResult::default()
+            }),
+            ..world_for(AlleleCensus::default())
+        };
+        assert!(
+            !at(120).within_lifetime_shift(&plan),
+            "equality passed a bar it must exceed"
+        );
+        assert!(!at(120).behaviour_associated(&plan));
+        assert!(
+            at(121).within_lifetime_shift(&plan),
+            "one milli over the null did not pass"
+        );
+    }
+
+    #[test]
+    fn the_condition_summary_counts_the_directed_shift_and_reports_the_association_beside_it() {
+        // `summarise` had no test at all, and `outcome.shifted` is exactly
+        // what `Verdict::decide` reads as C11.1's treatment count. So the
+        // directed decision rule, which `within_lifetime_shift` defends and
+        // which two tests pin there, is re-decided one layer up where
+        // nothing was watching: counting `behaviour_associated` here would
+        // have turned the campaign's 0 of 30 into 29 of 30.
+        let plan = PlasticityPlan::default();
+        let with = |rho: i64| WorldPlasticity {
+            shift: Ok(ShiftResult {
+                rho_milli: rho,
+                null_p95_milli: 10,
+                individuals: 40,
+                pairs: 40,
+                distinct_distances: 9,
+                ..ShiftResult::default()
+            }),
+            ..world_for(AlleleCensus::default())
+        };
+        let outcome = summarise("Avar", &[with(-900), with(900), with(3)], &plan);
+        assert_eq!(outcome.worlds, 3);
+        assert_eq!(
+            outcome.shifted, 1,
+            "the reversed association was counted as a within-lifetime shift"
+        );
+        assert_eq!(
+            outcome.associated, 2,
+            "the two-sided count must see both directions"
+        );
+        assert_eq!(outcome.shift_no_variance, 0);
+        assert_eq!(outcome.shift_refused, 0);
+    }
+
+    #[test]
+    fn a_treatment_world_with_no_seed_matched_control_contributes_no_pair() {
+        // `pairs_of` had no test. The contrasts it feeds are reported rather
+        // than decisive, but a pairing that falls through to the nearest
+        // available seed silently compares two different worlds - and the
+        // case it has to survive is the real one, a control arm with a world
+        // missing.
+        let with = |seed: u64, population: u64| WorldPlasticity {
+            seed,
+            population,
+            ..world_for(AlleleCensus::default())
+        };
+        let treatment = vec![with(3, 300), with(1, 100), with(2, 200)];
+        let control = vec![with(1, 11), with(3, 33)];
+        let pairs = pairs_of(&treatment, &control, |world| world.population as i64);
+        assert_eq!(
+            pairs.iter().map(|pair| pair.seed).collect::<Vec<_>>(),
+            vec![1, 3],
+            "an unmatched treatment seed was paired with somebody else's control"
+        );
+        assert_eq!(
+            (pairs[0].treatment_milli, pairs[0].control_milli),
+            (100, 11)
+        );
+        assert_eq!(
+            (pairs[1].treatment_milli, pairs[1].control_milli),
+            (300, 33)
         );
     }
 
@@ -1830,5 +2342,35 @@ mod tests {
             plan.control_ceiling,
         );
         assert!(!missed.met);
+
+        // Both thresholds at their exact boundary, which is the only place
+        // the pre-registration's wording is load-bearing: "at least 20 of
+        // 30" includes 20, and the control "must stay strictly below" the
+        // ceiling, so a control at exactly 20 refutes the claim.
+        let at_bar = Verdict::decide(
+            "C11.1",
+            &empty,
+            &control,
+            plan.shift_bar,
+            0,
+            0,
+            plan.shift_bar,
+            plan.control_ceiling,
+        );
+        assert!(at_bar.met, "a treatment exactly at the bar was rejected");
+        let at_ceiling = Verdict::decide(
+            "C11.1",
+            &empty,
+            &control,
+            30,
+            plan.control_ceiling,
+            0,
+            plan.shift_bar,
+            plan.control_ceiling,
+        );
+        assert!(
+            !at_ceiling.met,
+            "a control exactly at the ceiling was tolerated"
+        );
     }
 }
