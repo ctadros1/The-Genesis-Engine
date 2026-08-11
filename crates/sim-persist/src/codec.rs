@@ -147,6 +147,28 @@ const SECTION_LEARN: u16 = 12;
 /// it is the reason that word stopped being ignored; see
 /// `SECTION_FLAG_DENSE_LAYER0`.
 const SECTION_WORLDMOD: u16 = 13;
+/// Phase 11 action census. Optional on the same terms as every section above,
+/// present exactly when `config.probe.action_census_enabled`, so a snapshot of
+/// a world without the probe is byte-identical to the one this build would
+/// have written before the section existed and all five fixtures are
+/// untouched.
+///
+/// **The format version stays 4**, following `SECTION_LEARN`'s precedent
+/// rather than `SECTION_WORLDMOD`'s: format 4 was bumped because the *logical
+/// state* gained a meaning (a composed terrain checksum in the header), not
+/// because a section was appended. An absent optional section needs no bump.
+/// The decoder still refuses this tag in a format 3 file, so a legacy file
+/// carrying it is a typed error rather than a section read under a framing
+/// that never defined it.
+///
+/// Dense: `ACTION_CLASS_COUNT` u32 columns per organism. The learn section
+/// beside it is sparse because most edges are not plastic; every living
+/// organism has an action every tick, so a sparse histogram would carry an
+/// index next to almost every entry and save nothing.
+const SECTION_ACTION_CENSUS: u16 = 14;
+/// Bytes one organism's action row occupies. Used to bound the allocation a
+/// declared organism count implies, never to assert an exact length (D-075).
+const ACTION_CENSUS_BYTES_PER_ORGANISM: u64 = 4 * sim_core::ACTION_CLASS_COUNT as u64;
 /// Bytes per sparse override inside the modification section: cell index and
 /// value. The layer id is not stored, because the layer is implied by which
 /// per-layer block the entry sits in. Used to bound an allocation, never to
@@ -658,6 +680,18 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u64(worldmod.relocate_interval_ticks);
     writer.u32(worldmod.patch_radius_cells);
     writer.u32(worldmod.patch_capacity_scale_q16);
+    // Phase 11 measurement section, appended last. `config_field_coverage.rs`
+    // is what makes this line's absence a failing test rather than a silent
+    // loss - and the loss would be the worst-behaved of the six, because
+    // `probe.marker_locus_enabled` does not merely change what is stored: a
+    // restore that decoded it as `false` would keep the marker loci in the
+    // genomes (they are in the schema-2 section) while the world believed it
+    // had no marker, so `marker_census` would keep reporting them and the
+    // config hash would say the run had no drift control.
+    let probe = &config.probe;
+    writer.u8(u8::from(probe.enabled));
+    writer.u8(u8::from(probe.action_census_enabled));
+    writer.u8(u8::from(probe.marker_locus_enabled));
     writer.0
 }
 
@@ -852,6 +886,9 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.worldmod.relocate_interval_ticks = reader.u64()?;
     config.worldmod.patch_radius_cells = reader.u32()?;
     config.worldmod.patch_capacity_scale_q16 = reader.u32()?;
+    config.probe.enabled = reader.u8()? != 0;
+    config.probe.action_census_enabled = reader.u8()? != 0;
+    config.probe.marker_locus_enabled = reader.u8()? != 0;
     Ok(config)
 }
 
@@ -1181,6 +1218,29 @@ fn encode_payload(state: &SaveState) -> Vec<u8> {
         let (flags, body) = encode_worldmod(worldmod, state);
         write_section(&mut payload, SECTION_WORLDMOD, flags, body);
     }
+    if let Some(census) = state.action_census.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(census.counts.len() as u64);
+        for row in &census.counts {
+            for value in row {
+                section.u32(*value);
+            }
+        }
+        // Exhaustive destructuring with no `..`, for the reason every
+        // counter block in this function states: these are hashed into the
+        // state checksum, so a counter dropped on save makes a restored
+        // world's checksum differ from the one it was saved from with
+        // nothing to point at. `resets_total` is the one that would be
+        // easiest to lose and the most damaging to lose, because a world
+        // whose rows are all zero looks identical either way.
+        let sim_core::ActionCensusCounters {
+            classified_total,
+            resets_total,
+        } = census.counters;
+        section.u64(classified_total);
+        section.u64(resets_total);
+        write_section(&mut payload, SECTION_ACTION_CENSUS, 0, section.0);
+    }
     payload
 }
 
@@ -1373,6 +1433,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut learn: Option<sim_core::LearnSaveState> = None;
     let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut worldmod: Option<TerrainModState> = None;
+    let mut action_census: Option<sim_core::ActionCensusSaveState> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -1876,6 +1937,39 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 }
                 worldmod = Some(decode_worldmod(&mut reader, section_flags, body.len())?);
             }
+            SECTION_ACTION_CENSUS => {
+                if format < FORMAT_VERSION {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if action_census.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let organisms = reader.u64()?;
+                // **A cap, never an equality, and never an encoded field
+                // count** (D-075). A declared count beyond what the body
+                // could hold is refused before anything is allocated;
+                // exactness is enforced by the trailing-bytes check every
+                // section runs at the end, which needs no editing when this
+                // section gains a field.
+                if !allocation_fits(organisms, ACTION_CENSUS_BYTES_PER_ORGANISM, 0, body.len()) {
+                    return Err(CodecError::ValueOutOfRange("action census organisms"));
+                }
+                let mut counts = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    let mut row = [0_u32; sim_core::ACTION_CLASS_COUNT];
+                    for slot in &mut row {
+                        *slot = reader.u32()?;
+                    }
+                    counts.push(row);
+                }
+                action_census = Some(sim_core::ActionCensusSaveState {
+                    counts,
+                    counters: sim_core::ActionCensusCounters {
+                        classified_total: reader.u64()?,
+                        resets_total: reader.u64()?,
+                    },
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -1901,6 +1995,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         terrain_checksum,
         composed_terrain_checksum: composed.unwrap_or(terrain_checksum),
         worldmod,
+        action_census,
         ids,
         x_fp,
         y_fp,
@@ -1966,6 +2061,15 @@ pub fn encode_snapshot_format3(
     if state.worldmod.is_some() {
         return Err(CodecError::SectionNotInFormat {
             tag: SECTION_WORLDMOD,
+            format: FORMAT_VERSION_3,
+        });
+    }
+    // Same refusal, same reason: a format 3 file cannot express an action
+    // census, and silently dropping one on the way out is the "never alter
+    // meaning" rule broken on the write side rather than the read side.
+    if state.action_census.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_ACTION_CENSUS,
             format: FORMAT_VERSION_3,
         });
     }

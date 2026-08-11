@@ -287,6 +287,16 @@ config_fields! {
     "genome2.mutation.insertion_q16" => genome2.mutation.insertion_q16: u32,
     "genome2.mutation.transposition_q16" => genome2.mutation.transposition_q16: u32,
     "genome2.mutation.max_run" => genome2.mutation.max_run: u32,
+    // Settable because Phase 11's C11.2 bar is *anchored* to it: the smallest
+    // excess over the neutral marker that counts is one expected mutational
+    // step, which is half of `point_delta_q16 / 65536` of the value's range.
+    // A campaign that states that bar and cannot pin the constant it is
+    // computed from would have its threshold moved by a later revision of a
+    // default - the coupling D-078 removed for Phase 9's caps. The codec has
+    // always carried the field; only the registry entry was missing, which is
+    // exactly the "visible gap rather than a silent one" standing rule 3
+    // describes.
+    "genome2.mutation.point_delta_q16" => genome2.mutation.point_delta_q16: u32,
     "genome2.mutation.regulatory_enabled" => genome2.mutation.regulatory_enabled: bool,
     // Phase 11's A/B ablation lives on this one flag, so without the entry
     // the phase's two conditions are not expressible as a campaign at all.
@@ -321,6 +331,18 @@ config_fields! {
     "worldmod.relocate_interval_ticks" => worldmod.relocate_interval_ticks: u64,
     "worldmod.patch_radius_cells" => worldmod.patch_radius_cells: u32,
     "worldmod.patch_capacity_scale_q16" => worldmod.patch_capacity_scale_q16: u32,
+    // Phase 11 measurement section. All three are here because standing rule
+    // 3 makes the coverage sweep drive itself from this list: a settable
+    // field absent from it is protected by nothing, and a config section has
+    // now been lost that way three times (D-065, D-086, and the plasticity
+    // gate). The sub-gates are separate fields for the same reason
+    // `worldmod.patch_enabled` is - a campaign that wants the drift control
+    // without a per-organism histogram in every snapshot has to be able to
+    // say so, and so does one that wants the histogram in a schema-1 world
+    // where there is no genome to put a marker in.
+    "probe.enabled" => probe.enabled: bool,
+    "probe.action_census_enabled" => probe.action_census_enabled: bool,
+    "probe.marker_locus_enabled" => probe.marker_locus_enabled: bool,
     "morphology.enabled" => morphology.enabled: bool,
     "morphology.base_node_budget" => morphology.base_node_budget: u32,
     "morphology.caps.max_modules" => morphology.caps.max_modules: u16,

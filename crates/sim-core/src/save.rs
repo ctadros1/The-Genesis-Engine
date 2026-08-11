@@ -163,6 +163,27 @@ pub struct LearnSaveState {
     pub cost_milli: i128,
 }
 
+/// Phase 11 per-organism action counts.
+///
+/// The second section in this file whose contents cannot be recomputed from
+/// the genome, and for a different reason than the learned state's: these are
+/// not a *function* of anything stored, they are an integral over the run.
+/// Reconstructing them would need every tick replayed from zero.
+///
+/// **Dense rather than sparse**, unlike the learned state beside it, because
+/// the shapes are opposite: learned rows are sparse by construction - most
+/// edges are not plastic - while every living organism has an action every
+/// tick, so a sparse histogram would carry an index alongside almost every
+/// entry to save nothing. The cost is fixed and small: 7 columns x 4 bytes =
+/// 28 bytes per organism, against roughly 1,700-1,900 measured for an
+/// organism's other sections in C11.7's table, so under two percent.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ActionCensusSaveState {
+    /// One histogram per organism, in entity-ID order.
+    pub counts: Vec<[u32; crate::actioncensus::ACTION_CLASS_COUNT]>,
+    pub counters: crate::actioncensus::ActionCensusCounters,
+}
+
 /// Complete logical world state in stable field order.
 #[derive(Clone, Debug, PartialEq)]
 pub struct SaveState {
@@ -227,6 +248,9 @@ pub struct SaveState {
     /// uniqueness, and every value's domain before the set reaches a world,
     /// and then verifies the composed checksum over the result.
     pub worldmod: Option<crate::terrainmod::TerrainModState>,
+    /// Phase 11 action census. Present exactly when the config's probe
+    /// section enables it.
+    pub action_census: Option<ActionCensusSaveState>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -400,6 +424,15 @@ impl World {
             // section is logical state end to end, so there is no conversion
             // here for a field to fall out of.
             worldmod: self.worldmod_state().cloned(),
+            // The same argument, for the same reason: `ActionCensus` carries
+            // rows and counters and nothing derived, so a save-shaped twin
+            // would exist only to give a field somewhere to be forgotten.
+            action_census: self
+                .action_census_state()
+                .map(|census| ActionCensusSaveState {
+                    counts: census.counts.clone(),
+                    counters: census.counters,
+                }),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -847,6 +880,35 @@ impl World {
             }
         };
 
+        // Phase 11 action census. Presence must match the configuration on
+        // the same terms as every section above, and the row count must match
+        // the population before it reaches a world - not merely before
+        // `check_invariants` runs, because a census that is one row long in a
+        // 400-organism world would be indexed by `record` on the very next
+        // tick and panic there instead of failing here with a name.
+        let rebuilt_census = match (
+            world.config().probe.enabled && world.config().probe.action_census_enabled,
+            state.action_census,
+        ) {
+            (true, Some(census)) => {
+                same_length(census.counts.len(), "action_census.counts")?;
+                let mut rebuilt = crate::actioncensus::ActionCensus::with_capacity(population);
+                for row in &census.counts {
+                    rebuilt.push_organism();
+                    let slot = rebuilt.len() - 1;
+                    rebuilt.counts[slot] = *row;
+                }
+                rebuilt.counters = census.counters;
+                Some(rebuilt)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "action census section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -880,6 +942,7 @@ impl World {
             },
             rebuilt_learn,
             rebuilt_worldmod,
+            rebuilt_census,
         );
 
         // Step 5 of the restore order in

@@ -132,6 +132,67 @@ pub struct SimConfig {
     /// appended to the config hash or the state checksum, and the relocation
     /// schedule never runs.
     pub worldmod: WorldModConfig,
+    /// Phase 11 measurement section, disabled by default. Same D-014 rule as
+    /// every section above, and it carries the same obligation Phase 12's
+    /// does: **five** fixtures must reproduce with this disabled - Phase 1,
+    /// Phase 2, Phase 5, Phase 9, and Phase 11. Disabled, no census array
+    /// exists, no marker locus is written into a founder, nothing is appended
+    /// to the config hash or the state checksum, and no locus type that did
+    /// not exist before appears in any genome.
+    pub probe: ProbeConfig,
+}
+
+/// Versioned Phase 11 measurement policy (`lifesim-probe-v1`).
+///
+/// Two measurement instruments, each separately gated, both of them
+/// **observation** in the ADR-0016 sense: nothing here describes a world an
+/// organism should reach, and nothing here can be read by a tick.
+///
+/// # Why a section of its own rather than fields on `genome2` and `plasticity`
+///
+/// A field appended to either of those is hashed by every world that already
+/// enables them, which is the Phase 9 and Phase 11 fixtures - so a
+/// measurement nobody switched on would have moved two fixtures. A section
+/// appended last and hashed only when enabled cannot.
+///
+/// # The marker locus is not free of consequence, and the report says so
+///
+/// A marker locus is never expressed, but it **is** a locus, so point
+/// mutation can land on it. Adding one to a genome of `n` loci therefore
+/// lowers every other locus's share of the mutational input to `n/(n+1)`.
+/// That is not a defect - it is what "mutates at the same rate as the genes
+/// it controls for" *means* - but it makes a marker world a different
+/// experiment from a marker-free one, which is exactly why the gate exists
+/// and why C11.2's arms all carry the marker.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ProbeConfig {
+    /// Section gate. Off, the world builds no probe state at all and takes
+    /// the pre-probe code paths.
+    pub enabled: bool,
+
+    /// Per-organism action counting (C11.1's measurement substrate).
+    ///
+    /// Gated separately from `enabled` for the reason `worldmod.patch_enabled`
+    /// is: a run can want the neutral marker without paying a histogram per
+    /// organism in its snapshot, and vice versa.
+    pub action_census_enabled: bool,
+
+    /// The neutral marker locus (C11.2's drift control).
+    ///
+    /// On, every founder haplotype carries one inert marker locus, and point
+    /// mutation reaches its two alleles on exactly the terms it reaches an
+    /// edge's `eta` and plastic flag.
+    pub marker_locus_enabled: bool,
+}
+
+impl ProbeConfig {
+    pub fn probe_default() -> Self {
+        Self {
+            enabled: false,
+            action_census_enabled: false,
+            marker_locus_enabled: false,
+        }
+    }
 }
 
 /// Versioned Phase 12 mutable-world policy (`lifesim-worldmod-v1`).
@@ -811,6 +872,7 @@ impl SimConfig {
             morphology: MorphologyConfig::morphology_default(),
             plasticity: PlasticityConfig::plasticity_default(),
             worldmod: WorldModConfig::worldmod_default(),
+            probe: ProbeConfig::probe_default(),
         }
     }
 
@@ -1177,6 +1239,43 @@ impl SimConfig {
                     ));
                 }
             }
+        }
+        // Phase 11 measurement section, validated on the same terms as every
+        // section above and in the same function, for the same D-084 reason.
+        let probe = &self.probe;
+        if probe.enabled {
+            // The marker locus is a schema-2 locus, so there is nothing for
+            // it to live in without genome2. Refused rather than ignored: a
+            // campaign that declared a drift control and silently got none
+            // would compute C11.2's comparison against an empty denominator
+            // and report a shift that had no control at all.
+            if probe.marker_locus_enabled && !self.genome2.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "probe.marker_locus_enabled requires genome2",
+                    0,
+                ));
+            }
+            // The action census counts Phase 2 intents. Without Phase 2 there
+            // are no intents to classify and every row would be all-zero,
+            // which is C11.1's null produced by the configuration rather than
+            // by the world.
+            if probe.action_census_enabled && !self.phase2.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "probe.action_census_enabled requires phase2",
+                    0,
+                ));
+            }
+        } else if probe.action_census_enabled || probe.marker_locus_enabled {
+            // A sub-gate on with the section off is refused rather than
+            // treated as off. Silently ignoring it is how a campaign runs a
+            // condition it did not get: `worldmod.patch_enabled` has the same
+            // shape, and the same reasoning applies with more force here,
+            // because a probe that quietly does nothing produces a *file* -
+            // an empty one - rather than an obvious absence.
+            return Err(ConfigError::PhysiologyRange(
+                "a probe feature is enabled while probe.enabled is false",
+                0,
+            ));
         }
         let physiology = &self.physiology;
         if physiology.enabled {
@@ -1735,6 +1834,29 @@ impl SimConfig {
             hasher.update_u64(self.worldmod.relocate_interval_ticks);
             hasher.update_u32(self.worldmod.patch_radius_cells);
             hasher.update_u32(self.worldmod.patch_capacity_scale_q16);
+        }
+        // Phase 11 measurement section, **appended after Phase 12's and
+        // hashed only when enabled**, for the reason every section before it
+        // was appended: this function's order is the definition of every
+        // existing config hash, and inserting anywhere but the end would move
+        // worlds that do not have the section - here, five of them.
+        //
+        // Enabling it changes the hash and starts a new replay lineage, which
+        // is correct in both halves. The marker locus changes what a genome
+        // contains and therefore what point mutation can land on; the action
+        // census changes what is stored and checksummed. Neither is the same
+        // experiment as the world without it, and a config hash that said
+        // otherwise would let a campaign compare them as if they were.
+        if self.probe.enabled {
+            hasher.update(b"lifesim-probe-config");
+            hasher.update(crate::actioncensus::ACTION_CENSUS_POLICY_VERSION.as_bytes());
+            // The class set is part of what a recorded histogram means, on
+            // the same terms the rule registry is part of what a plasticity
+            // gene means.
+            hasher.update_u32(crate::actioncensus::ACTION_CLASS_COUNT as u32);
+            hasher.update_i32(crate::actioncensus::TURN_BAND_MILLI);
+            hasher.update_u32(u32::from(self.probe.action_census_enabled));
+            hasher.update_u32(u32::from(self.probe.marker_locus_enabled));
         }
         hasher.finish()
     }

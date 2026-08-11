@@ -59,6 +59,17 @@ const TAG_IO_BINDING: u8 = 4;
 /// the tag rather than appending later is why a schema-2 genome and a
 /// schema-3 genome share a decoder.
 const TAG_REGULATORY: u8 = 5;
+/// Tag 6, allocated by Phase 11's measurement work: the neutral marker locus
+/// (`LocusKind::Marker`). Appended, never inserted, so every genome ever
+/// written keeps its meaning and `structural_signature` keeps its value for
+/// every locus type that already existed.
+const TAG_MARKER: u8 = 6;
+
+/// `Marker.flags` bits. Exactly one is defined: the neutral binary allele
+/// that controls for `EDGE_FLAG_PLASTIC`. The mask exists so an unknown bit
+/// is a decode refusal rather than a value that survives into a census.
+pub const MARKER_FLAG_NEUTRAL: u8 = 1 << 0;
+const MARKER_FLAG_MASK: u8 = MARKER_FLAG_NEUTRAL;
 
 /// `Edge.flags` bits. Bit 2 was added by D-066: the hybrid evaluation
 /// ADR-0022 A9 adopted needs every edge typed zero-delay or delayed, and the
@@ -317,6 +328,42 @@ pub enum LocusKind {
     /// preference and `PlasticityGenes` both set: carried, inherited,
     /// validated, and expressed only when its phase turns on.
     Regulatory { rule: crate::develop::Regulatory },
+    /// A **neutral marker locus** (Phase 11): C11.2's drift control.
+    ///
+    /// C11.2 asks whether `eta` and the plastic-edge fraction shift *more
+    /// than drift*. Drift here is not an analytic quantity: it depends on the
+    /// realized population size, the variance in reproductive success, the
+    /// linkage structure and the mutation regime, none of which is a constant
+    /// a formula could be evaluated at. So the control is empirical - a locus
+    /// that experiences every one of those forces and **none** of the
+    /// selection, measured in the same run.
+    ///
+    /// For that to be a control rather than a decoration, three things have
+    /// to hold, and each is enforced somewhere specific:
+    ///
+    /// - **Never expressed.** `express_network` ignores this arm alongside
+    ///   `Trait` and `Regulatory`, `express_traits` matches only `Trait`, and
+    ///   `develop::rules_of` matches only `Regulatory`. There is no field on
+    ///   `ExpressedNetwork` for it to land in, so the guarantee is structural
+    ///   rather than a promise.
+    /// - **Inherited and recombined identically.** `meiosis.rs` is entirely
+    ///   kind-agnostic: it walks `homology_id` and copies whole `Locus`
+    ///   values, so a marker segregates and crosses over exactly as the edge
+    ///   locus beside it does, with no code added anywhere.
+    /// - **Mutated at a matched rate.** `structmut::point_mutate` gives this
+    ///   arm the same seven-way target draw the `Edge` arm takes, moves
+    ///   `value` on the draw that would have moved `eta`, and toggles
+    ///   `MARKER_FLAG_NEUTRAL` on the draw that would have toggled
+    ///   `EDGE_FLAG_PLASTIC`. Per locus picked, the two alleles see exactly
+    ///   the mutational input the two quantities under test see.
+    ///
+    /// The alleles match their targets' *shape*, not only their rate.
+    /// `value` is a `[0, 1]` scalar starting at 0.0 with `eta`'s clamp and
+    /// `eta`'s delta, so its random walk is reflected at the same boundary.
+    /// A marker starting at 0.5 would drift symmetrically while `eta`
+    /// starting at 0.0 can only rise, and the comparison would be biased
+    /// before any selection acted.
+    Marker { value: f32, flags: u8 },
 }
 
 impl LocusKind {
@@ -327,6 +374,7 @@ impl LocusKind {
             LocusKind::Edge { .. } => TAG_EDGE,
             LocusKind::IoBinding { .. } => TAG_IO_BINDING,
             LocusKind::Regulatory { .. } => TAG_REGULATORY,
+            LocusKind::Marker { .. } => TAG_MARKER,
         }
     }
 
@@ -337,6 +385,7 @@ impl LocusKind {
             TAG_EDGE => 4 + 4 + 4 + 1 + PlasticityGenes::ENCODED_LEN,
             TAG_IO_BINDING => 4 + 2 + 4,
             TAG_REGULATORY => crate::develop::Regulatory::ENCODED_LEN,
+            TAG_MARKER => 4 + 1,
             _ => return None,
         })
     }
@@ -413,6 +462,19 @@ impl Locus {
                 hasher.update_u32(u32::from(rule.direction));
                 hasher.update_u32(u32::from(rule.scale_milli));
             }
+            // **Nothing beyond the tag.** Two markers at the same homology
+            // slot are the same structure whatever their alleles say, exactly
+            // as two edges are the same structure whatever their weights say.
+            //
+            // The flag is deliberately excluded even though it is a bit and
+            // `delayed` is a bit that *is* included, and the reason is the
+            // control: `EDGE_FLAG_PLASTIC` is excluded from the edge arm
+            // above, so including the allele that controls for it would make
+            // the marker behave differently under alignment than the thing it
+            // is a control for. A marker whose neutral bit flipped would stop
+            // aligning with its own ancestor, and the drift measurement would
+            // be a measurement of the signature convention.
+            LocusKind::Marker { .. } => {}
         }
         hasher.finish()
     }
@@ -612,6 +674,29 @@ impl Genome2 {
             .flat_map(|haplotype| haplotype.chromosomes.iter().flatten())
     }
 
+    /// Every neutral marker **allele** this genome carries, as
+    /// `(homology_id, value, flags)`, haplotype 0 first and ascending within
+    /// each haplotype.
+    ///
+    /// Observation only (ADR-0016), and deliberately **alleles rather than a
+    /// blend**. Combining the two haplotypes is what expression does, and
+    /// this locus has no expression - inventing one here would create the
+    /// reader the type's documentation promises does not exist, and it would
+    /// also throw away the thing a drift measurement most wants, which is
+    /// heterozygosity. An analysis that wants a codominant mean can take it;
+    /// the kernel does not take one for it.
+    pub fn marker_alleles(&self) -> Vec<(u32, f32, u8)> {
+        let mut out = Vec::new();
+        for haplotype in &self.haplotypes {
+            for locus in haplotype.chromosomes.iter().flatten() {
+                if let LocusKind::Marker { value, flags } = locus.kind {
+                    out.push((locus.homology_id, value, flags));
+                }
+            }
+        }
+        out
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         let chromosomes = self.chromosome_count() as u8;
         let mut body = Vec::new();
@@ -681,6 +766,10 @@ impl Genome2 {
                             body.push(rule.action_type);
                             body.push(rule.direction);
                             put_u16(&mut body, rule.scale_milli);
+                        }
+                        LocusKind::Marker { value, flags } => {
+                            put_f32(&mut body, value);
+                            body.push(flags);
                         }
                     }
                 }
@@ -900,6 +989,22 @@ impl Genome2 {
                             return Err(Genome2Error::HomologyBlockViolation {
                                 homology_id: locus.homology_id,
                                 tag: TAG_REGULATORY,
+                            });
+                        }
+                    }
+                    LocusKind::Marker { .. } => {
+                        // A marker references nothing, so nothing can dangle;
+                        // its alleles are range-checked at decode. It sits in
+                        // the structural block rather than the trait block
+                        // because the trait block is keyed by `trait_id` and
+                        // has no free slot, and because a marker must be
+                        // reachable by duplication and deletion on the same
+                        // terms an edge is - which run only over structural
+                        // loci.
+                        if locus.homology_id < STRUCTURAL_HOMOLOGY_BASE {
+                            return Err(Genome2Error::HomologyBlockViolation {
+                                homology_id: locus.homology_id,
+                                tag: TAG_MARKER,
                             });
                         }
                     }
@@ -1130,6 +1235,27 @@ fn decode_locus(reader: &mut Reader<'_>) -> Result<Locus, Genome2Error> {
                 rule: rule.normalized(),
             }
         }
+        TAG_MARKER => {
+            let value = reader.f32()?;
+            let flags = reader.u8()?;
+            // **Rejected, not reduced**, which is the opposite of the
+            // regulatory arm above and deliberately so. A growth rule's
+            // fields are discrete codes where every bit pattern has to name
+            // *some* rule or most mutations would be lethal for reasons
+            // unrelated to morphology. A marker allele is a bounded scalar
+            // exactly like `eta`, whose arm four lines up refuses out-of-range
+            // values, and the marker has to be refused on the same terms or
+            // its mutational neighbourhood would differ from `eta`'s at the
+            // clamp - which is precisely where the reflected random walk
+            // spends its time.
+            if !value.is_finite() || !(0.0..=1.0).contains(&value) {
+                return Err(Genome2Error::ValueOutOfRange("marker value"));
+            }
+            if flags & !MARKER_FLAG_MASK != 0 {
+                return Err(Genome2Error::ValueOutOfRange("marker flags"));
+            }
+            LocusKind::Marker { value, flags }
+        }
         other => return Err(Genome2Error::UnknownLocusType(other)),
     };
 
@@ -1358,7 +1484,16 @@ impl Genome2 {
                     // Neither traits nor growth rules are part of the
                     // controller: one is a scalar phenotype and the other is
                     // morphology.
-                    LocusKind::Trait { .. } | LocusKind::Regulatory { .. } => {}
+                    //
+                    // **The marker joins them, and this line is the whole of
+                    // "never expressed".** There is no `ExpressedMarker`, no
+                    // field on `ExpressedNetwork`, and no other reader: a
+                    // future change that wanted to express one would have to
+                    // invent all three, which is a visible act rather than a
+                    // `..` quietly picking a value up.
+                    LocusKind::Trait { .. }
+                    | LocusKind::Regulatory { .. }
+                    | LocusKind::Marker { .. } => {}
                     LocusKind::Node {
                         role,
                         activation_id,

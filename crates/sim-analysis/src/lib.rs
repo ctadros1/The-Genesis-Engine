@@ -14,6 +14,7 @@
 mod demography;
 mod morph;
 mod paired;
+mod plasticity;
 mod power;
 mod spatial;
 mod structure;
@@ -30,6 +31,12 @@ pub use morph::{
 pub use paired::{
     BOOTSTRAP_RESAMPLES, Direction, PAIRED_STATS_VERSION, Pair, PairedResult,
     binomial_upper_tail_milli, compare, median_milli,
+};
+pub use plasticity::{
+    AlleleCensus, Boundary, PLASTICITY_ANALYSIS_VERSION, PlasticityOutcome, PlasticityPlan,
+    ShiftRefusal, ShiftResult, Verdict, WindowDistance, WorldPlasticity, allele_census, boundaries,
+    contrast as plasticity_contrast, pairs_of as plasticity_pairs, rates_milli,
+    render as render_plasticity, summarise as summarise_plasticity, window_distance, world_shift,
 };
 pub use power::{
     POWER_TRIALS, POWER_VERSION, PowerPoint, observed_success_rate_milli, power_curve, required_at,

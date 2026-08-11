@@ -6,6 +6,7 @@
 //! only (`sim_core::SaveState`) and never alters meaning during load;
 //! the kernel stays free of files and clocks.
 
+mod actionlog;
 mod checkpoint;
 mod codec;
 mod eventlog;
@@ -13,6 +14,11 @@ mod founders;
 mod spatial;
 mod store;
 
+pub use actionlog::{
+    ACTION_LOG_FORMAT_VERSION, ACTION_LOG_MAGIC, ActionLogError, ActionLogInfo, ActionLogScan,
+    ActionLogWriter, ActionRecord, ActionSampleSet, decode_action, decode_action_prefix,
+    encode_segment as encode_action_segment, policy_hash as action_policy_hash, read_action_info,
+};
 pub use checkpoint::{AsyncCheckpointer, CheckpointOutcome, CheckpointRequest, SubmitResult};
 
 pub use codec::{

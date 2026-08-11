@@ -228,6 +228,7 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         physiology,
         schema2,
         learn,
+        action_census,
     } = state;
 
     per_organism!("ids", ids);
@@ -320,6 +321,14 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         per_organism!("learn.edges", edges);
         per_organism!("learn.faults", faults);
         per_organism!("learn.cost_remainder", cost_remainder);
+    }
+    if let Some(census) = action_census {
+        let sim_core::ActionCensusSaveState {
+            counts,
+            // Aggregate, not per organism.
+            counters: _,
+        } = census;
+        per_organism!("action_census.counts", counts);
     }
     // `permutation_config` is a **Phase 9** world and leaves plasticity off,
     // so the branch above does not run here and these two arrays contribute
@@ -435,6 +444,7 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         physiology,
         schema2,
         learn,
+        action_census,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);
@@ -526,6 +536,13 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         reorder(edges, order);
         reorder(faults, order);
         reorder(cost_remainder, order);
+    }
+    if let Some(census) = action_census {
+        let sim_core::ActionCensusSaveState {
+            counts,
+            counters: _,
+        } = census;
+        reorder(counts, order);
     }
 }
 

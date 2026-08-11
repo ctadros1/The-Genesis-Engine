@@ -82,6 +82,7 @@ fn run() -> Result<(), String> {
         Some("demography") => command_demography(parse_options(args.collect())?),
         Some("structure") => command_structure(parse_options(args.collect())?),
         Some("morph") => command_morph(parse_options(args.collect())?),
+        Some("plasticity") => command_plasticity(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -103,6 +104,7 @@ fn usage() -> String {
         "       lifesim demography --manifest FILE\n",
         "       lifesim structure --manifest FILE --baseline CONDITION\n",
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
+        "       lifesim plasticity --manifest FILE --treatment CONDITION --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX]\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity\n",
@@ -149,6 +151,7 @@ struct Options {
     campaign: Option<PathBuf>,
     manifest: Option<PathBuf>,
     baseline: Option<String>,
+    treatment: Option<String>,
     workers: Option<usize>,
     burn_in: Option<u64>,
     sesoi: Option<i64>,
@@ -220,6 +223,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--campaign" => options.campaign = Some(PathBuf::from(value)),
             "--manifest" => options.manifest = Some(PathBuf::from(value)),
             "--baseline" => options.baseline = Some(value.clone()),
+            "--treatment" => options.treatment = Some(value.clone()),
             "--workers" => options.workers = Some(parse_number(name, value)?),
             "--burn-in" => options.burn_in = Some(parse_number(name, value)?),
             "--sesoi" => options.sesoi = Some(parse_number::<i64>(name, value)?),
@@ -1141,6 +1145,252 @@ fn command_morph(options: Options) -> Result<(), String> {
             &per_world,
             &outcomes,
             &stabilities
+        )
+    );
+    Ok(())
+}
+
+/// Phase 11 C11.1 and C11.2: within-lifetime behavioural change, and whether
+/// plasticity is under selection against a neutral marker.
+///
+/// Two conditions are named rather than one. `--baseline` is the control the
+/// criterion is decided against - the plasticity-disabled arm under the same
+/// environmental schedule - and `--treatment` is the arm the bar applies to.
+/// Every condition in the campaign is still reduced and printed, so the
+/// E-stationary arms and any other contrast a reader wants are in the report;
+/// only the decision is restricted to the pre-registered pair.
+///
+/// **A restore or decode failure is reported, never swallowed** - the
+/// discipline `command_morph` records. A world whose snapshot did not survive
+/// the codec would otherwise produce an empty allele census, and the report
+/// would say "plasticity never arose" when the truth was "the config did not
+/// survive the codec". The two are opposite conclusions and only one of them
+/// is about biology. The config check here is the strongest available: the
+/// restored config's own stable hash must equal the hash the manifest recorded
+/// for the run, which covers `plasticity.enabled` and
+/// `probe.marker_locus_enabled` along with every other field.
+fn command_plasticity(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("plasticity requires --manifest\n{}", usage()))?;
+    let baseline = options
+        .baseline
+        .as_deref()
+        .ok_or_else(|| format!("plasticity requires --baseline\n{}", usage()))?;
+    let treatment_name = options
+        .treatment
+        .as_deref()
+        .ok_or_else(|| format!("plasticity requires --treatment\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    for name in [baseline, treatment_name] {
+        if !manifest
+            .campaign
+            .conditions
+            .iter()
+            .any(|condition| condition.name == name)
+        {
+            return Err(format!("no condition named '{name}' in this campaign"));
+        }
+    }
+    if baseline == treatment_name {
+        return Err("--treatment and --baseline name the same condition".to_owned());
+    }
+
+    let mut plan = sim_analysis::PlasticityPlan::default();
+    if let Some(seed) = options.analysis_seed {
+        plan.analysis_seed = seed;
+    }
+    if let Some(burn_in) = options.burn_in {
+        plan.burn_in_ticks = burn_in;
+    }
+    if let Some(sesoi) = options.sesoi {
+        plan.drift_margin_milli = sesoi;
+    }
+
+    let mut per_world: Vec<(String, Vec<sim_analysis::WorldPlasticity>)> = Vec::new();
+    for condition in &manifest.campaign.conditions {
+        let mut worlds = Vec::new();
+        for run in manifest.runs_for(&condition.name) {
+            let stem = sim_experiment::run_stem(&run.condition, run.seed);
+            let config = manifest
+                .campaign
+                .config_for(condition, run.seed)
+                .map_err(|error| format!("{stem}: {error}"))?;
+
+            // --- the action series -------------------------------------
+            let action_path = directory.join(format!("{stem}.alac"));
+            let bytes = fs::read(&action_path)
+                .map_err(|error| format!("{}: {error}", action_path.display()))?;
+            let scan = sim_persist::decode_action(&bytes)
+                .map_err(|error| format!("{stem}: decode actions: {error}"))?;
+            if scan.info.config_hash != run.config_hash {
+                return Err(format!(
+                    "{stem}: the action log's config hash {:#018x} is not the run's {:#018x}",
+                    scan.info.config_hash, run.config_hash
+                ));
+            }
+            if scan.info.terrain_checksum != run.terrain_checksum {
+                return Err(format!(
+                    "{stem}: the action log's terrain {:#018x} is not the run's {:#018x}",
+                    scan.info.terrain_checksum, run.terrain_checksum
+                ));
+            }
+            if scan.samples.len() as u64 != run.action_samples {
+                return Err(format!(
+                    "{stem}: the action log holds {} samples, the manifest recorded {}",
+                    scan.samples.len(),
+                    run.action_samples
+                ));
+            }
+            let relocate = if config.worldmod.enabled && config.worldmod.patch_enabled {
+                config.worldmod.relocate_interval_ticks
+            } else {
+                0
+            };
+            let shift =
+                sim_analysis::world_shift(&scan, relocate, &plan, plan.analysis_seed ^ run.seed);
+
+            // --- the final genomes -------------------------------------
+            let snapshot_path = directory.join(format!("{stem}.alif"));
+            let snapshot = fs::read(&snapshot_path)
+                .map_err(|error| format!("{}: {error}", snapshot_path.display()))?;
+            let (_, state) = sim_persist::decode_snapshot(&snapshot)
+                .map_err(|error| format!("{stem}: decode snapshot: {error}"))?;
+            let restored_hash = state.config.stable_hash();
+            if restored_hash != run.config_hash {
+                return Err(format!(
+                    "{stem}: the restored config hashes {restored_hash:#018x} but the manifest \
+                     recorded {:#018x} - the config did not survive the snapshot, so a zero \
+                     allele census here would mean a codec defect and not an absence of \
+                     plasticity (plasticity.enabled={}, probe.marker_locus_enabled={})",
+                    run.config_hash,
+                    state.config.plasticity.enabled,
+                    state.config.probe.marker_locus_enabled
+                ));
+            }
+            let caps = state.config.genome2.caps;
+            let genomes: Vec<sim_core::Genome2> = match state.schema2.as_ref() {
+                Some(schema2) => schema2
+                    .genomes
+                    .iter()
+                    .map(|encoded| {
+                        sim_core::Genome2::decode(encoded, &caps)
+                            .map_err(|error| format!("{stem}: decode genome: {error}"))
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
+                None => {
+                    return Err(format!(
+                        "{stem}: the snapshot carries no schema-2 section, so there is no \
+                         genome to read eta or the marker from"
+                    ));
+                }
+            };
+            let alleles = sim_analysis::allele_census(&genomes);
+            let world = sim_core::World::from_state(state)
+                .map_err(|error| format!("{stem}: restore: {error}"))?;
+            let metrics = world.metrics();
+
+            worlds.push(sim_analysis::WorldPlasticity {
+                condition: run.condition.clone(),
+                seed: run.seed,
+                population: run.population,
+                extinct: run.extinct,
+                shift,
+                alleles,
+                plastic_edges_total: metrics.plastic_edges_total,
+                plasticity_updates_total: metrics.plasticity_updates_total,
+                mean_abs_learned_milli: metrics.mean_abs_learned_milli,
+            });
+        }
+        per_world.push((condition.name.clone(), worlds));
+    }
+
+    let outcomes: Vec<sim_analysis::PlasticityOutcome> = per_world
+        .iter()
+        .map(|(name, worlds)| sim_analysis::summarise_plasticity(name, worlds, &plan))
+        .collect();
+    let control_worlds = per_world
+        .iter()
+        .find(|(name, _)| name == baseline)
+        .map(|(_, worlds)| worlds.clone())
+        .unwrap_or_default();
+    let mut contrasts = Vec::new();
+    for (name, worlds) in &per_world {
+        if name == baseline {
+            continue;
+        }
+        for (label, quantity) in [
+            (
+                "rho_milli",
+                (|world: &sim_analysis::WorldPlasticity| {
+                    world.shift.as_ref().map_or(0, |shift| shift.rho_milli)
+                }) as fn(&sim_analysis::WorldPlasticity) -> i64,
+            ),
+            ("event_distance_milli", |world| {
+                world
+                    .shift
+                    .as_ref()
+                    .map_or(0, |shift| shift.median_event_milli)
+            }),
+            ("eta_excess_milli", |world| world.alleles.eta_excess_milli()),
+            ("plastic_excess_milli", |world| {
+                world.alleles.plastic_excess_milli()
+            }),
+        ] {
+            let pairs = sim_analysis::plasticity_pairs(worlds, &control_worlds, quantity);
+            contrasts.push((
+                name.clone(),
+                baseline.to_owned(),
+                label.to_owned(),
+                sim_analysis::plasticity_contrast(&pairs, &plan),
+            ));
+        }
+    }
+
+    let find = |name: &str| {
+        outcomes
+            .iter()
+            .find(|outcome| outcome.condition == name)
+            .cloned()
+            .unwrap_or_else(|| sim_analysis::summarise_plasticity(name, &[], &plan))
+    };
+    let treatment = find(treatment_name);
+    let control = find(baseline);
+    let verdicts = vec![
+        sim_analysis::Verdict::decide(
+            "C11.1",
+            &treatment,
+            &control,
+            treatment.shifted,
+            control.shifted,
+            treatment.shift_no_variance + treatment.shift_refused,
+            plan.shift_bar,
+            plan.control_ceiling,
+        ),
+        sim_analysis::Verdict::decide(
+            "C11.2",
+            &treatment,
+            &control,
+            treatment.selected,
+            control.selected,
+            treatment.drift_no_variance,
+            plan.drift_bar,
+            plan.control_ceiling,
+        ),
+    ];
+
+    print!(
+        "{}",
+        sim_analysis::render_plasticity(
+            &manifest.campaign.id,
+            &plan,
+            &per_world,
+            &outcomes,
+            &contrasts,
+            &verdicts,
         )
     );
     Ok(())

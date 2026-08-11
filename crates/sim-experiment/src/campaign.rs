@@ -104,6 +104,21 @@ pub struct OutputPolicy {
     /// a campaign that records only its final tick cannot tell a durable
     /// morphological shift from one that happened to be there at the end.
     pub morphology_interval: u64,
+    /// Ticks between per-individual action samples; `0` writes no `.alac`
+    /// file.
+    ///
+    /// Off by default, on the same terms as the two above. C11.1's clause is
+    /// the reason it exists: "this organism's action distribution changed
+    /// after the patch relocated" is a statement about **two points in one
+    /// lifetime**, and a run that records only a terminal census cannot make
+    /// it at all - a terminal census has no before.
+    ///
+    /// Binary rather than text, unlike `morphology_interval`'s series, and
+    /// the reason is arithmetic rather than taste: a morphology sample is six
+    /// world-level scalars while an action sample is population x classes, so
+    /// the artifact that justified a readable series does not apply. See
+    /// `sim_persist::actionlog`.
+    pub action_interval: u64,
 }
 
 impl Default for OutputPolicy {
@@ -114,6 +129,7 @@ impl Default for OutputPolicy {
             compression_level: Some(3),
             spatial_interval: 0,
             morphology_interval: 0,
+            action_interval: 0,
         }
     }
 }
@@ -506,9 +522,24 @@ impl Campaign {
                             interval
                         };
                     }
+                    ["actions", value] => {
+                        output.action_interval = if *value == "off" {
+                            0
+                        } else {
+                            let interval: u64 = value
+                                .parse()
+                                .map_err(|_| syntax("actions takes a tick interval or off"))?;
+                            if interval == 0 {
+                                return Err(syntax(
+                                    "actions interval must be positive; use 'off' to disable",
+                                ));
+                            }
+                            interval
+                        };
+                    }
                     _ => {
                         return Err(syntax(
-                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off | output morphology <ticks>|off",
+                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off | output morphology <ticks>|off | output actions <ticks>|off",
                         ));
                     }
                 },

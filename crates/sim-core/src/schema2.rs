@@ -279,6 +279,58 @@ pub fn founder_with_morphology(traits: &[f32; crate::genome::TRAIT_COUNT]) -> Ge
     genome
 }
 
+/// Homology slot of the founder's neutral marker locus.
+///
+/// **Between the two founder edge loci** (`BASE + 4_000` and `BASE + 5_000`),
+/// which is not cosmetic. Crossover positions are drawn over *merged rank*,
+/// so a marker one rank from each edge is as tightly linked to each plastic-
+/// capable edge as those two edges are to each other. A marker parked at the
+/// end of the chromosome would recombine away from the genes it controls for
+/// faster than they recombine from each other, and it would drift under a
+/// different linkage regime than the thing it is supposed to be matched to.
+///
+/// This is the best available matching and not a perfect one: no single
+/// position is equidistant from two loci that are not adjacent, so the marker
+/// is exactly one rank from each edge while the edges are two ranks apart.
+/// Recorded rather than smoothed over.
+pub const MARKER_HOMOLOGY_ID: u32 = crate::genome2::STRUCTURAL_HOMOLOGY_BASE + 4_500;
+
+/// Add the neutral marker locus to every haplotype of a founder genome.
+///
+/// Kept out of [`founder_from_traits`] and applied on top, exactly as
+/// [`founder_with_morphology`] is, so a founder in a world with the probe
+/// section disabled is byte-identical to what it was before this existed and
+/// no fixture can move.
+///
+/// Both alleles start at the **same** place their targets start at: `value`
+/// at 0.0, matching `PlasticityGenes::inert`'s `eta`, and the neutral flag
+/// clear, matching `minimal_founder`'s `flags: 0`. A founder population is
+/// therefore monomorphic at the marker and at `eta` alike, so both
+/// distributions have the same amount of variance to build - none - and the
+/// comparison starts matched instead of starting with the control already
+/// spread out.
+pub fn with_marker_locus(mut genome: Genome2) -> Genome2 {
+    let locus = crate::genome2::Locus {
+        homology_id: MARKER_HOMOLOGY_ID,
+        // Derived from the slot exactly as every other founder locus's is
+        // (`minimal_founder` uses `u64::from(homology_id)`), so two founders
+        // agree on marker identity and the loci align during meiosis.
+        gene_lineage_id: u64::from(MARKER_HOMOLOGY_ID),
+        mutation_event_id: 0,
+        kind: crate::genome2::LocusKind::Marker {
+            value: 0.0,
+            flags: 0,
+        },
+    };
+    for haplotype in &mut genome.haplotypes {
+        for chromosome in &mut haplotype.chromosomes {
+            chromosome.push(locus);
+            chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+        }
+    }
+    genome
+}
+
 /// Validate every genome against the caps, for the world invariant check.
 pub(crate) fn validate_all(state: &Schema2State, caps: &GenomeCaps) -> Result<(), usize> {
     for (index, genome) in state.genomes.iter().enumerate() {

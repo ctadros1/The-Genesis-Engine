@@ -4,6 +4,7 @@
 //! Births append strictly increasing IDs and removal preserves order, so
 //! index order always equals entity-ID order; `check_invariants` verifies it.
 
+use crate::actioncensus::ActionCensus;
 use crate::checksum::Fnv1a64;
 use crate::climate::{Biome, ClimateError, ClimateWorld};
 use crate::config::{ConfigError, SimConfig};
@@ -379,6 +380,53 @@ pub struct LearnedSample {
     pub age_ticks: u64,
 }
 
+/// One organism's action histogram (Phase 11).
+///
+/// **The per-individual unit C11.1 is defined on.** A population histogram
+/// answers a different question: births and deaths between two observations
+/// make selection a complete explanation of any shift in it, so it cannot
+/// distinguish "these organisms changed" from "different organisms are alive
+/// now". `id` and `age_ticks` are carried with the counts precisely so an
+/// analysis can verify it is comparing the *same* organism across two
+/// samples rather than the same array slot.
+///
+/// Counts are **cumulative over the organism's life**, not per-window. A
+/// window is the difference of two samples, which is strictly more
+/// information than a reset and - unlike a reset - costs the world nothing.
+///
+/// Observation only (ADR-0016): it hands out numbers and instructs nothing.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct ActionSample {
+    pub id: u64,
+    pub age_ticks: u64,
+    /// Ticks in each class, indexed by [`crate::ActionClass`] discriminant.
+    pub counts: [u32; crate::actioncensus::ACTION_CLASS_COUNT],
+}
+
+/// One organism's neutral marker alleles (Phase 11).
+///
+/// C11.2's drift control, reported per organism rather than as a population
+/// summary for the reason `learned_census` gives: the criterion asks whether
+/// a *distribution* shifted more than drift, and no aggregate can answer
+/// that. Both haplotypes' alleles are summarized rather than blended,
+/// because blending is expression and this locus has none - and because the
+/// spread between the two alleles is heterozygosity, which is the quantity a
+/// drift model is stated in.
+///
+/// Observation only (ADR-0016).
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub struct MarkerSample {
+    pub id: u64,
+    /// Marker loci carried across both haplotypes. Two in a founder; more
+    /// after a duplication, fewer after a deletion, exactly as for an edge.
+    pub alleles: u32,
+    /// Sum of the marker values across those alleles, in milli.
+    pub sum_value_milli: u32,
+    /// Alleles carrying `MARKER_FLAG_NEUTRAL`, the control for the count of
+    /// edges carrying `EDGE_FLAG_PLASTIC`.
+    pub set_alleles: u32,
+}
+
 /// Point-in-time observable metrics (pure data; no clock). The Phase 2
 /// fields are zero when Phase 2 is disabled.
 #[derive(Clone, Copy, Debug)]
@@ -599,6 +647,20 @@ pub enum InvariantViolation {
     LearnBounds {
         id: u64,
     },
+    /// The Phase 11 action-census rows fell out of lockstep with the organism
+    /// arrays.
+    ///
+    /// The same obligation every parallel-array subsystem carries, and here
+    /// the failure it prevents is *quiet* rather than loud: `record` indexes
+    /// by organism, so a short array panics, but a long one - a missed
+    /// `retain` - would silently attribute a dead organism's history to
+    /// whichever organism compacted into its slot. That is a per-individual
+    /// series that looks exactly like a per-individual series and is not one,
+    /// which is the single worst outcome available to C11.1.
+    ActionCensusDesync {
+        organisms: usize,
+        census: usize,
+    },
     ContestStateInvalid {
         id: u64,
     },
@@ -767,6 +829,15 @@ pub struct World {
     /// disabled world does not merely *compute* the same capacity - it runs
     /// the same code.
     worldmod: Option<TerrainModState>,
+    /// Phase 11 per-organism action counts; `None` exactly when
+    /// `config.probe.action_census_enabled` is false, so a world without the
+    /// probe writes no counter, stores no row, and appends nothing to the
+    /// checksum.
+    ///
+    /// **Written by `apply_phase2` and read by nobody in the tick.** That is
+    /// the property the five fixtures assert and the reason this can exist at
+    /// all without being an intervention (ADR-0016).
+    action_census: Option<ActionCensus>,
 }
 
 impl World {
@@ -847,6 +918,7 @@ impl World {
             schema2: None,
             morphology: None,
             learn: None,
+            action_census: None,
             // Built here rather than after the population, because it is
             // empty either way: the relocation schedule first fires at tick
             // `relocate_interval_ticks`, so a freshly generated world's
@@ -933,6 +1005,8 @@ impl World {
             let mut morphology = morphology_config
                 .enabled
                 .then(|| MorphologyState::with_capacity(world.ids.len()));
+            let marker_enabled =
+                world.config.probe.enabled && world.config.probe.marker_locus_enabled;
             if let Some(p2) = world.phase2.as_mut() {
                 for index in 0..world.ids.len() {
                     // A morphology world's founder carries the one-rule growth
@@ -942,6 +1016,15 @@ impl World {
                         crate::schema2::founder_with_morphology(p2.genomes[index].traits())
                     } else {
                         crate::schema2::founder_from_traits(p2.genomes[index].traits())
+                    };
+                    // The neutral marker is layered on last, exactly as the
+                    // growth program is, so a founder in a world without the
+                    // probe section is byte-identical to what it was before
+                    // this line existed.
+                    let genome = if marker_enabled {
+                        crate::schema2::with_marker_locus(genome)
+                    } else {
+                        genome
                     };
                     let traits = resolve_traits(&genome.express_traits());
                     p2.phenotypes[index] = match morphology.as_mut() {
@@ -1006,6 +1089,18 @@ impl World {
                 physiology.push_organism();
             }
             world.physiology = Some(physiology);
+        }
+        // The action census is built last and independently of every genome
+        // section: a row is a histogram, not a function of the organism's
+        // genome, so it needs nothing from schema 2 and is sized from the
+        // population alone. Founders start at zero for the reason children
+        // do - `push_organism` takes no initial value.
+        if world.config.probe.enabled && world.config.probe.action_census_enabled {
+            let mut census = ActionCensus::with_capacity(world.ids.len());
+            for _ in 0..world.ids.len() {
+                census.push_organism();
+            }
+            world.action_census = Some(census);
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -1353,6 +1448,10 @@ impl World {
     /// learned rows are positional and the edge identity that names each slot
     /// lives in the compiled plan, so a saved row without the plan it was
     /// sized against says nothing about which edge learned what.
+    pub(crate) fn action_census_state(&self) -> Option<&ActionCensus> {
+        self.action_census.as_ref()
+    }
+
     pub(crate) fn learn_state(&self) -> Option<&LearnState> {
         self.learn.as_ref()
     }
@@ -1485,6 +1584,87 @@ impl World {
             }
         }
         out
+    }
+
+    /// Per-organism action histograms, in entity-ID order. Empty when the
+    /// action census is disabled.
+    ///
+    /// Modelled on `morphology_census` and `learned_census`, and observation
+    /// only on the same terms (ADR-0016): it returns numbers and instructs
+    /// nothing. Nothing in the kernel calls it, and a value it returned could
+    /// not reach a rule if it did - there is no path from here back into a
+    /// tick phase.
+    pub fn action_census(&self) -> Vec<ActionSample> {
+        let Some(census) = self.action_census.as_ref() else {
+            return Vec::new();
+        };
+        (0..census.len())
+            .map(|index| ActionSample {
+                id: self.ids[index],
+                age_ticks: self.age_ticks[index],
+                counts: census.counts[index],
+            })
+            .collect()
+    }
+
+    /// Zero every organism's action histogram: the probe boundary C11.1's
+    /// before/after comparison is defined against.
+    ///
+    /// **This is a state change and it moves the state checksum**, which is
+    /// correct: a world whose counters were zeroed at a given tick is not the
+    /// world whose were not, and a boundary that left no trace would be one a
+    /// replay could not reproduce. It is called by no tick phase and by no
+    /// sampling path - the artifact records cumulative rows and differences
+    /// them - so it is available to a scripted probe without any measurement
+    /// depending on it.
+    ///
+    /// No-op when the census is disabled, rather than an error: a caller that
+    /// asks a world with no instrument to reset it has asked for nothing to
+    /// happen, and that is what happens.
+    pub fn reset_action_census(&mut self) {
+        if let Some(census) = self.action_census.as_mut() {
+            census.reset();
+        }
+    }
+
+    /// Census-wide action counters, or `None` when the census is disabled.
+    pub fn action_census_counters(&self) -> Option<crate::actioncensus::ActionCensusCounters> {
+        self.action_census.as_ref().map(|census| census.counters)
+    }
+
+    /// Per-organism neutral marker alleles, in entity-ID order. Empty when no
+    /// organism carries a marker locus, which includes every world with the
+    /// probe section disabled.
+    ///
+    /// Observation only (ADR-0016). Derived from the genome on demand rather
+    /// than cached in a parallel array: a cache would be a fourth thing to
+    /// keep in lockstep for a quantity read once per sample, and a stale copy
+    /// would make the drift control wrong in exactly the direction that looks
+    /// like a result.
+    pub fn marker_census(&self) -> Vec<MarkerSample> {
+        let Some(schema2) = self.schema2.as_ref() else {
+            return Vec::new();
+        };
+        schema2
+            .genomes
+            .iter()
+            .enumerate()
+            .map(|(index, genome)| {
+                let alleles = genome.marker_alleles();
+                MarkerSample {
+                    id: self.ids[index],
+                    alleles: alleles.len() as u32,
+                    sum_value_milli: alleles
+                        .iter()
+                        .map(|(_, value, _)| (value.clamp(0.0, 1.0) * 1_000.0) as u32)
+                        .sum(),
+                    set_alleles: alleles
+                        .iter()
+                        .filter(|(_, _, flags)| flags & crate::genome2::MARKER_FLAG_NEUTRAL != 0)
+                        .count() as u32,
+                }
+            })
+            .collect()
     }
 
     /// Structural-mutation outcomes broken out by operator and by rejection
@@ -1640,6 +1820,7 @@ impl World {
         morphology: Option<MorphologyState>,
         learn: Option<LearnState>,
         worldmod: Option<TerrainModState>,
+        action_census: Option<ActionCensus>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -1685,6 +1866,14 @@ impl World {
         // uniqueness, and every value's domain, and verifies the composed
         // checksum immediately after this returns.
         self.worldmod = worldmod;
+        // From the save, like the learned state and the terrain delta, and
+        // for the identical reason: a lifetime's action counts cannot be
+        // recomputed from anything the save carries. Rebuilding them empty
+        // here would restore a world that quietly disagrees with the one it
+        // was saved from about every organism's history - and, unlike the
+        // learned state, nothing downstream would ever notice, because
+        // nothing in the tick reads them.
+        self.action_census = action_census;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -2824,6 +3013,42 @@ impl World {
             p2.memory[index] = p2.next_memory[index];
         }
 
+        // **Per-organism action counting (C11.1's substrate).**
+        //
+        // Placed here, at the top of the resolver, because this is the last
+        // point at which every intent for this tick exists and none has been
+        // consumed: the movement pass below overwrites `speed_milli` with
+        // what the organism *achieved*, and the feeding pass reads
+        // `intent_eat` against biomass that may not be there. C11.1 asks what
+        // the organism did, not what the world let it do - an organism that
+        // learned to head for the patch and arrived to find it moved has
+        // changed its behaviour, and a counter driven by realized outcomes
+        // would score that as no change at all.
+        //
+        // This block writes and never reads. No value below depends on it,
+        // no draw is taken, and the census is not consulted by any phase, so
+        // it cannot alter the trajectory - which is what the fixtures assert.
+        if let Some(census) = self.action_census.as_mut() {
+            let attacks = self
+                .contest
+                .as_ref()
+                .map(|contest| contest.intent_attack.as_slice());
+            for index in 0..population {
+                let attack = attacks
+                    .and_then(|flags| flags.get(index))
+                    .copied()
+                    .unwrap_or(false);
+                census.record(
+                    index,
+                    p2.intent_turn[index],
+                    p2.intent_speed_milli[index],
+                    p2.intent_eat[index],
+                    p2.intent_mate[index],
+                    attack,
+                );
+            }
+        }
+
         // Movement pass.
         let max_turn = self.config.phase2.max_turn_per_tick_bam as f32;
         let mut moved = vec![false; population];
@@ -3943,6 +4168,15 @@ impl World {
             if let Some(state) = self.learn.as_mut() {
                 state.retain(&dead);
             }
+            // A dead organism takes its action history with it. The history
+            // is the individual's, and C11.1's unit of measurement is the
+            // individual: a row that outlived its organism would be attached
+            // to whichever organism compacted into its slot, which is the one
+            // failure that would make a per-individual series read like a
+            // per-individual series and be a population average.
+            if let Some(state) = self.action_census.as_mut() {
+                state.retain(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -3972,6 +4206,9 @@ impl World {
             // thought could be taken.
             if let Some(state) = self.learn.as_mut() {
                 state.push_organism(0);
+            }
+            if let Some(state) = self.action_census.as_mut() {
+                state.push_organism();
             }
             self.counters.births_total += 1;
             self.push_event(next_tick, EventKind::Birth { id, parent_id });
@@ -4022,6 +4259,13 @@ impl World {
                 // later parameterize.
                 if let (Some(state), Some(schema2)) = (self.learn.as_mut(), self.schema2.as_ref()) {
                     state.push_organism(schema2.plastic_edges(schema2.len() - 1));
+                }
+                // Pushed **after** the schema-2 refusal above and before the
+                // core arrays grow, for the reason the block's own comment
+                // gives: a refusal that happens after the arrays have grown
+                // is itself the corruption.
+                if let Some(state) = self.action_census.as_mut() {
+                    state.push_organism();
                 }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;
@@ -4171,6 +4415,24 @@ impl World {
         // verified where it means something: in the save, against the file.
         if let Some(worldmod) = self.worldmod.as_ref() {
             worldmod.hash_into(&mut hasher);
+        }
+        // Phase 11's measurement section, appended after Phase 12's for the
+        // reason each of the last three was appended after its predecessor:
+        // a section added to the end never changes the checksum of a world
+        // that lacks it, and five fixtures lack this one.
+        //
+        // **Hashed rather than left out, and the consequence is deliberate.**
+        // A lifetime's action counts have no source but the save - they are
+        // accumulated from intents computed from stored activations, and
+        // re-deriving them would need the run replayed from tick zero. That
+        // is `learnstate.rs`'s argument verbatim. It costs one real thing:
+        // `reset_action_census` moves the checksum, so a probe boundary is
+        // part of the replay lineage. That is the honest outcome - a world
+        // whose counters were zeroed at tick 5,000 is not the world whose
+        // were not - and it is why the sampling path records cumulative rows
+        // and never resets.
+        if let Some(census) = self.action_census.as_ref() {
+            census.hash_into(&mut hasher);
         }
         hasher.finish()
     }
@@ -4357,6 +4619,15 @@ impl World {
                     id: self.ids[index],
                 });
             }
+        }
+        // Phase 11's measurement array, on the ordinary lockstep terms.
+        if let Some(census) = self.action_census.as_ref()
+            && census.len() != self.ids.len()
+        {
+            return Err(InvariantViolation::ActionCensusDesync {
+                organisms: self.ids.len(),
+                census: census.len(),
+            });
         }
         // Phase 12. Not a lockstep check - the modification set is indexed by
         // cell, not by organism - but the same idea applied to the two

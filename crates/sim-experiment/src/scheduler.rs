@@ -31,8 +31,8 @@ use crate::campaign::{Campaign, Condition};
 use crate::manifest::RunResult;
 use sim_core::{Counters, Phase2Counters, RenderEntity, World};
 use sim_persist::{
-    EventLogInfo, EventLogRecorder, EventLogWriter, SnapshotStore, SpatialLogInfo,
-    SpatialLogWriter, encode_snapshot,
+    ActionLogInfo, ActionLogWriter, ActionRecord, EventLogInfo, EventLogRecorder, EventLogWriter,
+    SnapshotStore, SpatialLogInfo, SpatialLogWriter, encode_snapshot,
 };
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
@@ -285,8 +285,40 @@ fn execute_unit(
                 campaign.output.morphology_interval
             )
         });
+    // Per-individual action sampling. Reads `World::action_census`, which is
+    // an observation accessor returning owned values (ADR-0016), so this
+    // block cannot reach the kernel any more than the spatial block can -
+    // and, decisively, it does **not** call `reset_action_census`. The rows
+    // are cumulative and a before/after window is a difference of two
+    // samples, which is what keeps `sampling_does_not_change_what_the_world
+    // _computes` true for a section that *is* checksummed state.
+    let mut actions = match (output_dir, campaign.output.action_interval) {
+        (Some(directory), interval) if interval > 0 => {
+            let path = directory.join(format!("{stem}.alac"));
+            let writer = ActionLogWriter::create(
+                &path,
+                &ActionLogInfo {
+                    format_version: sim_persist::ACTION_LOG_FORMAT_VERSION,
+                    world_id: unit.index as u64 + 1,
+                    seed: unit.seed,
+                    config_hash,
+                    terrain_checksum,
+                    class_count: sim_core::ACTION_CLASS_COUNT as u32,
+                    sample_interval_ticks: u32::try_from(interval)
+                        .map_err(|_| "action interval exceeds u32".to_owned())?,
+                    max_organisms: world.config().max_entities,
+                    policy_hash: sim_persist::action_policy_hash(),
+                    build_version: sim_persist::BUILD_VERSION.to_owned(),
+                },
+            )
+            .map_err(|error| error.to_string())?;
+            Some(writer)
+        }
+        _ => None,
+    };
     let mut render_buffer: Vec<RenderEntity> = Vec::new();
     let mut positions: Vec<(i32, i32)> = Vec::new();
+    let mut action_records: Vec<ActionRecord> = Vec::new();
 
     for _ in 0..campaign.ticks {
         world.step();
@@ -326,6 +358,24 @@ fn execute_unit(
                 metrics.refused_node_budget,
             ));
         }
+        if let Some(writer) = actions.as_mut()
+            && world.tick_number() % campaign.output.action_interval == 0
+        {
+            action_records.clear();
+            action_records.extend(
+                world
+                    .action_census()
+                    .into_iter()
+                    .map(|sample| ActionRecord {
+                        id: sample.id,
+                        age_ticks: sample.age_ticks,
+                        counts: sample.counts,
+                    }),
+            );
+            writer
+                .append(world.tick_number(), &action_records)
+                .map_err(|error| error.to_string())?;
+        }
         if campaign.check_interval > 0 && world.tick_number() % campaign.check_interval == 0 {
             world
                 .check_invariants()
@@ -333,6 +383,13 @@ fn execute_unit(
         }
     }
     let spatial_samples = match spatial.as_mut() {
+        Some(writer) => {
+            writer.sync().map_err(|error| error.to_string())?;
+            writer.samples()
+        }
+        None => 0,
+    };
+    let action_samples = match actions.as_mut() {
         Some(writer) => {
             writer.sync().map_err(|error| error.to_string())?;
             writer.samples()
@@ -404,6 +461,7 @@ fn execute_unit(
         event_log_offset,
         snapshot_bytes,
         spatial_samples,
+        action_samples,
         deaths_senescence_total: metrics.deaths_senescence_total,
         deaths_extrinsic_total: metrics.deaths_extrinsic_total,
         deaths_juvenile_total: metrics.deaths_juvenile_total,

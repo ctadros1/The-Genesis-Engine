@@ -45,6 +45,11 @@ pub struct RunResult {
     /// Spatial samples written. Recorded so an analysis can prove it read
     /// the whole series rather than a silently shortened one.
     pub spatial_samples: u64,
+    /// Per-individual action samples written, on the same terms and for the
+    /// same reason: a C11.1 analysis that silently read a shortened series
+    /// would compute a within-lifetime comparison over a window that is not
+    /// the window the campaign declared.
+    pub action_samples: u64,
     /// Phase 8 demography outcomes. Zero when the section is disabled.
     pub deaths_senescence_total: u64,
     pub deaths_extrinsic_total: u64,
@@ -394,6 +399,7 @@ fn render_run(run: &RunResult) -> String {
         event_log_offset,
         snapshot_bytes,
         spatial_samples,
+        action_samples,
         deaths_senescence_total,
         deaths_extrinsic_total,
         deaths_juvenile_total,
@@ -443,7 +449,8 @@ fn render_run(run: &RunResult) -> String {
          dropped_events={dropped_events_total} event_log_bytes={event_log_offset} \
          snapshot_bytes={snapshot_bytes} attacks={attacks_total} \
          deaths_by_damage={deaths_by_damage_total} carcasses={carcasses} \
-         spatial_samples={spatial_samples} deaths_senescence={deaths_senescence_total} \
+         spatial_samples={spatial_samples} action_samples={action_samples} \
+         deaths_senescence={deaths_senescence_total} \
          deaths_extrinsic={deaths_extrinsic_total} deaths_juvenile={deaths_juvenile_total} \
          max_age_observed={max_age_ticks_observed} capacity_milli={total_capacity_milli} \
          mean_nodes_milli={mean_nodes_milli} mean_edges_milli={mean_edges_milli} \
@@ -679,6 +686,7 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         deaths_by_damage_total: number("deaths_by_damage").unwrap_or(0),
         carcasses: number("carcasses").unwrap_or(0),
         spatial_samples: number("spatial_samples").unwrap_or(0),
+        action_samples: number("action_samples").unwrap_or(0),
         deaths_senescence_total: number("deaths_senescence").unwrap_or(0),
         deaths_extrinsic_total: number("deaths_extrinsic").unwrap_or(0),
         deaths_juvenile_total: number("deaths_juvenile").unwrap_or(0),
@@ -807,6 +815,7 @@ output snapshots off
             event_log_offset: 119,
             snapshot_bytes: 120,
             spatial_samples: 121,
+            action_samples: 401,
             deaths_senescence_total: 122,
             deaths_extrinsic_total: 123,
             deaths_juvenile_total: 124,

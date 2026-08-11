@@ -18,6 +18,7 @@
 //! See `docs/04-simulation-model.md`, `docs/07-neural-network-design.md`,
 //! and `docs/08-genetics-and-evolution.md`.
 
+mod actioncensus;
 mod checksum;
 mod climate;
 mod config;
@@ -45,6 +46,10 @@ mod terrainmod;
 mod world;
 mod worldgen;
 
+pub use actioncensus::{
+    ACTION_CENSUS_POLICY_VERSION, ACTION_CLASS_COUNT, ActionCensusCounters, ActionClass,
+    LOCOMOTION_CLASS_COUNT, TURN_BAND_MILLI, locomotion as locomotion_class,
+};
 pub use checksum::{Fnv1a64, fnv1a64};
 pub use climate::{
     BIOME_COUNT, BIOME_POLICY_VERSION, Biome, CLIMATE_POLICY_VERSION, ClimateBase, ClimateError,
@@ -53,8 +58,8 @@ pub use climate::{
 pub use config::{
     BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
     Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig,
-    PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig, PlasticityConfig, SimConfig,
-    WorldModConfig, WorldgenVersion,
+    PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig,
+    SimConfig, WorldModConfig, WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -89,10 +94,10 @@ pub use genome::{
 pub use genome2::{
     EDGE_FLAG_DELAYED, EDGE_FLAG_DISABLED, EDGE_FLAG_PLASTIC, ExpressedBinding, ExpressedEdge,
     ExpressedNetwork, ExpressedNode, GENOME2_MAGIC, GENOME2_POLICY_VERSION, GENOME2_SCHEMA_VERSION,
-    Genome2, Genome2Error, GenomeCaps, Haplotype, Locus, LocusKind, PLOIDY, PlasticityGenes,
-    STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE, TRAIT_HOMOLOGY_LIMIT, VALUE_LIMIT,
-    blend_by_dominance, derive_gene_lineage_id, derive_homology_id, derive_mutation_event_id,
-    registry_versions,
+    Genome2, Genome2Error, GenomeCaps, Haplotype, Locus, LocusKind, MARKER_FLAG_NEUTRAL, PLOIDY,
+    PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE, TRAIT_HOMOLOGY_LIMIT,
+    VALUE_LIMIT, blend_by_dominance, derive_gene_lineage_id, derive_homology_id,
+    derive_mutation_event_id, registry_versions,
 };
 pub use meiosis::{
     Gamete, InheritanceMode, MAX_EXTRA_CROSSOVERS, MEIOSIS_POLICY_VERSION, MeiosisConfig, gamete,
@@ -127,13 +132,13 @@ pub use registry::{
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
-    ClimateSaveState, ContestSaveState, LearnSaveState, LearnedEdgeSave, MorphologySaveState,
-    Phase2SaveState, PhysiologySaveState, RestoreError, SAVE_STATE_VERSION, SaveState,
-    Schema2SaveState,
+    ActionCensusSaveState, ClimateSaveState, ContestSaveState, LearnSaveState, LearnedEdgeSave,
+    MorphologySaveState, Phase2SaveState, PhysiologySaveState, RestoreError, SAVE_STATE_VERSION,
+    SaveState, Schema2SaveState,
 };
 pub use schema2::{
-    ACTION_CHANNELS, SENSE_CHANNELS, compatibility_distance, founder_from_traits,
-    founder_with_morphology, outputs_from_requests,
+    ACTION_CHANNELS, MARKER_HOMOLOGY_ID, SENSE_CHANNELS, compatibility_distance,
+    founder_from_traits, founder_with_morphology, outputs_from_requests, with_marker_locus,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use structmut::{
@@ -146,10 +151,10 @@ pub use terrainmod::{
     TerrainModCounters, TerrainModState, WORLDMOD_POLICY_VERSION, scale_capacity, value_in_domain,
 };
 pub use world::{
-    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation,
-    LearnedSample, Ledger, MAX_EVENTS_PER_TICK, MetricsSnapshot, MorphologySample, NewWorldError,
-    NoopObserver, OrganismDetail, Phase2Detail, RenderEntity, StructureSample, TickObserver,
-    TickPhase, World,
+    ActionSample, Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, InvariantViolation,
+    LearnedSample, Ledger, MAX_EVENTS_PER_TICK, MarkerSample, MetricsSnapshot, MorphologySample,
+    NewWorldError, NoopObserver, OrganismDetail, Phase2Detail, RenderEntity, StructureSample,
+    TickObserver, TickPhase, World,
 };
 pub use worldgen::{Terrain, WORLDGEN_VERSION, WorldGenError, generate as generate_terrain};
 
