@@ -1512,3 +1512,52 @@ mod tests {
         }
     }
 }
+
+#[cfg(test)]
+mod eta_zero_probe {
+    use super::*;
+
+    /// Load-bearing for the chain-shortening decision: if `eta == 0` makes
+    /// every rule inert, then rule 0's early return is not what protects
+    /// C11.4 and the dead rule value can be removed without handing a
+    /// founder anything.
+    #[test]
+    fn with_eta_zero_every_rule_in_the_registry_leaves_the_learned_state_alone() {
+        for rule_id in 0..RULE_COUNT {
+            for coefficients in [[0.0_f32; 4], [1.0; 4], [-1.0, 0.5, 0.25, 1.0]] {
+                for (pre, post, modulator, w_eff) in [
+                    (0.0_f32, 0.0_f32, 0.0_f32, 0.0_f32),
+                    (1.0, 1.0, 1.0, 1.0),
+                    (-1.0, 1.0, -1.0, 0.5),
+                    (0.75, -0.25, 1.0, -1.0),
+                ] {
+                    let rule = PlasticityRule {
+                        rule_id,
+                        eta: 0.0,
+                        coefficients,
+                        decay_q16: 0,
+                    };
+                    let state = LearnedState::default();
+                    let out = step(
+                        rule,
+                        EdgeSignals {
+                            pre,
+                            post,
+                            modulator,
+                            w_eff,
+                        },
+                        state,
+                    );
+                    assert_eq!(
+                        out.state.learned_q16, 0,
+                        "rule {rule_id} moved learned state with eta = 0"
+                    );
+                    assert_eq!(
+                        out.state.trace_q16, 0,
+                        "rule {rule_id} moved the trace with eta = 0"
+                    );
+                }
+            }
+        }
+    }
+}
