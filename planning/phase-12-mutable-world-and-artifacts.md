@@ -177,22 +177,45 @@ artifact half is NOT STARTED.** The two halves are separable and were built
 in that order because Phase 11's C11.1 needs the terrain-override layer and
 nothing else from this phase.
 
-- [ ] **C12.1 Object actions are used, not just fired. NOT BUILT.** Requires
-      the object system, the five actions, and the four-condition campaign.
-      No object exists yet. Distinct from unmet: nothing was measured.
-- [ ] **C12.2 Structures persist and matter. NOT BUILT.** Same.
-- [ ] **C12.3 Cumulative dependency. NOT BUILT.** Same. Note the ordering
-      correction above: this *is* measurable in this phase once objects
-      exist, because stigmergy is the transmission channel it needs, and it
-      does not wait on Phase 13.
-- [~] **C12.4 Determinism and identity. Partial.** The modification set is
-      strictly ascending and unique by `(layer_id, cell_index)`, asserted as
-      a live-world invariant and, since D-097, as a **decode-time** invariant
-      pinned by its own diagnostic. Object IDs, storage-index order and
-      contested acquisition are **not built** - there are no objects. There
-      is also **no Phase 12 clean-process fixture or verify script**; the
-      four existing fixtures are preserved (C12.8) but this phase has not
-      minted its own.
+- [ ] **C12.1 Object actions are used, not just fired.** Under A, the rate
+      of successful pick-up, place, and combine actions exceeds the rate
+      under C by the stated effect size in at least 20 of 30 seeds. Condition
+      C is the control that distinguishes evolved use from output channels
+      firing at their baseline rate.
+      **NOT BUILT.** Requires the object system, the five actions, and the
+      four-condition campaign. No object exists yet. Distinct from unmet:
+      nothing was measured, and no threshold above has been changed.
+- [ ] **C12.2 Structures persist and matter.** Under A, the median lifetime
+      of a placed object exceeds the run's median organism lifespan in at
+      least 15 of 30 seeds, **and** organisms occupying cells containing
+      placed objects show a measurable fitness difference (reproductive
+      output or survival) against matched cells without them. Both halves
+      are required: persistence without a fitness effect is litter, not
+      structure.
+      **NOT BUILT.** Same reason as C12.1.
+- [ ] **C12.3 Cumulative dependency.** Under A, the frequency of composite
+      objects of combination depth two or more increases over time in at
+      least N of 30 seeds, with N stated before the campaign. Under D this
+      is zero by construction. **This is the criterion most likely to return
+      null and it is stated that way in advance.** A null here is a real
+      result about this world's physics and is reported as such, not
+      quietly dropped or replaced with a weaker measure after the fact.
+      **NOT BUILT.** Same reason as C12.1. Note the ordering correction
+      above: this *is* measurable in this phase once objects exist, because
+      stigmergy is the transmission channel it needs, and it does not wait
+      on Phase 13. `N` is still unstated and must be fixed in the
+      pre-registration, before the campaign runs.
+- [~] **C12.4 Determinism and identity.** Object IDs strictly increase and
+      never repeat; storage index order equals ID order; contested
+      acquisition is order-independent under storage permutation;
+      clean-process fixture replay.
+      **Partial.** The modification set is strictly ascending and unique by
+      `(layer_id, cell_index)`, asserted as a live-world invariant and, since
+      D-097, as a **decode-time** invariant pinned by its own diagnostic.
+      Object IDs, storage-index order and contested acquisition are **not
+      built** - there are no objects. There is also **no Phase 12
+      clean-process fixture or verify script**; the four existing fixtures
+      are preserved (C12.8) but this phase has not minted its own.
 - [x] **C12.5 Save format correctness. Met, every clause, each
       mutation-verified.** ALIF **format 4** (not 2; see the version
       correction above), `SAVE_STATE_VERSION` 2, with the format-3 reader
@@ -211,7 +234,12 @@ nothing else from this phase.
       every declared per-layer count is bounded adversarially per standing
       rule 2. Two migration assertions are tautologies by construction and
       are recorded as such in D-097 rather than left to look load-bearing.
-- [~] **C12.6 Mass and energy exactness. Partial, and the missing part is
+- [~] **C12.6 Mass and energy exactness.** The ledger stays exact to the
+      milli-unit across creation, combination, fracture, decay, carrying,
+      and consumption over a 10^6-tick run. Combining then fracturing
+      restores constituent mass and energy exactly. Rounding remainders go
+      deterministically to the lowest constituent object ID.
+      **Partial, and the missing part is
       the horizon.** Lowering a cell's capacity below its standing biomass
       trims the excess and books it to a ledgered loss sink, exact to the
       milli - verified by removing the ledger line and watching four tests
@@ -219,7 +247,11 @@ nothing else from this phase.
       **Not done: the 10^6-tick run the criterion names**, and mass does not
       exist as a conserved quantity because objects do not exist. Creation,
       combination, fracture, carrying and consumption are all unbuilt.
-- [~] **C12.7 Caps enforced visibly. Partial.** Terrain-modification writes
+- [~] **C12.7 Caps enforced visibly.** Composition depth, composition
+      breadth, cell occupancy, carry capacity, and object count all reject
+      deterministically, count, and event. A run that is silently pressed
+      against a cap must be visible in its report.
+      **Partial.** Terrain-modification writes
       that fall outside a layer's domain, past the map, or beyond the
       per-layer cap are refused, typed and counted, and a test drives a cap
       until it binds. Composition depth, composition breadth, cell occupancy
@@ -259,7 +291,7 @@ full one; what is implemented is the full one, and the honest reason is that
 the incremental version is not expressible under this hash. Recorded rather
 than faked.
 
-## Test Plan## Test Plan
+## Test Plan
 
 - Codec: bounded fail-closed decode of the object table and modification
   section; seeded corruption sweep of at least 20,000 cases, zero panics.
