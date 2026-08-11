@@ -853,9 +853,7 @@ mod tests {
         reseal_segment(&mut bytes, header_len, body_end);
         assert_eq!(
             decode_action(&bytes),
-            Err(ActionLogError::TruncatedSegment {
-                offset: header_len
-            })
+            Err(ActionLogError::TruncatedSegment { offset: header_len })
         );
     }
 

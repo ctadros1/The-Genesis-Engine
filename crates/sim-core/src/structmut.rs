@@ -1822,7 +1822,10 @@ mod tests {
             target: STRUCTURAL_HOMOLOGY_BASE + 2,
             weight: 0.0,
             flags: 0,
-            plasticity: PlasticityGenes { eta, ..PlasticityGenes::inert() },
+            plasticity: PlasticityGenes {
+                eta,
+                ..PlasticityGenes::inert()
+            },
         };
         let marker_at = |value: f32| LocusKind::Marker { value, flags: 0 };
 
@@ -2233,9 +2236,13 @@ mod tests {
         // count and no wider. They are not a formality: an arm that moved
         // `value` on two of the seven targets lands at 2.0 here, and one that
         // moved it on none lands at 0.
-        let ratio = |numerator: u32, denominator: u32| f64::from(numerator) / f64::from(denominator);
+        let ratio =
+            |numerator: u32, denominator: u32| f64::from(numerator) / f64::from(denominator);
         for (name, got) in [
-            ("marker value against marker flag", ratio(marker_value, marker_flag)),
+            (
+                "marker value against marker flag",
+                ratio(marker_value, marker_flag),
+            ),
             ("eta against the plastic flag", ratio(eta, plastic_flag)),
         ] {
             assert!(
