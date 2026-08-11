@@ -627,3 +627,48 @@ control condition, the metric that must differ between conditions, the seed
 count, and the threshold, all fixed before the campaign runs. "It looked
 interesting" is never an acceptance criterion, and a threshold weakened
 after seeing the data is a different experiment.
+
+## Next: ALIF format 5, and why item [2] needs it first (2026-08-11)
+
+**Blocking the chain half of D-107's 2x2.** Discovered by building it and
+hitting the wall, not by review.
+
+The chain change has to be a **runtime setting**, not a build constant: the
+2x2 must run chain-on and chain-off arms against the same seeds in one
+campaign and on one build, and a compile-time registry change cannot be an
+arm. Making it a setting also keeps every existing fixture intact while it is
+off, which a constant change would not.
+
+But a new field on `PlasticityConfig` **must** be encoded into the snapshot.
+Not encoding it is D-065's exact defect - a restored world would silently run
+with the flag false and no error anywhere. And `encode_config` is positional,
+so a new field shifts every later field and makes existing format-4 files
+undecodable. The 120 `.alif` campaign artifacts are format 4 and are still
+being read for re-analysis, so silently breaking them is not acceptable.
+
+**So the order is: format 5 first, then the flag.**
+
+Increment A - ALIF format 5:
+- `FORMAT_VERSION` 4 -> 5, `FORMAT_VERSION_4` retained.
+- A retained format-4 reader. Cheaper than it sounds: format 5 differs from 4
+  by one byte in the config block, so this is a parameterised decode rather
+  than a second decoder - but it must be written and tested as a real reader.
+- `FORMAT4_TO_FORMAT5` in `migration_for`, following `FORMAT3_TO_FORMAT4`.
+- Standing rule 2 applies: declared counts and lengths patched to adversarial
+  values with CRCs resealed, not bit flips.
+- Byte-identity clause, as C12.5 required for 3->4: a migrated file must equal
+  a native format-5 load, compared as `SaveState`, then as world equality,
+  then over 200 further ticks.
+
+Increment B - `plasticity.live_rule_zero`:
+- The WIP is saved at `scratchpad/item2-chain-flag-WIP.diff` (251 lines) and
+  compiles as far as sim-core. `PlasticityBudget` becomes a struct carrying
+  `max_plastic_edges` and the flag, with the rule remap done once at compile
+  time in `compile_with_budget` so `plasticity::step` stays a pure function of
+  the rule it is handed.
+- Hashed **only when true** (D-014 at field granularity), so the Phase 11
+  fixture does not move for a setting nobody switched on.
+- Registered in `FIELD_NAMES` and in the codec, or
+  `config_field_coverage.rs` fails - which is standing rule 3 working.
+
+Increment C - the moat, then the 2x2 campaign, pre-registered as in D-107.
