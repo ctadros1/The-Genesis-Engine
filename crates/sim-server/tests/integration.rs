@@ -7,12 +7,26 @@ use sim_protocol::{
 };
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::TcpStream;
-use std::process::{Child, Command, Stdio};
+use std::process::{Child, Command, ExitStatus, Stdio};
+use std::sync::mpsc::{self, RecvTimeoutError};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 use tungstenite::{Message, WebSocket};
 
 const OBSERVER_TOKEN: &str = "test-observer-token";
 const ADMIN_TOKEN: &str = "test-admin-token";
+
+/// Backstop for a server that is alive but silent, not an assertion about how
+/// fast a healthy server boots. A server that *fails* to start is detected by
+/// its stdout closing and reported with its exit status immediately, so no
+/// real failure waits this out; the only thing this bounds is a hang, and it
+/// has to survive a machine busy with several concurrent release builds. The
+/// previous ten seconds was neither: it timed out honest slow starts and could
+/// not fire at all on the hang it was nominally there for.
+const STARTUP_TIMEOUT: Duration = Duration::from_secs(120);
+
+/// How many pre-banner stdout lines a failure message quotes back.
+const STARTUP_LINES_QUOTED: usize = 20;
 
 struct ServerGuard {
     child: Child,
@@ -28,6 +42,15 @@ impl Drop for ServerGuard {
 }
 
 fn spawn_server(extra_args: &[&str]) -> ServerGuard {
+    match try_spawn_server(extra_args) {
+        Ok(guard) => guard,
+        Err(failure) => panic!("{failure}"),
+    }
+}
+
+/// Spawn the server and wait for its readiness banner, returning the reason on
+/// failure instead of panicking so the failure path itself can be tested.
+fn try_spawn_server(extra_args: &[&str]) -> Result<ServerGuard, String> {
     // Ephemeral, collision-resistant ports per test process/case.
     let base = 20_000
         + (std::process::id() % 20_000) as u16
@@ -48,28 +71,161 @@ fn spawn_server(extra_args: &[&str]) -> ServerGuard {
         .arg("16")
         .args(extra_args)
         .stdout(Stdio::piped())
-        .stderr(Stdio::null());
+        // Piped rather than discarded: the reason a server refused to start
+        // ("rest bind: Address already in use" for a port another test process
+        // already holds) is written here and then lost, which is what left the
+        // old failure with nothing to say but "did not start". A thread drains
+        // it continuously, so the pipe can neither fill nor close early.
+        .stderr(Stdio::piped());
     let mut child = command.spawn().expect("spawn server");
-    // Wait for the startup banner.
+    let complaints = drain_stderr(child.stderr.take().expect("stderr"));
+
+    // Wait for the startup banner. Two unrelated failures used to share one
+    // clock and one message: a server that died, and a server that is merely
+    // slow. Only the second is worth waiting for, so they are separated here.
+    // Stdout closing means the process is gone and is reported at once with
+    // its exit status, which is why the deadline can afford to be generous.
+    //
+    // The read runs on its own thread because a blocking `read_line` cannot be
+    // interrupted, and the old loop therefore consulted the clock only when a
+    // line happened to arrive. That made the deadline simultaneously
+    // unenforceable and unfair: a silent server blocked forever, while a
+    // banner that arrived late was read and then discarded as "did not start".
+    // The thread also keeps draining stdout for the server's lifetime, so a
+    // later write can never meet a closed pipe.
     let stdout = child.stdout.take().expect("stdout");
-    let mut reader = BufReader::new(stdout);
-    let started = Instant::now();
-    let mut line = String::new();
-    loop {
-        line.clear();
-        if reader.read_line(&mut line).unwrap_or(0) == 0
-            || started.elapsed() > Duration::from_secs(10)
-        {
-            panic!("server did not start");
+    let (lines_tx, lines_rx) = mpsc::channel();
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stdout);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                // EOF, or an error this thread cannot report; either way there
+                // are no more lines, and dropping the sender is what tells the
+                // waiter the process has stopped talking.
+                Ok(0) | Err(_) => return,
+                // A send error only means nobody is listening any more. Keep
+                // reading rather than leaving the pipe to fill.
+                Ok(_) => {
+                    let _ = lines_tx.send(line);
+                }
+            }
         }
-        if line.contains("REST on") {
-            break;
+    });
+
+    let started = Instant::now();
+    let mut quoted: Vec<String> = Vec::new();
+    loop {
+        let remaining = STARTUP_TIMEOUT.saturating_sub(started.elapsed());
+        match lines_rx.recv_timeout(remaining) {
+            Ok(line) if line.contains("REST on") => break,
+            Ok(line) => {
+                if quoted.len() < STARTUP_LINES_QUOTED {
+                    quoted.push(line);
+                }
+            }
+            Err(RecvTimeoutError::Disconnected) => {
+                return Err(startup_failure(
+                    &mut child,
+                    "stdout closed before the banner",
+                    started.elapsed(),
+                    &quoted,
+                    &complaints,
+                ));
+            }
+            Err(RecvTimeoutError::Timeout) => {
+                return Err(startup_failure(
+                    &mut child,
+                    "no banner within the timeout",
+                    started.elapsed(),
+                    &quoted,
+                    &complaints,
+                ));
+            }
         }
     }
-    ServerGuard {
+    Ok(ServerGuard {
         child,
         rest_port,
         ws_port,
+    })
+}
+
+/// Collect the server's stderr on a thread for the life of the process. The
+/// thread keeps reading after the cap is reached, because the point is to leave
+/// the pipe drained; only storage is bounded.
+fn drain_stderr(stderr: std::process::ChildStderr) -> Arc<Mutex<Vec<String>>> {
+    let collected = Arc::new(Mutex::new(Vec::new()));
+    let sink = Arc::clone(&collected);
+    std::thread::spawn(move || {
+        let mut reader = BufReader::new(stderr);
+        loop {
+            let mut line = String::new();
+            match reader.read_line(&mut line) {
+                Ok(0) | Err(_) => return,
+                Ok(_) => {
+                    let mut sink = sink.lock().expect("stderr sink");
+                    if sink.len() < STARTUP_LINES_QUOTED {
+                        sink.push(line);
+                    }
+                }
+            }
+        }
+    });
+    collected
+}
+
+/// Explain a server that never announced itself, naming which of the two
+/// failures happened. A server that died on a bad flag or an occupied port
+/// reports its exit status and its own complaint here, so it fails fast with a
+/// cause instead of being indistinguishable from a slow boot.
+fn startup_failure(
+    child: &mut Child,
+    reason: &str,
+    waited: Duration,
+    quoted: &[String],
+    complaints: &Mutex<Vec<String>>,
+) -> String {
+    // A process on its way out needs a moment before its status can be read; a
+    // wedged one must not hold the suite up, so the wait is bounded and a
+    // survivor is killed rather than left holding its ports for the rest of
+    // the run.
+    let state = match reap(child, Duration::from_secs(2)) {
+        Some(status) => format!("process exited: {status}"),
+        None => {
+            let _ = child.kill();
+            let _ = child.wait();
+            "process still running, killed".to_owned()
+        }
+    };
+    // The dying process wrote its complaint just before exiting; give the
+    // stderr thread a moment to have taken it off the pipe before quoting.
+    std::thread::sleep(Duration::from_millis(50));
+    let said = match complaints.lock().expect("stderr sink").as_slice() {
+        [] => "nothing on stderr".to_owned(),
+        lines => format!("stderr: {lines:?}"),
+    };
+    let stdout = if quoted.is_empty() {
+        "nothing on stdout".to_owned()
+    } else {
+        format!("stdout so far: {quoted:?}")
+    };
+    format!("server did not start: {reason} after {waited:.1?}; {state}; {said}; {stdout}")
+}
+
+/// The child's exit status if it is reaped within `grace`, otherwise `None`.
+fn reap(child: &mut Child, grace: Duration) -> Option<ExitStatus> {
+    let started = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => return Some(status),
+            Ok(None) => {}
+            Err(_) => return None,
+        }
+        if started.elapsed() >= grace {
+            return None;
+        }
+        std::thread::sleep(Duration::from_millis(25));
     }
 }
 
@@ -164,6 +320,57 @@ fn full_viewport() -> Viewport {
         y1_fp: 1_048_575,
         lod: 0,
     }
+}
+
+/// The startup wait has to tell a dead server from a slow one. A server that
+/// cannot start must be reported by its exit status well inside
+/// `STARTUP_TIMEOUT`; if it were not, every genuine startup failure would cost
+/// the suite the full timeout, and the timeout could not be raised to a length
+/// that survives a loaded machine.
+#[test]
+fn a_server_that_cannot_start_is_reported_by_its_exit_status_not_by_the_timeout() {
+    let started = Instant::now();
+    let failure = match try_spawn_server(&["--not-a-real-flag"]) {
+        // Dropping the guard kills the server the flag should have refused.
+        Ok(_) => panic!("a rejected flag must not produce a running server"),
+        Err(failure) => failure,
+    };
+    let elapsed = started.elapsed();
+    assert!(
+        failure.contains("stdout closed before the banner") && failure.contains("process exited:"),
+        "expected a died-at-startup diagnosis, got: {failure}"
+    );
+    assert!(
+        elapsed < STARTUP_TIMEOUT / 4,
+        "a crashed server took {elapsed:.1?}, which is timeout-shaped rather than fast"
+    );
+}
+
+/// The failure this harness is most likely to actually meet: the REST port is
+/// already held by another test process, whose port range overlaps this one and
+/// is keyed on the same pid. The server refuses to start, and the reason has to
+/// survive to the panic message -- an occupied port and a slow boot used to
+/// produce the same four words, which is why the flake was diagnosed as a
+/// timeout in the first place.
+#[test]
+fn an_occupied_port_is_reported_as_a_bind_failure_not_as_a_slow_start() {
+    let squatter = std::net::TcpListener::bind(("127.0.0.1", 0)).expect("squat a port");
+    let taken = squatter.local_addr().expect("addr").port();
+    let started = Instant::now();
+    // A later --rest-port wins, so this forces the collision deterministically.
+    let failure = match try_spawn_server(&["--rest-port", &taken.to_string()]) {
+        Ok(_) => panic!("port {taken} is held; the server must not have bound it"),
+        Err(failure) => failure,
+    };
+    assert!(
+        failure.contains("process exited:") && failure.contains("rest bind:"),
+        "expected the bind failure to name itself, got: {failure}"
+    );
+    assert!(
+        started.elapsed() < STARTUP_TIMEOUT / 4,
+        "a refused bind took {:.1?}, which is timeout-shaped rather than fast",
+        started.elapsed()
+    );
 }
 
 #[test]
