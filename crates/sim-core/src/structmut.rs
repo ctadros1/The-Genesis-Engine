@@ -1817,25 +1817,147 @@ mod tests {
             plasticity_enabled: true,
             ..always(3_277)
         };
+        let edge_at = |eta: f32| LocusKind::Edge {
+            source: STRUCTURAL_HOMOLOGY_BASE + 1,
+            target: STRUCTURAL_HOMOLOGY_BASE + 2,
+            weight: 0.0,
+            flags: 0,
+            plasticity: PlasticityGenes { eta, ..PlasticityGenes::inert() },
+        };
+        let marker_at = |value: f32| LocusKind::Marker { value, flags: 0 };
+
+        let mut seen_move = false;
+        let mut seen_toggle = false;
+        let mut seen_noop = 0_u32;
+        // Both alleles are clamped into `[0, 1]`, so "the same delta" is only
+        // half the claim: the two have to *stop* in the same places too. The
+        // start values sweep the floor both alleles are founded at, the
+        // interior where every delta is visible, and the ceiling - which a
+        // walk from 0.0 cannot reach inside one draw and which no assertion
+        // reached before. A marker clamped to `[0, 0.5]` while `eta` is
+        // clamped to `[0, 1]` matches at 0.0 and at 0.5 and diverges only
+        // here.
+        let mut seen_pinned_low = false;
+        let mut seen_pinned_high = false;
+        for start in [0.0_f32, 0.5, 1.0] {
+            let edge_kind = edge_at(start);
+            let marker_kind = marker_at(start);
+            // The delta is a function of `draw(3)`; a positive unit is needed
+            // for the value to move at all from a floor of 0.0, so both a
+            // rising and a falling draw are exercised.
+            for unit in [0xffff_u64, 0x0000, 0xc000] {
+                for target in 0..7_u64 {
+                    let draw = |index: u32| -> u64 {
+                        match index {
+                            3 => unit,
+                            8 => target,
+                            _ => 0,
+                        }
+                    };
+                    let mut marker = single_locus(marker_kind);
+                    let marker_applied = point_mutate(&mut marker, &config, &draw);
+                    let mut edge = single_locus(edge_kind);
+                    assert!(
+                        point_mutate(&mut edge, &config, &draw),
+                        "the edge arm declined target {target}, so there is nothing to match"
+                    );
+
+                    let (value, flags) = marker_of(&marker);
+                    let (_, edge_flags, plasticity) = edge_of(&edge);
+                    match target {
+                        1 => {
+                            assert!(marker_applied);
+                            assert_eq!(flags, crate::genome2::MARKER_FLAG_NEUTRAL);
+                            assert_eq!(edge_flags, crate::genome2::EDGE_FLAG_PLASTIC);
+                            assert_eq!(value, start);
+                            seen_toggle = true;
+                        }
+                        3 => {
+                            assert!(marker_applied);
+                            assert_eq!(
+                                value, plasticity.eta,
+                                "the marker and eta moved by different amounts from {start}"
+                            );
+                            assert_eq!(flags, 0);
+                            if value != start {
+                                seen_move = true;
+                            }
+                            // A draw that pushed past a bound: both alleles
+                            // must sit exactly on it. Recorded so the
+                            // equality above is known to have been evaluated
+                            // at each clamp rather than only in the interior.
+                            if start == 0.0 && unit < 0x8000 {
+                                assert_eq!(value, 0.0);
+                                seen_pinned_low = true;
+                            }
+                            if start == 1.0 && unit > 0x8000 {
+                                assert_eq!(value, 1.0);
+                                seen_pinned_high = true;
+                            }
+                        }
+                        _ => {
+                            assert!(
+                                !marker_applied,
+                                "target {target} counted as an applied mutation on a marker"
+                            );
+                            assert_eq!(
+                                (value, flags),
+                                (start, 0),
+                                "target {target} moved a marker"
+                            );
+                            seen_noop += 1;
+                        }
+                    }
+                }
+            }
+        }
+        assert!(seen_move, "no draw ever moved the marker off its floor");
+        assert!(seen_toggle);
+        assert!(seen_pinned_low, "no draw ever pushed below the floor");
+        assert!(seen_pinned_high, "no draw ever pushed above the ceiling");
+        assert_eq!(seen_noop, 45, "the no-op targets are not the five expected");
+    }
+
+    #[test]
+    fn the_marker_ignores_plasticity_enabled_and_the_edge_arm_obeys_it() {
+        // **The property the B arm of C11.2 rests on, and the one the
+        // campaign's most surprising number is.** In condition B the edge
+        // arm is gated off, so `eta` moved in 0 of 684,525 alleles while
+        // 20,967 marker alleles moved. That is the design working - the
+        // marker is the control for *both* arms and has to drift identically
+        // in each - and without this test the gate could be extended to the
+        // marker and condition B's control would silently become a frozen
+        // locus while condition A's kept moving, which is the mirror image of
+        // the defect D-086 records.
+        //
+        // Asserted as bit equality against the enabled arm, not as "the
+        // marker still moves sometimes": a gate that only slowed the marker
+        // down would pass the weaker statement.
+        let enabled = MutationConfig {
+            point_q16: 65_535,
+            plasticity_enabled: true,
+            ..always(3_277)
+        };
+        let disabled = MutationConfig {
+            plasticity_enabled: false,
+            ..enabled
+        };
+        let marker_kind = LocusKind::Marker {
+            value: 0.5,
+            flags: 0,
+        };
         let edge_kind = LocusKind::Edge {
             source: STRUCTURAL_HOMOLOGY_BASE + 1,
             target: STRUCTURAL_HOMOLOGY_BASE + 2,
             weight: 0.0,
             flags: 0,
-            plasticity: PlasticityGenes::inert(),
+            plasticity: PlasticityGenes {
+                eta: 0.5,
+                ..PlasticityGenes::inert()
+            },
         };
-        let marker_kind = LocusKind::Marker {
-            value: 0.0,
-            flags: 0,
-        };
-
-        let mut seen_move = false;
-        let mut seen_toggle = false;
-        let mut seen_noop = 0_u32;
-        // The delta is a function of `draw(3)`; a positive unit is needed for
-        // the value to move at all from a floor of 0.0, so both a rising and
-        // a falling draw are exercised.
-        for unit in [0xffff_u64, 0x0000, 0xc000] {
+        let mut checked_targets = 0_u32;
+        for unit in [0xffff_u64, 0xc000, 0x0000] {
             for target in 0..7_u64 {
                 let draw = |index: u32| -> u64 {
                     match index {
@@ -1844,49 +1966,59 @@ mod tests {
                         _ => 0,
                     }
                 };
-                let mut marker = single_locus(marker_kind);
-                let marker_applied = point_mutate(&mut marker, &config, &draw);
-                let mut edge = single_locus(edge_kind);
-                assert!(
-                    point_mutate(&mut edge, &config, &draw),
-                    "the edge arm declined target {target}, so there is nothing to match"
+                let mut on = single_locus(marker_kind);
+                let on_applied = point_mutate(&mut on, &enabled, &draw);
+                let mut off = single_locus(marker_kind);
+                let off_applied = point_mutate(&mut off, &disabled, &draw);
+                assert_eq!(
+                    (marker_of(&on), on_applied),
+                    (marker_of(&off), off_applied),
+                    "the marker read plasticity_enabled on target {target}"
                 );
 
-                let (value, flags) = marker_of(&marker);
-                let (_, edge_flags, plasticity) = edge_of(&edge);
-                match target {
-                    1 => {
-                        assert!(marker_applied);
-                        assert_eq!(flags, crate::genome2::MARKER_FLAG_NEUTRAL);
-                        assert_eq!(edge_flags, crate::genome2::EDGE_FLAG_PLASTIC);
-                        assert_eq!(value, 0.0);
-                        seen_toggle = true;
-                    }
-                    3 => {
-                        assert!(marker_applied);
-                        assert_eq!(
-                            value, plasticity.eta,
-                            "the marker and eta moved by different amounts"
-                        );
-                        assert_eq!(flags, 0);
-                        if value != 0.0 {
-                            seen_move = true;
-                        }
-                    }
-                    _ => {
-                        assert!(
-                            !marker_applied,
-                            "target {target} counted as an applied mutation on a marker"
-                        );
-                        assert_eq!((value, flags), (0.0, 0), "target {target} moved a marker");
-                        seen_noop += 1;
-                    }
+                // ...and the thing it controls for does obey the gate, or the
+                // equality above would be trivially true of a config that
+                // gated nothing.
+                let mut edge = single_locus(edge_kind);
+                assert!(point_mutate(&mut edge, &disabled, &draw));
+                let (weight, flags, plasticity) = edge_of(&edge);
+                assert_eq!(plasticity.eta, 0.5, "eta moved with the gate off");
+                assert_eq!(flags, 0, "the plastic flag moved with the gate off");
+                if target == 3 && unit != 0x8000 {
+                    assert_ne!(weight, 0.0, "the gated arm spent the draw on nothing");
                 }
+                checked_targets += 1;
             }
         }
-        assert!(seen_move, "no draw ever moved the marker off its floor");
-        assert!(seen_toggle);
-        assert_eq!(seen_noop, 15, "the no-op targets are not the five expected");
+        assert_eq!(checked_targets, 21);
+    }
+
+    #[test]
+    fn the_neutral_flag_can_be_lost_as_well_as_gained() {
+        // `the_plastic_flag_can_be_lost_as_well_as_gained` one locus over.
+        // The founder starts the marker clear, so every other test only ever
+        // sees 0 -> 1; a marker whose flag were set rather than toggled would
+        // ratchet upward while `EDGE_FLAG_PLASTIC` toggled both ways, and the
+        // control would then drift *faster* than the quantity it controls
+        // for - which biases C11.2 against its own hypothesis and would never
+        // show up as a failure.
+        let config = MutationConfig {
+            point_q16: 65_535,
+            plasticity_enabled: true,
+            ..always(3_277)
+        };
+        let set = LocusKind::Marker {
+            value: 0.0,
+            flags: crate::genome2::MARKER_FLAG_NEUTRAL,
+        };
+        let draw = |index: u32| -> u64 { if index == 8 { 1 } else { 0 } };
+        let mut marker = single_locus(set);
+        assert!(point_mutate(&mut marker, &config, &draw));
+        assert_eq!(
+            marker_of(&marker),
+            (0.0, 0),
+            "the neutral flag is a ratchet: it never cleared"
+        );
     }
 
     #[test]
@@ -2002,6 +2134,125 @@ mod tests {
                 (1.5..=2.5).contains(&ratio),
                 "{name}: the edge was hit {edge} times and the marker {marker}, ratio \
                  {ratio:.2}, which is not the 2:1 the locus counts predict"
+            );
+        }
+    }
+
+    #[test]
+    fn off_the_clamp_the_marker_and_eta_are_hit_at_the_same_per_locus_rate() {
+        // The test above measures rates at the founder value, where roughly
+        // half of every value draw is swallowed by the clamp - so it can only
+        // compare a *ratio of ratios*, and it cannot see whether `value` and
+        // the neutral flag are drawn at the same per-locus probability at
+        // all. Seeding both alleles at 0.5 puts every delta inside the range,
+        // and then the four counts are directly comparable: value and flag
+        // must be hit equally often (`draw(8) % 7` gives each target one
+        // outcome in seven), and the edge quantities must be hit twice as
+        // often only because the founder chromosome carries two edge loci to
+        // one marker.
+        //
+        // Measured rather than read off the code, which is the point: this
+        // is the number the C11.2 report's `moved_eta_alleles` against
+        // `moved_marker_alleles` is supposed to be an unbiased sample of.
+        let config = MutationConfig {
+            point_q16: 65_535,
+            plasticity_enabled: true,
+            ..always(3_277)
+        };
+        let mut seed = crate::schema2::with_marker_locus(founder());
+        for locus in seed.haplotypes.iter_mut().flat_map(|haplotype| {
+            haplotype
+                .chromosomes
+                .iter_mut()
+                .flat_map(|chromosome| chromosome.iter_mut())
+        }) {
+            match &mut locus.kind {
+                LocusKind::Edge { plasticity, .. } => plasticity.eta = 0.5,
+                LocusKind::Marker { value, .. } => *value = 0.5,
+                _ => {}
+            }
+        }
+        let mut counters = MutationCounters::default();
+        let (mut marker_value, mut marker_flag) = (0_u32, 0_u32);
+        let (mut eta, mut plastic_flag) = (0_u32, 0_u32);
+        for child in 0..120_000_u64 {
+            let mut subject = seed.clone();
+            let _ = mutate(
+                &mut subject,
+                &config,
+                &caps(),
+                &mut counters,
+                211,
+                child,
+                child,
+            );
+            for (before, after) in indexed(&seed).into_iter().zip(indexed(&subject)) {
+                assert_eq!(before.0, after.0, "the locus key set moved");
+                match (before.1, after.1) {
+                    (
+                        LocusKind::Marker {
+                            value: v0,
+                            flags: f0,
+                        },
+                        LocusKind::Marker {
+                            value: v1,
+                            flags: f1,
+                        },
+                    ) => {
+                        marker_value += u32::from(v0 != v1);
+                        marker_flag += u32::from(f0 != f1);
+                    }
+                    (
+                        LocusKind::Edge {
+                            flags: f0,
+                            plasticity: p0,
+                            ..
+                        },
+                        LocusKind::Edge {
+                            flags: f1,
+                            plasticity: p1,
+                            ..
+                        },
+                    ) => {
+                        eta += u32::from(p0.eta != p1.eta);
+                        plastic_flag += u32::from(
+                            f0 & crate::genome2::EDGE_FLAG_PLASTIC
+                                != f1 & crate::genome2::EDGE_FLAG_PLASTIC,
+                        );
+                    }
+                    _ => {}
+                }
+            }
+        }
+        assert!(
+            marker_value.min(marker_flag).min(eta).min(plastic_flag) > 300,
+            "too few hits to compare: value {marker_value}, flag {marker_flag}, \
+             eta {eta}, plastic {plastic_flag}"
+        );
+        // Intervals are roughly three standard errors wide at this trial
+        // count and no wider. They are not a formality: an arm that moved
+        // `value` on two of the seven targets lands at 2.0 here, and one that
+        // moved it on none lands at 0.
+        let ratio = |numerator: u32, denominator: u32| f64::from(numerator) / f64::from(denominator);
+        for (name, got) in [
+            ("marker value against marker flag", ratio(marker_value, marker_flag)),
+            ("eta against the plastic flag", ratio(eta, plastic_flag)),
+        ] {
+            assert!(
+                (0.85..=1.18).contains(&got),
+                "{name}: {got:.3}, so the two targets are not one outcome in seven each \
+                 ({marker_value}/{marker_flag}/{eta}/{plastic_flag})"
+            );
+        }
+        for (name, got) in [
+            ("value", ratio(eta, marker_value)),
+            ("flag", ratio(plastic_flag, marker_flag)),
+        ] {
+            assert!(
+                (1.72..=2.28).contains(&got),
+                "{name}: edge over marker is {got:.3}, which is not the 2:1 the founder's \
+                 two edge loci and one marker locus predict \
+                 ({marker_value}/{marker_flag}/{eta}/{plastic_flag})"
             );
         }
     }

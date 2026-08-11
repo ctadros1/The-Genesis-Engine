@@ -2264,6 +2264,287 @@ mod tests {
         assert_eq!(census.edge_alleles, 38 + 40);
     }
 
+    /// A population of `count` identical genomes built from `loci`.
+    fn population(count: usize, loci: Vec<Locus>) -> Vec<Genome2> {
+        (0..count).map(|_| genome(loci.clone())).collect()
+    }
+
+    #[test]
+    fn each_of_the_four_signals_makes_the_comparison_defined_on_its_own() {
+        // `no_variance` is a four-way conjunction and each term guards a
+        // different world. Deleting any one of them leaves the other three
+        // true in every case the other tests build, so this walks the four
+        // one-signal worlds - the only shape that can tell the terms apart.
+        //
+        // The consequence is not cosmetic. A world wrongly called undefined
+        // is not counted for C11.2 however far its excess is above the bar,
+        // and `drift_no_variance` is what a reader uses to tell "the control
+        // never ran" from "plasticity failed to keep up with drift", which
+        // the module doc says are different results.
+        let plan = PlasticityPlan::default();
+        let quiet = vec![
+            edge(4_000, 0.0, 0),
+            marker(4_500, 0.0, 0),
+            edge(5_000, 0.0, 0),
+        ];
+        assert!(allele_census(&population(20, quiet.clone())).no_variance());
+
+        // 1. Only `eta` moved. Defined, and selected: this is what C11.2
+        //    passing looks like, and a `no_variance` missing its `eta` term
+        //    would report it as undefined instead.
+        let census = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.05, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.05, 0),
+            ],
+        ));
+        assert!(!census.no_variance(), "moved eta alone read as undefined");
+        assert_eq!(census.eta_excess_milli(), 50);
+        assert!(world_for(census).selected_over_drift(&plan));
+
+        // 2. Only `EDGE_FLAG_PLASTIC` set.
+        let census = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.0, EDGE_FLAG_PLASTIC),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.0, EDGE_FLAG_PLASTIC),
+            ],
+        ));
+        assert!(!census.no_variance(), "a set plastic flag read as undefined");
+        assert_eq!(census.plastic_excess_milli(), 1_000);
+        assert!(world_for(census).selected_over_drift(&plan));
+
+        // 3. Only the marker's value moved - the directed failure.
+        let census = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.0, 0),
+                marker(4_500, 0.05, 0),
+                edge(5_000, 0.0, 0),
+            ],
+        ));
+        assert!(!census.no_variance(), "a moved marker read as undefined");
+        assert_eq!(census.eta_excess_milli(), -50);
+        assert!(!world_for(census).selected_over_drift(&plan));
+
+        // 4. Only the marker's flag set. Also a failure and also defined:
+        //    the control moved and plasticity did not follow it.
+        let census = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.0, 0),
+                marker(4_500, 0.0, MARKER_FLAG_NEUTRAL),
+                edge(5_000, 0.0, 0),
+            ],
+        ));
+        assert!(
+            !census.no_variance(),
+            "a set marker flag read as undefined, so the control's own drift is invisible"
+        );
+        assert_eq!(census.plastic_excess_milli(), -1_000);
+        assert!(!world_for(census).selected_over_drift(&plan));
+    }
+
+    #[test]
+    fn an_excess_of_exactly_the_margin_counts_on_both_scales() {
+        // The bar is `>=`, and 25 milli is not an arbitrary number: it is the
+        // expected absolute size of one point mutation's step at the pinned
+        // `point_delta_q16`. A world that moved by exactly one step is the
+        // smallest world the criterion was written to count, and `>` would
+        // silently drop it. No other test evaluates either predicate at the
+        // bar itself.
+        let plan = PlasticityPlan::default();
+
+        // `eta` at 25 milli against a marker still at the founder value.
+        // 0.025 and 0.024 are chosen so the f32 -> milli truncation lands on
+        // 25 and 24 exactly rather than near them.
+        let at_bar = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.025, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.025, 0),
+            ],
+        ));
+        assert_eq!(at_bar.eta_excess_milli(), 25);
+        assert!(world_for(at_bar).eta_over_drift(&plan));
+        let below = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.024, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.024, 0),
+            ],
+        ));
+        assert_eq!(below.eta_excess_milli(), 24);
+        assert!(!world_for(below).eta_over_drift(&plan));
+
+        // The plastic-flag scale at exactly the same bar. One organism in
+        // twenty carrying one flagged edge of two is 500 milli for that
+        // organism and 25 for the world.
+        let mut flagged = population(
+            19,
+            vec![
+                edge(4_000, 0.0, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.0, 0),
+            ],
+        );
+        flagged.push(genome(vec![
+            edge(4_000, 0.0, EDGE_FLAG_PLASTIC),
+            marker(4_500, 0.0, 0),
+            edge(5_000, 0.0, 0),
+        ]));
+        let census = allele_census(&flagged);
+        assert_eq!(census.plastic_fraction_milli, 25);
+        assert_eq!(census.plastic_excess_milli(), 25);
+        let world = world_for(census);
+        assert!(world.plastic_over_drift(&plan));
+        assert!(world.selected_over_drift(&plan));
+    }
+
+    #[test]
+    fn a_world_with_no_variance_is_undefined_even_at_a_zero_margin() {
+        // The `!no_variance()` guard in the two predicates is unreachable at
+        // the default 25-milli margin: a world where nothing moved has an
+        // excess of exactly zero, which is already below the bar. It becomes
+        // load-bearing the moment the margin is zero - and the margin is a
+        // plan field the `lifesim plasticity --sesoi` flag sets with no lower
+        // bound, so this is a reachable configuration and not a hypothetical.
+        //
+        // Without the guard a founder-frozen world reports `0 >= 0` and is
+        // counted as a world where plasticity beat drift, which is the exact
+        // inversion of what it is.
+        let plan = PlasticityPlan {
+            drift_margin_milli: 0,
+            ..PlasticityPlan::default()
+        };
+        let census = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.0, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.0, 0),
+            ],
+        ));
+        assert!(census.no_variance());
+        assert_eq!(census.eta_excess_milli(), 0);
+        assert_eq!(census.plastic_excess_milli(), 0);
+        let world = world_for(census);
+        assert!(!world.eta_over_drift(&plan));
+        assert!(!world.plastic_over_drift(&plan));
+        assert!(!world.selected_over_drift(&plan));
+
+        // ...and the same plan does count a world that actually moved, so the
+        // three refusals above are the guard firing rather than the margin
+        // being unreachable.
+        let moved = allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.001, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.001, 0),
+            ],
+        ));
+        assert!(!moved.no_variance());
+        assert!(world_for(moved).selected_over_drift(&plan));
+    }
+
+    #[test]
+    fn the_marker_is_averaged_per_organism_before_it_is_averaged_over_the_world() {
+        // `a_genome_with_many_edges_does_not_outvote_one_with_few` states this
+        // for the treatment side only, and the two sides are averaged by
+        // separate lines. A control weighted by alleles against a treatment
+        // weighted by organisms is a mismatched comparison in exactly the
+        // worlds where it matters - the ones where duplication has moved the
+        // locus counts apart, which is every world in the campaign: the Avar
+        // arm ended at 4.12 edge alleles and 2.21 marker alleles per organism
+        // against a founder's 4 and 2.
+        let mut population: Vec<Genome2> = (0..19)
+            .map(|_| genome(vec![edge(4_000, 0.0, 0), marker(4_500, 0.0, 0)]))
+            .collect();
+        let mut heavy = vec![edge(4_000, 0.0, 0)];
+        for index in 0..20_u32 {
+            heavy.push(marker(4_500 + index, 1.0, MARKER_FLAG_NEUTRAL));
+        }
+        population.push(genome(heavy));
+        let census = allele_census(&population);
+        // Allele-weighted both quantities would be 40/(38+40) = 512 milli;
+        // per organism they are 1000/20 = 50.
+        assert_eq!(census.marker_value_milli, 50);
+        assert_eq!(census.marker_set_fraction_milli, 50);
+        assert_eq!(census.marker_alleles, 38 + 40);
+        assert_eq!(census.set_marker_alleles, 40);
+    }
+
+    #[test]
+    fn the_summary_reads_each_c11_2_column_from_its_own_predicate() {
+        // Every C11.2 number a reader sees comes out of `summarise`, and the
+        // campaign's headline reading - "eight worlds, all of them on the
+        // plastic-flag scale and none on the `eta` scale" - is the two counts
+        // being distinguishable. Nothing tested these columns at all, so a
+        // report that filled `eta_selected` from the plastic predicate would
+        // have printed a clean, wrong sentence.
+        let plan = PlasticityPlan::default();
+        let quiet = vec![
+            edge(4_000, 0.0, 0),
+            marker(4_500, 0.0, 0),
+            edge(5_000, 0.0, 0),
+        ];
+        let by_eta = world_for(allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.05, 0),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.05, 0),
+            ],
+        )));
+        let by_flag = world_for(allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.0, EDGE_FLAG_PLASTIC),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.0, EDGE_FLAG_PLASTIC),
+            ],
+        )));
+        // **Two worlds on the flag scale and one on the `eta` scale, not one
+        // of each.** With one of each the two counts are both 1 and a column
+        // filled from the other predicate is indistinguishable - which is
+        // exactly what the campaign's `eta_selected=0 plastic_selected=8`
+        // would have been read against.
+        let by_flag_again = world_for(allele_census(&population(
+            20,
+            vec![
+                edge(4_000, 0.0, EDGE_FLAG_PLASTIC),
+                marker(4_500, 0.0, 0),
+                edge(5_000, 0.0, 0),
+            ],
+        )));
+        let undefined = world_for(allele_census(&population(20, quiet)));
+
+        let outcome = summarise("A", &[by_eta, by_flag, by_flag_again, undefined], &plan);
+        assert_eq!(outcome.worlds, 4);
+        assert_eq!(outcome.selected, 3);
+        assert_eq!(outcome.eta_selected, 1);
+        assert_eq!(outcome.plastic_selected, 2);
+        assert_eq!(outcome.drift_no_variance, 1);
+        // The medians are read off the same four worlds, so a column wired to
+        // the wrong census field shows here too. `median_milli` takes the
+        // lower of the two middle values, so with two zero worlds these are
+        // all zero and the totals below are what separate the columns.
+        assert_eq!(outcome.median_eta_milli, 0);
+        assert_eq!(outcome.median_eta_excess_milli, 0);
+        assert_eq!(outcome.median_plastic_fraction_milli, 0);
+        assert_eq!(outcome.median_plastic_excess_milli, 0);
+        assert_eq!(outcome.total_moved_eta_alleles, 80);
+        assert_eq!(outcome.total_plastic_alleles, 80 + 40);
+        assert_eq!(outcome.total_moved_marker_alleles, 0);
+        assert_eq!(outcome.total_set_marker_alleles, 0);
+    }
+
     #[test]
     fn the_verdict_needs_the_bar_and_a_control_that_stays_below_the_ceiling() {
         let plan = PlasticityPlan::default();

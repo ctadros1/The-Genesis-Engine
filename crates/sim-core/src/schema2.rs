@@ -314,7 +314,15 @@ pub fn with_marker_locus(mut genome: Genome2) -> Genome2 {
         homology_id: MARKER_HOMOLOGY_ID,
         // Derived from the slot exactly as every other founder locus's is
         // (`minimal_founder` uses `u64::from(homology_id)`), so two founders
-        // agree on marker identity and the loci align during meiosis.
+        // agree on marker identity.
+        //
+        // **Alignment during meiosis is `homology_id`'s job, not this
+        // field's.** `gene_lineage_id` is provenance only: nothing in the
+        // engine reads it, so a marker whose lineage id were derived some
+        // other way would inherit, recombine, mutate and express exactly the
+        // same. Stated because the alternative reading - that this line is
+        // what keeps the control matched - is wrong, and a mutation of it is
+        // unobservable rather than defended.
         gene_lineage_id: u64::from(MARKER_HOMOLOGY_ID),
         mutation_event_id: 0,
         kind: crate::genome2::LocusKind::Marker {
