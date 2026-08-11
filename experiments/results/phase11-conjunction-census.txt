@@ -1,0 +1,554 @@
+Phase 11 follow-up: is the C11.1/C11.2 null about learning, or about
+reachability? A DESCRIPTIVE CENSUS of the campaign's own 120 snapshots.
+
+================================================================
+THIS IS NOT A HYPOTHESIS TEST AND MUST NOT BE REPORTED AS ONE.
+================================================================
+
+It has no bar, no threshold, no null distribution, no permutation and no
+verdict. It re-reads snapshots that `phase11-c111-confirmatory` already
+wrote, with that campaign's outcome already known, and counts what is in
+them. A statistic computed with the answer in view cannot be a test of it.
+The pre-registered decisions on C11.1 and C11.2 stand exactly as
+`phase11-c111-confirmatory-findings.txt` records them; nothing here revises
+a threshold, and no campaign was re-run.
+
+Source campaign     experiments/phase11-c111-confirmatory.campaign
+                    campaign hash 0x96ed767dbd9060e6, 120 runs, 60,000 ticks
+Snapshots read      120 `.alif`, format 4, the campaign's own outputs
+Analysis            lifesim-conjunction-census-v1
+Command             lifesim conjunction --manifest <manifest>
+Raw report          phase11-conjunction-census-raw.txt (376 lines)
+Wall               16 s over 120 worlds
+
+Two guards had to pass on every one of the 120 worlds before a number below
+was printed, and both did:
+
+  - the restored config's own `stable_hash()` equals the hash the manifest
+    recorded for that run, so a zero here cannot be a codec defect;
+  - re-expressing and re-compiling every genome at that world's own
+    `plasticity_budget()` reproduces `plastic_edges_total` exactly - 48,119
+    in Avar, 24,376 in Astat, 0 in both B arms. The expressed census is
+    therefore describing the plan the learn phase actually iterated, not one
+    this analysis imagined.
+
+
+----------------------------------------------------------------
+0. THE CONJUNCTION, CONFIRMED FROM THE CODE, WITH TWO CORRECTIONS
+----------------------------------------------------------------
+
+The reading in the request is right about the shape and needs two
+amendments. A nonzero learned delta on one edge needs, on the same locus:
+
+  1. `EDGE_FLAG_PLASTIC` set
+     point-mutation target 1, a toggle          structmut.rs:675
+     only a flagged edge enters `plastic_edges`  controller2.rs:236
+     expression ORs the two alleles' flags       genome2.rs:1570
+
+  2. `rule_id != RULE_STATIC`
+     point-mutation target 2, a re-draw          structmut.rs:676, :633
+     rule 0 returns `StepKind::Static` with the state unchanged, before
+     eta, the coefficients, the decay or the modulator are read at all
+                                                 plasticity.rs:375-377
+
+  3. `eta > 0`
+     point-mutation target 3, `+delta` clamped at 0 from below
+                                                 structmut.rs:677
+     every rule form multiplies by eta:
+       rules 1 and 2 `raw * eta`                 plasticity.rs:427
+       rule 3 `raw * eta * modulator`            plasticity.rs:425
+       rule 4 `to_q16_checked(raw * eta)` into the trace
+                                                 plasticity.rs:402
+
+  4. a nonzero coefficient - EXCEPT UNDER RULE_OJA. **Confirmed.**
+     point-mutation target 4                     structmut.rs:679-681
+     `RULE_OJA => post * (pre - post * w_eff)` reads no coefficient
+                                                 plasticity.rs:388
+     every other rule goes through `hebbian`, which is
+     `c0*x*y + c1*x + c2*y + c3` and is identically zero when all four
+     coefficients are zero                       plasticity.rs:347, :391
+     pinned in sim-core by
+     `oja_normalizes_toward_the_effective_weight_and_ignores_the_coefficients`
+
+  CORRECTION A - eta is required for Oja too. Oja is exempt from the
+  coefficient condition only. `delta = raw * eta` applies to rule 2 exactly
+  as to rule 1 (plasticity.rs:427), so an Oja edge needs conditions 1, 2
+  and 3, not two.
+
+  CORRECTION B - THERE IS A FIFTH CONDITION, and the four-target reading
+  misses it in the opposite direction. Rules 3 and 4 multiply by the
+  modulator activation, and `learn_phase` hands a hard `0.0` to any edge
+  whose modulator did not resolve (world.rs:3953-3957). Resolution needs
+  `modulator_node != 0` AND that node's role to be `Modulatory`
+  (controller2.rs:253-264) - a seventh mutation target (structmut.rs:683)
+  and a *node*-arm role re-draw on a different locus (structmut.rs:604).
+  So a modulated edge with no usable modulator computes zero forever
+  whatever else it carries. It is reported separately, as
+  `full_conjunction_gated`, rather than folded into the depth histogram,
+  which is kept at the four conditions the request asked for.
+
+  ONE MORE, reported and not counted: diploid expression can assemble the
+  conjunction ACROSS haplotypes even when neither allele carries it.
+  `blend_plasticity` (genome2.rs:1358-1395) takes `rule_id` and
+  `modulator_node` from haplotype 0 and blends `eta` and the coefficients
+  by dominance, and the flag is the OR. That is why the expressed count
+  below is larger than the allele count, and it is the mechanism by which
+  the phenotype appeared at all.
+
+
+----------------------------------------------------------------
+1. THE HEADLINE
+----------------------------------------------------------------
+
+**The null is about reachability, and the decisive number is 9.**
+
+Across the 30 Avar worlds, 9 of 684,370 edge alleles satisfy all four
+conditions - 13 per million. 3 of those 9 also have a named modulator where
+the rule needs one. The other 684,361 alleles carry a genotype on which the
+learn phase is arithmetically incapable of moving a weight.
+
+**But it is not a clean zero, and the second half of the finding is that
+the phenotype WAS assembled, rarely, and did almost nothing when it was.**
+Diploid expression is more permissive than either allele: 59 of the 48,119
+expressed plastic edges in Avar clear the four conditions (1,226 per
+million), 29 of them with a resolvable modulator, spread over 17 of the 30
+worlds. And 25 plastic-edge rows out of 48,119 hold a nonzero learned value
+at tick 60,000, in 14 of the 30 worlds.
+
+So the campaign's central claim needs one correction. The findings file
+says the final mean absolute learned delta was 0 milli in all 30 Avar
+worlds and reads that as "the mechanism moved no weight". The mean is 0,
+and the mean is a rounding artefact: the total absolute learned magnitude
+in the Avar arm is 139,116 Q16 = 2.1227 weight units, and
+`2.1227 * 1000 / 48119` truncates to 0 milli. Twenty-five edges did learn.
+The largest learned delta anywhere in the arm is 15,054 Q16 = 0.2297 weight
+units = 229 milli, on a weight bounded at 8.
+
+That is the corrected reading: **not "learning was measured and did
+nothing", and not "learning never happened", but "the learning phenotype
+was assembled about sixty times out of forty-eight thousand plastic edges,
+moved twenty-five of them, and the population statistic could not have
+resolved that if it had mattered."** The 25 nonzero Avar learned values run
+from 11 Q16 (0.00017 weight units) to 15,054 Q16 (0.2297), with a median of 2,930
+Q16 = 0.045 weight units = 45 milli. That median is reconstructed from the
+per-world quantiles and sums in `phase11-conjunction-census-raw.txt`; the
+per-world lines are the primary record.
+
+The supporting number, which changes what "a billion updates" means:
+
+  Of the 48,119 edges expressed as plastic in Avar, **44,972 (93.46%) carry
+  rule 0**, and rule 0 is a complete no-op. Of the 1,109,373,897 learn-phase
+  calls the findings file quotes, **1,058,712,033 (95.43%) returned
+  `StepKind::Static` having read and written nothing**; only 50,661,864
+  (4.57%) evaluated a rule form. `plasticity_updates_total` is
+  `PlasticityCounters::total_evaluated`, which is applied + static +
+  refused, so the headline counts the no-ops.
+
+  Zero clamp saturations and zero trace saturations in 1.1 billion calls.
+  `PlasticityCounters::total_saturations`'s own documentation says a long
+  run should saturate and "a zero here would suggest nothing was learning".
+  It is zero. Zero faults as well, in both A arms.
+
+
+----------------------------------------------------------------
+2. PER ARM
+----------------------------------------------------------------
+
+Every count is over edge ALLELES, both haplotypes, in every living
+organism's genome at tick 60,000. Percentages are of `edge_alleles`.
+
+                                   Avar       Astat        Bvar       Bstat
+  worlds                             30          30          30          30
+  extinct                             1           0           0           0
+  organisms                     166,271      91,824     164,578      87,907
+  edge alleles                  684,370     375,318     684,525     361,486
+  loci (all kinds)            7,609,038   4,161,526   7,509,801   3,986,245
+
+  1 flagged plastic              54,641      27,822           0           0
+                                (7.984%)    (7.413%)         (0)         (0)
+  2 rule_id != 0                 42,287      25,605           0           0
+                                (6.179%)    (6.822%)         (0)         (0)
+  3 eta > 0                      26,899      15,988           0           0
+                                (3.931%)    (4.260%)         (0)         (0)
+  4 nonzero drive                62,093      34,168           0           0
+    (rule-aware)                (9.073%)    (9.104%)         (0)         (0)
+    any nonzero coefficient      54,776      28,509           0           0
+    (rule-blind)                (8.004%)    (7.596%)         (0)         (0)
+
+  decay > 0                      32,369      13,462           0           0
+  modulator_node != 0            38,294      24,403           0           0
+
+  **FULL CONJUNCTION (1-4)             9          19           0           0**
+    per million alleles            13.2        50.6           0           0
+  + resolvable modulator              3           5           0           0
+  worlds with any                     4           4           0           0
+
+  stored rule out of registry         0           0           0           0
+
+  rule histogram (normalized rule_id, over all edge alleles)
+    rule 0 static                642,083     349,713     684,525     361,486
+    rule 1 hebbian                11,792       5,626           0           0
+    rule 2 oja                     8,641       5,978           0           0
+    rule 3 modulated hebbian      10,172       6,752           0           0
+    rule 4 eligibility trace      11,682       7,249           0           0
+
+  CONJUNCTION-DEPTH HISTOGRAM (how many of the four each allele satisfies)
+    depth 0                      524,025     285,000     684,525     361,486
+    depth 1                      136,261      77,776           0           0
+    depth 2                       22,602      11,838           0           0
+    depth 3                        1,473         685           0           0
+    depth 4                            9          19           0           0
+
+  Expressed - the plastic edges the learn phase actually visited
+    live expressed edges         354,521     193,000     357,570     187,073
+    compiled plastic              48,119      24,376           0           0
+    (equals plastic_edges_total)     yes         yes         yes         yes
+    of those, rule != 0            3,147       1,432           0           0
+                                (6.54%)     (5.87%)          -           -
+    of those, rule 0              44,972      22,944           0           0
+                               (93.46%)    (94.13%)          -           -
+    of those, eta > 0              4,272       1,892           0           0
+    of those, nonzero drive        7,103       3,168           0           0
+    **full conjunction                59          34           0           0**
+    + resolvable modulator            29          16           0           0
+    modulated with no modulator    1,714         787           0           0
+    refused by the budget cap          0           0           0           0
+    expressed depth 1             35,192      18,591           0           0
+    expressed depth 2             11,391       5,112           0           0
+    expressed depth 3              1,477         639           0           0
+    expressed depth 4                 59          34           0           0
+
+  Learned state at tick 60,000
+    section present            30 worlds   30 worlds     absent      absent
+    rows (= plastic edges)        48,119      24,376           0           0
+    **rows with learned != 0          25          15           0           0**
+    rows with trace != 0              17          11           0           0
+    worlds with any                   14          10           0           0
+    max |learned| (Q16)           15,054      13,265           0           0
+      = weight units              0.2297      0.2024           0           0
+    sum |learned| (Q16)          139,116      94,948           0           0
+      = weight units              2.1227      1.4488           0           0
+    mean_abs_learned_milli             0           0           0           0
+    faults                             0           0           0           0
+    clamp saturations                  0           0           0           0
+
+  Learn-phase disposition
+    total evaluated        1,109,373,897 657,346,916           0           0
+    applied (ran a rule)      50,661,864  30,321,901           0           0
+                                 (4.57%)     (4.61%)          -           -
+    static (rule 0 no-op)  1,058,712,033 627,025,015           0           0
+                                (95.43%)    (95.39%)          -           -
+    refused                            0           0           0           0
+    energy paid, milli-EU    221,410,876 131,209,488           0           0
+
+INTERNAL CONSISTENCY, printed so it can be checked rather than trusted.
+The depth histogram is a partition of the edge alleles in every world, and
+the sum of the four marginals equals the depth-weighted sum of the
+histogram exactly:
+
+  Avar   54,641 + 42,287 + 26,899 + 62,093                     = 185,920
+         136,261*1 + 22,602*2 + 1,473*3 + 9*4                  = 185,920
+  Astat  27,822 + 25,605 + 15,988 + 34,168                     = 103,583
+         77,776*1 + 11,838*2 + 685*3 + 19*4                    = 103,583
+
+ONE DISCREPANCY WITH THE FINDINGS FILE, RECONCILED. It reports 26,654 Avar
+"eta alleles off founder value"; this census reports 26,899 with `eta > 0`.
+The difference is 245 alleles and it is the milli quantization:
+`sim-analysis::plasticity::value_milli` computes `(eta * 1000.0) as i64`,
+so an eta below 0.0005 reports as 0. Both numbers are right about their own
+question.
+
+B-ARM READING. Both B arms are 0 on every plasticity quantity and 684,525 /
+361,486 alleles at depth 0. That is by construction - the mutation gate
+cannot write these fields - and it is the check that the counts above are
+produced by the gate rather than by the census.
+
+
+----------------------------------------------------------------
+3. IS THERE A SELECTIVE GRADIENT ANYWHERE ON THE PATH?
+----------------------------------------------------------------
+
+**No positive one anywhere, and a negative one on every state that carries
+the flag. The interior of the path is a plateau with a moat around the
+half of it that costs energy.** Argued from the code, then measured.
+
+3a. EVERY INCOMPLETE STATE COMPUTES BIT-IDENTICALLY TO THE FOUNDER.
+
+  `plasticity::step` returns at its first branch for rule 0
+  (plasticity.rs:375-377) - `StepOutcome::unchanged(state, Static, false)`,
+  before eta, the coefficients, the decay or the modulator are read. So an
+  edge with `eta = 0.9` and `rule_id = 0` and an edge with `eta = 0.0` and
+  `rule_id = 0` execute the same instructions and write the same bytes.
+  Pinned by `static_rule_is_a_complete_no_op` in sim-core, which sets a full
+  decay and a saturating learned value and asserts the state is untouched,
+  with a rule-1 control on the same parameters that does move.
+
+  With `rule_id != 0` and `eta == 0`: `delta = raw * 0.0 = 0.0`,
+  `to_q16(0.0) = 0` (plasticity.rs:433), `decay_toward_zero(0, d) = 0`,
+  `accumulate_clamped(0, 0) = (0, false)`. Learned state stays 0.
+
+  With `rule_id != 0`, `eta > 0` and all coefficients zero under rules 1, 3
+  or 4: `hebbian([0,0,0,0], x, y) = 0.0` exactly (plasticity.rs:347), and
+  the same chain gives 0.
+
+  A learned value of 0 makes the edge's evaluation identical to a
+  non-plastic edge's. `effective_weight(w, 0) = (w + 0.0).clamp(-8, 8)`
+  (plasticity.rs:336-338), and every genome weight is already bounded to
+  `VALUE_LIMIT = 8` at decode, so the clamp is the identity and the
+  multiplier at the summation site is bit-for-bit `edge.weight` -
+  controller2.rs:540-547, whose own comment states it.
+
+  Without the flag, none of conditions 2, 3 or 4 is even reachable by the
+  runtime: `compile_with_budget` lists only `edge.plastic`
+  (controller2.rs:236), so the edge is compiled as an ordinary fixed edge,
+  the learn phase never visits it, and it pays nothing.
+
+  So: **every state on the path except the complete one is behaviourally
+  invisible.** Selection has nothing to act on. Drift is the only force.
+
+3b. THE PLASTICITY ENERGY COST DOES NOT RESCUE THE GRADIENT. IT MAKES HALF
+    THE PATH DELETERIOUS.
+
+  `learn_phase` charges `plan.plastic_edges.len() * cost_per_edge_thousandths`
+  (world.rs:4008-4010) - the count of plastic edges, with no reference to
+  the rule. The comment above it is explicit: "Every plastic edge pays,
+  including a rule-0 edge that writes nothing ... charging only edges that
+  moved would make 'turn the rule off' a free way to keep the flag."
+
+  At this campaign's `plastic_edge_cost_milli_per_s = 2` and `dt_ms = 100`
+  (world.rs:906-907), the charge is 200 thousandths = **0.2 milli-EU per
+  plastic edge per tick**, exact to within one milli because D-094 made the
+  remainder carry. Basal metabolism is 100 milli/s = 10 milli/tick per
+  organism, so one flagged edge is **2% of an organism's basal burn**, paid
+  every tick of its life, in a world where energy is what kills: the first
+  Avar world records 80,906 starvation deaths against 88,439 births.
+
+  Measured, not asserted: the Avar arm paid **221,410,876 milli-EU** for
+  plastic edges. The predicted charge is 1,109,373,897 edge-ticks x 0.2 =
+  221,874,779 milli, so the ledger is 99.79% of the exact price - the
+  shortfall is organisms that died owing it. **95.43% of that, about
+  211,300,000 milli-EU, was charged for edges running rule 0**: machinery
+  that returned at the first branch without reading a gene.
+
+  So the sign of every step is:
+
+    conditions 2, 3, 4 without the flag   exactly neutral (never compiled)
+    the flag alone                         deleterious, 0.2 milli/tick, no
+                                           computational difference at all
+    the flag + any incomplete subset       deleterious by the same amount,
+                                           still no computational difference
+    the complete conjunction               same cost, and the only state in
+                                           which the arithmetic can do
+                                           anything at all
+
+  That is a fitness valley of depth one metabolic charge and width three
+  mutational steps, with a plateau on the cheap side of it. Evolution
+  cannot climb this: there is no monotone path of non-negative steps from
+  the founder to the phenotype. **The C11.2 null - "plasticity spread at
+  the drift rate and not above it" - is exactly what this landscape
+  predicts, and it is a statement about the landscape rather than about the
+  value of learning.**
+
+  The one caveat that keeps this honest: the flag is genuinely deleterious
+  and the arm still carries it on 7.98% of edge alleles, which is the same
+  neighbourhood C11.2 measured its neutral marker in (6.1 percent of marker
+  alleles in the median Avar world, on that criterion's per-organism scale -
+  not the same statistic as this one and not directly differenced here). At
+  a per-edge selection coefficient this small, over this many generations,
+  drift dominates and the cost is not resolvable in this data. The cost is
+  enough to forbid a positive gradient; it is not enough to have visibly
+  purged the flag.
+
+
+----------------------------------------------------------------
+4. EXPECTED WAITING TIME FOR THE CONJUNCTION AT ONE LOCUS
+----------------------------------------------------------------
+
+CONFIRMED FROM THE CAMPAIGN FILE: `base genome2.mutation.point_q16 65535`,
+ten times the shipped 6554, and `point_delta_q16 3277`.
+
+  Step 1 - how often a birth touches one named edge locus.
+    `mutate` fires point mutation once per birth with probability
+    `point_q16 / 65536 = 65535/65536 = 0.999985` (structmut.rs:434).
+    `point_mutate` then picks a haplotype (1/2), a chromosome (1/C), and one
+    locus uniformly inside it (structmut.rs:528-533, :568).
+    Measured from these snapshots rather than assumed from the founder,
+    because duplication grows the denominator: Avar carries 7,609,038 loci
+    over 166,271 organisms = **45.76 loci per genome**, in **1 chromosome
+    per haplotype**, i.e. 22.88 loci per chromosome.
+
+      P(a birth delivers a point mutation to one named edge locus)
+        = 0.999985 * (1/2) * (1/1) * (1/22.88)
+        = 1 / 45.76
+        = 0.02185
+
+  Step 2 - how many hits at that locus assemble the conjunction.
+    Given a hit on an edge locus, the target is uniform on 7
+    (`draw(8) % 7`, structmut.rs:631). Four of the seven matter.
+
+    Naive coupon collector - four required coupons at 1/7 each, every hit
+    succeeding and nothing ever reverting:
+        E = 7 * (1 + 1/2 + 1/3 + 1/4) = 7 * 2.08333 = **14.58 hits**
+    That is a floor and it is optimistic in three ways the operators make
+    concrete:
+      - target 1 TOGGLES the flag (structmut.rs:675), so the flag is set
+        only after an odd number of hits;
+      - target 2 RE-DRAWS the rule modulo 5 (structmut.rs:633, :676), so a
+        hit sets a live rule with probability 4/5 and turns one off with
+        probability 1/5;
+      - target 3 adds a signed delta clamped at 0 from below
+        (structmut.rs:677), so from eta = 0 only the 32,767 of 65,536
+        upward draws move it, and a later downward draw can clamp it back;
+      - target 4 adds a signed delta to one of four coefficients
+        (structmut.rs:679-681); from zero, any of the 65,535 nonzero deltas
+        works, so it is effectively sticky.
+
+    Solving the exact 16-state absorbing chain over those four two-state
+    conditions, driven at 1/7 per hit each with the transition
+    probabilities above, gives the expected number of hits at one locus to
+    have all four ON simultaneously:
+
+        eta sticky once positive (optimistic)          **24.03 hits**
+        eta falls back to 0 on one downward hit in 4     27.18 hits
+        eta falls back to 0 on every downward step       29.66 hits
+
+  Step 3 - in births.
+        24.03 hits / 0.02185 hits per birth = **1,100 births in the direct
+        line of descent of that one locus.**
+    At the pessimistic end, 1,357.
+
+  Step 4 - what 60,000 ticks actually delivered.
+    The mean over the 30 Avar worlds of each world's `max_ancestry_depth`
+    is **63.7 generations** - and that is a *maximum* per world, so the
+    typical standing lineage is shallower and the shortfall below is a
+    lower bound. A lineage of that depth receives
+
+        63.7 * 0.02185 = **1.39 point mutations at any one locus**,
+        i.e. 0.20 hits per target,
+
+    against the ~24 needed. **The run is short by a factor of about 17.**
+    To assemble the conjunction along one line of descent this campaign
+    would have to have run roughly 1,100/64 ~ 17 times longer, or carry
+    ~17x the mutational reach per generation.
+
+  Step 5 - the population is large, and that is why the count is 9 and not
+    0. Across the Avar arm 4,425,813 births produced 4,276,156 applied point
+    mutations. Edge loci are 8.99% of all loci, so about **384,600 point
+    mutations landed on edge loci, ~54,900 per target**. Those are spread
+    over ~340,000 distinct edge loci in ~166,000 standing genomes and, with
+    no gradient (section 3), they do not compose: an allele that acquired
+    one condition has no fitness reason to spread while it waits for the
+    next.
+
+  CROSS-CHECK, and it is the strongest single result in this file. Fit the
+  per-lineage hit rate from one marginal and predict the other three. The
+  flag is ON iff an odd number of target-1 hits landed, so with mu hits per
+  target per allele-lineage, P(flag) = (1 - exp(-2 mu))/2. The observed
+  7.984% inverts to mu = 0.0868, i.e. 0.61 locus-hits per allele-lineage -
+  about half the 1.39 the mean ancestry depth suggests, which is what one
+  expects when the standing population is younger than the deepest lineage.
+  With that single fitted number:
+
+                          predicted    observed
+      rule_id != 0          6.65%       6.179%
+      eta > 0               4.16%       3.931%
+      nonzero coefficient   8.31%       8.004%
+
+  and the full conjunction under independence of the four indicators:
+
+      Avar   684,370 * 0.07984 * 0.06179 * 0.03931 * 0.09073 = **12.0**
+             observed **9**            Poisson(12.0): entirely ordinary
+      Astat  375,318 * 0.07413 * 0.06822 * 0.04260 * 0.09104 = **7.4**
+             observed **19**
+
+  Avar's count is what four independent, unselected, drift-only conditions
+  predict, to within Poisson noise. Astat's is 2.6x the independence
+  expectation - and that is not evidence of selection in the *stationary*
+  arm; it is pseudoreplication. Astat's 19 come from only 4 worlds, and 14
+  of the 19 are in one world (seed 0x1786). Standing alleles are not
+  independent draws: one assembly event followed by ordinary reproduction
+  produces many identical copies. The same caution applies to Avar's 9,
+  which come from 4 worlds with 6 in one of them.
+
+  **So the honest count of independent assembly events is not 9 and 19. It
+  is at most 4 and 4, in 30 worlds each.**
+
+
+----------------------------------------------------------------
+5. WHAT THIS CHANGES ABOUT THE PHASE 11 NULL
+----------------------------------------------------------------
+
+The findings file's explanation - a rate problem in `eta` and the
+coefficients - is right in kind and understates the problem by two
+mechanisms and one order of magnitude.
+
+  - It names two genes. There are four conditions on the same locus, each
+    behind a different one of seven mutation targets, plus a fifth for the
+    two modulated rules that also needs a `Modulatory` node to exist on the
+    same haplotype. The measured depth histogram is the shape of that: 76.6%
+    of Avar edge alleles are at depth 0, 19.9% at depth 1, 3.3% at depth 2,
+    0.22% at depth 3, and 0.0013% complete.
+
+  - "The learn phase ran 1,109,373,897 times" counts 1,058,712,033 no-ops.
+    The mechanism ran 50.7 million times, on 3,147 of 48,119 edges.
+
+  - "the final mean absolute learned delta was 0 milli in all 30 Avar
+    worlds" is true and is a truncation. 25 edges learned; the largest
+    learned 229 milli; the total was 2.12 weight units spread over 48,119
+    rows.
+
+  - The reason is not only rate. It is that no intermediate is selectively
+    visible and the flagged ones are selectively *negative*, so the rate is
+    all there is: the search is an unassisted random walk over a
+    four-condition conjunction at a single locus, and 64 generations of
+    ancestry deliver 1.4 mutations to that locus against the ~24 needed.
+
+WHAT A LATER REVISION WOULD HAVE TO CHANGE, stated as consequences of the
+numbers above and not as a plan:
+
+  - a founder that starts at depth 3 rather than depth 0 - a live rule, a
+    positive eta and a nonzero coefficient, with only `EDGE_FLAG_PLASTIC`
+    left to evolve - converts a four-step conjunction into a one-step
+    toggle, and it is the only change that acts on all four conditions at
+    once;
+  - alternatively, make the flag the *only* gate and give the other three a
+    nonzero founder value, which is the same thing said from the other side;
+  - a horizon of ~1,100 generations at this locus rather than ~64;
+  - or a mutation regime in which one point mutation can move more than one
+    plasticity field. All four are changes to reachability. None of them is
+    a change to what learning is worth, and this census cannot say anything
+    about that.
+
+
+----------------------------------------------------------------
+6. WHAT THIS CENSUS DOES NOT ESTABLISH
+----------------------------------------------------------------
+
+  - It is descriptive. There is no threshold anywhere in it, and the
+    comparisons between arms in section 2 are not tests. C11.1 and C11.2
+    remain UNMET exactly as pre-registered and decided.
+  - `full_conjunction` is an UPPER BOUND on what could have learned. It
+    reads genes, not activations: an edge with all four conditions whose
+    `pre` and `post` are zero every tick still learns nothing under rules
+    1, 3 and 4, and any delta below half a Q16 unit is rounded away by
+    `to_q16`. The learned-state count (25 in Avar) is the ground truth and
+    is well below the 59 expressed-complete edges.
+  - The counts are over the STANDING population at tick 60,000. An allele
+    that assembled the conjunction at tick 30,000 and died out is invisible
+    here, so this is a lower bound on how often the phenotype ever existed.
+  - Alleles within a world are not independent. Section 4's pseudoreplication
+    caveat is the load-bearing one: 9 alleles is at most 4 assembly events.
+  - Nothing here measures whether learning would have been useful. It
+    measures whether it was reachable, and separately whether the states on
+    the way to it were visible to selection. A world in which the phenotype
+    were common and still did nothing would produce the opposite of these
+    numbers, and would be the finding this census was written to be able to
+    report.
+  - The waiting-time arithmetic in section 4 models the four conditions as
+    independent two-state chains at one locus. It ignores linkage to the
+    rest of the genome, meiotic recombination between the two alleles,
+    duplication changing the locus count mid-run, and the fact that a
+    lineage's mutations are not delivered at a constant rate. It is an
+    order-of-magnitude statement and is reported as one.
+  - `dt_ms`, the cost rate, the point rate and the delta width are this
+    campaign's. Every number in section 3b and section 4 moves with them.

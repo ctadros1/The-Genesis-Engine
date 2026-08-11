@@ -11,6 +11,7 @@
 //! streams keyed on a recorded analysis seed. A report is a pure function
 //! of the campaign artifacts plus that seed.
 
+mod conjunction;
 mod demography;
 mod morph;
 mod paired;
@@ -19,6 +20,12 @@ mod power;
 mod spatial;
 mod structure;
 
+pub use conjunction::{
+    AlleleConjunctionCensus, ArmConjunction, CONJUNCTION_CENSUS_VERSION, Conjunction,
+    ExpressedConjunctionCensus, LearnedStateCensus, WorldConjunction, allele_conjunction_census,
+    conjunction_of, expressed_conjunction_census, learned_state_census, modulator_satisfied,
+    render as render_conjunction, rule_reads_coefficients, summarise as summarise_conjunction,
+};
 pub use demography::{
     DEMOGRAPHY_INDEX_VERSION, WorldDemography, spearman_milli, thermal_match_rho_milli,
     world_demography,

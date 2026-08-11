@@ -83,6 +83,7 @@ fn run() -> Result<(), String> {
         Some("structure") => command_structure(parse_options(args.collect())?),
         Some("morph") => command_morph(parse_options(args.collect())?),
         Some("plasticity") => command_plasticity(parse_options(args.collect())?),
+        Some("conjunction") => command_conjunction(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -105,6 +106,7 @@ fn usage() -> String {
         "       lifesim structure --manifest FILE --baseline CONDITION\n",
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim plasticity --manifest FILE --treatment CONDITION --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX]\n",
+        "       lifesim conjunction --manifest FILE   (descriptive census; no threshold, no verdict)\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity\n",
@@ -1392,6 +1394,135 @@ fn command_plasticity(options: Options) -> Result<(), String> {
             &contrasts,
             &verdicts,
         )
+    );
+    Ok(())
+}
+
+/// A **descriptive census** of the plasticity conjunction and the learned
+/// state, over the snapshots a campaign already wrote.
+///
+/// # This command decides nothing and must never be given a bar
+///
+/// `lifesim plasticity` decides C11.1 and C11.2 against thresholds
+/// pre-registered before their campaign ran. This one is run afterwards, on
+/// the same artifacts, with the outcome already known, and it exists to say
+/// *which* of two very different things a null of those criteria was: a
+/// genotype space in which the learning phenotype was never assembled, or one
+/// in which it was assembled and did nothing. Those need opposite follow-ups.
+/// A statistic computed with the answer in view cannot be a test of it, so
+/// there is no `--treatment`, no `--baseline`, no bar and no verdict here,
+/// and the report labels itself on its first line.
+///
+/// # It refuses a snapshot that is not what it claims
+///
+/// `command_plasticity`'s discipline, and for the same reason: a world whose
+/// config did not survive the codec would produce an empty census, and "no
+/// edge ever assembled the conjunction" and "the config that would have let
+/// one is not in this file" are opposite conclusions. The restored config's
+/// own stable hash must equal the hash the manifest recorded for the run.
+///
+/// The expressed census is checked a second way. It re-expresses and
+/// re-compiles every genome with the world's own plasticity budget, which is
+/// how the plan the learn phase ran was built, so its plastic-edge count must
+/// equal `plastic_edges_total`. A disagreement means the census is describing
+/// a different plan from the one that ran, and it is a refusal rather than a
+/// footnote.
+fn command_conjunction(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("conjunction requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    let mut per_world: Vec<(String, Vec<sim_analysis::WorldConjunction>)> = Vec::new();
+    for condition in &manifest.campaign.conditions {
+        let mut worlds = Vec::new();
+        for run in manifest.runs_for(&condition.name) {
+            let stem = sim_experiment::run_stem(&run.condition, run.seed);
+            let snapshot_path = directory.join(format!("{stem}.alif"));
+            let snapshot = fs::read(&snapshot_path)
+                .map_err(|error| format!("{}: {error}", snapshot_path.display()))?;
+            let (_, state) = sim_persist::decode_snapshot(&snapshot)
+                .map_err(|error| format!("{stem}: decode snapshot: {error}"))?;
+            let restored_hash = state.config.stable_hash();
+            if restored_hash != run.config_hash {
+                return Err(format!(
+                    "{stem}: the restored config hashes {restored_hash:#018x} but the manifest \
+                     recorded {:#018x} - the config did not survive the snapshot, so a zero \
+                     conjunction count here would mean a codec defect and not an unassembled \
+                     phenotype (plasticity.enabled={}, max_plastic_edges={})",
+                    run.config_hash,
+                    state.config.plasticity.enabled,
+                    state.config.plasticity.max_plastic_edges,
+                ));
+            }
+            let caps = state.config.genome2.caps;
+            let budget = state.config.plasticity_budget();
+            let genomes: Vec<sim_core::Genome2> = match state.schema2.as_ref() {
+                Some(schema2) => schema2
+                    .genomes
+                    .iter()
+                    .map(|encoded| {
+                        sim_core::Genome2::decode(encoded, &caps)
+                            .map_err(|error| format!("{stem}: decode genome: {error}"))
+                    })
+                    .collect::<Result<Vec<_>, String>>()?,
+                None => {
+                    return Err(format!(
+                        "{stem}: the snapshot carries no schema-2 section, so there is no \
+                         edge locus to census"
+                    ));
+                }
+            };
+            let alleles = sim_analysis::allele_conjunction_census(&genomes);
+            let expressed = sim_analysis::expressed_conjunction_census(&genomes, budget)
+                .map_err(|error| format!("{stem}: {error}"))?;
+            let learned = state.learn.as_ref().map(sim_analysis::learned_state_census);
+            let world = sim_core::World::from_state(state)
+                .map_err(|error| format!("{stem}: restore: {error}"))?;
+            let metrics = world.metrics();
+            if expressed.plastic_edges != metrics.plastic_edges_total {
+                return Err(format!(
+                    "{stem}: re-compiling every genome with this world's own plasticity budget \
+                     gives {} plastic edges but the restored world reports {} - the census is \
+                     describing a different plan from the one the learn phase ran",
+                    expressed.plastic_edges, metrics.plastic_edges_total
+                ));
+            }
+            if let Some(learned) = learned.as_ref()
+                && learned.rows != metrics.plastic_edges_total
+            {
+                return Err(format!(
+                    "{stem}: the learned-state section holds {} rows but the world reports {} \
+                     plastic edges",
+                    learned.rows, metrics.plastic_edges_total
+                ));
+            }
+            worlds.push(sim_analysis::WorldConjunction {
+                condition: run.condition.clone(),
+                seed: run.seed,
+                population: run.population,
+                extinct: run.extinct,
+                alleles,
+                expressed,
+                learned,
+                plastic_edges_total: metrics.plastic_edges_total,
+                plasticity_updates_total: metrics.plasticity_updates_total,
+                reported_mean_abs_learned_milli: metrics.mean_abs_learned_milli,
+            });
+        }
+        per_world.push((condition.name.clone(), worlds));
+    }
+
+    let arms: Vec<sim_analysis::ArmConjunction> = per_world
+        .iter()
+        .map(|(name, worlds)| sim_analysis::summarise_conjunction(name, worlds))
+        .collect();
+    print!(
+        "{}",
+        sim_analysis::render_conjunction(&manifest.campaign.id, &per_world, &arms)
     );
     Ok(())
 }
