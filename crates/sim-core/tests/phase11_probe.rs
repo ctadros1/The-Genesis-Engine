@@ -135,6 +135,58 @@ fn counting_actions_changes_nothing_the_world_computes() {
         assert!(counters.classified_total > 0);
         assert_eq!(counters.resets_total, 0);
     }
+
+    // **The two columns the loop above can never fill, filled.**
+    //
+    // `Rest` and `Attack` are the two classes whose config threshold is
+    // *positive* (+0.5 each) while `Eat` and `Mate`'s are negative. An
+    // unbound action channel reads exactly 0, so in a founder-dominated world
+    // the sign of a threshold decides the column outright: the negative pair
+    // saturates at the organism's age and the positive pair stays at zero.
+    // Four of seven columns are therefore constants in the seeds above, and a
+    // census feedback read from one of them is inert there. Measured, not
+    // assumed: a mutation that zeroed the speed intent whenever the `Attack`
+    // count was nonzero survived all four seeds. The claim is that the census
+    // is inert over its whole column set, so the columns have to be alive
+    // when it is tested.
+    for (label, column, tweak) in [
+        (
+            "attack",
+            ActionClass::Attack,
+            (|config: &mut SimConfig| {
+                config.contest.enabled = true;
+                config.contest.attack_threshold_q16 = -16_384;
+            }) as fn(&mut SimConfig),
+        ),
+        ("rest", ActionClass::Rest, |config: &mut SimConfig| {
+            config.phase2.rest_threshold_q16 = -16_384;
+        }),
+    ] {
+        let mut plain_config = base_config(SEED);
+        tweak(&mut plain_config);
+        let mut probed_config = plain_config.clone();
+        probed_config.probe.enabled = true;
+        probed_config.probe.action_census_enabled = true;
+        let plain = advance(plain_config, 500);
+        let probed = advance(probed_config, 500);
+        assert!(
+            plain.population() > 20,
+            "the {label} world emptied, so its equality is trivial"
+        );
+        assert_eq!(
+            behaviour(&plain),
+            behaviour(&probed),
+            "the action census changed the trajectory in the {label} world"
+        );
+        assert!(
+            probed
+                .action_census()
+                .iter()
+                .any(|sample| sample.counts[column as usize] > 0),
+            "the {label} column is still empty, so this arm exercises the same \
+             columns the seeds above already did"
+        );
+    }
 }
 
 #[test]
@@ -195,11 +247,49 @@ fn the_locomotion_block_counts_exactly_the_ticks_its_organism_has_been_alive_for
 
 #[test]
 fn the_census_stays_in_lockstep_and_a_desync_is_a_typed_failure() {
-    let world = advance(with_census(SEED), 600);
+    // **The horizon is load-bearing and the first version of this test did
+    // not have it.** It ran 600 ticks, and in this world the first death is
+    // at tick 380 but the first paired birth is at tick 765 - so it checked
+    // lockstep over a population that had only ever shrunk. Deleting
+    // `push_organism` from the paired birth path left this test green; it was
+    // caught, incidentally, by two tests about something else. A test named
+    // for lockstep must cross both boundaries, so it now runs past the first
+    // birth and **asserts that it did**, which is what stops a later change
+    // to the world's demography from silently returning it to a death-only
+    // test.
+    let world = advance(with_census(SEED), 1_000);
+    let metrics = world.metrics();
+    assert!(
+        metrics.paired_births_total > 0,
+        "no birth happened, so the birth path is untested by the lockstep test"
+    );
+    assert!(
+        metrics.deaths_starvation_total + metrics.deaths_old_age_total > 0,
+        "nothing died, so the retain path is untested by the lockstep test"
+    );
     world
         .check_invariants()
         .expect("a running world is in step");
     assert_eq!(world.action_census().len(), world.population());
+
+    // **Equal lengths are not lockstep.** A compaction that kept the right
+    // *number* of rows and the wrong ones passes every length check and every
+    // checksum, and it is the exact failure `ActionCensusDesync` is named
+    // for: a row attached to whichever organism compacted into its slot. The
+    // locomotion block partitions the tick, so it sums to its own organism's
+    // age and to nobody else's - which makes this identity the only assertion
+    // here that can tell a paired row from a mis-paired one.
+    for sample in world.action_census() {
+        let block: u64 = sample.counts[..LOCOMOTION_CLASS_COUNT]
+            .iter()
+            .map(|value| u64::from(*value))
+            .sum();
+        assert_eq!(
+            block, sample.age_ticks,
+            "organism {} carries a row belonging to an organism of another age",
+            sample.id
+        );
+    }
 
     // A desync is reachable only by hand, which is the point: the invariant
     // is what turns a missed push on some future birth path into a named

@@ -707,6 +707,201 @@ mod tests {
     }
 
     #[test]
+    fn every_other_declared_header_field_is_refused_after_the_crc_is_resealed() {
+        // Standing rule 2 applied to the header fields the class-set and
+        // policy test does not reach. Each is patched **and resealed**, so the
+        // field check is what fires rather than the CRC - the trap that makes
+        // a decode test pass for the wrong reason.
+        //
+        // Every one of these three guards survived deletion against the suite
+        // as it stood: nothing patched `max_organisms`, the `flags` word or
+        // the declared `header_len` at all, so all three were unpinned
+        // fail-closed checks.
+        let base = file_with(&[(10_u64, vec![record(1, 10, 0)])]);
+
+        // `max_organisms` is the decode bound a segment count is checked
+        // against, so a file may not declare one no kernel could produce.
+        for declared in [u32::MAX, MAX_SAMPLE_ORGANISMS + 1] {
+            let mut bytes = base.clone();
+            bytes[52..56].copy_from_slice(&declared.to_le_bytes());
+            reseal_header(&mut bytes);
+            assert_eq!(
+                decode_action(&bytes),
+                Err(ActionLogError::SampleCountTooLarge(declared)),
+                "a header declaring {declared} organisms was accepted"
+            );
+        }
+
+        // The flags word is this format's only forward-compatibility escape
+        // hatch. Accepting an unknown bit silently would mean a future
+        // writer's flag is ignored rather than refused, which is the one
+        // outcome a versioned format may not have.
+        for declared in [1_u32, 0x8000_0000, u32::MAX] {
+            let mut bytes = base.clone();
+            bytes[8..12].copy_from_slice(&declared.to_le_bytes());
+            reseal_header(&mut bytes);
+            assert_eq!(
+                decode_action(&bytes),
+                Err(ActionLogError::UnknownFlags(declared)),
+                "unknown flags {declared:#x} were ignored"
+            );
+        }
+
+        // The declared header length is checked against the constant the
+        // reader actually uses. It is never used as a bound itself, so this
+        // guard's whole job is to fail closed on a header that disagrees with
+        // its own format version.
+        for declared in [0_u16, ACTION_HEADER_LEN as u16 - 1, u16::MAX] {
+            let mut bytes = base.clone();
+            bytes[6..8].copy_from_slice(&declared.to_le_bytes());
+            reseal_header(&mut bytes);
+            assert_eq!(
+                decode_action(&bytes),
+                Err(ActionLogError::BadHeaderLength(declared as usize)),
+                "a header declaring length {declared} was accepted"
+            );
+        }
+
+        // ...and the CRC still guards each of them unresealed, which is what
+        // makes the assertions above evidence about the fields.
+        let mut bytes = base.clone();
+        bytes[52..56].copy_from_slice(&u32::MAX.to_le_bytes());
+        assert_eq!(
+            decode_action(&bytes),
+            Err(ActionLogError::HeaderChecksumMismatch)
+        );
+    }
+
+    #[test]
+    fn a_declared_build_length_is_capped_even_when_the_bytes_are_really_there() {
+        // **The load-bearing case, and the one a short file cannot make.**
+        // With `build_len` set past the cap on a *short* file, `TooShort`
+        // fires whether or not the cap exists - two layers refusing the same
+        // input, so that assertion alone would pass with the cap deleted.
+        // Here the 100 declared bytes are present and the CRC is resealed, so
+        // without the cap the file decodes cleanly. Deleting the cap was
+        // measured: this file was accepted.
+        let mut bytes = encode_header(&ActionLogInfo {
+            build_version: "b".repeat(MAX_BUILD_LEN),
+            ..info()
+        })
+        .expect("header");
+        assert_eq!(bytes.len(), ACTION_HEADER_LEN + MAX_BUILD_LEN);
+        bytes.extend(std::iter::repeat_n(b'b', 36));
+        let declared = MAX_BUILD_LEN + 36;
+        bytes[64..66].copy_from_slice(&(declared as u16).to_le_bytes());
+        reseal_header(&mut bytes);
+        assert_eq!(
+            decode_action(&bytes),
+            Err(ActionLogError::BuildStringTooLong(declared)),
+            "an over-long build string was accepted because its bytes were present"
+        );
+
+        // The exact cap still decodes, so the assertion above is about the
+        // boundary and not about build strings in general.
+        let mut at_cap = encode_header(&ActionLogInfo {
+            build_version: "b".repeat(MAX_BUILD_LEN),
+            ..info()
+        })
+        .expect("header");
+        at_cap.extend_from_slice(&encode_segment(10, &[record(1, 10, 0)], 5_000).expect("segment"));
+        let scan = decode_action(&at_cap).expect("a build string at the cap decodes");
+        assert_eq!(scan.info.build_version.len(), MAX_BUILD_LEN);
+
+        // ...and the short-file case, pinned to the cap rather than to
+        // `TooShort`, so a future reordering of the two cannot go unnoticed.
+        // Not resealed, and it does not need to be: the cap is checked
+        // *before* the header CRC, which is the ordering that lets a 65,535
+        // byte claim be refused without first reading 65,535 bytes to check
+        // them.
+        let mut bytes = file_with(&[(10_u64, vec![record(1, 10, 0)])]);
+        bytes[64..66].copy_from_slice(&u16::MAX.to_le_bytes());
+        assert_eq!(
+            decode_action(&bytes),
+            Err(ActionLogError::BuildStringTooLong(u16::MAX as usize))
+        );
+    }
+
+    #[test]
+    fn the_declared_count_cap_is_what_keeps_the_body_length_multiply_exact() {
+        // `decode_one` cross-checks `body_len` against `count * RECORD_LEN`
+        // **in u64**. Rewriting that multiply in u32 survives every test in
+        // this file, and it is unobservable rather than untested: the cap
+        // above holds `count` at 10^6, and 10^6 x 44 is far inside u32, so no
+        // admissible input can make a u32 multiply wrap.
+        //
+        // That safety is a property of the cap's *value*, not of the code, and
+        // nothing said so. Raising `MAX_SAMPLE_ORGANISMS` past u32::MAX /
+        // RECORD_LEN would make a u32 multiply wrap and let a declared count
+        // near 10^8 pass the cross-check with a tiny `body_len`. This is the
+        // assertion that fires if that day comes.
+        assert!(
+            MAX_SAMPLE_ORGANISMS as u64 * RECORD_LEN as u64 <= u32::MAX as u64,
+            "MAX_SAMPLE_ORGANISMS x RECORD_LEN no longer fits in u32; the body \
+             length cross-check must stay in u64 and this coupling must be restated"
+        );
+        // The largest count the cap admits, with the body length it implies,
+        // still fails closed on the buffer bound rather than allocating.
+        let base = file_with(&[(10_u64, vec![record(1, 10, 0)])]);
+        let header_len = ACTION_HEADER_LEN + info().build_version.len();
+        let body_end = header_len + SEGMENT_HEADER_LEN + RECORD_LEN;
+        let mut bytes = base.clone();
+        bytes[header_len + 12..header_len + 16]
+            .copy_from_slice(&info().max_organisms.to_le_bytes());
+        bytes[header_len + 16..header_len + 20]
+            .copy_from_slice(&(info().max_organisms * RECORD_LEN as u32).to_le_bytes());
+        reseal_segment(&mut bytes, header_len, body_end);
+        assert_eq!(
+            decode_action(&bytes),
+            Err(ActionLogError::TruncatedSegment {
+                offset: header_len
+            })
+        );
+    }
+
+    #[test]
+    fn the_writer_refuses_what_no_kernel_could_have_produced() {
+        // The encode side's own bounds. Unreachable through `execute_unit` -
+        // `max_organisms` is `max_entities`, which config validation caps at
+        // 200,000, well under `MAX_SAMPLE_ORGANISMS` - but both functions are
+        // public, and a guard reachable only through the public API is still
+        // a guard. Both survived deletion against the suite as it stood.
+        assert_eq!(
+            encode_header(&ActionLogInfo {
+                max_organisms: MAX_SAMPLE_ORGANISMS + 1,
+                ..info()
+            }),
+            Err(ActionLogError::SampleCountTooLarge(
+                MAX_SAMPLE_ORGANISMS + 1
+            ))
+        );
+        assert_eq!(
+            encode_header(&ActionLogInfo {
+                class_count: ACTION_CLASS_COUNT as u32 + 1,
+                ..info()
+            }),
+            Err(ActionLogError::ClassCountMismatch {
+                declared: ACTION_CLASS_COUNT as u32 + 1,
+                expected: ACTION_CLASS_COUNT as u32,
+            })
+        );
+        assert_eq!(
+            encode_header(&ActionLogInfo {
+                build_version: "b".repeat(MAX_BUILD_LEN + 1),
+                ..info()
+            }),
+            Err(ActionLogError::BuildStringTooLong(MAX_BUILD_LEN + 1))
+        );
+        // A segment with more records than the header's own bound admits.
+        let records: Vec<ActionRecord> = (0..4_u64).map(|id| record(id, 10, 0)).collect();
+        assert_eq!(
+            encode_segment(10, &records, 3),
+            Err(ActionLogError::SampleCountTooLarge(4))
+        );
+        assert!(encode_segment(10, &records, 4).is_ok(), "the bound is >=");
+    }
+
+    #[test]
     fn ticks_must_strictly_ascend_and_a_torn_tail_is_reported_not_repaired() {
         let bytes = file_with(&[
             (20_u64, vec![record(1, 20, 0)]),
@@ -718,6 +913,27 @@ mod tests {
                 previous: 20,
                 found: 10
             })
+        );
+
+        // **Strictly, and the descending pair above does not test that.**
+        // Relaxing `tick <= previous` to `tick < previous` survives the
+        // assertion above, because 10 is still less than 20. Only a repeated
+        // tick separates the two, and a repeat is the failure that matters
+        // downstream: C11.1 keys its before/after windows by tick, so two
+        // samples at the same tick would give one organism two different
+        // "before" rows and the window would be a difference of a sample
+        // with itself.
+        let bytes = file_with(&[
+            (10_u64, vec![record(1, 10, 0)]),
+            (10, vec![record(1, 10, 5)]),
+        ]);
+        assert_eq!(
+            decode_action(&bytes),
+            Err(ActionLogError::TickOutOfOrder {
+                previous: 10,
+                found: 10
+            }),
+            "a repeated sample tick was accepted, so the order is not strict"
         );
 
         let full = file_with(&[
