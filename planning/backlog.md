@@ -27,7 +27,7 @@ and none has started:
 | 8 | Demography and life history - **implemented; C8.1 met, C8.5/C8.6/C8.7 unmet** | `phase-8-demography-and-life-history.md` |
 | 9 | Evolvable genome: diploid genetics and variable topology | `phase-9-evolvable-genome.md` |
 | 10 | Modular morphology and development | `phase-10-modular-morphology.md` |
-| 11 | Lifetime learning | `phase-11-lifetime-learning.md` |
+| 11 | Lifetime learning - **kernel done; C11.1/C11.2 measured and unmet, C11.7 partial** | `phase-11-lifetime-learning.md` |
 | 12 | Mutable world and artifacts | `phase-12-mutable-world-and-artifacts.md` |
 | 13 | Social channel | `phase-13-social-channel.md` |
 | 14 | Ontogeny and sexual selection | `phase-14-ontogeny-and-sexual-selection.md` |
@@ -79,22 +79,85 @@ the tamper test accepted *either* error. Two tests now pin the near guard by
 its diagnostic. The general pattern - a guard whose only test accepts a set
 of errors rather than the one it should produce - is worth grepping for.
 
-**Phase 11's kernel is built; five of eight criteria are met** (2026-08-10),
-benchmark schema 7. Met: C11.3, C11.4, C11.5, C11.6 (10^6 ticks, 18,971,594
-plasticity updates, ledger exact), C11.8. C11.7 partial - snapshot budget and
-`learn` p50/p95 measured, checkpoint stall not measured through
-`AsyncCheckpointer`. **C11.1 and C11.2 are NOT MEASURED**, which is
-deliberately different from unmet: nothing was observed and no threshold was
-tested. They need four things that do not exist - scripted-intervention
-machinery, a relocatable resource patch, per-organism action counting, and a
-neutral marker locus (`docs/21-open-questions.md`).
+**Phase 11 is measured on all eight criteria; seven of eight are decided**
+(2026-08-11), benchmark schema 7. Met: C11.3, C11.4, C11.5, C11.6 (10^6
+ticks, 18,971,594 plasticity updates, ledger exact), C11.8. **C11.1 and
+C11.2 are UNMET, as measured nulls with controls** - they stood at NOT
+MEASURED until the four missing pieces were built. C11.7 remains partial:
+snapshot budget and `learn` p50/p95 measured, checkpoint stall not measured
+through `AsyncCheckpointer`.
 
-**What is not claimed.** The phase built the mechanism and measured its cost,
-safety and persistence. It has *not* shown that anything learns anything
-useful or that plasticity is selected for. The two numbers that exist point
-the other way - 1 plastic edge across 500 organisms after 30,000 ticks, and
-the founders' 400 plastic edges gone by 10^6 - but neither had a control or a
-pre-registered threshold, so neither is a result.
+**Both behavioural criteria returned a null, pre-registered in `4b160fe`
+before the run.** 120 worlds, 4 arms x 30 seeds, 60,000 ticks, 0 failed.
+C11.1 Avar **0 of 30** against a bar of 20 with the Bvar control at 0; C11.2
+Avar **8 of 30** against a bar of 20 with Bvar at 0, all eight on the
+plastic-flag scale and none on `eta`. No threshold was changed after the
+data. The seed-paired between-arm contrast of C11.1's statistic is null as
+well: +3 milli, [-1, +8], p = 0.707.
+
+**The null is a null at ten times the shipped point-mutation rate**
+(`point_q16 = 65535` against 6554) and at a patch of radius 32 / scale 4.0
+against defaults of 15 / 2.0. Both were raised in pilot calibration ruled by
+controls rather than outcomes - the marker had to actually drift, and the
+schedule had to actually change the world - and both bound how far the null
+generalizes. At the shipped rate the phenotype is further out of reach, not
+closer.
+
+**The census overturns what the null is about, and it matters for three
+revisit conditions.** The phase's Risks table names "plasticity is selected
+to zero" as its most likely failure. A null happened; **that mechanism did
+not**. Plasticity was never assembled. A nonzero learned delta needs four
+conditions on one edge locus, each behind a different one of seven
+point-mutation targets, plus a fifth for the two modulated rules. **9 of
+684,370 Avar edge alleles carry all four** - 13 per million, from at most
+four independent assembly events in 30 worlds - and 25 of 48,119 plastic
+edges ended with a nonzero learned weight in 14 worlds. Every incomplete
+state computes bit-identically to the founder, so selection cannot see it,
+while the learn phase charges every flagged edge whatever its rule: a
+plateau with a moat, not a gradient. The revisit conditions on D-023, D-025
+and D-035 are phrased on "selected to zero" and are **not** triggered
+(D-099, D-105).
+
+**Three readings in the confirmatory findings file were corrected rather
+than rewritten** (the file is a committed artifact; the correction is
+appended and marked). `mean_abs_learned_milli = 0` was read as "nothing
+learned" and is a truncation - 139,116 Q16 over 48,119 rows (D-098).
+"1,109,373,897 updates" is 95.43 percent `StepKind::Static` no-ops. And the
+explanation named two genes where there are four conditions plus a fifth.
+
+**C11.1's matched control is not age-matched, and the offset alone can
+produce a pass** (D-100). Measured in a stationary rolling cohort with no
+event in it: rho = +158 against a null of 30, with a dose-response of
+76/158/334/700 at offsets of 500/1,000/2,000/4,000 ticks. The sign follows
+the substrate's age trend, so the directed statistic is not identified and
+this campaign's 0 of 30 depends on which way that trend runs. Nothing was
+changed to accommodate it; **C11.1 must not be re-measured with the current
+pairing** until a corrected boundary is pre-registered.
+
+**And the instrument could resolve one number** (D-101). Reproduced
+independently on fresh worlds with a from-scratch `.alac` reader: `eat` and
+`mate` equal the organism's age in 100.0000 percent of 1,175,285 records and
+`rest` and `attack` are 0 in 100.0000 percent. Only the three heading bands
+vary - a partition, so two degrees of freedom, one of which carries 0.59
+percent.
+
+**What is not claimed.** The phase built the mechanism, measured its cost,
+safety and persistence, and has now measured both behavioural criteria. It
+has *not* shown that anything learns anything useful, that plasticity is
+selected for, or that behaviour changes within a lifetime in a way selection
+did not produce. It has also **not** shown that lifetime learning is
+worthless here: the census measures reachability, not value.
+
+**Verification found no defect in the kernel or the codec, and 41 real gaps
+in the tests defending them.** Three independent adversarial passes ran 103
+mutations of their own design against the C11.1 decision path, the C11.2
+comparison with the marker's four matched-control properties, and the kernel
+measurement substrate with the `.alac` codec: 41 survived, 34 were real gaps
+now closed, and 7 are tautologies named in D-100, D-101 so nobody writes a
+test for them. Every mutated line was correct as shipped. Two prior reports
+of "28 injected, all caught" and "29 mutations all caught" did not survive
+contact, for one reason worth carrying: **a mutation set chosen by the
+author of the tests preferentially hits what the tests already cover.**
 
 **Three defects worth carrying.** The snapshot loader **failed open on
 hostile input in five sections since Phase 6**: every allocation bound read
@@ -108,7 +171,7 @@ is false as configured (D-092).
 
 **Phase 10 is complete except C10.3** (2026-08-06), benchmark schema 6.
 C10.1, C10.2, C10.4, C10.5, C10.6, C10.7, C10.8, C10.9, C10.10 and C10.11
-are met. Phase 11 has not been started.
+are met.
 
 **Morphology has consequence and does not spread.** Body size predicts
 reproductive success in 26 of 30 worlds against a within-world permutation
@@ -315,7 +378,13 @@ and set the rate accordingly, or they will measure the mutation rate.
    the schema-2 birth and persistence paths.
 6. ~~**Phase 10, modular morphology and development.**~~ **Complete bar
    C10.3** (D-080, D-081, D-085, D-086, D-087).
-7. **Phase 11, lifetime learning.** Not started.
+7. ~~**Phase 11, lifetime learning.**~~ **Measured** (D-092 to D-105).
+   Seven of eight criteria decided; C11.1 and C11.2 are unmet measured nulls
+   and C11.7 is partial. Two things are owed before the phase is closed or
+   re-run: the **age-matched control boundary** C11.1 needs, which must be
+   pre-registered rather than chosen after the fact, and the
+   **checkpoint-stall measurement through `AsyncCheckpointer`** that C11.7
+   still substitutes synchronous encode time for.
 8. Resolve the remaining Phase 0 decision gates (deployment-shaped VM
    benchmark). This bounds the compute-cost risk recorded as unresolved in
    `docs/20-risk-register.md`. Phase 5 measured the development host only;

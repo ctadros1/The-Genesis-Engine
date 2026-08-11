@@ -68,6 +68,50 @@ because a campaign that is wrong is far cheaper to reject than to run:
 replicate axis, declared by the `seeds` directive; letting a condition set
 one would let a treatment and its control run different worlds.
 
+### Output Directives
+
+`output` selects which artifacts a run writes. It is execution policy, not
+experiment identity, so it is outside the effective config hash.
+
+| Directive | Value | Artifact |
+|---|---|---|
+| `output events` | `on` / `off` | `.alev` event log |
+| `output snapshots` | `on` / `off` | `.alif` final snapshot |
+| `output compress` | level / `off` | zstd level for the snapshot |
+| `output spatial` | ticks / `off` | `.alss` position samples (Phase 7) |
+| `output morphology` | ticks / `off` | text morphology series (Phase 10) |
+| `output actions` | ticks / `off` | `.alac` per-individual action samples (Phase 11) |
+
+`output actions <ticks>` is off by default and takes a positive tick
+interval; `0` is refused with a message pointing at `off`, so a campaign
+cannot silently declare an artifact it does not get. It exists because
+C11.1's clause is a statement about **two points in one lifetime** - "this
+organism's action distribution changed after the patch relocated" - and a
+run that records only a terminal census has no *before*. It is binary
+rather than a readable series, unlike `output morphology`, on an arithmetic
+argument rather than a stylistic one: a morphology sample is six
+world-level scalars while an action sample is population x classes.
+
+The exact alignment condition is that `2 x action_interval` divides
+`worldmod.relocate_interval_ticks`: the matched control boundary sits at
+`relocate / 2` past the event, so `relocate / 2` must be a whole number of
+sample windows or the control falls between two samples. The analysis
+refuses that world by name (`Misaligned`) rather than interpolating, which
+would invent counts. The confirmatory campaign samples every 500 ticks
+against a 2,000-tick relocation interval, so `relocate / 2 = 1,000` is two
+windows.
+
+`genome2.mutation.point_delta_q16` is settable for a different kind of
+reason and is worth stating as a rule. **A campaign that states a threshold
+computed from a constant must be able to pin that constant.** Phase 11's
+C11.2 bar is one expected mutational step - `point_delta_q16 / 65536` of
+the value's range, halved - so leaving the field unsettable would let a
+later revision of a default silently move a pre-registered threshold. That
+is the coupling D-078 removed for Phase 9's caps. The codec had always
+carried the field; only the `FIELD_NAMES` registry entry was missing, which
+under standing rule 3 is a visible gap rather than a silent one, and adding
+it puts the field under the `config_field_coverage` sweep automatically.
+
 Worker count is execution policy, not experiment identity, and is excluded
 from the campaign hash. A5.2 asserts that results do not depend on it, so
 folding it into the hash would assert the opposite.
@@ -94,6 +138,16 @@ block's own**, not on a version number:
 | Phase 2 pairing | `paired_births` | `phase2` disabled, or the manifest predates the block |
 | Structural mutation, 13 classes | `structmut_point_applied` | `genome2` disabled, or predates the block |
 | Development, 12 classes | `develop_bodies_grown` | `morphology` disabled, or predates the block |
+
+`action_samples` (Phase 11) is a **count column, not a block**, and it sits
+beside `spatial_samples`: it records how many `.alac` segments the run
+wrote, and it is `0` when `output actions` is off. Zero is the right value
+here rather than absent, because the run genuinely wrote no samples and
+nothing reconstructs a rate from it. It is a cross-check with teeth -
+`lifesim plasticity` refuses to proceed when a decoded `.alac` scan has a
+segment count that disagrees with the manifest's `action_samples`, which is
+what catches a truncated or partly-written artifact before it becomes a
+thin world rather than a refusal.
 
 The parsed field is `Option`, and **absent is never read as zero**. A cap
 rejection and a self-loop draw both land in the summed `structmut_rejected`

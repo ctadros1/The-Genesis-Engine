@@ -74,6 +74,75 @@ Two label rules specific to the new goal:
   time series; an analysis finding is a versioned artifact with provenance
   and, for traditions, a mandatory genotype-matched control.
 
+## Phase 11 Manifest Column: `action_samples`
+
+A `run` record gains `action_samples`, the number of `.alac` segments the
+run wrote, beside the existing `spatial_samples`. It is a count column
+rather than an optional block (see
+`specifications/experiment-config-schema.md`), so `0` means the run wrote no
+per-individual action samples and nothing reconstructs a rate from it.
+
+It is load-bearing rather than informational: `lifesim plasticity` refuses a
+world whose decoded `.alac` segment count disagrees with this column, along
+with two further provenance guards pinned separately by their own
+diagnostics - the log's config hash and its terrain checksum against the
+run's. A truncated or partly-written artifact therefore fails closed instead
+of arriving as a thin world, which the analysis would otherwise report as
+`too_few_individuals` - a refusal that reads like a property of the world.
+
+## Phase 11 Analysis Reports
+
+Both follow the Analysis Report Provenance rules below. Neither analysis
+version is in the config hash (D-022, ADR-0016).
+
+### `plasticity-report 1` (`lifesim-plasticity-analysis-v1`)
+
+Line-oriented `key=value`, emitted by `lifesim plasticity`. Line kinds, in
+order:
+
+| Line | Carries |
+|---|---|
+| `plasticity-report 1 campaign <id>` | Format version and campaign id |
+| `analysis-version` | `lifesim-plasticity-analysis-v1` |
+| `census-policy` | `lifesim-action-census-v1`, the convention the columns mean something under |
+| `plan` | Every threshold verbatim: `burn_in_ticks`, `min_individuals`, `shift_bar`, `control_ceiling`, `drift_bar`, `drift_margin_milli`, `permutations`, `analysis_seed` |
+| `columns` | The action-class names, in column order |
+| `world` | One per world: `rho_milli`, `null_p95_milli`, `boundaries`, `individuals`, `pairs`, `discarded`, the event/control median distances, `event_wins`/`control_wins`/`ties`, `distinct_distances`, `varying_columns`, `column_totals`, `no_variance`, and the two decisions `shift` (directed) and `associated` (two-sided). A refused world prints `refused=<reason>` instead and never a zero |
+| `drift` | One per world: the C11.2 allele census, both excesses, both `moved_*` counts, and `selected` |
+| `condition` | One per arm: counts and medians over its worlds |
+| `contrast` | Seed-paired between-arm comparisons with intervals and an equivalence result |
+| `criterion` | `treatment_count`, `control_count`, `bar`, `ceiling`, `treatment_undefined`, `met` |
+
+Three properties of the format are deliberate. **Every threshold is echoed
+verbatim** so a reader checks the report against the campaign source rather
+than trusting a summary. **A refusal is a typed reason, never a zero**, so
+"this world could not be read" and "this world showed no change" are never
+the same line. And **the directed and two-sided decisions are printed side
+by side**, with only the directed one reaching `criterion`, so a
+sign-reversed association is visible rather than hidden by a directed rule.
+
+### `conjunction-census 1` (`lifesim-conjunction-census-v1`)
+
+Emitted by `lifesim conjunction`. Descriptive only, and the format says so
+on its own third line: `kind DESCRIPTIVE CENSUS of already-collected
+snapshots. No threshold, no null, no verdict. Not a hypothesis test and must
+not be reported as one.` That line is printed on every report and not only
+in the archived results file, because a table of counts detached from it
+reads exactly like a test result - and this one is computed with the
+campaign's outcome already known.
+
+A `conditions` line names what each counted condition is, then three line
+kinds per world: `world` (per edge **allele**, both haplotypes, with a
+conjunction-depth histogram and a rule histogram), `expressed` (per compiled
+plastic edge, which is what the learn phase actually visited), and `learned`
+(the learned-state section, including the count of nonzero rows, the
+maximum, quantiles, and both the recomputed and the reported mean - the pair
+that makes D-098's truncation visible in the report itself). Arm totals
+follow.
+
+Because it has no verdict, it may never appear in a criterion's evidence
+chain. It bounds interpretation of a null; it cannot establish one.
+
 ## Analysis Report Provenance
 
 Every analysis report (similarity, era, tradition) records: analysis

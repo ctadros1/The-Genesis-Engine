@@ -3,6 +3,17 @@
 Status: in progress from 2026-08-10. Policy version `lifesim-plasticity-v2`.
 Specification: `specifications/plasticity-and-learning.md`.
 
+**C11.1 and C11.2 were measured on 2026-08-11 and both are unmet, measured
+nulls** (`experiments/results/phase11-c111-confirmatory-findings.txt`,
+D-098 to D-105). They stood at NOT MEASURED until then; the four missing
+pieces were built and the campaign was pre-registered in commit `4b160fe`
+before it ran. C11.7 remains partial. The per-criterion status sits beside
+each criterion below and never in place of it - the criterion text for
+C11.1 through C11.8 is restored verbatim from before the 2026-08-10 status
+pass, which had replaced several of them with their status. That is the
+defect `170bce9` reverted in the Phase 12 plan, and it had already happened
+here.
+
 ## Scope Correction, 2026-08-10: The Genes Are A Reserved Slot, Not A Mechanism
 
 Recorded **before** any measurement, because it changes what this phase has
@@ -49,6 +60,11 @@ D-086 records for C10.3's control, which failed for the mirror-image reason.
   log tag **13** and event schema **5**.
 - Snapshot section tag **12**; format version stays 3, since an absent
   optional section stays readable by every existing build.
+- **Amended 2026-08-11.** The measurement substrate added a second section:
+  the action census is snapshot tag **14**, and the format version by then
+  reads **4** rather than 3, bumped by Phase 12 because the logical state
+  gained a composed terrain checksum in its header - not because a section
+  was appended. Tag 14 still does not move it, on tag 12's precedent.
 - `RngSystem::PlasticityInit = 10` is reserved in
   `specifications/determinism-extensions.md` but **absent from the enum**;
   this phase adds it, unused.
@@ -108,6 +124,14 @@ it was not born with.
 - The `learn` phase reads only values committed earlier in the same tick and
   writes only learned state.
 - Checksum section `lifesim-learn-state-v1`, present only when enabled.
+- **Added by the measurement substrate**: checksum section
+  `lifesim-action-census-v1`, present only when
+  `probe.action_census_enabled`, appended after Phase 12's section. It is
+  hashed for `learnstate.rs`'s reason - a lifetime's counts have no source
+  but the save - and the consequence is that `reset` moves the checksum, so
+  the sampling path records cumulative rows and never resets. Nothing in the
+  tick reads a count (ADR-0016), and the five fixtures are the assertion of
+  that rather than the claim.
 
 ## Acceptance Criteria
 
@@ -127,33 +151,166 @@ Conditions, matched on seeds (30), config, and run length:
 
 Criteria:
 
-- [ ] **C11.1 Within-lifetime behavioral change. NOT MEASURED.** Deliberately
-      distinguished from *unmet*: nothing was observed and no threshold was
-      tested, so recording it unmet would claim a null nobody ran. Three
-      pieces it needs do not exist - scripted-intervention machinery (there
-      is no command queue, no intervention list, and no relocatable resource
-      patch; resources are a per-cell scalar field and nothing moves),
-      per-organism action counting (intents are transient `pub(crate)`
-      scratch with no accessor), and the analysis that reduces a
-      per-individual shift to a world-level rate. See
-      `docs/21-open-questions.md`, which records the choice between building
-      that machinery and substituting a climate schedule, and recommends
-      building it.
-- [ ] **C11.2 Learning is under selection. NOT MEASURED**, for the same
-      reason, plus a fourth gap: there is **no neutral marker locus** anywhere
-      in the genome, and the criterion's drift control is defined against one.
+- [ ] **C11.1 Within-lifetime behavioral change.** In a controlled reversal
+      probe (a resource patch is relocated at tick t), individual organisms
+      alive both before and after the relocation show a measurable shift in
+      their own action distribution within their own lifetime under A, and
+      do not under B. The shift is computed **per individual**, because a
+      population-level shift is explicable by selection and proves nothing;
+      it is then **aggregated to a world-level rate, and the world is the
+      replicate** (ADR-0022 A5). Individuals are nested observations, not
+      sample size. Required in at least 20 of 30 worlds under `E-variable`.
+      This is the phase's designated primary endpoint.
 
-      Two measurements bear on it and are recorded now rather than saved for
-      a campaign, because both are unfavourable and both were nearly missed.
-      **Evolved plasticity is essentially absent**: after 30,000 ticks with
-      the mutation gate open, 1 plastic edge across 500 organisms and 7
-      across 1,999, with `mean_abs_learned_milli` zero in both. And over the
-      10^6-tick ledger run the founders' 400 plastic edges reached **zero**
-      by the end while 18.9 million updates accumulated along the way - so
-      plasticity was active and then disappeared. That is the phase's named
-      most-likely failure appearing, and it is now legible for a real reason
-      rather than guaranteed by an unreachable flag.
-- [x] **C11.3 Learned state is world state. Met.** Save, restore and continue
+      **Status 2026-08-11: UNMET, and it is a measured null with a control.**
+      Not the same as the NOT MEASURED it stood at until the confirmatory
+      campaign ran, and the difference is recorded rather than blurred: a
+      threshold was fixed in advance, the machinery the criterion needs was
+      built, and the measurement was taken.
+
+      | | Avar | Astat | Bvar | Bstat |
+      |---|---|---|---|---|
+      | worlds | 30 | 30 | 30 | 30 |
+      | **directed count (the criterion)** | **0** | **0** | **0** | **0** |
+      | two-sided count (reported only) | 29 | 30 | 30 | 30 |
+      | median rho, milli | -55 | -58 | -58 | -64 |
+      | null p95 range, milli | [6, 54] | [8, 13] | [7, 11] | [7, 14] |
+      | individuals, median per world | 19,139 | 11,632 | 19,758 | 12,036 |
+
+      Bar **20 of 30** under Avar, with the Bvar control required to stay
+      **strictly below 20**. Avar reaches 0. The seed-paired contrast of rho
+      between the arms is null as well: Avar minus Bvar is +3 milli, 95
+      percent interval [-1, +8], p = 0.707.
+
+      **The two-sided column is an artefact and must not be read as
+      evidence.** It is 29 to 30 of 30 in every arm, and it is *strongest*
+      in Bstat, where plasticity is disabled and the relocation has zero
+      magnitude - nothing whatever happens at the event tick. An association
+      that survives removal of the event was not caused by the event.
+
+      **The directed statistic is not identified** (D-100). The matched
+      control boundary sits at `event + relocate / 2`, which is 1,000 ticks
+      later in every organism's life than the event boundary it is paired
+      with. Measured in a stationary rolling cohort where nothing happens at
+      the event tick and behaviour is a pure function of age, the offset
+      alone gives rho = +158 against a null of 30 and **passes this
+      criterion**, with a dose-response of 76 / 158 / 334 / 700 milli at
+      offsets of 500 / 1,000 / 2,000 / 4,000 ticks. The sign follows the
+      substrate's age trend, so this campaign's 0 of 30 depends on which way
+      that trend happens to run. Nothing was changed to accommodate this -
+      no threshold moved and no rule was touched - and the correction a
+      re-run needs is filed in `docs/21-open-questions.md`. **C11.1 must not
+      be re-measured with the current pairing.**
+
+      **What the instrument could ever have seen** (D-101), reproduced
+      independently on fresh worlds with a from-scratch `.alac` reader: over
+      1,175,285 Avar records, `eat == age` and `mate == age` in 100.0000
+      percent and `rest == 0` and `attack == 0` in 100.0000 percent. Only
+      the three heading bands vary; they are a partition, so two degrees of
+      freedom, and `turn_left` carries 0.59 percent of locomotion. C11.1's
+      detectable space was effectively **one number** - the fraction of
+      ticks spent turning right rather than heading straight - driven by the
+      founder's single evolved `energy_fraction -> turn` path.
+
+      Recorded before the campaign and preserved, because it is why the
+      criterion stood at NOT MEASURED: three pieces it needs did not exist -
+      scripted-intervention machinery (there was no command queue, no
+      intervention list, and no relocatable resource patch; resources are a
+      per-cell scalar field and nothing moved), per-organism action counting
+      (intents were transient `pub(crate)` scratch with no accessor), and
+      the analysis that reduces a per-individual shift to a world-level
+      rate. All three now exist: `worldmod`'s relocating capacity patch,
+      `sim_core::actioncensus` with the `.alac` artifact, and
+      `sim_analysis::plasticity`.
+- [ ] **C11.2 Learning is under selection.** The distribution of `eta` and
+      plastic-edge-fraction at tick T differs from the founder distribution
+      by more than the drift expectation, measured against a neutral marker
+      locus in the same run as the drift control, in at least 20 of 30 seeds
+      under `E-variable`. Under `E-stationary` the prediction is the
+      opposite: plasticity should be selected *down* because it costs and
+      does not pay. A result showing plasticity increasing in a stationary
+      world would indicate the cost model is wrong, and would be reported as
+      such.
+
+      **Status 2026-08-11: UNMET, and it is a measured null with a live
+      control.** Avar 8 of 30, Bvar 0 of 30, against a bar of 20 and a
+      control ceiling of 20. All eight are on the plastic-flag scale; the
+      `eta` scale is 0 of 30 in every arm. One Avar world went extinct and
+      is reported `drift_no_variance` rather than as a failure, so the
+      treatment count is 8 of 29 defined worlds.
+
+      | | Avar | Astat | Bvar | Bstat |
+      |---|---|---|---|---|
+      | worlds counted | 8 | 8 | 0 | 0 |
+      | on the eta scale | 0 | 0 | 0 | 0 |
+      | on the plastic-flag scale | 8 | 8 | 0 | 0 |
+      | median plastic fraction, milli | 75 | 68 | 0 | 0 |
+      | median marker set fraction, milli | 61 | 61 | 72 | 68 |
+      | median plastic excess, milli | +1 | -2 | -76 | -68 |
+      | median eta excess, milli | 0 | 0 | -1 | 0 |
+      | moved eta alleles | 26,654 | 15,699 | 0 | 0 |
+      | moved marker alleles | 13,751 | 6,975 | 20,967 | 6,580 |
+
+      The drift margin is 25 milli, anchored to one expected mutational step
+      at the pinned `point_delta_q16 = 3277`. Avar's plastic-allele fraction
+      exceeds its own marker's by **+1 milli**. Plasticity spread at the
+      drift rate and not above it.
+
+      **The within-arm marker is the control that decides this, and it is
+      live.** In Bvar, `eta` and `EDGE_FLAG_PLASTIC` are frozen by the
+      mutation gate - 0 of 684,525 edge alleles moved - while 20,967 marker
+      alleles moved, so the marker carries the real population size, the
+      real variance in reproductive success, the real linkage and the real
+      mutation regime. **The criterion's *arm* control is not live**, and
+      that is recorded rather than left implicit: with `eta` and the flag
+      pinned at zero, both B excesses are always at most zero and
+      `selected_over_drift` is unreachable by construction, so "the control
+      stays strictly below the ceiling" is satisfied mechanically. It did
+      not matter here, because the criterion failed on its treatment count
+      alone; it would have mattered had Avar reached 20. A control bound to
+      a constant is not a control, one rung up from where the findings file
+      caught the same shape in `plastic_excess_milli`.
+
+      **The E-stationary prediction is not observed either.** Astat clears
+      the bar in the same 8 of 30 worlds with a median excess of -2 milli.
+      Plasticity was not selected down in the stationary arm. Under the
+      census reading below that is expected rather than a refutation of the
+      cost model: the trait is very nearly neutral because almost every
+      flagged edge carries rule 0 and does nothing.
+
+      **The census changes what this null is about** (D-099). Plasticity was
+      not selected down; **it was never assembled**. A nonzero learned delta
+      needs four conditions on one edge locus, each behind a different one
+      of seven point-mutation targets, plus a fifth for the two modulated
+      rules. 9 of 684,370 Avar edge alleles satisfy all four - 13 per
+      million, in 4 of 30 worlds, and at most 4 independent assembly events
+      after the pseudoreplication correction. Diploid expression is more
+      permissive, so 59 of the 48,119 expressed plastic edges clear it, and
+      25 rows held a nonzero learned weight at tick 60,000 in 14 worlds.
+      Every incomplete state on the path computes bit-identically to the
+      founder, and `learn_phase` charges every flagged edge whatever its
+      rule, so the interior of the path is a plateau and the flagged half of
+      it is deleterious. There is no monotone non-negative path from the
+      founder to the phenotype.
+
+      Recorded before the campaign and preserved. The criterion stood at
+      NOT MEASURED for C11.1's three reasons plus a fourth: there was **no
+      neutral marker locus** anywhere in the genome, and the drift control
+      is defined against one. Two measurements bore on it and were
+      unfavourable. **Evolved plasticity is essentially absent**: after
+      30,000 ticks with the mutation gate open, 1 plastic edge across 500
+      organisms and 7 across 1,999, with `mean_abs_learned_milli` zero in
+      both. And over the 10^6-tick ledger run the founders' 400 plastic
+      edges reached **zero** by the end while 18.9 million updates
+      accumulated along the way. Both readings survive the campaign; the
+      census supplies the mechanism they lacked.
+- [x] **C11.3 Learned state is world state.** Save, restore, and continue is
+      bit-identical with plastic edges carrying nonzero learned deltas.
+      Learned state cannot be recomputed from the genome and its presence in
+      the snapshot is verified by a test that corrupts it and observes a
+      trajectory divergence.
+
+      **Met.** Save, restore and continue
       is bit-identical with plastic edges carrying nonzero learned deltas, and
       the record is compared field by field rather than only by checksum - a
       checksum match also holds for a pair of cancelling defects (zeroing on
@@ -163,13 +320,23 @@ Criteria:
       and then matter; a byte flip would only prove CRC32 works. Divergence is
       asserted positionally, not on the checksum, because learned state is
       hashed and a checksum difference is guaranteed either way.
-- [x] **C11.4 No Lamarckian leakage. Met, by construction.**
+- [x] **C11.4 No Lamarckian leakage.** Children of parents with large learned
+      deltas start at exactly zero on every plastic edge. Asserted directly,
+      not inferred.
+
+      **Met, by construction.**
       `LearnState::push_organism` takes no initial-state parameter and zeroes
       every row, so the reset is an invariant rather than a default. Asserted
       directly with parents carrying large deltas, against
       `sum_abs_learned_q16 == 0` per organism rather than a population mean,
       which two cancelling organisms could also produce.
-- [x] **C11.5 Numeric safety. Met.** The 10^6-tick single-organism trace
+- [x] **C11.5 Numeric safety.** A 10^6-tick single-organism plasticity trace
+      reproduces bit-identically across clean processes; `learned_q16` never
+      leaves its clamp; effective weight never leaves [-8, 8]; injected
+      non-finite activations are neutralized, counted, and evented with no
+      panic.
+
+      **Met.** The 10^6-tick single-organism trace
       reproduces bit-identically across two clean processes (fixture schema 5,
       config `0xae34cd2b6f7a3e13`, state `0x53b354bd94e82bcf`, 2,000,000
       updates, 0 faults). `learned_q16` stays inside its clamp and effective
@@ -189,7 +356,11 @@ Criteria:
       One honest gap: a non-finite delta is unreachable through validated
       genes, so the fault path has no running-world coverage and is defended
       at the unit and record level only.
-- [x] **C11.6 Cost accounting. Met at the stated horizon.** Two measurements,
+- [x] **C11.6 Cost accounting.** The energy ledger stays exact to the
+      milli-unit with plasticity costs flowing through it over a 10^6-tick
+      run.
+
+      **Met at the stated horizon.** Two measurements,
       because they answer different questions. Exactness *at a moment*: on
       tick 1, against a matched control, the debit is exactly one edge per
       organism per tick - an approximate version would pass on a cost off by
@@ -205,10 +376,16 @@ Criteria:
       went extinct with *and* without plasticity, so the debit was not the
       cause - the population guard is what said so, and without it a million
       ticks of an empty world would have reported as a pass (trap 1).
-- [~] **C11.7 Snapshot and checkpoint budget. Snapshot half met; the
-      checkpoint-stall half is not measured through the mechanism the plan
-      names.** Sparse storage holds the budget comfortably. Framing is exact
-      at **12 bytes per plastic edge + 8 per organism + 72 per section**:
+- [~] **C11.7 Snapshot and checkpoint budget.** Snapshot size and checkpoint
+      stall are measured at both tiers with realistic evolved plasticity
+      levels, against the Phase 9 record. If sparse learned-state storage
+      does not hold the budget, the phase reports that and the plastic-edge
+      cap is set from the measurement.
+
+      **Snapshot half met; the checkpoint-stall half is not measured through
+      the mechanism the plan names.** Sparse storage holds the budget
+      comfortably. Framing is exact at **12 bytes per plastic edge + 8 per
+      organism + 72 per section**:
 
       | tier | condition | bytes/organism | learn share |
       |---|---|---|---|
@@ -234,7 +411,11 @@ Criteria:
       reported is synchronous encode/decode/restore time on the tick thread.
       The plan calls asynchronous checkpointing a Phase 5 prerequisite for
       exactly this measurement, so this is a gap rather than a substitution.
-- [x] **C11.8 Determinism and fixtures. Met.** A plasticity-disabled config
+- [x] **C11.8 Determinism and fixtures.** Plasticity-disabled configs
+      reproduce the Phase 9 fixture exactly; storage-permutation equality
+      holds.
+
+      **Met.** A plasticity-disabled config
       reproduces the Phase 9 fixture (`0x5f0c4e95e4f5170f`) exactly, and the
       Phase 1 and Phase 2 fixtures are untouched. A flagged genome in a
       disabled world is completely inert. The permutation clause is
@@ -242,20 +423,83 @@ Criteria:
       the world, with an explicit assertion that the rows are not all
       identical, since a rotation of identical rows is the identity.
 
+## The Conditions As Run, And What Bounds The Null
+
+`experiments/phase11-c111-confirmatory.campaign`, campaign hash
+`0x96ed767dbd9060e6`, pre-registered in commit `4b160fe` before the run.
+120 worlds - 4 arms x 30 seeds, seeds 6001..6030 with no exclusions -
+60,000 ticks each, 8 workers, 4,512.9 s wall, 0 failed, 1.8 GB of
+artifacts. Analysis version `lifesim-plasticity-analysis-v1`, census policy
+`lifesim-action-census-v1`, analysis seed `0x9e3779b97f4a7c15`, 199
+permutations.
+
+`E-variable` is realized by **building the machinery** rather than by
+substituting a climate schedule, which is what
+`docs/21-open-questions.md` recorded as the default: Phase 12's
+mutable-world half supplies a relocating capacity patch that is a pure
+function of `(seed, config, tick)`. Its control is a **zero-magnitude
+schedule**, not a schedule-free world, because relocating a patch trims
+biomass into a ledgered loss sink and a schedule-free arm would differ in
+standing biomass for a reason unrelated to learning.
+
+**Two calibrations move this campaign off the shipped defaults, and both
+bound how far the null generalizes.** Each was ruled by a control rather
+than by either criterion's outcome, and each was fixed on pilot seeds
+9001..9004, disjoint from the confirmatory set.
+
+- **`genome2.mutation.point_q16 = 65535`, ten times the shipped 6554.**
+  The rule was that the neutral marker's alleles must actually move, or the
+  drift control cannot bound drift and C11.2 is undefined everywhere for a
+  reason about the mutation rate. At 6554, **0** marker alleles had left the
+  founder value in the pilot at 20,000 ticks; at 65535, **126**.
+  `point_delta_q16` stays pinned at its documented 3,277, because C11.2's
+  bar is computed from it.
+- **`worldmod.patch_radius_cells = 32` and
+  `patch_capacity_scale_q16 = 262144` (4.0), against defaults of 15 and
+  2.0.** The rule was that the schedule must measurably change the world, or
+  the environmental factor is decoration. It does: median final population
+  is 5,964 in Avar against 2,846 in Astat and 5,653 against 2,716 in the B
+  arms, so the E-variable arms carry roughly twice the population of their
+  zero-magnitude controls at the same seeds.
+
+So **the null is a null at ten times the shipped point-mutation rate**, with
+a patch of radius 32 against the default 15 - about 4.5 times the cell
+footprint, 4,225 cells of a 16,384-cell map before the habitable filter - at
+twice the default capacity scale, over 64 generations of ancestry. It says nothing about the shipped rates except
+that they are further from assembling the phenotype, not closer: the
+waiting-time arithmetic in the census scales inversely with `point_q16`, so
+at 6554 the shortfall would be a factor of roughly 170 rather than 17. That
+scaling holds the locus count fixed and is first-order only - a lower point
+rate also means fewer duplications and so a slightly smaller denominator -
+which moves the number in the direction that makes the shortfall smaller,
+not larger, and not by an order of magnitude.
+
 ## What Is Not Claimed
 
-The phase built the mechanism and measured its cost, safety and persistence.
-It has **not** shown that anything learns anything useful, that plasticity is
-selected for, or that behaviour changes within a lifetime in a way selection
-did not produce - those are C11.1 and C11.2 and they are not measured.
+The phase built the mechanism, measured its cost, safety and persistence,
+and has now measured both behavioural criteria. It has **not** shown that
+anything learns anything useful, that plasticity is selected for, or that
+behaviour changes within a lifetime in a way selection did not produce.
+C11.1 and C11.2 are unmet, and they are unmet as measured nulls with
+pre-registered thresholds and stated controls.
 
-The two numbers that exist point the other way: plasticity is barely present
-after 30,000 ticks of mutation, and the founders' plastic edges are gone
-after 10^6. Neither is a result yet, because neither had a control or a
-pre-registered threshold. They are the reason the campaign is worth running
-rather than a substitute for running it.
+Four things are specifically **not** established by that null.
 
-## Test Plan## Test Plan
+- **Not** that lifetime learning is worthless in this world. The census
+  measures whether the phenotype was *reachable*, and separately whether the
+  states on the way to it were visible to selection. It cannot say what
+  learning would have been worth had it existed.
+- **Not** that plasticity was selected away. The flag is as common as its
+  neutral twin. What the census shows is that the conjunction was assembled
+  at most four independent times per arm in 30 worlds.
+- **Not** a behavioural finding about relocation. C11.1's two-sided
+  association reproduces in the arm where nothing happens at the event tick,
+  and its directed statistic is confounded by an age offset whose sign
+  decides the verdict (D-100).
+- **Not** a general statement about this world's behavioural repertoire.
+  The instrument could resolve one heading statistic (D-101).
+
+## Test Plan
 
 - Unit: each rule form's update at boundary activations; decay arithmetic;
   the f32-to-Q16 rounding rule at ties and at sign boundaries; clamp
@@ -290,6 +534,18 @@ non-goal is sharpened, not removed), `specifications/simulation-tick.md`,
 `specifications/world-save-format.md`, `specifications/metrics-schema.md`,
 decision log, ADR-0014.
 
+Updated by the measurement substrate and the campaign, 2026-08-11:
+`specifications/world-save-format.md` (snapshot section 14 and the `.alac`
+artifact), `specifications/experiment-config-schema.md` (`output actions`,
+the `action_samples` column, and why `genome2.mutation.point_delta_q16` is
+settable), `specifications/metrics-schema.md` (the `action_samples` column
+and both Phase 11 report formats), `specifications/determinism-extensions.md`
+(Rule 8's section table gains `lifesim-action-census-v1`; Rule 9 gains
+`lifesim-probe-v1` and the artifact framing versions),
+`docs/21-open-questions.md` (the `E-variable` question is discharged; four
+opened), `docs/22-decision-log.md` (D-098 to D-105), `planning/backlog.md`,
+`FILE_MANIFEST.md`.
+
 ## Risks
 
 | Risk | Mitigation |
@@ -299,6 +555,44 @@ decision log, ADR-0014.
 | Runaway plasticity destabilizes controllers into noise | Hard clamps on learned delta and effective weight; decay term; energy cost; fault counting |
 | Float-to-fixed conversion introduces a subtle asymmetry that biases learning | The rounding rule is specified exactly and unit-tested at ties and sign boundaries |
 | The modulatory design is too indirect for evolution to find | Recorded as an honest concern. A partial mitigation is that rules 1 and 2 are ungated and can produce unsupervised change without any modulator, so the search has a gradient toward useful plasticity before it has to discover modulation |
+
+### Risk Outcome, 2026-08-11
+
+**Row 1 happened.** The phase returned a null result on both behavioural
+criteria, which the table names as the single most likely failure. The
+mitigation was applied in full - the `E-variable` sweep ran, it was crossed
+with a matched zero-magnitude control, and the environmental factor
+demonstrably bit ecologically - and the null survived it.
+
+**The census changes the interpretation, and the change matters for the
+revisit conditions on D-023, D-025 and D-035.** The row predicts "plasticity is
+**selected to zero**", and that is not what happened. Plasticity was never
+assembled. The phenotype needs four conditions on one edge locus, each
+behind a different one of seven point-mutation targets; 9 of 684,370 Avar
+edge alleles carry all four, from at most four independent assembly events.
+Every incomplete state on the path computes bit-identically to the founder,
+so selection has nothing to act on, and the flagged half of the path is
+deleterious because the learn phase charges per flagged edge with no
+reference to the rule. That is a **plateau with a moat**, not a gradient
+running downhill.
+
+Two consequences follow, and both are reachability statements rather than
+statements about the value of learning.
+
+- The revisit conditions on D-023, D-025 and D-035 - "Phase 11 shows
+  plasticity is selected to zero everywhere", "plasticity selected to zero
+  across the environmental-variability sweep" - are **not** triggered by
+  this result, and reading them as triggered would draw the wrong
+  conclusion about Phase 13.
+  What Phase 11 shows is that a four-condition conjunction at one locus is
+  out of reach in 64 generations at ten times the shipped mutation rate.
+- The last row of the table - "the modulatory design is too indirect for
+  evolution to find" - has its stated partial mitigation removed by
+  measurement. Rules 1 and 2 being ungated does not give the search a
+  gradient, because an edge carrying rule 1 with `eta = 0` and an edge
+  carrying rule 0 execute the same instructions and write the same bytes.
+  There is no gradient toward plasticity at all until all four conditions
+  are present at once.
 
 ## Rollback
 

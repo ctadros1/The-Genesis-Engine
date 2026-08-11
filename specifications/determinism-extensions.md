@@ -294,6 +294,25 @@ only when that subsystem's state exists:
 | `lifesim-morphology-state-v1` | Developmental clock, non-viability counters | morphology enabled |
 | `lifesim-chemistry-state-v1` | Per-cell substrate concentrations | field regime enabled |
 | `lifesim-microbial-state-v1` | Per-cell, per-class microbial densities | field regime enabled |
+| `lifesim-action-census-v1` | Per-organism cumulative action histograms and their counters | `probe.action_census_enabled` |
+
+`lifesim-action-census-v1` is a **measurement** section and is hashed
+anyway, which is worth stating because the alternative is tempting. A
+lifetime's action counts have no source but the save: they accumulate from
+intents computed from stored activations, so re-deriving them would need the
+run replayed from tick zero. That is the same argument
+`lifesim-learn-state-v1` makes. The cost is that **zeroing the counters
+moves the checksum** - a world whose counters were reset at tick 5,000 is
+not the world whose were not - and hiding that behind an unhashed field
+would make a state change invisible to replay. The sampling path therefore
+records cumulative rows and never resets; a before/after window is the
+difference of two samples, which subsumes a reset and keeps sampling
+provably read-only.
+
+Nothing in the tick reads a census count: no controller input, no config
+trigger, no selection term, and no RNG draw. That is what keeps the section
+inside ADR-0016, and the five fixtures are the assertion of it rather than
+the claim.
 
 Three categories of state are deliberately **absent** from this table because
 they are derived and recomputed on load rather than stored: phenotypes and
@@ -325,6 +344,8 @@ canonical config hash only when their section is enabled:
 | - | `lifesim-structmut-v1` | Structural mutation operators (Phase 9) |
 | - | `lifesim-pairkey-v1` | Pairwise draw subject derivation (Phase 7) |
 | - | `lifesim-plasticity-v2` | Learning rule registry and update arithmetic (Phase 11) |
+| - | `lifesim-probe-v1` | Phase 11 measurement section: the action-class set, the partition/indicator split, `TURN_BAND_MILLI`, and the neutral marker locus. Hashed only when `probe.enabled`, and appended after Phase 12's section, so the five fixtures are unmoved. Enabling it starts a new replay lineage in both halves: the marker changes what point mutation can land on, and the census changes what is stored and checksummed |
+| - | `lifesim-action-census-v1` | Action-class set and classification policy (Phase 11). A histogram recorded under one version is not comparable with one recorded under another, so the version is folded into the config hash and into the `.alac` header's `policy_hash` |
 | - | `lifesim-social-v1` | Perception and signalling (Phase 13) |
 | - | `lifesim-material-v1` | Material registry and properties (Phase 12) |
 | - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 12) |
@@ -350,10 +371,16 @@ existed.
 Analysis policies are recorded in reports and are deliberately **not** in the
 config hash, because an analysis version can never affect a world:
 `lifesim-similarity-v1` (existing), `lifesim-era-v1`,
-`lifesim-tradition-v1`.
+`lifesim-tradition-v1`, `lifesim-spatial-index-v1` (Phase 7),
+`lifesim-plasticity-analysis-v1` (Phase 11, C11.1 and C11.2),
+`lifesim-conjunction-census-v1` (Phase 11, descriptive).
 
 Save framing versions are separate again: ALIF format 1 (existing), ALIF
-format 2 (Phase 12). See `specifications/world-save-format.md`.
+format 2 (Phase 12) - **in practice ALIF format 4**, since the Phase 9 and
+Phase 11 sections landed first; see `specifications/world-save-format.md`.
+Artifact framing versions are separate from both: ALEV format 1 (event log,
+Phase 5), ALSS format 1 (spatial samples, Phase 7), ALAC format 1
+(per-individual action samples, Phase 11).
 
 ## Rule 10: Scheduling Never Reaches The Kernel
 

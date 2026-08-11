@@ -211,3 +211,158 @@ is reported as `drift_no_variance`, not as a C11.2 failure.
   campaign's own decision rule requires 20.
 - No claim is made about cognition, about learning anything useful, or about
   behaviour changing in a way selection did not produce.
+
+================================================================
+APPENDED CORRECTION, 2026-08-11. THE ORIGINAL TEXT ABOVE IS
+UNCHANGED; THIS SECTION SUPERSEDES THREE OF ITS SENTENCES.
+================================================================
+
+This file is a committed results artifact and its history is not rewritten.
+Everything above is exactly what was written when the campaign was decided.
+Three of its statements are corrected here, all in section 1 and all about
+what the null is *about*. **Neither verdict moves**: C11.1 and C11.2 remain
+UNMET on their pre-registered thresholds, no threshold was changed, and no
+campaign was re-run.
+
+Sources: `experiments/results/phase11-conjunction-census.txt` and
+`-raw.txt` (`lifesim conjunction`, `lifesim-conjunction-census-v1`), a
+descriptive census of these same 120 snapshots with no bar, no null and no
+verdict. Decisions D-098, D-099, D-100, D-101.
+
+----------------------------------------------------------------
+CORRECTION 1. THE CENTRAL SENTENCE OF SECTION 1 IS WRONG.
+----------------------------------------------------------------
+
+WHAT IT SAYS:
+
+  "the mechanism executed a billion times and moved no weight by as much as
+  one part in a thousand"
+
+  resting on "the final mean absolute learned delta was **0 milli in every
+  one of the 30 worlds** (range [0, 0])".
+
+WHAT IS TRUE. The mean is arithmetically correct and the reading is not.
+`mean_abs_learned_milli` is a mean over every plastic edge alive, and the
+phenomenon is rare:
+
+  sum |learned| in the Avar arm      139,116 Q16 = 2.1227 weight units
+  rows (plastic edges)                48,119
+  139,116 / 48,119 -> milli           truncates to 0
+
+  rows with a NONZERO learned weight      25, in 14 of the 30 worlds
+  largest                             15,054 Q16 = 0.2297 units = 229 milli
+                                      against a clamp of 8,000 milli
+  median of the 25 nonzero             2,930 Q16 = 45 milli
+  Astat                                   15 rows, in 10 of 30 worlds
+  Bvar, Bstat                              0, by construction
+
+**Learning did occur**, in about 0.05 percent of the arm, far below what the
+population statistic could resolve. A population where 25 edges learned and
+one where none did report the same 0. This is D-098, and it is the same
+shape as D-074: a summary that makes a rare signal unreadable, applied to
+the one metric the phase used to answer "did anything actually learn".
+
+`Metrics` now carries `learned_edges_nonzero` and `max_abs_learned_milli`
+beside the mean (commit 3b52d98), so the next report cannot make this
+reading from a zero alone.
+
+----------------------------------------------------------------
+CORRECTION 2. "1,109,373,897 UPDATES" IS 95.43 PERCENT NO-OPS.
+----------------------------------------------------------------
+
+`plasticity_updates_total` is `PlasticityCounters::total_evaluated`, which
+is applied + static + refused. In the Avar arm:
+
+  total evaluated             1,109,373,897
+  applied (a rule ran)           50,661,864   4.57%
+  static (rule 0, no-op)      1,058,712,033  95.43%
+  refused                                 0
+
+`StepKind::Static` is the early return at `plasticity.rs:375` for a flagged
+edge whose `rule_id` is 0, taken before eta, the coefficients, the decay or
+the modulator are read at all. Of the 48,119 expressed plastic edges, only
+**3,147 (6.54 percent) carry a non-static rule**; 44,972 carry rule 0.
+
+So "the learn phase ran a billion times" describes the flag, not the
+mechanism. The mechanism ran 50.7 million times on 3,147 edges.
+
+----------------------------------------------------------------
+CORRECTION 3. THE EXPLANATION NAMES TWO GENES. THERE ARE FOUR
+CONDITIONS, PLUS A FIFTH FOR TWO OF THE FIVE RULES.
+----------------------------------------------------------------
+
+WHAT SECTION 1 SAYS: "A plastic edge only moves its weight when `eta` **and**
+the rule's coefficients are both off zero".
+
+WHAT IS TRUE. On one edge locus, all at once:
+
+  1 EDGE_FLAG_PLASTIC set          point-mutation target 1, a toggle
+  2 rule_id != RULE_STATIC         target 2, a re-draw
+  3 eta > 0                        target 3
+  4 a nonzero coefficient          target 4 - and RULE_OJA is exempt from
+                                   this one only (plasticity.rs:388)
+  5 for rules 3 and 4, a modulator resolving to a node whose role is
+    Modulatory, or world.rs:3953 hands the update a hard 0.0
+
+Measured over the Avar arm's 684,370 edge alleles: 9 satisfy conditions 1-4
+- 13 per million, in 4 of 30 worlds - against a conjunction-depth histogram
+of 76.6 / 19.9 / 3.3 / 0.22 / 0.0013 percent at depths 0 to 4. Diploid
+expression assembles the conjunction across haplotypes, so 59 of the 48,119
+expressed plastic edges clear it.
+
+Independence over the four marginals predicts 12.0 alleles against 9
+observed: four independent rare events with no interaction. And the alleles
+are not independent draws - Avar's 9 come from 4 worlds with 6 in one of
+them - so **the honest count of independent assembly events is at most 4**.
+
+**And the reason is not only rate.** Every incomplete state on the path
+computes bit-identically to the founder, so selection cannot see it, while
+`learn_phase` charges every flagged edge with no reference to its rule
+(`world.rs:4008`) - 0.2 milli-EU per tick against a 10 milli-EU basal. The
+Avar arm paid 221,410,876 milli-EU for plastic edges, about 211 million of
+it for rule-0 no-ops. The interior of the path is exactly neutral and the
+flagged half is deleterious: a plateau with a moat, not a gradient.
+
+The caveat that keeps this honest: at 7.98 percent of edge alleles carrying
+the flag, against the marker's neighbourhood, the cost was not resolvable
+against drift in this data. It is enough to forbid a positive gradient; it
+is not enough to have visibly purged the flag.
+
+----------------------------------------------------------------
+WHAT THIS DOES NOT CORRECT
+----------------------------------------------------------------
+
+- Section 2's reading of C11.1 is corrected in a different direction and
+  more sharply, by D-100 rather than by the census. This file says the
+  non-age-matched control makes the two-sided column unreadable but "does
+  not change the decision". That is true of **this** campaign only. The
+  offset alone produces rho = +158 against a null of 30 and **passes**
+  `within_lifetime_shift` in a world with no event in it, with a
+  dose-response of 76/158/334/700 at offsets 500/1,000/2,000/4,000. The
+  sign follows the substrate's age trend, so a substrate with the opposite
+  trend turns 0 of 30 into a pass. The directed statistic is not
+  identified. Nothing was changed to accommodate this; the correction
+  belongs to a future pre-registration (`docs/21-open-questions.md`).
+- Section 3's warning that `contrast treatment=Avar control=Bvar
+  quantity=plastic_excess_milli` is mechanically guaranteed by the gate is
+  correct and does not go far enough: the **criterion line** has the same
+  property. With `eta` and the flag frozen in the B arms, `control_count`
+  is 0 by construction, so C11.2's "the control stays strictly below the
+  ceiling" clause was satisfied mechanically. It did not matter, because
+  the criterion failed on its treatment count alone (8 < 20). C11.2's live
+  control is the within-arm neutral marker, which is matched and does move.
+- Section 2's per-column occupancy numbers stand and were reproduced
+  independently on fresh worlds by a from-scratch `.alac` reader (D-101):
+  `eat == age` and `mate == age` in 100.0000 percent of 1,175,285 records,
+  `rest == 0` and `attack == 0` in 100.0000 percent.
+- The verdicts, the counts, the bar, the control ceiling and every
+  threshold are untouched.
+
+ONE NUMBER IN THIS FILE DISAGREES WITH THE REPORT IT SUMMARIZES. The
+"median rho (milli)" row in section 2 gives -50 for Avar and -57 for Bvar;
+`phase11-c111-confirmatory-plasticity.txt` records `med_rho_milli=-55` and
+`-58`. With 30 worlds the median is between two order statistics and
+`paired::median_milli` returns `sorted[(n-1)/2]`, the lower of the two;
+this file took the upper. The report is what the code computed and is the
+primary record. Astat (-58) and Bstat (-64) agree because their two middle
+values are equal. Nothing downstream reads this row.

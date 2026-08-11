@@ -25,6 +25,45 @@ ordering, recovery, and restore-verification behavior follow the Write
 Contract and Restore Test sections below and are covered by the
 `sim-persist` test suite.
 
+## Phase 11 Implementation Notes: Section 14, The Action Census
+
+Implemented in `crates/sim-persist/src/codec.rs` as
+`SECTION_ACTION_CENSUS = 14`, present exactly when
+`config.probe.action_census_enabled`. Body: `ACTION_CLASS_COUNT` `u32`
+columns per organism, in organism order, preceded by the organism count.
+
+**Dense, unlike the sparse learn section beside it (tag 12).** Only some
+edges are plastic, so a learn record names the edge it belongs to; every
+living organism has an action every tick, so a sparse histogram would carry
+an index next to almost every entry and save nothing.
+
+**The format version stays 4.** This follows tag 12's precedent rather than
+tag 13's: format 4 was bumped because the logical state gained a meaning (a
+composed terrain checksum in the header), not because a section was
+appended. An absent optional section is readable by every existing build, so
+a snapshot of a world without the probe is byte-identical to the one this
+build would have written before section 14 existed, and all five fixtures
+are untouched. The decoder still **refuses tag 14 in a format 3 file**, so a
+legacy file carrying it is a typed error rather than a section read under a
+framing that never defined it.
+
+`ACTION_CENSUS_BYTES_PER_ORGANISM` bounds the allocation a declared organism
+count implies and is never used to assert an exact body length (D-075);
+exactness is enforced by the trailing-bytes check every section runs.
+
+The census is also **state**, so it is hashed under
+`lifesim-action-census-v1` in `World::state_checksum`, appended after Phase
+12's section. See `specifications/determinism-extensions.md` Rule 8. One
+consequence is deliberate and is stated rather than hidden: `reset` moves
+the checksum, so a probe boundary is part of the replay lineage.
+
+The per-individual sample series that C11.1 reads is a **separate artifact**
+and not part of the snapshot: `.alac` format 1, described in
+`crates/sim-persist/src/actionlog.rs`, with a self-checking 72-byte header,
+per-segment CRC32, strictly ascending segment ticks, and the entity id in
+every 44-byte record so an analysis keys on the organism rather than on the
+array slot.
+
 ## Planned Successor: ALIF Format 2 (Phase 12)
 
 Design: `specifications/mutable-world-state.md`. Decision: ADR-0015.
@@ -54,6 +93,7 @@ checksummed like the existing ones:
 | Objects | Artifact table, composition lists, per-cell occupancy | artifacts enabled |
 | Terrain modification | Sparse or dense delta, flagged in the header | mutable world enabled |
 | Physiology | Developmental stage, hazard, disease load | physiology enabled |
+| Action census (tag 14, Phase 11) | Dense per-organism action histogram, `ACTION_CLASS_COUNT` u32 columns | `probe.action_census_enabled` |
 
 Header changes: `next_entity_id` becomes `next_object_id` (organisms and
 artifacts share one monotonic ID space); the baseline and composed terrain
