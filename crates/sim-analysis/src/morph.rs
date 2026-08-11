@@ -160,6 +160,73 @@ pub fn permutation_p95_milli(samples: &[(i64, i64)], seed: u64) -> i64 {
     nulls[(PERMUTATIONS * 95) / 100]
 }
 
+/// The same null, with the shuffle **restricted to strata**.
+///
+/// Each sample is `(label, outcome, stratum)` and a round permutes labels
+/// only among samples sharing a stratum. Everything else - the Fisher-Yates,
+/// the named analysis stream, `PERMUTATIONS`, the exact 190th order
+/// statistic - is identical to `permutation_p95_milli`, because the only
+/// thing that should differ between the two is what the null is allowed to
+/// destroy.
+///
+/// **Why a restricted randomisation rather than a corrected statistic.** A
+/// permutation null must preserve everything about the data except the
+/// association under test. When the label is confounded with a nuisance
+/// variable, the unrestricted shuffle destroys the confound along with the
+/// association, so the observed value keeps a bias the null it is compared
+/// against has thrown away. Stratifying puts the nuisance structure into the
+/// null at the strength it has in the data, where it cancels. That is why
+/// this is not a "fix to the statistic": the observed statistic is
+/// unchanged, and only the reference distribution moves.
+///
+/// D-100 is the case that forced it. C11.1's control boundary sits later in
+/// an organism's life than its event boundary, so the label was confounded
+/// with age; on a world where nothing happens at all the unrestricted null
+/// let an age artifact score rho +158 against a p95 of 30 and pass.
+///
+/// **A stratum holding one label is silently degenerate** - it contributes to
+/// the observed statistic and cannot be shuffled, which reimports exactly the
+/// bias being removed. This function does not filter: the caller must drop
+/// single-label strata from the observed statistic and from these samples
+/// alike, and report how many observations that cost. Filtering here would
+/// hide the exclusion from the report.
+///
+/// Determinism: strata are walked in ascending key order through a
+/// `BTreeMap`, and the draw index is a running counter over that walk, so the
+/// permutation is a function of the data and the seed alone (Rule 5).
+pub fn permutation_p95_milli_stratified(samples: &[(i64, i64, u64)], seed: u64) -> i64 {
+    if samples.len() < 3 {
+        return 0;
+    }
+    let mut strata: std::collections::BTreeMap<u64, Vec<usize>> = std::collections::BTreeMap::new();
+    for (index, (_, _, stratum)) in samples.iter().enumerate() {
+        strata.entry(*stratum).or_default().push(index);
+    }
+    let labels: Vec<i64> = samples.iter().map(|(label, _, _)| *label).collect();
+    let outcomes: Vec<i64> = samples.iter().map(|(_, outcome, _)| *outcome).collect();
+    let mut nulls = Vec::with_capacity(PERMUTATIONS);
+    for round in 0..PERMUTATIONS {
+        let mut shuffled = labels.clone();
+        let mut step = 0_u64;
+        for members in strata.values() {
+            for position in (1..members.len()).rev() {
+                let draw = named_random(seed, round as u64, sim_core::RngSystem::Analysis, step, 0);
+                step += 1;
+                let target = (draw % (position as u64 + 1)) as usize;
+                shuffled.swap(members[position], members[target]);
+            }
+        }
+        let paired: Vec<(i64, i64)> = shuffled
+            .iter()
+            .copied()
+            .zip(outcomes.iter().copied())
+            .collect();
+        nulls.push(rho_of(&paired).abs());
+    }
+    nulls.sort_unstable();
+    nulls[(PERMUTATIONS * 95) / 100]
+}
+
 /// Reduce one world's census to its consequence statistics.
 pub fn consequence_of(census: &[MorphologySample], seed: u64) -> (usize, i64, i64, bool) {
     let samples: Vec<(i64, i64)> = census

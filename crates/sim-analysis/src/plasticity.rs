@@ -140,7 +140,7 @@
 //! up with drift, which is a directed failure with a real reading, and it is
 //! counted as one.
 
-use crate::morph::permutation_p95_milli;
+use crate::morph::permutation_p95_milli_stratified;
 use crate::paired::{Direction, Pair, PairedResult, compare, median_milli};
 use sim_core::{
     ACTION_CLASS_COUNT, EDGE_FLAG_PLASTIC, Genome2, LOCOMOTION_CLASS_COUNT, LocusKind,
@@ -150,7 +150,15 @@ use sim_persist::ActionLogScan;
 use std::collections::BTreeMap;
 use std::fmt::Write as _;
 
-pub const PLASTICITY_ANALYSIS_VERSION: &str = "lifesim-plasticity-analysis-v1";
+/// Bumped to v2 when the permutation null became **stratified by the
+/// organism's age at its boundary** (D-100). v1's unrestricted shuffle
+/// destroyed the age balance along with the association, so an age artifact
+/// sat in the observed value and not in the null it was compared against; on
+/// a world where nothing happened at all it scored rho +158 against a p95 of
+/// 30 and passed. The observed statistic is unchanged - only the reference
+/// distribution moved - but a v1 and a v2 number are not comparable and the
+/// version is what stops them being read side by side.
+pub const PLASTICITY_ANALYSIS_VERSION: &str = "lifesim-plasticity-analysis-v2";
 
 /// The analysis plan. Every bar is a named field and every field is echoed
 /// verbatim into the report, so a reader can check it against the campaign
@@ -304,6 +312,23 @@ pub enum ShiftRefusal {
     NoBoundaries,
     /// Fewer distinct individuals than the plan requires.
     TooFewIndividuals { individuals: usize, required: usize },
+    /// No age stratum held both an event and a control observation, so the
+    /// event label and the organism's age are perfectly confounded and no
+    /// age-matched comparison exists in this population at all.
+    ///
+    /// **This is not "behaviour did not vary" and must never be reported as
+    /// it.** One organism's own two observations are always `relocate / 2`
+    /// ticks apart in age, so a stratum can only hold both labels when the
+    /// population contains organisms born about that far apart. A
+    /// birth-synchronised population - every founder alive, nothing born
+    /// since - cannot supply that, and the honest answer for such a world is
+    /// that C11.1 is unanswerable in it rather than answered in the negative.
+    /// Reporting it as a null would let a demographic accident stand in for a
+    /// refutation of lifetime learning, which is D-079's lesson.
+    NoInformativeStrata {
+        strata_total: usize,
+        observations: usize,
+    },
 }
 
 impl std::fmt::Display for ShiftRefusal {
@@ -318,6 +343,13 @@ impl std::fmt::Display for ShiftRefusal {
                 individuals,
                 required,
             } => write!(formatter, "too_few_individuals({individuals}<{required})"),
+            Self::NoInformativeStrata {
+                strata_total,
+                observations,
+            } => write!(
+                formatter,
+                "no_informative_strata(strata={strata_total},observations={observations})"
+            ),
         }
     }
 }
@@ -402,6 +434,18 @@ pub struct ShiftResult {
     pub varying_columns: usize,
     /// Window pairs discarded because a window was unusable.
     pub discarded: usize,
+    /// Age strata over the pooled observations, and how many held both an
+    /// event and a control observation. Only the informative ones are used;
+    /// the rest are dropped from the observed statistic and the null alike.
+    ///
+    /// These are reported because the exclusion changes what was measured. A
+    /// world where `strata_informative` is a small fraction of `strata_total`
+    /// answered C11.1 over a minority of its own data, and a reader has to be
+    /// able to see that without rerunning anything.
+    pub strata_total: usize,
+    pub strata_informative: usize,
+    /// Observations dropped for sitting in a single-label stratum.
+    pub observations_dropped: usize,
 }
 
 /// Reduce one world's `.alac` series to C11.1's statistics.
@@ -427,7 +471,8 @@ pub fn world_shift(
         }
     }
 
-    let mut observations: Vec<(i64, i64)> = Vec::new();
+    // `(label, distance, stratum)`.
+    let mut observations: Vec<(i64, i64, u64)> = Vec::new();
     let mut event_distances: Vec<i64> = Vec::new();
     let mut control_distances: Vec<i64> = Vec::new();
     let mut event_locomotion: Vec<i64> = Vec::new();
@@ -448,6 +493,7 @@ pub fn world_shift(
         WindowDistance,
         [i64; ACTION_CLASS_COUNT],
         [i64; ACTION_CLASS_COUNT],
+        u64,
     )> {
         let before = by_tick.get(&(centre - window))?.get(&id)?;
         let middle = by_tick.get(&centre)?.get(&id)?;
@@ -463,7 +509,14 @@ pub fn world_shift(
             pre[slot] = i64::from(middle.1[slot]) - i64::from(before.1[slot]);
             post[slot] = i64::from(after.1[slot]) - i64::from(middle.1[slot]);
         }
-        window_distance(&pre, &post).map(|distance| (distance, pre, post))
+        // `middle.0` is the organism's age at the boundary tick, and it is the
+        // stratifying variable. An event pair at boundary T and a control pair
+        // at boundary T+half both cover ages `[a-window, a]` and
+        // `[a, a+window]` for an organism of age `a` at its own boundary, so
+        // two observations sharing a stratum cover identical age ranges. That
+        // identity is what makes the stratified null absorb the age artifact
+        // rather than merely dilute it (D-100).
+        window_distance(&pre, &post).map(|distance| (distance, pre, post, middle.0))
     };
 
     for boundary in &spec {
@@ -481,13 +534,17 @@ pub fn world_shift(
                 continue;
             };
             individuals.insert(id);
-            observations.push((1, event.0.l1_milli));
-            observations.push((0, control.0.l1_milli));
+            // Each observation carries the stratum it will be shuffled within:
+            // the organism's own age at its own boundary, binned by the window
+            // width. `window` is the resolution the windows are defined at, so
+            // two observations in one stratum cannot differ by a whole window.
+            observations.push((1, event.0.l1_milli, event.3 / window));
+            observations.push((0, control.0.l1_milli, control.3 / window));
             event_distances.push(event.0.l1_milli);
             control_distances.push(control.0.l1_milli);
             event_locomotion.push(event.0.locomotion_tv_milli);
             control_locomotion.push(control.0.locomotion_tv_milli);
-            for (_, pre, post) in [event, control] {
+            for (_, pre, post, _) in [event, control] {
                 let denominator = |w: &[i64; ACTION_CLASS_COUNT]| -> i64 {
                     w[..LOCOMOTION_CLASS_COUNT].iter().sum()
                 };
@@ -510,8 +567,44 @@ pub fn world_shift(
         });
     }
 
+    // Drop observations whose stratum holds only one label. Such a stratum
+    // contributes to the observed correlation but cannot be shuffled, so
+    // leaving it in would reimport the very age bias the stratification
+    // exists to remove. The exclusion is reported rather than silent: a
+    // design that quietly drops observations is a different design.
+    let strata_index = {
+        let mut index: BTreeMap<u64, (usize, usize)> = BTreeMap::new();
+        for (label, _, stratum) in &observations {
+            let entry = index.entry(*stratum).or_insert((0, 0));
+            if *label == 1 {
+                entry.0 += 1;
+            } else {
+                entry.1 += 1;
+            }
+        }
+        index
+    };
+    let strata_total = strata_index.len();
+    let strata_informative = strata_index
+        .values()
+        .filter(|(events, controls)| *events > 0 && *controls > 0)
+        .count();
+    let observations_seen = observations.len();
+    observations.retain(|(_, _, stratum)| {
+        strata_index
+            .get(stratum)
+            .is_some_and(|(events, controls)| *events > 0 && *controls > 0)
+    });
+    let observations_dropped = observations_seen - observations.len();
+    if observations.is_empty() {
+        return Err(ShiftRefusal::NoInformativeStrata {
+            strata_total,
+            observations: observations_seen,
+        });
+    }
+
     let distinct_distances = {
-        let mut values: Vec<i64> = observations.iter().map(|(_, value)| *value).collect();
+        let mut values: Vec<i64> = observations.iter().map(|(_, value, _)| *value).collect();
         values.sort_unstable();
         values.dedup();
         values.len()
@@ -532,9 +625,16 @@ pub fn world_shift(
     let (rho_milli, null_p95_milli) = if no_variance {
         (0, 0)
     } else {
+        // Observed and null are computed over the SAME kept observations. The
+        // statistic is unchanged from v1; only what the null is permitted to
+        // shuffle has changed.
+        let flat: Vec<(i64, i64)> = observations
+            .iter()
+            .map(|(label, value, _)| (*label, *value))
+            .collect();
         (
-            crate::demography::spearman_milli(&observations),
-            permutation_p95_milli(&observations, seed),
+            crate::demography::spearman_milli(&flat),
+            permutation_p95_milli_stratified(&observations, seed),
         )
     };
 
@@ -568,6 +668,9 @@ pub fn world_shift(
         column_totals,
         varying_columns,
         discarded,
+        strata_total,
+        strata_informative,
+        observations_dropped,
     })
 }
 
@@ -1051,6 +1154,7 @@ pub fn render(
                          median_event_loco_tv_milli={} median_control_loco_tv_milli={} \
                          event_wins={} control_wins={} ties={} \
                          distinct_distances={} varying_columns={} discarded={} \
+                         strata_total={} strata_informative={} observations_dropped={} \
                          column_totals={} no_variance={} shift={} associated={}",
                         world.seed,
                         world.population,
@@ -1070,6 +1174,9 @@ pub fn render(
                         shift.distinct_distances,
                         shift.varying_columns,
                         shift.discarded,
+                        shift.strata_total,
+                        shift.strata_informative,
+                        shift.observations_dropped,
                         totals.join(","),
                         shift.no_variance,
                         world.within_lifetime_shift(plan),
@@ -1414,6 +1521,25 @@ mod tests {
         ((epoch * 3 + id) % LOCOMOTION_CLASS_COUNT as u64) as usize
     }
 
+    /// Births staggered one window apart, so the population holds organisms
+    /// of many different ages at once.
+    ///
+    /// **Every age-matched design needs this and a synchronised population
+    /// cannot supply it.** One organism's event and control observations are
+    /// always `R / 2` ticks apart in age, so an age stratum holds both labels
+    /// only when the population contains organisms born about that far apart.
+    /// A world where everything is alive from tick 1 confounds the event
+    /// label with age perfectly, and `world_shift` refuses it rather than
+    /// scoring it - see
+    /// `a_birth_synchronised_population_is_refused_rather_than_scored`.
+    ///
+    /// Staggering is also the realistic case by a wide margin: the
+    /// confirmatory campaign's worlds recorded tens of thousands of births
+    /// each, against a founder cohort of a few hundred.
+    fn staggered(tick: u64, id: u64) -> bool {
+        tick >= (id - 1) * W
+    }
+
     /// Behavioural change of the same size, redrawn every window from a mixer
     /// that knows nothing about epochs. Adjacent windows land in the same
     /// column about a quarter of the time, so the distances genuinely vary -
@@ -1435,16 +1561,37 @@ mod tests {
         // event windows straddle a change; the matched control windows lie
         // inside one epoch and do not.
         let plan = PlasticityPlan::default();
-        let scan = scan_from(12, HORIZON, epoch_locked, |_, _| true);
+        let scan = scan_from(24, HORIZON, epoch_locked, staggered);
         let shift = world_shift(&scan, R, &plan, 11).expect("computable");
-        assert_eq!(shift.individuals, 12);
+        assert_eq!(shift.individuals, 24);
         assert!(shift.boundaries >= 4, "{shift:?}");
         assert!(!shift.no_variance);
+        // **This is the half of the age-matching change that stops it being a
+        // fix that breaks the instrument.** A straightened ruler that can no
+        // longer measure anything satisfies "the fake world scores zero" just
+        // as well as a correct one does, so the stratified null has to be
+        // shown clearing a planted effect as well as refusing an age
+        // artifact. It does, and by a wide margin: a perfect correlation
+        // against a null that the stratification has actually widened
+        // (140 milli here, against 8-13 in the campaign's pooled worlds).
+        assert_eq!((shift.rho_milli, shift.null_p95_milli), (1_000, 140));
         assert!(
             shift.rho_milli > shift.null_p95_milli,
             "planted response {} did not beat its null {}",
             shift.rho_milli,
             shift.null_p95_milli
+        );
+        // The exclusion is small here and is asserted rather than assumed:
+        // four strata at the extremes of the age range hold only one label,
+        // and the eight observations in them are dropped from the observed
+        // statistic and the null alike.
+        assert_eq!(
+            (
+                shift.strata_total,
+                shift.strata_informative,
+                shift.observations_dropped
+            ),
+            (38, 34, 8)
         );
         // The event windows sit at the top of the distance scale and the
         // control windows at the bottom, which is what the correlation is
@@ -1482,7 +1629,7 @@ mod tests {
         // inside one epoch - a real association, and the opposite of the claim
         // C11.1 makes. It must be visible in the report and must not pass.
         let plan = PlasticityPlan::default();
-        let scan = scan_from(12, HORIZON, midpoint_locked, |_, _| true);
+        let scan = scan_from(24, HORIZON, midpoint_locked, staggered);
         let shift = world_shift(&scan, R, &plan, 37).expect("computable");
         assert_eq!(shift.median_event_milli, 0);
         assert_eq!(shift.median_control_milli, 1_996);
@@ -1510,7 +1657,7 @@ mod tests {
         // simply measured "did anything change" would pass C11.1 in every
         // world with a living population.
         let plan = PlasticityPlan::default();
-        let scan = scan_from(12, HORIZON, window_locked, |_, _| true);
+        let scan = scan_from(24, HORIZON, window_locked, staggered);
         let shift = world_shift(&scan, R, &plan, 13).expect("computable");
         assert!(!shift.no_variance, "the distances must actually vary");
         assert!(shift.distinct_distances > 1);
@@ -1542,7 +1689,7 @@ mod tests {
         // changed, and counting it as a refutation would let a degenerate
         // controller stand in for a result.
         let plan = PlasticityPlan::default();
-        let scan = scan_from(12, HORIZON, |_, _| 1, |_, _| true);
+        let scan = scan_from(24, HORIZON, |_, _| 1, staggered);
         let shift = world_shift(&scan, R, &plan, 17).expect("computable");
         assert!(shift.no_variance);
         assert_eq!(shift.distinct_distances, 1);
@@ -1603,7 +1750,7 @@ mod tests {
         // Half the population dies at tick 9,000, inside the first usable
         // boundary's control window.
         let scan = scan_from(24, HORIZON, epoch_locked, |tick, id| {
-            id % 2 == 1 || tick < 9_000
+            staggered(tick, id) && (id % 2 == 1 || tick < 9_000)
         });
         let shift = world_shift(&scan, R, &plan, 19).expect("computable");
         assert_eq!(shift.individuals, 12, "a dead organism contributed a pair");
@@ -1617,7 +1764,7 @@ mod tests {
         // continuous life. This is what an id reuse would look like, and it
         // must not produce a window.
         let plan = PlasticityPlan::default();
-        let mut scan = scan_from(12, HORIZON, epoch_locked, |_, _| true);
+        let mut scan = scan_from(24, HORIZON, epoch_locked, staggered);
         let full = world_shift(&scan, R, &plan, 23).expect("computable").pairs;
         for sample in scan.samples.iter_mut() {
             if sample.tick >= 8_000 {
@@ -1639,7 +1786,7 @@ mod tests {
     #[test]
     fn a_condition_with_no_relocation_schedule_is_refused_rather_than_scored_zero() {
         let plan = PlasticityPlan::default();
-        let scan = scan_from(12, HORIZON, epoch_locked, |_, _| true);
+        let scan = scan_from(24, HORIZON, epoch_locked, staggered);
         assert_eq!(
             world_shift(&scan, 0, &plan, 29),
             Err(ShiftRefusal::NoSchedule)
@@ -1661,7 +1808,7 @@ mod tests {
             plan.min_individuals as u64,
             HORIZON,
             epoch_locked,
-            |_, _| true,
+            staggered,
         );
         let shift = world_shift(&exact, R, &plan, 33).expect("the bar itself is enough");
         assert_eq!(shift.individuals, plan.min_individuals);
@@ -1755,47 +1902,63 @@ mod tests {
     }
 
     #[test]
-    fn the_matched_control_is_not_age_matched_and_the_offset_alone_clears_c11_1() {
-        // **This test records a defect, not a property.** It is the number
-        // the campaign's own control was pointing at: the two-sided
-        // association appears in all four arms including `Bstat`, where
-        // plasticity is disabled and the relocation has zero magnitude, so
-        // nothing happens at the event tick at all. An association that
-        // survives removing the event was not caused by the event.
+    fn the_age_offset_alone_no_longer_reaches_the_statistic_under_a_stratified_null() {
+        // **The permanent tripwire for D-100.** A world in which nothing
+        // whatever happens at the event tick must not score. Before the null
+        // was stratified this construction scored `rho = +158` against a p95
+        // of 30 and **passed C11.1's own directed decision rule** - the
+        // criterion cleared in a world with no event in it. Those numbers are
+        // kept here as the record of what the unstratified null did; the
+        // assertions below are what the stratified one does.
         //
-        // If a future pre-registration changes the control boundary, this
-        // test is **expected to fail** and its numbers are what the change
-        // must be measured against. Do not silence it; re-measure it.
+        // Why the artifact vanishes rather than shrinks: an event pair at
+        // boundary `T` and a control pair at boundary `T + R/2` both cover
+        // ages `[a - W, a]` and `[a, a + W]` for an organism of age `a` at
+        // its own boundary. Two observations sharing an age stratum therefore
+        // cover identical age ranges, and in a world where behaviour is a
+        // pure function of age they carry identical distances. The
+        // within-stratum association is exactly zero by construction, not
+        // small by luck.
+        //
+        // If a future pre-registration changes the pairing again, this test is
+        // **expected to fail** and these numbers are what the change must be
+        // measured against. Do not silence it; re-measure it.
         let plan = age_plan();
 
-        // 1. Behaviour that settles with age. The event windows are the
-        //    younger pair, and the younger pair moves more, so the
-        //    correlation is positive - and it clears the criterion's own
-        //    directed decision rule in a world with no event in it.
+        // 1. Behaviour that settles with age. Under the old null the younger
+        //    event windows moved more and the correlation went positive; the
+        //    stratified null reads exactly nothing.
         let scan = rolling_cohort_scan(settling, AGE_LANES);
         let settled = world_shift(&scan, R, &plan, 101).expect("computable");
-        assert_eq!((settled.rho_milli, settled.null_p95_milli), (158, 30));
+        assert_eq!((settled.rho_milli, settled.null_p95_milli), (0, 6));
         let world = WorldPlasticity {
             shift: Ok(settled.clone()),
             ..world_for(AlleleCensus::default())
         };
         assert!(
-            world.within_lifetime_shift(&plan),
-            "the age offset alone did not reproduce the criterion's own pass condition"
+            !world.within_lifetime_shift(&plan),
+            "the age offset alone still reproduces the criterion's pass condition"
         );
+        // Not vacuous: the world still contains plenty of behavioural
+        // variation and plenty of usable strata. It is the *association* that
+        // is gone, not the data.
+        assert!(!settled.no_variance);
+        assert!(settled.distinct_distances > 1);
+        assert!(settled.strata_informative > 0);
 
-        // 2. The same construction with the age trend reversed reverses the
-        //    sign, which is what says the statistic is reading the trend and
-        //    not the construction. This is the sign the campaign measured in
-        //    all four arms.
+        // 2. The same construction with the age trend reversed. Under the old
+        //    null this was `-154` against 28 and produced the sign-reversed
+        //    association the campaign measured in all four arms. It is now
+        //    also nothing, which is what says the statistic reads the event
+        //    and not the trend in either direction.
         let scan = rolling_cohort_scan(unsettling, AGE_LANES);
         let unsettled = world_shift(&scan, R, &plan, 101).expect("computable");
-        assert_eq!((unsettled.rho_milli, unsettled.null_p95_milli), (-154, 28));
+        assert_eq!(unsettled.rho_milli, 0);
         let world = WorldPlasticity {
             shift: Ok(unsettled),
             ..world_for(AlleleCensus::default())
         };
-        assert!(world.behaviour_associated(&plan));
+        assert!(!world.behaviour_associated(&plan));
         assert!(!world.within_lifetime_shift(&plan));
 
         // 3. The control that makes the first two mean something. Behaviour
@@ -1816,12 +1979,15 @@ mod tests {
         };
         assert!(!world.behaviour_associated(&plan));
 
-        // 4. Dose-response on the offset itself. The control sits at
+        // 4. Dose-response on the offset itself, which is what identified the
+        //    age gap as the mechanism in the first place. The control sits at
         //    `relocate / 2`, so widening the relocation interval widens the
-        //    age gap and nothing else. The correlation scales with it,
-        //    roughly doubling for each doubling of the gap. That is what
-        //    identifies the age offset as the mechanism rather than leaving
-        //    it as an interpretation.
+        //    age gap and nothing else. Under the unstratified null the
+        //    correlation scaled with it - 76 / 158 / 334 / 700 at gaps of
+        //    500 / 1,000 / 2,000 / 4,000, about doubling per doubling. The
+        //    stratified null must be flat at zero across the whole dose
+        //    range: a fix that only worked at the gap it was tuned on would
+        //    show up here as a residual that grows with the dose.
         let scan = rolling_cohort_scan(settling, AGE_LANES);
         let dose: Vec<(u64, i64)> = [1_000_u64, 2_000, 4_000, 8_000]
             .into_iter()
@@ -1830,34 +1996,67 @@ mod tests {
                 (relocate / 2, shift.rho_milli)
             })
             .collect();
-        assert_eq!(
-            dose,
-            vec![(500, 76), (1_000, 158), (2_000, 334), (4_000, 700)]
-        );
+        assert_eq!(dose, vec![(500, 0), (1_000, 0), (2_000, 0), (4_000, 0)]);
 
-        // 5. And the reason it decides worlds rather than being lost in the
-        //    noise: the artifact is a fixed effect size, while the
-        //    permutation null shrinks with the number of pooled
-        //    observations. The campaign pooled about 27,000 pairs per world
-        //    and reported null p95 values as low as 6 milli, so an age trend
-        //    far smaller than this one clears the bar in every world.
-        let scale: Vec<(usize, i64, i64)> = [1_u64, 2, 8, 32]
+        // 5. The scaling argument, which is why the defect decided worlds
+        //    rather than being lost in the noise. Under the unstratified null
+        //    the artifact was a *fixed* effect size while the null shrank
+        //    with the number of pooled observations - 163/85, 160/59, 158/30,
+        //    139/15 at 240, 480, 1,920 and 7,680 pairs - so pooling bought
+        //    significance for a bias. The campaign pooled about 27,000 pairs
+        //    per world and reported nulls as low as 6 milli.
+        //
+        //    Stratified, the effect is zero at every scale, so there is
+        //    nothing for a larger sample to certify. Asserting this across
+        //    four population sizes is what rules out "the fix works at the
+        //    size I happened to test".
+        let scale: Vec<(usize, i64)> = [1_u64, 2, 8, 32]
             .into_iter()
             .map(|lanes| {
                 let scan = rolling_cohort_scan(settling, lanes);
                 let shift = world_shift(&scan, R, &plan, 101).expect("computable");
-                (shift.pairs, shift.rho_milli, shift.null_p95_milli)
+                (shift.pairs, shift.rho_milli)
             })
             .collect();
-        assert_eq!(
-            scale,
-            vec![
-                (240, 163, 85),
-                (480, 160, 59),
-                (1_920, 158, 30),
-                (7_680, 139, 15),
-            ]
+        assert_eq!(scale, vec![(240, 0), (480, 0), (1_920, 0), (7_680, 0)]);
+    }
+
+    #[test]
+    fn a_birth_synchronised_population_is_refused_rather_than_scored() {
+        // The cost of age-matching, stated as a refusal instead of hidden in
+        // a number. One organism's event and control observations are always
+        // `R / 2` ticks apart in age, so an age stratum can hold both labels
+        // only if the population contains organisms born about that far
+        // apart. When everything is alive from tick 1, the event label and
+        // age are perfectly confounded and **no age-matched comparison exists
+        // in that population at all**.
+        //
+        // The honest answer is that C11.1 is unanswerable in such a world,
+        // not that it was answered in the negative. Scoring it would let a
+        // demographic accident stand in for a refutation of lifetime
+        // learning - D-079's lesson - so it is a typed refusal, pinned here
+        // by the diagnostic only it prints.
+        let plan = PlasticityPlan::default();
+        let scan = scan_from(24, HORIZON, epoch_locked, |_, _| true);
+        let refusal = world_shift(&scan, R, &plan, 11).expect_err("must refuse");
+        assert!(
+            matches!(refusal, ShiftRefusal::NoInformativeStrata { .. }),
+            "{refusal:?}"
         );
+        assert!(
+            refusal.to_string().starts_with("no_informative_strata("),
+            "{refusal}"
+        );
+
+        // And the guard is not firing for want of data: the very same world
+        // with births staggered one window apart is richly computable, and
+        // carries the strongest possible planted signal. The difference
+        // between the two is demography and nothing else - same organisms,
+        // same behaviour rule, same horizon.
+        let staggered_scan = scan_from(24, HORIZON, epoch_locked, staggered);
+        let shift = world_shift(&staggered_scan, R, &plan, 11).expect("computable");
+        assert_eq!(shift.rho_milli, 1_000);
+        assert!(shift.strata_informative > 0);
     }
 
     #[test]
@@ -1909,6 +2108,9 @@ mod tests {
         let mut samples = Vec::new();
         for tick in 1..=horizon {
             for id in 1..=organisms {
+                if !staggered(tick, id) {
+                    continue;
+                }
                 let row = cumulative.entry(id).or_insert([0; ACTION_CLASS_COUNT]);
                 row[sim_core::ActionClass::MoveAhead as usize] += 1;
                 row[sim_core::ActionClass::Mate as usize] += 1;
@@ -1920,9 +2122,10 @@ mod tests {
                 samples.push(sim_persist::ActionSampleSet {
                     tick,
                     records: (1..=organisms)
+                        .filter(|id| staggered(tick, *id))
                         .map(|id| sim_persist::ActionRecord {
                             id,
-                            age_ticks: tick,
+                            age_ticks: tick - (id - 1) * W,
                             counts: cumulative[&id],
                         })
                         .collect(),
@@ -1971,7 +2174,7 @@ mod tests {
         // a null computed from a constant seed is equally reproducible and
         // makes the recorded number a decoration.
         let plan = PlasticityPlan::default();
-        let scan = scan_from(12, HORIZON, window_locked, |_, _| true);
+        let scan = scan_from(24, HORIZON, window_locked, staggered);
         let read = |seed: u64| world_shift(&scan, R, &plan, seed).expect("computable");
         let nulls: Vec<i64> = (1..=11_u64).map(|seed| read(seed).null_p95_milli).collect();
         let observed: Vec<i64> = (1..=11_u64).map(|seed| read(seed).rho_milli).collect();
@@ -2313,7 +2516,10 @@ mod tests {
                 edge(5_000, 0.0, EDGE_FLAG_PLASTIC),
             ],
         ));
-        assert!(!census.no_variance(), "a set plastic flag read as undefined");
+        assert!(
+            !census.no_variance(),
+            "a set plastic flag read as undefined"
+        );
         assert_eq!(census.plastic_excess_milli(), 1_000);
         assert!(world_for(census).selected_over_drift(&plan));
 

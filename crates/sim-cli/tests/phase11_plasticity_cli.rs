@@ -134,7 +134,7 @@ fn the_report_reduces_every_condition_and_decides_only_the_named_pair() {
     let text = stdout(&output);
 
     assert!(text.starts_with("plasticity-report 1 campaign plasticity-cli"));
-    assert!(text.contains("analysis-version lifesim-plasticity-analysis-v1"));
+    assert!(text.contains("analysis-version lifesim-plasticity-analysis-v2"));
     assert!(text.contains("census-policy lifesim-action-census-v1"));
     assert!(text.contains("columns rest,move_ahead,turn_left,turn_right,eat,mate,attack"));
     // The plan is echoed so a reader can check the bars against the campaign
