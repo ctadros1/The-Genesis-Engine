@@ -87,3 +87,45 @@ An unanswered question is not permission to invent production behavior. If it af
 | Browser renderer | Chrome 150 on the Mac completed PixiJS 8.19 WebGL and WebGPU at desktop and mobile-sized viewports | Named supported browsers, physical mobile/kiosk hardware, non-headless WebGPU matrix |
 | Proposed VM | No host or VM was accessed | Every VM acceptance checklist item remains open |
 | Authentication boundary | Not exercised by these local spikes | Observer/admin decision remains open |
+
+## A second confound in C11.1's pairing, unexplained (2026-08-11)
+
+**Status: open. Blocks any future positive claim from C11.1.**
+
+D-100's age offset is fixed and the fix is proven on a synthetic tripwire:
+where the age offset is the only difference and no event exists, the
+statistic reads 0 against a null of 6, where before it read +158 against 30
+and passed. The dose-response is flat at zero across gaps of 500 to 4,000 and
+across 240 to 7,680 pooled pairs.
+
+**But re-analysing the confirmatory campaign under the corrected statistic
+leaves a strong negative association in all four arms, including Bstat** -
+plasticity disabled, relocation at zero magnitude, nothing happening at the
+event tick. Two-sided `associated` is 29-30 of 30 in every arm, median |rho|
+46-61 against nulls of 9-14. An association that survives removing the event
+was not caused by the event, which is the argument that exposed D-100 now
+applying to what replaced it.
+
+The lead, stated as a lead: `event_wins` runs below `control_wins`
+consistently, and in the E-stationary arms the medians separate outright
+(Astat event 8 / control 52; Bstat event 16 / control 64). Behaviour is
+systematically *more stable* across a relocation boundary than across a
+mid-epoch one, in arms where the relocation does nothing. Age is now matched,
+so what still differs between the two pairs is epoch phase and absolute tick.
+
+Candidates not yet distinguished: a sampling-phase artifact (the sample at the
+relocation tick is taken after the relocation ran, so the event pre-window
+carries one post-relocation tick out of 500); world-level temporal structure
+at the relocation period that survives zero magnitude; or something about
+the zero-inflated tie structure interacting with Spearman.
+
+**Why this does not invalidate the current verdict.** The decision rule is
+directed and requires a positive correlation; this association is negative,
+so C11.1 refuses in every arm under both v1 and v2 and the 0-of-30 stands.
+**Why it still matters:** a future positive result from this statistic could
+not be trusted until the second confound is explained, so C11.1 must not be
+re-run for a positive claim on the strength of the D-100 fix alone.
+
+Answering it is cheap - the campaign artifacts are on disk and the statistic
+is now instrumented per world with strata counts - and it should be answered
+before any C11.1 re-run is pre-registered.
