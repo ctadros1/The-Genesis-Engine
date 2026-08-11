@@ -155,9 +155,19 @@ use std::fmt::Write as _;
 /// destroyed the age balance along with the association, so an age artifact
 /// sat in the observed value and not in the null it was compared against; on
 /// a world where nothing happened at all it scored rho +158 against a p95 of
-/// 30 and passed. The observed statistic is unchanged - only the reference
-/// distribution moved - but a v1 and a v2 number are not comparable and the
-/// version is what stops them being read side by side.
+/// 30 and passed.
+///
+/// **Two things changed, not one, and the observed statistic is one of
+/// them.** The null is stratified *and* observations sitting in a
+/// single-label stratum are excluded, from the observed statistic as well as
+/// from the null. The exclusion is what moves the observed value: on D-100's
+/// rolling cohort it goes from 158 to **0**, and on the widest dose it drops
+/// 384 of 672 observations. Stratifying the null alone would have left the
+/// observed value at 158 against a null of 162 - refused by four milli, and
+/// by nothing at all at the smallest size tested. So v2 measures a different
+/// quantity from v1: the correlation over the age-balanced subsample rather
+/// than over every qualifying observation. A v1 and a v2 number are not
+/// comparable, and the version is what stops them being read side by side.
 pub const PLASTICITY_ANALYSIS_VERSION: &str = "lifesim-plasticity-analysis-v2";
 
 /// The analysis plan. Every bar is a named field and every field is echoed
@@ -625,9 +635,13 @@ pub fn world_shift(
     let (rho_milli, null_p95_milli) = if no_variance {
         (0, 0)
     } else {
-        // Observed and null are computed over the SAME kept observations. The
-        // statistic is unchanged from v1; only what the null is permitted to
-        // shuffle has changed.
+        // Observed and null are computed over the SAME kept observations,
+        // which is the invariant that makes the permutation test valid: the
+        // observed value has to be the same function of the same data that
+        // every null draw is. The *formula* is unchanged from v1 - a signed
+        // rank correlation between the label and the distance - but the
+        // observation set is not, so the value is not either. Measured on
+        // D-100's rolling cohort: 158 under v1, 0 here, on identical input.
         let flat: Vec<(i64, i64)> = observations
             .iter()
             .map(|(label, value, _)| (*label, *value))
@@ -1540,6 +1554,27 @@ mod tests {
         tick >= (id - 1) * W
     }
 
+    /// Births staggered **off** the sample grid, so an organism's age at a
+    /// boundary is not a whole number of windows.
+    ///
+    /// Every other series in this module births organisms on a multiple of
+    /// `W`, which makes every boundary age a multiple of `W` too - and on that
+    /// grid `age / W`, `(age + 1) / W`, `(age - W) / W` and `age / (W / 2)`
+    /// all induce **the same partition** of the observations. The stratum is
+    /// only ever used as a partition, so on-grid data cannot tell those four
+    /// expressions apart at all: mutating the pre-registered `age_ticks / W`
+    /// into any of them left the whole suite green. This series is what makes
+    /// the width and the bin edge observable. See
+    /// `the_stratum_is_the_organisms_own_age_binned_at_the_window_width`.
+    ///
+    /// The offsets include `2`, which puts an organism's age at `W - 1` modulo
+    /// `W` at every sample tick - one tick below a bin edge, so a `+1` inside
+    /// the division moves it and nothing else does.
+    fn off_grid_stagger(tick: u64, id: u64) -> bool {
+        const OFFSETS: [u64; 4] = [0, 2, 137, 349];
+        tick >= (id - 1) * W + OFFSETS[(id % 4) as usize]
+    }
+
     /// Behavioural change of the same size, redrawn every window from a mixer
     /// that knows nothing about epochs. Adjacent windows land in the same
     /// column about a quarter of the time, so the distances genuinely vary -
@@ -1553,6 +1588,131 @@ mod tests {
         mixed = mixed.wrapping_mul(0xff51_afd7_ed55_8ccd);
         mixed ^= mixed >> 33;
         (mixed % LOCOMOTION_CLASS_COUNT as u64) as usize
+    }
+
+    #[test]
+    fn the_stratum_is_the_organisms_own_age_binned_at_the_window_width() {
+        // The pre-registration fixes the stratifying variable as
+        // `age_ticks / W`, integer division, and gives `W` a reason: it is
+        // the resolution the windows themselves are defined at. Nothing
+        // tested that. **Measured:** on every other series in this module
+        // `age_ticks / W` can be replaced by `(age_ticks + 1) / W`, by
+        // `age_ticks / (W / 2)`, or by the age at either end of the window
+        // instead of at the boundary, and the entire suite stays green -
+        // because those series birth every organism on a multiple of `W`, so
+        // every boundary age is a multiple of `W` and all four expressions
+        // induce the *same partition*, which is the only thing a stratum is
+        // ever used as.
+        //
+        // Two of those four stay unobservable on any data and are recorded as
+        // tautologies rather than tested: `(age - W) / W` and `(age + W) / W`
+        // are `age / W` minus and plus one exactly, because `pair_at` has
+        // already required the two lookups to be `W` apart in age, so they
+        // relabel every stratum by a constant and partition identically.
+        //
+        // The other two are real, and this series is what sees them. Births
+        // sit off the sample grid, so boundary ages are not whole windows;
+        // one offset puts an organism exactly one tick below a bin edge.
+        let plan = PlasticityPlan::default();
+        let scan = scan_from(24, HORIZON, epoch_locked, off_grid_stagger);
+        assert!(
+            scan.samples.iter().any(|sample| sample
+                .records
+                .iter()
+                .any(|record| !record.age_ticks.is_multiple_of(W))),
+            "every age is still a whole number of windows, so this series \
+             cannot tell one bin edge from another and the test is vacuous"
+        );
+        assert!(
+            scan.samples.iter().any(|sample| sample
+                .records
+                .iter()
+                .any(|record| record.age_ticks % W == W - 1)),
+            "no organism sits one tick below a bin edge, so a `+1` inside the \
+             division would move nothing"
+        );
+        let shift = world_shift(&scan, R, &plan, 11).expect("computable");
+        // Off the grid the exclusion stops being tidy: strata no longer come
+        // in matched pairs, and 73 of 264 observations - an odd number, which
+        // an on-grid series can never produce - sit in a single-label stratum.
+        assert_eq!(
+            (
+                shift.strata_total,
+                shift.strata_informative,
+                shift.observations_dropped
+            ),
+            (37, 17, 73)
+        );
+        // And the instrument still works here: the planted response clears
+        // its null on a population whose ages share no common bin.
+        assert_eq!((shift.rho_milli, shift.null_p95_milli), (1_000, 224));
+        assert!(shift.rho_milli > shift.null_p95_milli);
+    }
+
+    #[test]
+    fn an_exclusion_that_takes_all_the_variance_leaves_the_world_undefined_not_null() {
+        // The exclusion changes which observations the world is judged on, so
+        // every quantity read off that judgement has to be computed on the
+        // same set. `no_variance` is the one that matters, because it is what
+        // separates "behaviour did not change" from "there was no behavioural
+        // variance for an event to change" - D-079's distinction - and it is
+        // read one layer up as `shift_no_variance`, the count that keeps an
+        // undefined world out of the treatment denominator.
+        //
+        // Computing `distinct_distances` over the observations *before* the
+        // exclusion leaves the whole suite green, so this is the world that
+        // sees it: one organism carries all the behavioural variation there
+        // is, and the single-label strata take exactly that organism's
+        // observations away. The correlation is then over a constant set,
+        // which is undefined - but a `distinct_distances` taken before the
+        // exclusion still reports two distinct values, and the world is
+        // published as a measured null instead.
+        let plan = PlasticityPlan::default();
+        let one_varies = |tick: u64, id: u64| if id == 2 { epoch_locked(tick, id) } else { 1 };
+
+        // The same behaviour rule and the same organisms, births on the
+        // sample grid: the varying organism survives the exclusion and the
+        // world is scored. This is what says the variation is real and that
+        // it is the *exclusion*, not the series, that removes it below.
+        let scored = world_shift(&scan_from(24, HORIZON, one_varies, staggered), R, &plan, 11)
+            .expect("computable");
+        assert!(!scored.no_variance);
+        assert_eq!(scored.distinct_distances, 2);
+        assert!(scored.observations_dropped > 0);
+
+        // Births off the grid, and the single-label strata now hold every
+        // observation the varying organism contributed.
+        let stripped = world_shift(
+            &scan_from(24, HORIZON, one_varies, off_grid_stagger),
+            R,
+            &plan,
+            11,
+        )
+        .expect("computable");
+        assert!(stripped.observations_dropped > 0);
+        assert_eq!(
+            stripped.distinct_distances, 1,
+            "the kept observations are constant, so the correlation is \
+             undefined and the diagnostic must say so"
+        );
+        assert!(
+            stripped.no_variance,
+            "an exclusion that removed every varying observation was reported \
+             as a world in which behaviour varied"
+        );
+        assert_eq!((stripped.rho_milli, stripped.null_p95_milli), (0, 0));
+
+        // And the consequence one layer up: the world is counted as undefined
+        // rather than as a measured null, which is what keeps a demographic
+        // accident out of C11.1's denominator.
+        let world = WorldPlasticity {
+            shift: Ok(stripped),
+            ..world_for(AlleleCensus::default())
+        };
+        assert!(world.shift_no_variance());
+        assert!(!world.within_lifetime_shift(&plan));
+        let outcome = summarise("Avar", &[world], &plan);
+        assert_eq!((outcome.shift_no_variance, outcome.shifted), (1, 0));
     }
 
     #[test]
@@ -2059,25 +2219,67 @@ mod tests {
         assert!(shift.strata_informative > 0);
     }
 
+    /// Births staggered a window apart in **triplets**: ids `3n-2`, `3n-1`
+    /// and `3n` share a birth tick and are therefore exactly the same age
+    /// forever.
+    ///
+    /// Both halves of that sentence are load-bearing. The staggering between
+    /// triplets is what gives an age stratum both labels, without which
+    /// `world_shift` refuses the world outright. The equal age *within* a
+    /// triplet is what makes the row order matter: `pair_at`'s age-continuity
+    /// check compares one lookup's age against the next, so a slot-keyed
+    /// analysis that crossed two organisms of *different* ages would be
+    /// caught by the age arithmetic rather than by the id key, and the test
+    /// would pass for a reason that has nothing to do with the property it
+    /// names.
+    ///
+    /// Three rather than two so the reordering can be a **rotation**.
+    /// Reversal inside a pair is an involution, and a defect that reads its
+    /// counts from the mirrored row commutes with it and cancels exactly -
+    /// measured: that mutation survived the paired version of this test and
+    /// is caught by the rotated one.
+    fn triplet_stagger(tick: u64, id: u64) -> bool {
+        tick >= ((id - 1) / 3) * W
+    }
+
     #[test]
     fn the_analysis_keys_on_the_entity_id_and_not_on_the_row_it_arrived_in() {
         // The property the module's own documentation says the entity id is
-        // in the file for, and which nothing tested: every synthetic series
-        // here writes records in ascending id order with identical ages, so
-        // keying on the array slot and keying on the id agree everywhere.
+        // in the file for: every synthetic series here writes records in
+        // ascending id order, so keying on the array slot and keying on the
+        // id agree everywhere unless something reorders the rows.
         //
-        // Reversing the records inside *alternate* samples changes no id, no
-        // age and no count - it changes only which row an organism arrived
-        // in - and a slot-keyed analysis then compares one organism's
-        // pre-window with another's post-window without any age check being
-        // able to notice, because in this series every organism is exactly
-        // as old as every other.
+        // Rotating the records of each birth triplet inside *alternate*
+        // samples changes no id, no age and no count - it changes only which
+        // row an organism arrived in - and a slot-keyed analysis then compares
+        // one organism's pre-window with a sibling's post-window with no age
+        // check able to notice, because the siblings are exactly the same age.
+        //
+        // **This test was vacuous between 9f1c340 and this commit.** It used
+        // a birth-synchronised population, which the age-stratified null now
+        // refuses as `NoInformativeStrata` before any window is compared, so
+        // both sides of the assertion were the same refusal and the equality
+        // held no matter what the analysis keyed on. Measured: with every
+        // organism's counts read from the row opposite it - the exact defect
+        // named above - the old test still passed. Hence the `expect` and the
+        // non-degeneracy assertions below: they are what stops a future
+        // refusal silently emptying this test again.
         let plan = PlasticityPlan::default();
-        let ordered = scan_from(12, HORIZON, epoch_locked, |_, _| true);
+        let ordered = scan_from(24, HORIZON, epoch_locked, triplet_stagger);
         let mut shuffled = ordered.clone();
         for sample in shuffled.samples.iter_mut() {
             if sample.tick.is_multiple_of(2 * W) {
-                sample.records.reverse();
+                // Rotate *within* each equal-age group, so ages stay put.
+                let mut start = 0;
+                while start < sample.records.len() {
+                    let age = sample.records[start].age_ticks;
+                    let mut end = start;
+                    while end < sample.records.len() && sample.records[end].age_ticks == age {
+                        end += 1;
+                    }
+                    sample.records[start..end].rotate_left(1);
+                    start = end;
+                }
             }
         }
         assert!(
@@ -2092,8 +2294,34 @@ mod tests {
                     .ne(right.records.iter().map(|record| record.id))),
             "the reordering did not reorder anything, so the comparison is vacuous"
         );
+        assert!(
+            shuffled
+                .samples
+                .iter()
+                .zip(ordered.samples.iter())
+                .all(|(left, right)| {
+                    let mut a: Vec<u64> = left.records.iter().map(|r| r.age_ticks).collect();
+                    let mut b: Vec<u64> = right.records.iter().map(|r| r.age_ticks).collect();
+                    a.sort_unstable();
+                    b.sort_unstable();
+                    a == b
+                        && left
+                            .records
+                            .iter()
+                            .map(|r| r.age_ticks)
+                            .eq(right.records.iter().map(|r| r.age_ticks))
+                }),
+            "the reordering moved an age, so the age check could catch it \
+             without the id key ever being consulted"
+        );
+        // The comparison has to be between two *computed* statistics. Two
+        // identical refusals are equal for free.
+        let baseline = world_shift(&ordered, R, &plan, 41).expect("computable");
+        assert!(baseline.pairs > 0);
+        assert!(!baseline.no_variance, "nothing varied, so nothing can move");
+        assert!(baseline.strata_informative > 0);
         assert_eq!(
-            world_shift(&ordered, R, &plan, 41),
+            Ok(baseline),
             world_shift(&shuffled, R, &plan, 41),
             "the result moved when only the row order moved"
         );

@@ -62,11 +62,29 @@ The permutation null cannot rescue it: every draw shuffles labels across the
 same age-imbalanced pairs, so the artifact sits in the observed value and not
 in the null it is compared against.
 
-## 2. The fix: restrict the randomisation, do not touch the statistic
+## 2. The fix: restrict the randomisation, and drop what cannot be randomised
 
-**The observed statistic is unchanged** — the signed rank correlation between
-the event label and the window distance, pooled over all qualifying
-observations.
+> **CORRECTION, added after implementation and measurement.** This section was
+> drafted as "restrict the randomisation, do not touch the statistic", and the
+> claim **"the observed statistic is unchanged"** stood here in bold. It is
+> wrong, and section 6's own table always contradicted it. The *formula* is
+> unchanged; the *value* is not, because the design also excludes observations
+> in single-label strata and the observed correlation is computed over what
+> remains. On D-100's rolling cohort the observed rho goes **158 → 0**, and at
+> the widest dose the exclusion removes 384 of 672 observations. Measured
+> separately, stratifying the null **alone** would have left the observed value
+> at 158 against a null of 162 — refused by four milli, and at the 240-pair
+> size the two are equal at 163 and there is no margin at all. **The exclusion,
+> not the restricted randomisation, is what removes the artifact from the
+> observed value.** The design below is what was implemented and is sound; the
+> description of it as leaving the statistic alone was not. The estimand is
+> the correlation over the age-balanced subsample, and that is a different
+> estimand from v1's, which is exactly why the policy version had to move.
+
+**The statistic's formula is unchanged** — the signed rank correlation between
+the event label and the window distance. **The observations it is computed
+over change**, per the exclusion rule below, so a v2 value is not comparable
+with a v1 value.
 
 **The null changes.** Labels are shuffled **only within strata defined by the
 organism's age at the boundary tick.**
@@ -193,6 +211,25 @@ fixtures, not campaign results.
 The last row is the one that stops this being a fix that breaks the
 instrument. A statistic that scored zero on everything would satisfy every
 other row here.
+
+**Which half does the work, measured separately** (added with the section 2
+correction; the v1/v2 columns above are the two changes applied together).
+On the stationary cohort where change decays with age, `R = 2,000`:
+
+| what is applied | observed rho | null p95 | verdict |
+|---|---|---|---|
+| neither (v1) | 158 | 30 | **passes** |
+| stratified null only, nothing excluded | 158 | 162 | refused by 4 |
+| exclusion only, unstratified null | 0 | 42 | refused |
+| both (v2, shipped) | 0 | 6 | refused |
+
+The exclusion is what collapses the observed value. The stratified null on its
+own refuses by a margin of four milli here and by **zero** at the 240-pair
+size (163 against 163), so it is not on its own a reliable correction. On the
+positive control the ordering reverses and the null is what tightens: the
+exclusion leaves rho at 1,000 either way, and the stratification widens the
+null from 124 to 140. Both halves are load-bearing; neither is decorative;
+and neither of them leaves the observed statistic where v1 put it.
 
 **One consequence that is a real cost, not a detail.** A birth-synchronised
 population - everything alive from tick 1 - has no age stratum holding both

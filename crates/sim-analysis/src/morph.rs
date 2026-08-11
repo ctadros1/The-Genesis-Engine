@@ -169,20 +169,29 @@ pub fn permutation_p95_milli(samples: &[(i64, i64)], seed: u64) -> i64 {
 /// thing that should differ between the two is what the null is allowed to
 /// destroy.
 ///
-/// **Why a restricted randomisation rather than a corrected statistic.** A
-/// permutation null must preserve everything about the data except the
-/// association under test. When the label is confounded with a nuisance
-/// variable, the unrestricted shuffle destroys the confound along with the
-/// association, so the observed value keeps a bias the null it is compared
-/// against has thrown away. Stratifying puts the nuisance structure into the
-/// null at the strength it has in the data, where it cancels. That is why
-/// this is not a "fix to the statistic": the observed statistic is
-/// unchanged, and only the reference distribution moves.
+/// **Why a restricted randomisation.** A permutation null must preserve
+/// everything about the data except the association under test. When the
+/// label is confounded with a nuisance variable, the unrestricted shuffle
+/// destroys the confound along with the association, so the observed value
+/// keeps a bias the null it is compared against has thrown away. Stratifying
+/// puts the nuisance structure into the null at the strength it has in the
+/// data, where it cancels.
 ///
 /// D-100 is the case that forced it. C11.1's control boundary sits later in
 /// an organism's life than its event boundary, so the label was confounded
 /// with age; on a world where nothing happens at all the unrestricted null
 /// let an age artifact score rho +158 against a p95 of 30 and pass.
+///
+/// **This function on its own does not remove that artifact, and saying so is
+/// the point.** Measured on D-100's own rolling cohort: stratifying the null
+/// while leaving every observation in place moves the null from 30 to 162
+/// against an observed value still at 158 - refused, but by four milli, and
+/// at the 240-pair size the two are equal at 163 and the refusal has no
+/// margin at all. What actually collapses the observed value to zero is the
+/// caller's exclusion of single-label strata, described next. Any claim that
+/// "only the reference distribution moved" is wrong about this pair of
+/// changes: the observed statistic moved too, from 158 to 0, because it is
+/// computed over fewer observations.
 ///
 /// **A stratum holding one label is silently degenerate** - it contributes to
 /// the observed statistic and cannot be shuffled, which reimports exactly the
@@ -192,8 +201,19 @@ pub fn permutation_p95_milli(samples: &[(i64, i64)], seed: u64) -> i64 {
 /// hide the exclusion from the report.
 ///
 /// Determinism: strata are walked in ascending key order through a
-/// `BTreeMap`, and the draw index is a running counter over that walk, so the
-/// permutation is a function of the data and the seed alone (Rule 5).
+/// `BTreeMap`, so no unordered iteration reaches the draw, and the draw index
+/// is a running counter over that walk (Rule 5). The result is a function of
+/// the sample **sequence** and the seed, not of the sample *set*: reversing,
+/// rotating or re-sorting `samples` gives a different p95 - measured, 26 of
+/// 40 seeds moved on a 400-observation set, by one to two milli - because
+/// Fisher-Yates over a permuted member list consumes the same draws in a
+/// different order. `permutation_p95_milli` has the same property. It is not
+/// reachable as nondeterminism, because `plasticity::world_shift` builds its
+/// observations in a canonical order (`BTreeMap` by sample tick, then by
+/// entity id, event before control) that no input ordering can disturb -
+/// pinned by
+/// `the_analysis_keys_on_the_entity_id_and_not_on_the_row_it_arrived_in`.
+/// A caller that assembles samples in any other order owes itself that test.
 pub fn permutation_p95_milli_stratified(samples: &[(i64, i64, u64)], seed: u64) -> i64 {
     if samples.len() < 3 {
         return 0;
