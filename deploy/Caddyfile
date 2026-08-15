@@ -8,14 +8,22 @@ genesisengine.local {
     root * /opt/genesis-engine/current/observer
     encode zstd gzip
 
-    @api path /api/* /metrics
-    reverse_proxy @api 127.0.0.1:8940
+    handle /api/* {
+        reverse_proxy 127.0.0.1:8940
+    }
 
-    @websocket path /ws
-    reverse_proxy @websocket 127.0.0.1:8941
+    handle /metrics {
+        reverse_proxy 127.0.0.1:8940
+    }
 
-    try_files {path} /index.html
-    file_server
+    handle /ws {
+        reverse_proxy 127.0.0.1:8941
+    }
+
+    handle {
+        try_files {path} /index.html
+        file_server
+    }
 
     header {
         X-Content-Type-Options "nosniff"
