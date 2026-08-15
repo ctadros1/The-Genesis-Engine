@@ -44,8 +44,17 @@ declare global {
 }
 
 const query = new URLSearchParams(window.location.search);
-const restBase = query.get("rest") ?? "http://127.0.0.1:8940";
-const wsUrl = query.get("ws") ?? "ws://127.0.0.1:8941";
+// Development keeps the two loopback endpoints explicit. A deployed build is
+// served by the same private origin as its reverse proxy, so it never embeds a
+// host address in the artifact and works from LAN/WireGuard clients.
+const defaultRestBase = import.meta.env.DEV
+  ? "http://127.0.0.1:8940"
+  : window.location.origin;
+const defaultWsUrl = import.meta.env.DEV
+  ? "ws://127.0.0.1:8941"
+  : `${window.location.protocol === "https:" ? "wss" : "ws"}://${window.location.host}/ws`;
+const restBase = query.get("rest") ?? defaultRestBase;
+const wsUrl = query.get("ws") ?? defaultWsUrl;
 
 const statusElement = mustGet("status");
 const connectPanel = mustGet("connect-panel");

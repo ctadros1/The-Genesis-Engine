@@ -1,0 +1,25 @@
+# Install this only after the private DNS name and client trust path have been
+# approved. The simulation itself remains loopback-only; Caddy is the sole
+# browser-facing boundary.
+
+genesis-engine.example.internal {
+    tls internal
+
+    root * /opt/genesis-engine/current/observer
+    encode zstd gzip
+
+    @api path /api/* /metrics
+    reverse_proxy @api 127.0.0.1:8940
+
+    @websocket path /ws
+    reverse_proxy @websocket 127.0.0.1:8941
+
+    try_files {path} /index.html
+
+    header {
+        X-Content-Type-Options "nosniff"
+        X-Frame-Options "DENY"
+        Referrer-Policy "no-referrer"
+        -Server
+    }
+}

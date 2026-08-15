@@ -1,0 +1,25 @@
+[Unit]
+Description=Genesis Engine private simulation service
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=genesis
+Group=genesis
+WorkingDirectory=/opt/genesis-engine/current
+EnvironmentFile=/etc/genesis-engine/runtime.env
+ExecStart=/opt/genesis-engine/current/bin/lifesim-server --data-dir /var/lib/genesis-engine --checkpoint-interval-secs 300 --checkpoint-keep 12 --checkpoint-mode async
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=60
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ReadWritePaths=/var/lib/genesis-engine
+UMask=0077
+LimitNOFILE=65536
+
+[Install]
+WantedBy=multi-user.target
