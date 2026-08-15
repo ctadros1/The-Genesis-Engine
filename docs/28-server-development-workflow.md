@@ -59,3 +59,8 @@ server remains loopback-only on ports 8940 (REST) and 8941 (WebSocket); Caddy
 is the only browser-facing boundary. Paste the observer token into the
 Observer connection panel. Keep API tokens in `/etc/genesis-engine/runtime.env`
 and never commit, print, or paste them into agent prompts.
+
+The VM advertises this name with mDNS. If a client LAN blocks mDNS discovery,
+the infrastructure owner must provide internal DNS or a host mapping for
+`192.168.75.186 genesisengine.local`; do not replace the HTTPS name with a raw
+IP address, because the certificate and browser-origin policy are intentional.
