@@ -15,6 +15,7 @@ genesisengine.local {
     reverse_proxy @websocket 127.0.0.1:8941
 
     try_files {path} /index.html
+    file_server
 
     header {
         X-Content-Type-Options "nosniff"
