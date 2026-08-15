@@ -36,6 +36,9 @@ if [[ ! -x /opt/genesis-engine/toolchains/node-${node_version}-linux-x64/bin/nod
   tar -C /opt/genesis-engine/toolchains -xf "$archive_path"
   rm -f "$archive_path"
 fi
+ln -sfn "/opt/genesis-engine/toolchains/node-${node_version}-linux-x64/bin/node" /usr/local/bin/node
+ln -sfn "/opt/genesis-engine/toolchains/node-${node_version}-linux-x64/bin/npm" /usr/local/bin/npm
+ln -sfn "/opt/genesis-engine/toolchains/node-${node_version}-linux-x64/bin/npx" /usr/local/bin/npx
 
 if ! command -v rustup >/dev/null 2>&1; then
   curl --fail --location --proto '=https' --tlsv1.2 https://sh.rustup.rs -o /tmp/rustup-init.sh
