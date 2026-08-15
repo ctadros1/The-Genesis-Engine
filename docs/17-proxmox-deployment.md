@@ -2,7 +2,10 @@
 
 ## Status
 
-This is a proposed deployment shape. It has not been applied and must not be applied during planning. Node capacity, storage, network addressing, monitoring ownership, backup target, and guest CPU features require a live read-only Phase 0 audit.
+This deployment is live as VM 120, `genesis-engine`, on `servernode3`. It has
+12 vCPUs, 16 GiB RAM, a 200 GiB local-LVM disk, QEMU guest agent, and private
+LAN address `192.168.75.186`. The production service and Caddy hosting
+boundary are documented in [Server Development Workflow](28-server-development-workflow.md).
 
 ## Recommended Initial Placement
 

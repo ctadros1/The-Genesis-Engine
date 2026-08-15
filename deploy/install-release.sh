@@ -71,6 +71,7 @@ cp -a apps/observer/dist/. observer/
 popd >/dev/null
 
 chown -R genesis:genesis "$tmp_dir"
+chmod 0755 "$tmp_dir" "$tmp_dir/observer"
 mv "$tmp_dir" "$release_dir"
 trap - EXIT
 ln -sfn "$release_dir" /opt/genesis-engine/current

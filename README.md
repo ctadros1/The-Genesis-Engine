@@ -40,7 +40,8 @@ cannot justify, and asynchronous checkpointing that cuts the tick-thread
 stall by 14 to 18 times. Both original fixtures still reproduce from clean
 processes under every new execution path.
 
-There is still no deployment configuration; the server binds 127.0.0.1
+The private VM deployment is active; see
+[Server Development Workflow](docs/28-server-development-workflow.md). The server binds 127.0.0.1
 only. No Proxmox or other homelab service is accessed or changed by any of
 this work. Infrastructure and physical-device gates remain open; see
 `planning/backlog.md`.

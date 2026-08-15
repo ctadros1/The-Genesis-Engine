@@ -2,7 +2,7 @@
 # approved. The simulation itself remains loopback-only; Caddy is the sole
 # browser-facing boundary.
 
-genesis-engine.example.internal {
+genesisengine.local {
     tls internal
 
     root * /opt/genesis-engine/current/observer
