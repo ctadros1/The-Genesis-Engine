@@ -49,7 +49,8 @@ export PATH="$HOME/.cargo/bin:/opt/genesis-engine/toolchains/node-${node_version
 
 tmp_dir=$(mktemp -d /opt/genesis-engine/releases/.staging.XXXXXX)
 trap 'rm -rf "$tmp_dir"' EXIT
-git clone --no-checkout "$git_url" "$tmp_dir"
+git_ssh_command="ssh -i /home/genesis-dev/.ssh/github_deploy -o IdentitiesOnly=yes -o StrictHostKeyChecking=accept-new"
+GIT_SSH_COMMAND="$git_ssh_command" git clone --no-checkout "$git_url" "$tmp_dir"
 git -C "$tmp_dir" checkout --detach "$commit"
 actual_commit=$(git -C "$tmp_dir" rev-parse HEAD)
 if [[ $actual_commit != "$commit"* ]]; then
