@@ -236,7 +236,7 @@ where marked; the criteria's thresholds are as they were.
       12029); D was zero in every world, as constructed. A real, small
       positive at a frequency the criterion does not accept, and reported
       as such.
-- [~] **C12.4 Determinism and identity.** Object IDs strictly increase and
+- [x] **C12.4 Determinism and identity.** Object IDs strictly increase and
       never repeat; storage index order equals ID order; contested
       acquisition is order-independent under storage permutation;
       clean-process fixture replay.
@@ -280,7 +280,7 @@ where marked; the criteria's thresholds are as they were.
       every declared per-layer count is bounded adversarially per standing
       rule 2. Two migration assertions are tautologies by construction and
       are recorded as such in D-097 rather than left to look load-bearing.
-- [~] **C12.6 Mass and energy exactness.** The ledger stays exact to the
+- [x] **C12.6 Mass and energy exactness.** The ledger stays exact to the
       milli-unit across creation, combination, fracture, decay, carrying,
       and consumption over a 10^6-tick run. Combining then fracturing
       restores constituent mass and energy exactly. Rounding remainders go
@@ -296,12 +296,26 @@ where marked; the criteria's thresholds are as they were.
       remainder on the first (lowest new id) fragment, a composite comes
       apart by id without rounding, and consumption's mass share leaves its
       remainder on the object; only a fragment under
-      `min_fragment_mass_milli` is booked out, to dust, by name. The 10^6-tick single-world soak (`phase12-c126-ledger-soak`, seed
-      12201, the confirmatory base under condition A, invariants checked
-      every 5,000 ticks) was started on 2026-08-16 and its result belongs
-      here when it finishes; until then this criterion is **partial by the
-      horizon alone**.
-- [~] **C12.7 Caps enforced visibly.** Composition depth, composition
+      `min_fragment_mass_milli` is booked out, to dust, by name.
+      **The 10^6-tick horizon: met, 2026-08-16.** `phase12-c126-ledger-soak`
+      (campaign `0x671b7fb1466a55f6`, `experiments/phase12-c126-ledger-soak.campaign`,
+      manifest in `experiments/results/phase12-c126-ledger-soak-manifest.txt`):
+      one world of the confirmatory base under condition A, seed 12201,
+      1,000,000 ticks, `check-interval 5000` - so `World::check_invariants`,
+      which asserts both ledger identities to the milli, ran 200 times and
+      once more at the end, and a violation would have failed the batch.
+      0 failed, 0 extinct; 3,545,757 births, 3,352 living at the horizon;
+      2,887,299 objects created (838,060 extracted, 1,065,651 fragments,
+      983,061 carcasses, 527 composites), 1,715,308 fractures, 61,038,473
+      consumption events, 1,168,165 decays, 69,855 pick-ups, 3,727
+      placements; ledger at the horizon: mass extracted 231,987,250 +
+      carcass 5,385,985,978 - decayed 2,164,304,574 - consumed
+      3,245,989,375 - dust 204,507,153 = 3,172,126 milli held by 3,450 live
+      objects; energy likewise. The object cap never bound. 11,549.7 s
+      wall on one core (86.6 ticks/s at a population of ~3,000 with
+      objects); the final snapshot restores (`lifesim verify-save`, format
+      7, `0x4c1a8d451053e124`).
+- [x] **C12.7 Caps enforced visibly.** Composition depth, composition
       breadth, cell occupancy, carry capacity, and object count all reject
       deterministically, count, and event. A run that is silently pressed
       against a cap must be visible in its report.
