@@ -11,6 +11,7 @@
 //! streams keyed on a recorded analysis seed. A report is a pure function
 //! of the campaign artifacts plus that seed.
 
+mod artifact;
 mod conjunction;
 mod demography;
 mod morph;
@@ -20,6 +21,11 @@ mod power;
 mod spatial;
 mod structure;
 
+pub use artifact::{
+    ARTIFACT_ANALYSIS_VERSION, ArtifactPlan, ArtifactReport, LivingOrganism, WorldArtifact,
+    WorldInputs, Verdict as ArtifactVerdict, decide as decide_artifact,
+    render as render_artifact, world_artifact,
+};
 pub use conjunction::{
     AlleleConjunctionCensus, ArmConjunction, CONJUNCTION_CENSUS_VERSION, Conjunction,
     ExpressedConjunctionCensus, LearnedStateCensus, WorldConjunction, allele_conjunction_census,

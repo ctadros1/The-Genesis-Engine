@@ -84,6 +84,7 @@ fn run() -> Result<(), String> {
         Some("morph") => command_morph(parse_options(args.collect())?),
         Some("plasticity") => command_plasticity(parse_options(args.collect())?),
         Some("conjunction") => command_conjunction(parse_options(args.collect())?),
+        Some("artifact") => command_artifact(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -107,6 +108,7 @@ fn usage() -> String {
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim plasticity --manifest FILE --treatment CONDITION --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX]\n",
         "       lifesim conjunction --manifest FILE   (descriptive census; no threshold, no verdict)\n",
+        "       lifesim artifact --manifest FILE --treatment A --control C --disabled D   (C12.1-C12.3 against the pre-registered bars)\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity --artifact [--artifact-inert] [--artifact-ephemeral]\n",
@@ -161,6 +163,7 @@ struct Options {
     manifest: Option<PathBuf>,
     baseline: Option<String>,
     treatment: Option<String>,
+    disabled: Option<String>,
     workers: Option<usize>,
     burn_in: Option<u64>,
     sesoi: Option<i64>,
@@ -248,6 +251,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--manifest" => options.manifest = Some(PathBuf::from(value)),
             "--baseline" => options.baseline = Some(value.clone()),
             "--treatment" => options.treatment = Some(value.clone()),
+            "--disabled" => options.disabled = Some(value.clone()),
             "--workers" => options.workers = Some(parse_number(name, value)?),
             "--burn-in" => options.burn_in = Some(parse_number(name, value)?),
             "--sesoi" => options.sesoi = Some(parse_number::<i64>(name, value)?),
@@ -1639,6 +1643,105 @@ fn command_plasticity(options: Options) -> Result<(), String> {
 /// equal `plastic_edges_total`. A disagreement means the census is describing
 /// a different plan from the one that ran, and it is a refusal rather than a
 /// footnote.
+/// Phase 12 C12.1, C12.2 and C12.3, decided against the pre-registered
+/// plan in `sim_analysis::ArtifactPlan::preregistered`.
+///
+/// `--treatment` names condition A, `--control` condition C (actions inert),
+/// `--disabled` condition D (combination disabled). Every world's event log
+/// and final snapshot are read; a missing or undecodable file is an error,
+/// never an empty world, on the grounds `command_morph` states.
+fn command_artifact(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("artifact requires --manifest\n{}", usage()))?;
+    let treatment = options
+        .treatment
+        .clone()
+        .ok_or_else(|| format!("artifact requires --treatment\n{}", usage()))?;
+    let control = options
+        .baseline
+        .clone()
+        .ok_or_else(|| format!("artifact requires --control (given as --baseline)\n{}", usage()))?;
+    let disabled = options
+        .disabled
+        .clone()
+        .ok_or_else(|| format!("artifact requires --disabled\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    for name in [&treatment, &control, &disabled] {
+        if !manifest.campaign.conditions.iter().any(|condition| condition.name == *name) {
+            return Err(format!("no condition named '{name}' in this campaign"));
+        }
+    }
+    let mut plan = sim_analysis::ArtifactPlan::preregistered();
+    if let Some(seed) = options.analysis_seed {
+        plan.analysis_seed = seed;
+    }
+    plan.seeds = manifest.campaign.seeds.len();
+    let mut worlds = Vec::new();
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let stem = sim_experiment::run_stem(&run.condition, run.seed);
+            let artifact = run.artifact.ok_or_else(|| {
+                format!("{stem}: the manifest carries no artifact block - the section was off")
+            })?;
+            let bytes = fs::read(directory.join(format!("{stem}.alev")))
+                .map_err(|error| format!("{stem}.alev: {error}"))?;
+            let (_, events) = sim_persist::decode_log_events(&bytes)
+                .map_err(|error| format!("{stem}.alev: {error:?}"))?;
+            let bytes = fs::read(directory.join(format!("{stem}.alif")))
+                .map_err(|error| format!("{stem}.alif: {error}"))?;
+            let (_, state) = sim_persist::decode_snapshot(&bytes)
+                .map_err(|error| format!("{stem}: decode: {error}"))?;
+            if state.config.stable_hash() != run.config_hash {
+                return Err(format!(
+                    "{stem}: the snapshot's config hash 0x{:016x} is not the manifest's 0x{:016x}",
+                    state.config.stable_hash(),
+                    run.config_hash
+                ));
+            }
+            let table = state
+                .objects
+                .as_ref()
+                .ok_or_else(|| format!("{stem}: the snapshot carries no object table"))?;
+            if table.exposure_ticks.len() != state.ids.len() {
+                return Err(format!("{stem}: object observation rows do not match the population"));
+            }
+            let living: Vec<sim_analysis::LivingOrganism> = state
+                .ids
+                .iter()
+                .enumerate()
+                .map(|(index, &id)| sim_analysis::LivingOrganism {
+                    id,
+                    age_ticks: state.age_ticks[index],
+                    exposure_ticks: table.exposure_ticks[index],
+                    birth_band: table.birth_band[index],
+                })
+                .collect();
+            let inputs = sim_analysis::WorldInputs {
+                condition: &run.condition,
+                seed: run.seed,
+                horizon: manifest.campaign.ticks,
+                initial_organisms: u64::from(state.config.initial_organisms),
+                extinct: run.extinct,
+                organism_ticks: artifact.organism_ticks,
+                picked_up: artifact.counters.picked_up,
+                placed: artifact.counters.placed,
+                combined: artifact.counters.combined,
+                composites_depth2_final: artifact.composites_depth2,
+                events: &events,
+                living: &living,
+            };
+            worlds.push(sim_analysis::world_artifact(&inputs, &plan));
+        }
+    }
+    let report = sim_analysis::decide_artifact(&plan, worlds, &treatment, &control, &disabled);
+    print!("{}", sim_analysis::render_artifact(&manifest.campaign.id, &report));
+    Ok(())
+}
+
 fn command_conjunction(options: Options) -> Result<(), String> {
     let path = options
         .manifest
