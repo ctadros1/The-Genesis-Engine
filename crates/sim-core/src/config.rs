@@ -1877,9 +1877,9 @@ impl SimConfig {
             // reason every section before it was: this function's order is
             // the definition of every hash already issued. Repricing plastic
             // edges changes what selection sees and is a new replay lineage.
-            if self.plasticity.price_moved_edges_only {
-                hasher.update(b"lifesim-plasticity-moat");
-            }
+        }
+        if self.plasticity.price_moved_edges_only {
+            hasher.update(b"lifesim-plasticity-moat");
         }
         // Phase 12 section, **appended after Phase 11's and hashed only when
         // enabled**. Appended for the reason every section before it was:

@@ -213,6 +213,19 @@ the structure of the conjunction, not a failed campaign.
 the mutational path, and there is no prior measurement to size it from. The
 moat arms are exploratory on this endpoint and are reported as such.
 
+## 6a. The campaign definition is pinned by hash
+
+`experiments/phase11-reachability.campaign` parses to campaign hash
+**`0x8efbcf9694206dc6`**, preflighting as 4 conditions x 12 seeds = 48 worlds
+at 60,000 ticks. Recorded here so that the file this pre-registration
+describes is identifiable rather than merely named: a campaign edited after
+this document was committed would carry a different hash, and the report must
+state the hash it actually ran.
+
+Validated by preflight only. No world was run, and the partial output
+directory from the parse check was deleted rather than left where it could be
+mistaken for a result.
+
 ## 7. Decision rule
 
 Fixed before the run. **No threshold here may be weakened after any number is

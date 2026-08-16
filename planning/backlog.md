@@ -719,6 +719,17 @@ Increment B - `plasticity.live_rule_zero` becomes behavioural. NEXT.
   and cannot be an arm of the 2x2 anyway: both arms must run on one build.
 
 Increment C - the moat, then the 2x2 campaign, pre-registered as in D-107.
+**Moat DONE 2026-08-16** (D-111, ALIF format 6 / D-112). Campaign
+pre-registered and committed; **not yet run**.
+
+The moat's price basis is **state movement**, not `StepKind::Applied`, and the
+pre-registration was corrected before the code was written rather than after
+the campaign. `Applied` means "the rule ran and the state was rewritten,
+possibly to the same value", and the chain removes the only other kind - so
+under the chain every edge is `Applied` and an Applied-priced moat charges the
+flat price. Measured by applying the mistake as a mutation: "Charged 191172
+against a flat 191172", the moat a complete no-op, arm B collapsed into arm C.
+D-107 predicted exactly this in writing.
 
 - The **counter split is DONE 2026-08-15** and was the stated prerequisite.
   `WorldMetrics` carries `plasticity_updates_applied`, `_static` and

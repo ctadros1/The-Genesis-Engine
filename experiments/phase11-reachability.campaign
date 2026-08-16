@@ -1,0 +1,162 @@
+# Phase 11 reachability 2x2: chain, moat, both, neither.
+#
+# ============================================================
+# PRE-REGISTRATION. Committed before the campaign is run.
+# The design, the power calculation, the decision rule and every
+# reporting obligation are in
+# experiments/phase11-reachability-preregistration.md, committed first
+# and separately. This file is that document's executable form and
+# adds nothing to it.
+# ============================================================
+#
+# WHAT THIS CAMPAIGN IS FOR. D-107 established that Phase 11's null is about
+# reachability rather than selection: the phase's risk table predicted
+# "plasticity is selected to zero", and what actually happened is that
+# plasticity was never assembled. Two changes were proposed, and D-107 was
+# explicit that they are different claims that must not be conflated. "X but
+# not Y" requires building the X-alone variant and measuring it, so this is a
+# 2x2 and not a single combined change.
+#
+#   N  chain off, moat off   today's engine; the arm the census describes
+#   C  chain on,  moat off   ADR-0027: every rule_id names a live rule
+#   M  chain off, moat on    D-111: only edges whose learned state moved pay
+#   B  chain on,  moat on
+#
+# THE PRIMARY OUTCOME IS REACHABILITY, NOT PAYOFF. `lifesim conjunction`'s
+# `full_conjunction` count. It counts genotypes, so it is sound regardless of
+# D-100 and of C11.1's second confound - both are about a *behavioural*
+# statistic and neither touches a census of which alleles exist. No claim
+# about within-lifetime behavioural shift is made here, and C11.1's statistic
+# is not used.
+#
+# THE BAR, FIXED BEFORE THE RUN AND NOT WEAKENABLE AFTER IT. Arm C's
+# `full_conjunction` count exceeds arm N's in at least 10 of 12 seed-matched
+# pairs; the same bar for M against N and for B against N. Ties count as
+# failures, which is the conservative direction and the one that matters when
+# the base rate is near zero. Under a null, 10-or-more of 12 is 79/4096 =
+# 0.0193, a one-sided sign test at about alpha = 0.02.
+#
+# WHY 12 SEEDS IS ENOUGH, AND WHY THE OBVIOUS ESTIMATE SAYS IT IS NOT. A
+# uniform-draw model says `rule_id != 0` has probability 4/5, so the chain
+# multiplies completions by 1.25 - undetectable here, and this campaign would
+# be a waste. That model does not describe this population. The census
+# measures 93.46 percent of compiled plastic edges carrying rule 0, because
+# the founder carries it and the mutation rate is low. `rule != 0` is the
+# BINDING condition at 6.54 percent, and the chain sets it to 1. The chain's
+# completion set becomes exactly {eta > 0} and {drive != 0}: under
+# independence 0.0888 x 0.1476 x 48,119 = 631 against an observed 59, a
+# predicted ~10.7x increase. The independence assumption is checkable on the
+# same table and roughly holds (predicts depth 3 = 1,316 against 1,477).
+#
+# NO POWER CLAIM IS MADE FOR THE MOAT. Its effect is on selection, not on the
+# mutational path, and there is no prior measurement to size it from. The M
+# and B arms are exploratory on this endpoint and are reported as such.
+#
+# NO INTERACTION IS TESTED. At 12 seeds on a count this sparse it would have
+# no useful power, and pretending otherwise would be a weakened threshold in
+# another form. B is reported against N on the same bar as the other two, and
+# any statement about whether the chain and the moat compose is descriptive.
+#
+# REPORTING OBLIGATIONS, and each exists because a specific reading went wrong
+# before:
+#
+#   - The per-world distribution in every arm, never only the arm total. In
+#     the census 6 of 9 allele-level completions came from one world.
+#   - The depth histogram at both the allele and expressed level. The chain
+#     moves alleles *between* depths, so a total that moved without the
+#     histogram moving as the mechanism predicts needs explaining.
+#   - The plastic flag's excess over MARKER_FLAG_NEUTRAL in every arm. Under
+#     the moat the flag is free to drift - that is the intended change and
+#     also exactly how the flag stops being informative - and the marker is
+#     the matched drift control because it toggles on the same draw.
+#   - `plasticity_updates_applied` beside `plasticity_updates_total`. The
+#     total counts edges visited; only applied says the arithmetic ran
+#     (D-098).
+#   - The compiled rule histogram and `plasticity_saturations_total`. Under
+#     the chain the founder's untouched allele maps to LIVE_RULE_BASE, so the
+#     standing population is about 92 percent plain Hebbian - measured. This
+#     engine's Hebbian is bounded by LEARN_LIMIT_Q16, so the clamp is the
+#     mitigation and the saturation counter measures how hard it works.
+#     Without both, an arm that destabilised because nearly everything was
+#     Hebbian would read as "learning is harmful". See ADR-0027.
+#
+# THE BASE CONFIGURATION IS THE CONFIRMATORY CAMPAIGN'S, UNCHANGED, so this
+# campaign's N arm is comparable to the published census. The only deltas are
+# the two factors. Seeds are 12 of the confirmatory campaign's 30, taken as
+# the first 12 rather than chosen, so the choice is not a degree of freedom.
+#
+# E-variable is held on in every arm (patch_capacity_scale_q16 = 262144).
+# The environment factor is not crossed here: it was crossed in the
+# confirmatory campaign and both C11.1 and C11.2 returned nulls under it, and
+# adding it would make this a 2x2x2 at 12 seeds, which has no power.
+
+campaign phase11-reachability
+ticks 60000
+workers 8
+seeds 6001..6012
+
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base probe.enabled true
+base probe.action_census_enabled true
+base probe.marker_locus_enabled true
+base worldmod.enabled true
+base worldmod.patch_enabled true
+base worldmod.relocate_interval_ticks 2000
+base worldmod.patch_radius_cells 32
+base worldmod.max_capacity_overrides 8192
+base worldmod.patch_capacity_scale_q16 262144
+
+# Plasticity is ON in every arm. This campaign is not the A/B ablation the
+# confirmatory campaign ran; both factors here act *within* a plasticity
+# world, and an arm with plasticity disabled would have no conjunction to
+# complete and no edges to price.
+base plasticity.enabled true
+base genome2.mutation.plasticity_enabled true
+base plasticity.max_plastic_edges 32
+base plasticity.plastic_edge_cost_milli_per_s 2
+base plasticity.lamarckian_fraction_q16 0
+
+condition N
+condition C
+condition M
+condition B
+
+set N plasticity.live_rule_zero false
+set N plasticity.price_moved_edges_only false
+set C plasticity.live_rule_zero true
+set C plasticity.price_moved_edges_only false
+set M plasticity.live_rule_zero false
+set M plasticity.price_moved_edges_only true
+set B plasticity.live_rule_zero true
+set B plasticity.price_moved_edges_only true
+
+vary plasticity.live_rule_zero
+vary plasticity.price_moved_edges_only
+
+# Snapshots on: `lifesim conjunction` reads the final world of every run, and
+# the census is the primary outcome. Actions off: C11.1's per-individual
+# statistic is not used by this campaign, and the .alac series is the most
+# expensive artifact the harness writes.
+output events off
+output snapshots on
+output actions off
