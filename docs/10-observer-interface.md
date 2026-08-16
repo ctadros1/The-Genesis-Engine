@@ -74,6 +74,13 @@ an arrangement of those, taken from simulation state. Nothing is
 pre-generated, so nothing about the asset pipeline caps what the simulation
 is allowed to contain. See `specifications/appearance-derivation.md`.
 
+*Status 2026-08-16: the kernel now has artifacts (Phase 12, ADR-0028: four
+registry materials, simple and composite objects with a per-object
+material, integrity and depth) but no frame carries them yet - `ALSP` 1.1
+is unbuilt (`specifications/websocket-protocol.md`), so the observer, 2D
+or voxel, cannot show an object. The "one primitive per material" palette
+above has four materials to draw from when it does.*
+
 Consequences for this document's design direction:
 
 - **Legibility is preserved and strengthened.** The scientific-overlay
