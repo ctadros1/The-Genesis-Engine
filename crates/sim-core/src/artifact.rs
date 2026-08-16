@@ -1183,6 +1183,12 @@ pub struct ObjectState {
     /// `SpatialIndex` phase; a bucket built in scan order is never read for
     /// a decision (Rule 5), which the sort at build time guarantees.
     pub cell_index: Vec<Vec<u32>>,
+    /// Whether `cell_index` describes the table as it stands. Cleared by
+    /// any compaction (table indices move) and set by `rebuild_cell_index`;
+    /// the buckets themselves are kept between rebuilds so a 16,384-cell
+    /// world does not allocate 16,384 vectors a tick. Every reader that can
+    /// run while the index is stale checks this, not the length.
+    pub cell_index_valid: bool,
     /// Held object IDs per organism, ascending, parallel to the world's
     /// organism arrays. Derived from `holder_id`; cross-checked by
     /// `check_invariants`.
@@ -1204,6 +1210,7 @@ impl ObjectState {
         Self {
             table: ObjectTable::default(),
             cell_index: Vec::new(),
+            cell_index_valid: false,
             held: Vec::with_capacity(organisms),
             intents: Vec::with_capacity(organisms),
             perception: Vec::with_capacity(organisms),
@@ -1304,27 +1311,40 @@ impl ObjectState {
         if self.cell_index.len() != cell_count {
             self.cell_index = vec![Vec::new(); cell_count];
         } else {
-            for bucket in &mut self.cell_index {
+            // Only buckets that hold something need clearing; a world of
+            // 16,384 cells and a handful of objects should not pay for
+            // 16,384 clears a tick (the quiet-arm seam cost, Phase 12
+            // benchmark record).
+            for bucket in self.cell_index.iter_mut().filter(|bucket| !bucket.is_empty()) {
                 bucket.clear();
             }
         }
+        let mut touched: Vec<usize> = Vec::new();
         for index in 0..self.table.len() {
             if !self.table.is_free(index) {
                 continue;
             }
             let cell = cell_of(self.table.x_fp[index], self.table.y_fp[index]);
+            if self.cell_index[cell].is_empty() {
+                touched.push(cell);
+            }
             self.cell_index[cell].push(index as u32);
         }
         // Table order is ID order, so pushing in index order leaves every
         // bucket ascending by ID already; the sort is the guarantee rather
-        // than the hope, and it is a no-op on sorted input.
-        for bucket in &mut self.cell_index {
-            bucket.sort_unstable();
+        // than the hope, and it is a no-op on sorted input. Only touched
+        // buckets are visited: a sort of an empty bucket guarantees nothing.
+        for cell in touched {
+            self.cell_index[cell].sort_unstable();
         }
+        self.cell_index_valid = true;
     }
 
-    /// Free objects in a cell.
+    /// Free objects in a cell; zero while the index is stale.
     pub fn free_in_cell(&self, cell: usize) -> usize {
+        if !self.cell_index_valid {
+            return 0;
+        }
         self.cell_index.get(cell).map_or(0, |bucket| bucket.len())
     }
 
@@ -1339,6 +1359,9 @@ impl ObjectState {
 
     /// Whether a free object in `cell` blocks entry.
     pub fn cell_is_blocked(&self, cell: usize, blocking_mass_milli: i64) -> bool {
+        if !self.cell_index_valid {
+            return false;
+        }
         self.cell_index.get(cell).is_some_and(|bucket| {
             bucket
                 .iter()

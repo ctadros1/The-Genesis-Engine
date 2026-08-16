@@ -352,11 +352,18 @@ schema 2 + worldmod + contest, medians over 500 ticks):
 | Encode / decode / restore at 4,096 objects | 12.2 / 12.3 / 5.1 ms (6.6 / 6.7 / 5.2 at zero) |
 
 The same shape as the mutable-world half: **the seam costs more than the
-work** - enabling the section with nothing bound and no objects adds a
-third to the tick (the six cues per organism and the per-cell object index
-rebuilt every tick over an empty table are the candidates, unmeasured
-separately), while a population in which every organism acts every tick
-on 668 objects triples it. The mutable-world numbers below were re-run
+work** - enabling the section with nothing bound and no objects added a
+third to the tick, while a population in which every organism acts every
+tick on 668 objects triples it. Half of the seam was found and removed the
+same day: the per-cell object index was *cleared to length zero* after
+any compaction and after every decay sweep, so the next tick reallocated
+16,384 vectors; keeping the buckets behind a `cell_index_valid` flag
+(behaviour-neutral: the index is rebuilt every tick and never hashed; the
+trace fixture is unmoved) brought the quiet arm to 106-111 us against
+88-92 disabled (+20%), scripted 353 us; second record
+`experiments/results/phase12-benchmark-measurements-after-index-fix.txt`.
+The remaining fifth is the six cues per organism and the intent gather,
+unmeasured separately. The mutable-world numbers below were re-run
 in the same record (239.3 / 300.6 / 298.2 / 297.5 us; checksum 976.8 us
 empty, 955.9 us at 955 overrides; writes 48.8 / 196.4 / 996.9 us) and
 agree with the 2026-08-10 hand measurements to within noise.

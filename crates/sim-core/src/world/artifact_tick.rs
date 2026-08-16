@@ -228,6 +228,9 @@ impl World {
         range_fp: i64,
         limit: usize,
     ) -> Vec<(i64, usize)> {
+        if !objects.cell_index_valid {
+            return Vec::new();
+        }
         let x = i64::from(self.x_fp[index]);
         let y = i64::from(self.y_fp[index]);
         let cell_fp = i64::from(self.config.cell_size_fp());
@@ -908,7 +911,7 @@ impl World {
             let cell = self.cell_of(record.x_fp, record.y_fp);
             let table_index = objects.table.push(record);
             destroyed.push(false);
-            if objects.cell_index.len() == self.terrain.cell_count() {
+            if objects.cell_index_valid {
                 Self::cell_index_insert(objects, cell, table_index);
             }
             self.push_event(next_tick, EventKind::ObjectCreated { id, material_id, cause, mass_milli, energy_milli, parent_id });
@@ -923,7 +926,9 @@ impl World {
             // Table indices moved: the cell index is stale until the next
             // `SpatialIndex` phase, and nothing between here and there reads
             // it except the lifecycle sweep, which rebuilds what it needs.
-            objects.cell_index.clear();
+            // The buckets are kept (a clear here cost a 16,384-vector
+            // reallocation every tick with any destruction in it).
+            objects.cell_index_valid = false;
         }
     }
 
@@ -958,7 +963,7 @@ impl World {
                 objects.held[organism].remove(position);
             }
             objects.table.holder_id[target] = 0;
-        } else if objects.cell_index.len() == self.terrain.cell_count() {
+        } else if objects.cell_index_valid {
             let cell = self.cell_of(objects.table.x_fp[target], objects.table.y_fp[target]);
             Self::cell_index_remove(objects, cell, target);
         }
@@ -1027,7 +1032,7 @@ impl World {
                 objects.held[organism].remove(position);
             }
             objects.table.holder_id[target] = 0;
-        } else if objects.cell_index.len() == self.terrain.cell_count() {
+        } else if objects.cell_index_valid {
             Self::cell_index_remove(objects, cell, target);
         }
         for constituent in composition {
@@ -1036,7 +1041,7 @@ impl World {
                 objects.table.holder_id[index] = 0;
                 objects.table.x_fp[index] = x;
                 objects.table.y_fp[index] = y;
-                if objects.cell_index.len() == self.terrain.cell_count() {
+                if objects.cell_index_valid {
                     Self::cell_index_insert(objects, cell, index);
                 }
             }
@@ -1085,7 +1090,7 @@ impl World {
         destroyed[target] = true;
         objects.table.mass_milli[target] = 0;
         objects.table.energy_milli[target] = 0;
-        if objects.cell_index.len() == self.terrain.cell_count() {
+        if objects.cell_index_valid {
             let cell = self.cell_of(x, y);
             Self::cell_index_remove(objects, cell, target);
         }
@@ -1198,8 +1203,8 @@ impl World {
         let n = objects.table.len();
         let mut destroyed = vec![false; n];
         // The cell index is stale after any compaction this tick; the sweep
-        // does not need it, and clearing it makes that explicit.
-        objects.cell_index.clear();
+        // does not need it, and marking it stale makes that explicit.
+        objects.cell_index_valid = false;
         for index in 0..n {
             if objects.table.owner_id[index] != 0 {
                 continue;

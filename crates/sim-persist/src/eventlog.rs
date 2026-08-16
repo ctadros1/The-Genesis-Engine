@@ -38,8 +38,8 @@
 //! no repair path.
 
 use sim_core::{
-    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, MAX_EVENTS_PER_TICK, OP_POINT,
-    OP_BINDING, OP_TRANSPOSITION, PairRejectReason, Phase2Counters, RejectReason, World,
+    Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, MAX_EVENTS_PER_TICK, OP_BINDING,
+    OP_POINT, PairRejectReason, Phase2Counters, RejectReason, World,
 };
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -1410,7 +1410,7 @@ impl EventLogRecorder {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use sim_core::OP_DUPLICATION;
+    use sim_core::{OP_DUPLICATION, OP_TRANSPOSITION};
 
     fn info() -> EventLogInfo {
         EventLogInfo {
