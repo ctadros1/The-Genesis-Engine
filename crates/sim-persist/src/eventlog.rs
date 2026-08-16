@@ -39,7 +39,7 @@
 
 use sim_core::{
     Counters, DeathCause, EVENT_SCHEMA_VERSION, Event, EventKind, MAX_EVENTS_PER_TICK, OP_POINT,
-    OP_TRANSPOSITION, PairRejectReason, Phase2Counters, RejectReason, World,
+    OP_BINDING, OP_TRANSPOSITION, PairRejectReason, Phase2Counters, RejectReason, World,
 };
 use std::fmt;
 use std::fs::{File, OpenOptions};
@@ -995,7 +995,11 @@ fn decode_events_into(
                 // Fail closed on both fields. An operator code the build
                 // does not know is a log from a different lineage, not a
                 // record to guess at.
-                if !(OP_POINT..=OP_TRANSPOSITION).contains(&operator) {
+                // `OP_BINDING` (6, Phase 12, D-114) is the highest code; a
+                // first draft of this range stopped at `OP_TRANSPOSITION`
+                // and refused every log in which a bind was ever rejected -
+                // which the confirmatory campaign's first world was.
+                if !(OP_POINT..=OP_BINDING).contains(&operator) {
                     return Err(EventLogError::ValueOutOfRange("structural operator"));
                 }
                 let Some(reason) = RejectReason::from_code(code) else {
@@ -1490,6 +1494,16 @@ mod tests {
                     reason: RejectReason::Inapplicable,
                 },
             },
+            // The bind operator's rejection (Phase 12): the highest operator
+            // code, so a decoder range that stops one short is caught here.
+            Event {
+                tick,
+                kind: EventKind::StructuralMutationRejected {
+                    child_id: 23,
+                    operator: OP_BINDING,
+                    reason: RejectReason::HomologyCollision,
+                },
+            },
         ]
     }
 
@@ -1506,7 +1520,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 27);
+        assert_eq!(scan.events, 30);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());
@@ -1523,8 +1537,14 @@ mod tests {
         assert_eq!(scan.counters.mutated_trait_genes_total, 9);
         assert_eq!(scan.counters.mutated_neural_genes_total, 33);
         // C9.6: reconstructed per class, not only in total. Three ticks of
-        // one `Cap` and one `Inapplicable` each.
-        assert_eq!(scan.counters.structural_rejections_total, 6);
+        // one `Cap`, one `Inapplicable` and one `HomologyCollision` (the
+        // bind operator's) each.
+        assert_eq!(scan.counters.structural_rejections_total, 9);
+        assert_eq!(
+            scan.counters.structural_rejections_by_reason
+                [usize::from(RejectReason::HomologyCollision.code() - 1)],
+            3
+        );
         assert_eq!(
             scan.counters.structural_rejections_by_reason
                 [usize::from(RejectReason::Cap.code() - 1)],

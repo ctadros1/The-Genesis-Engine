@@ -193,9 +193,18 @@ where marked; the criteria's thresholds are as they were.
       under C by the stated effect size in at least 20 of 30 seeds. Condition
       C is the control that distinguishes evolved use from output channels
       firing at their baseline rate.
-      **NOT BUILT.** Requires the object system, the five actions, and the
-      four-condition campaign. No object exists yet. Distinct from unmet:
-      nothing was measured, and no threshold above has been changed.
+      **UNMET, measured, 2026-08-16: 0 of 30** (campaign
+      `0x36c2d68a9a0869da`, findings in
+      `experiments/results/phase12-artifact-confirmatory-findings.txt`,
+      D-117). A's success rate ran 1-63 ppm of organism-ticks (median 5)
+      against C's fire rate of 5,515-29,475 ppm (median 11,548): 48.1
+      million requests, 41,703 successes, one in 1,154, refused as
+      NothingHeld (45.1M) and NoTarget (14.1M). The supplementary fire-rate
+      contrast is null too (16/30 positive, p 0.427). Not a reachability
+      null: every arm's every world had living genomes bound to all five
+      actions, and pick_up-and-place in 28/30. The C arm carries D-118's
+      caveat (consumption skipped under inert), which cannot close a
+      thousandfold gap.
 - [ ] **C12.2 Structures persist and matter.** Under A, the median lifetime
       of a placed object exceeds the run's median organism lifespan in at
       least 15 of 30 seeds, **and** organisms occupying cells containing
@@ -203,7 +212,15 @@ where marked; the criteria's thresholds are as they were.
       output or survival) against matched cells without them. Both halves
       are required: persistence without a fitness effect is litter, not
       structure.
-      **NOT BUILT.** Same reason as C12.1.
+      **UNMET, measured, 2026-08-16: (a) 7 of 30 against 15, (b) 11 of
+      30 against 20.** 1,301 placed episodes across A (median 7 per
+      world), median lifetime 110 ticks against a median lifespan of 985;
+      the seven passing worlds are a handful of placements nobody
+      disturbed (up to 16,694 ticks) - persistence without frequency. 9,773
+      exposed organisms; the stratified effect ran -688 to +143 milli
+      offspring per thousand ticks, median -35. Under B every episode
+      closed in its tick, the control as designed. (Its cross-sectional
+      design is still the open question review 15.8 raised.)
 - [ ] **C12.3 Cumulative dependency.** Under A, the frequency of composite
       objects of combination depth two or more increases over time in at
       least N of 30 seeds, with N stated before the campaign. Under D this
@@ -211,11 +228,14 @@ where marked; the criteria's thresholds are as they were.
       null and it is stated that way in advance.** A null here is a real
       result about this world's physics and is reported as such, not
       quietly dropped or replaced with a weaker measure after the fact.
-      **NOT BUILT.** Same reason as C12.1. Note the ordering correction
-      above: this *is* measurable in this phase once objects exist, because
-      stigmergy is the transmission channel it needs, and it does not wait
-      on Phase 13. `N` is still unstated and must be fixed in the
-      pre-registration, before the campaign runs.
+      **UNMET, measured, 2026-08-16: 5 of 30 against N = 20** (N fixed
+      in the pre-registration as the smallest count with one-sided
+      binomial p < 0.05 at a null rate of one half). Depth-two composites
+      arose in 15/30 worlds (60 in all, from 263 combinations) and rose
+      from a zero first third in five (seeds 12018, 12021, 12022, 12025,
+      12029); D was zero in every world, as constructed. A real, small
+      positive at a frequency the criterion does not accept, and reported
+      as such.
 - [~] **C12.4 Determinism and identity.** Object IDs strictly increase and
       never repeat; storage index order equals ID order; contested
       acquisition is order-independent under storage permutation;

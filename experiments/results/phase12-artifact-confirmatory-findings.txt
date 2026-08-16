@@ -1,0 +1,246 @@
+Phase 12 artifact-half confirmatory campaign: C12.1, C12.2, C12.3. Findings.
+
+Campaign source   experiments/phase12-artifact-confirmatory.campaign
+Pre-registered in experiments/phase12-artifact-preregistration.md, commit
+                  c56a7c7, before the campaign was run. C12.3's N (20 of 30)
+                  was fixed there.
+Campaign hash     0x36c2d68a9a0869da
+Kernel            commit c56a7c7 (the binary that ran the worlds; the
+                  analysis binary is 1a29a26 + the log-decoder range fix
+                  below, analysis-side only)
+Raw artifacts     phase12-artifact-confirmatory-manifest.txt
+                  phase12-artifact-confirmatory-artifact.txt (lifesim artifact)
+Analysis version  lifesim-artifact-analysis-v1
+Analysis seed     0xa11fac750b1ec751; paired intervals lifesim-paired-stats-v1
+Run               120 worlds (4 conditions x 30 seeds), 60,000 ticks each,
+                  8 workers, 4,512.6 s wall, 1,595.5 aggregate ticks/s,
+                  0 failed, 0 extinct. 4.3 GB of artifacts (event logs on).
+                  Run on the laptop (the VM was unreachable at launch);
+                  the fixture, the workspace suite and the verify scripts
+                  reproduce on the VM at fdb2f1d/c88512a.
+Analysis          63.9 s wall over 120 worlds.
+
+================================================================
+ALL THREE CRITERIA ARE UNMET. ALL THREE ARE MEASURED NULLS WITH
+CONTROLS, AND THIS TIME THE MECHANISM WAS REACHABLE.
+================================================================
+
+  C12.1  0 of 30 (bar 20).                                    UNMET.
+  C12.2  (a) 7 of 30 (bar 15); (b) 11 of 30 (bar 20).         UNMET.
+  C12.3  5 of 30 (bar 20). Condition D zero by construction.  UNMET.
+
+No threshold was changed after the data was seen. The plan's risk table
+names C12.3 as the criterion most likely to return null and the
+pre-registration (section 3) said the same of C12.1 in advance. What the
+pre-registration could not say in advance, and the census now does, is
+*why*: not because no lineage could reach the actions - every world's
+living population bound every one of the five - but because the actions,
+once bound, fired into a world that almost never satisfied their
+preconditions, and nothing in 60,000 ticks selected them into doing so.
+
+----------------------------------------------------------------
+1. THE NUMBER THAT EXPLAINS EVERYTHING ELSE
+----------------------------------------------------------------
+
+Under A, over 30 worlds and 3,773,908,974 organism-ticks, pick_up, place
+and combine were **requested 48,137,380 times and succeeded 41,703 times**:
+one success per 1,154 requests, 11 ppm of organism-ticks succeeded against
+12,755 ppm fired. Per world the success rate ran 1-63 ppm (median 5); the
+fire rate 7,353-30,080 ppm (median 11,057).
+
+The refusals say what stood in the way (A, all 30 worlds):
+
+  NothingHeld      45,056,105   place, combine or drop requested by an
+                                organism holding nothing
+  NoTarget         14,115,304   pick_up requested with no free object in
+                                reach (2 m)
+  HeldCap           4,095,691   pick_up requested while already holding
+                                the one object the cap allows
+  Depleted          2,960,362   strike on a cell already stripped of yield
+  CapacityExceeded     29,568   the nearest object was too heavy
+  DepthCap              1,255   (combine, at cap 4)
+  Contested             1,064
+  OccupancyCap            331
+  JointFailed              86   (25% of attempts, the floor as configured)
+
+So the shape is: organisms that bound the channels requested the actions
+on roughly one tick in a hundred, all the time, whether or not there was
+anything to act on - and there almost never was. Objects existed
+(1,157 live per world at the horizon, 7% of the 16,384 cells, most of
+them fragments and carcasses) but were rarely within one cell of an
+organism at the moment it asked; and the two-step sequences (hold, then
+place; hold, then combine) fired their second step overwhelmingly while
+holding nothing. 40,139 pick-ups succeeded; of what was picked up, 21,918
+objects were dropped, 10,170 fell at the holder's death, 1,301 were placed
+and 263 were combined.
+
+That is a different null from Phase 11's (D-099). There the conjunction
+was unreachable by mutation. Here it was reached in every world (section
+5) and the actions ran; the coupling between *perceiving* an object
+(cues 17-22 were offered) and *requesting* the right action at the right
+moment did not evolve at this rate and horizon.
+
+----------------------------------------------------------------
+2. C12.1 - ACTIONS USED, NOT JUST FIRED. UNMET, 0 OF 30.
+----------------------------------------------------------------
+
+Decision rule, from the pre-registration: successful pick_up + place +
+combine per million organism-ticks, A minus C on the same seed, at least
++10 ppm, in at least 20 of 30 worlds. Under C every requested action is
+charged and counted, so C's rate is the firing rate and A's is the success
+rate: the criterion asks whether making the actions *work* makes lineages
+succeed more often than they would merely fire.
+
+  A success rate  median 5 ppm     (1 .. 63)
+  C fire rate     median 11,548 ppm (5,515 .. 29,475)
+  A - C           0 of 30 reaching +10 ppm; 0 of 30 positive at all;
+                  mean -12,819 ppm, median -11,675, CI [-14,695, -11,251],
+                  p(SESOI) = 1.000
+
+Supplementary, as pre-registered: the *fire* rate under A against C
+(successes plus refusals of the same three actions, from the log):
+16 of 30 positive, mean -449 ppm, median +304, CI [-2,466, +1,455],
+p = 0.427. Lineages under A fired the actions neither more nor less than
+under C. Whatever the actions did in A - and they extracted 640,209
+objects, fractured 1,341,287 and fed 923 million milli of carcass energy
+back to the population (section 6) - it did not change how often the
+lineages asked for them within 60,000 ticks.
+
+----------------------------------------------------------------
+3. C12.2 - STRUCTURES PERSIST AND MATTER. UNMET.
+----------------------------------------------------------------
+
+(a) Median placed-object episode longer than the median organism lifespan,
+in 15 of 30. **7 of 30.** Under A there were 1,301 placed episodes across
+30 worlds (median 7 per world, range 0-691; 24 worlds had at least one);
+the median episode lasted 110 ticks against a median organism lifespan of
+985. The seven worlds that met the clause are the ones with very few
+placements that stayed put (seed 12013: three episodes, median 16,694
+ticks; 12020: one episode, 15,752 ticks; 12017: 42 episodes, 3,135) - a
+placed stone in an empty cell nobody visits does persist. It is
+persistence without frequency. Under B (ephemeral) every episode closes in
+its own tick: 26 worlds have episodes and every median lifetime is 0,
+which is the control behaving as designed.
+
+(b) Stratified exposure effect on reproductive output positive, with at
+least 20 exposed organisms, in 20 of 30. **11 of 30 positive; 22 of 30
+had 20 or more exposed.** 9,773 organisms across A spent at least 5% of
+their life on a cell holding a live placed object (median 131 per world,
+range 0-4,452); the per-world effect (exposed minus unexposed offspring per
+thousand ticks of life, weighted over birth bands, milli) ran -688 to +143
+with a median of -35.5: exposed organisms had, if anything, slightly
+*fewer* offspring per tick of life. With 1,301 placements in 3.77 billion
+organism-ticks the exposure is thin and the estimate is what a thin
+exposure gives; nothing here suggests the placed objects mattered to
+anyone.
+
+----------------------------------------------------------------
+4. C12.3 - CUMULATIVE DEPENDENCY. UNMET, 5 OF 30.
+----------------------------------------------------------------
+
+Decision rule: live composites of depth two or more per thousand living
+organisms, sampled every 1,000 ticks, last third minus first third of the
+run at least +0.5 per thousand, in N = 20 of 30 (fixed in the
+pre-registration). **5 of 30**: seeds 12018 (33 depth-2 composites over
+the run, last-third mean 4.78 per thousand), 12021 (38; 1.85), 12022 (6;
+0.98), 12025 (4; 0.92), 12029 (18; 0.68). Every world's first third is
+zero. 15 of 30 worlds ever made a depth-2 composite; 60 were made in all,
+from 263 combinations, and 131 composites were struck back apart. Under D
+(depth cap 0) the count is zero in every world, as constructed, so the
+five are the depth cap being open and not an artefact of the analysis.
+
+That is a real, small, positive: elaboration to depth two *happened* by
+chance in half the worlds and rose over the run in five, from a base of
+zero. It is not the frequency the criterion asked for.
+
+----------------------------------------------------------------
+5. THE REACHABILITY CENSUS: THIS IS NOT A REACHABILITY NULL
+----------------------------------------------------------------
+
+Owed beside every null (pre-registration section 6). Read from each
+world's final snapshot: which of the five action channels the living
+genomes bind, and the two conjunctions a placement or a combination needs
+in one line of descent.
+
+  Condition A, 30 worlds, 91,987 living organisms at the horizon:
+    worlds with >= 1 living genome bound to
+      pick_up 30   drop 30   place 30   strike 30   combine 30
+      pick_up AND place 28   pick_up AND combine 28
+    living organisms binding at least one action: 22,287 (24%)
+    per world (median): pick_up 176, place 136, combine 112, strike 115,
+      pick_up-and-place 6, pick_up-and-combine 5.5
+    bind operations applied over the run: 603,412 (median 20,908 per world)
+  Conditions B, C, D: the same to within a few percent (they share the
+  seeds and the supply), which is the common-mode design working.
+
+So the D-114 operator did what it was added for: at 0.25 per birth over
+2.44 million births per arm, every action was reachable and reached in
+every world, and the two-channel conjunctions in 28 of 30. Phase 11's null
+was "no lineage could reach the action"; this one is "every lineage could,
+many did, and firing it did not pay enough to be shaped in 60,000 ticks".
+The next campaign's knobs are the ones the pre-registration named - the
+costs and the rate - and one it did not: the reach (2 m, one cell), which
+is what NoTarget's 14 million refusals are about.
+
+----------------------------------------------------------------
+6. WHAT THE OBJECTS DID TO THE ECOLOGY, AND A CONFOUND IN THE C ARM
+----------------------------------------------------------------
+
+The artifact half changed the ecology in one way the plan did not name:
+carcasses are objects, and objects with energy are eaten. Under A the
+population took **923 million milli of energy back from carcass objects**
+in 23.4 million consumption events (0.24 milli per organism-tick), of
+2,966 million milli of carcass energy created; the rest decayed away
+(2,044 million) or went to dust. Under D and B the same to within 2%.
+
+**Under C, none of it: the inert path returns before consumption runs, so
+carcass objects exist (293,560 created) but are never eaten, and every
+milli of their energy decays (1,953 of 1,960 million).** That is a
+difference between C and A that the pre-registration did not state - it
+said "carcass objects still exist under C (they are ecology, not action)"
+and they do, but their energy is unrecoverable there. The demography
+shows it: starvation deaths 2,026,386 under C against 1,911,554 under A
+(+6%), deaths by damage 206,738 against 354,716 (-42%; poorer organisms
+contest less), births 2,407,034 against 2,440,031, final population
+93,005 against 91,987. It does not touch the verdicts - C12.2 and C12.3
+do not read C, and C12.1's 0 of 30 is decided by a factor of a thousand
+between successes and fires that no ecological difference could close -
+but it means the "actions fire but confer no effect" arm also had less
+food, and a future C arm must run consumption and decay and skip only the
+five verbs. That is a kernel change under a new policy version, recorded
+as an open question rather than made after the fact (D-118).
+
+Other ecology under A: 640,209 extractions stripped cells (2,960,362
+strikes hit an already-depleted cell), 1,537,351 strikes hit objects and
+1,341,287 fractured them into 861,243 fragments and dust; 568,060 objects
+decayed away; the ledger balanced to the milli in every world at every
+invariant check, and no world reached the object cap.
+
+----------------------------------------------------------------
+7. WHAT WAS FOUND ON THE WAY
+----------------------------------------------------------------
+
+- The event-log decoder refused every log in which a bind operation had
+  ever been rejected: its operator range stopped at OP_TRANSPOSITION (5)
+  and OP_BINDING is 6. The very first world's log tripped it. Fixed on
+  the reader side (the logs are correct), with the round-trip sample
+  extended to carry a rejected bind; the CLI test's toy campaign had not
+  produced one in 3,000 ticks, which is why it passed.
+- Under C every one of the five counters advances by fires (that is the
+  design), so `artifact_picked_up` in the manifest means "picked up" in
+  A, B, D and "asked to pick up" in C. The report's `successes` column
+  carries the same meaning by construction, as the pre-registration says.
+
+----------------------------------------------------------------
+8. WHAT THE RESULT LICENSES, IN THE REVIEW'S VOCABULARY
+----------------------------------------------------------------
+
+Nothing above review 10.2 Level 0. Interaction happened (extraction,
+fracture, carrying, placement, combination all occurred, at low rates);
+controlled transport (Level 1) is not shown, since successful pick-ups
+were 0.2% of pick-up requests (40,139 of about 18.3 million) and their
+timing was not distinguishable from firing at baseline. Persistence was shown for a handful of objects
+without a matched fitness signal; elaboration to depth two occurred at a
+frequency the criterion did not accept. The phase's value, as the plan
+said it would be, is a measured negative with controls and a mechanism
+census that says where the negative lives.
