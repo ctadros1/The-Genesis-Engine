@@ -337,6 +337,30 @@ Benchmarks, 256x256 (65,536 cells), release:
 | Composed checksum, full recompute | ~1,000 us (empty and at 955 overrides alike) |
 | Modification writes, 1,000 / 4,000 / 16,000 entries | 48.5 / 202.2 / 1,044.9 us |
 
+**Artifact half, 2026-08-16** (`experiments/results/phase12-benchmark-measurements.txt` (raw record `benchmarks/raw/phase12-local-20260817T003000Z`, git-ignored like every raw record),
+`scripts/run-phase12-benchmarks.sh`, schema 7; 128x128, 200 founders,
+schema 2 + worldmod + contest, medians over 500 ticks):
+
+| Quantity | Value |
+|---|---|
+| Tick, artifact section disabled | 88.5 us (population 173) |
+| Tick, section enabled, nobody bound, **zero** objects | 117.7 us (population 173) |
+| Tick, the `--artifact` trace's scripted population | 358.3 us (population 116, 668 live objects, 17,187 successful actions and 209,369 refusals over the sample) |
+| Section 15, simple objects | **100 bytes per object**, exact (`OBJECT_FIXED_BYTES`) |
+| Section 15, a composite in every fourth | 103 bytes per object |
+| Snapshot of the 200-organism world at 0 / 256 / 4,096 objects | 458,084 / 483,684 / 867,684 bytes: 4,096 objects are 47% of the file |
+| Encode / decode / restore at 4,096 objects | 12.2 / 12.3 / 5.1 ms (6.6 / 6.7 / 5.2 at zero) |
+
+The same shape as the mutable-world half: **the seam costs more than the
+work** - enabling the section with nothing bound and no objects adds a
+third to the tick (the six cues per organism and the per-cell object index
+rebuilt every tick over an empty table are the candidates, unmeasured
+separately), while a population in which every organism acts every tick
+on 668 objects triples it. The mutable-world numbers below were re-run
+in the same record (239.3 / 300.6 / 298.2 / 297.5 us; checksum 976.8 us
+empty, 955.9 us at 955 overrides; writes 48.8 / 196.4 / 996.9 us) and
+agree with the 2026-08-10 hand measurements to within noise.
+
 **The cost is the seam, not the data.** Enabling the section costs about
 20 percent of tick time with *no* overrides at all, because every terrain
 read goes through a composed accessor; going from zero to 6,187 overrides

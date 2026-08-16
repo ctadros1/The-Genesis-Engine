@@ -1,0 +1,21 @@
+{
+  "benchmark_id": "phase12-local-20260817T003000Z",
+  "benchmark_schema_version": 7,
+  "baseline_record": "phase11-local-20260816T063000Z",
+  "revision": "67c051f529f47f2c62d5436f30fc4328f09df1a0",
+  "toolchain": "rustc 1.97.1 (8bab26f4f 2026-07-14)",
+  "os": "macOS 26.5",
+  "cpu": "Apple M3 Pro",
+  "build_profile": "release-lto-thin"
+}
+
+PHASE12-BENCH snapshot label=none population=200 objects=0 composites=0 snapshot_bytes=458084 objects_section_bytes=0 bytes_per_object=0 objects_share_milli=0 encode_us=6556.0 decode_us=6689.4 restore_us=5184.5
+PHASE12-BENCH snapshot label=simple-256 population=200 objects=256 composites=0 snapshot_bytes=483684 objects_section_bytes=25600 bytes_per_object=100 objects_share_milli=52 encode_us=6708.0 decode_us=6939.0 restore_us=5090.5
+PHASE12-BENCH snapshot label=simple-4096 population=200 objects=4096 composites=0 snapshot_bytes=867684 objects_section_bytes=409600 bytes_per_object=100 objects_share_milli=472 encode_us=12248.8 decode_us=12348.9 restore_us=5133.9
+PHASE12-BENCH snapshot label=mixed-4096 population=200 objects=4096 composites=1023 snapshot_bytes=884052 objects_section_bytes=425968 bytes_per_object=103 objects_share_milli=481 encode_us=12500.5 decode_us=12622.1 restore_us=5198.2
+PHASE12-BENCH artifact-tick cells=16384 founders=200 disabled_us=88.5 disabled_population=173 quiet_us=117.7 quiet_population=173 quiet_objects=0 scripted_us=358.3 scripted_population=116 scripted_objects=668 scripted_actions_total=17187 scripted_refusals_total=209369
+composed_terrain_checksum cells=65536 empty_median_us=976.8 overrides=955 populated_median_us=955.9
+modification_writes reached_size=1000 elapsed_us=48.8
+modification_writes reached_size=4000 elapsed_us=196.4
+modification_writes reached_size=16000 elapsed_us=996.9
+tick_cost_us disabled=239.3 quiet=300.6(overrides=0) patch_r8=298.2(overrides=289) patch_r45=297.5(overrides=6187)
