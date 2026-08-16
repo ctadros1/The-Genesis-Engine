@@ -1593,7 +1593,13 @@ fn encode_objects(table: &sim_core::ObjectTable) -> Vec<u8> {
 /// Decode the object table, every count bounded before its allocation.
 fn decode_objects(reader: &mut Reader) -> Result<sim_core::ObjectTable, CodecError> {
     let count = reader.u64()?;
-    if !allocation_fits(count, OBJECT_FIXED_BYTES + 8, 8, reader.remaining()) {
+    // `OBJECT_FIXED_BYTES` already includes the composition-length word, so
+    // it is the exact minimum one object occupies; a per-item bound above the
+    // real minimum would refuse a *legitimate* table once its trailer (408
+    // bytes) could no longer cover the overcount, which a first draft did at
+    // 51 objects. The bound is a floor on what the body must hold, never a
+    // guess at what it does hold (D-075).
+    if !allocation_fits(count, OBJECT_FIXED_BYTES, 0, reader.remaining()) {
         return Err(CodecError::ValueOutOfRange("object count"));
     }
     let mut table = sim_core::ObjectTable::default();
