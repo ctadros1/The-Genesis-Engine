@@ -26,7 +26,7 @@ section is disabled:
 | Learning | Per-plastic-edge Q16 learned delta and eligibility trace; **reset to zero at birth** | 11 |
 | Perception | Nothing persistent; perception reads the previous tick's committed state | 13 |
 | Morphology | Module lattice; body derived from the genome, never stored | 10 |
-| Inventory | Held object IDs, carried mass | 12 |
+| Inventory | Held object IDs, carried mass | 12 - *as built: `ObjectState::held[i]`, ascending ids, capped by `artifact.max_held_objects`; carried mass is summed from the table, never stored; movement is scaled by `carry_move_cost_q16` and holding costs `hold_cost_milli_per_s`; what a dead organism held is dropped where it died* |
 | Demography | Accumulated hazard (fixed point) | 8 |
 | Development | Developmental clock, disease load (fixed point) | 14 |
 

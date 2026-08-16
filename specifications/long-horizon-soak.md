@@ -27,7 +27,7 @@ or whose bound has never been checked at this horizon.
 | Event log file | Append-only by design | Per-tick buffer bounded; **total unbounded** |
 | Snapshot chain | Checkpoints accumulate | Retention prunes count, not total bytes over time |
 | Genome size | Duplication outpacing deletion over many generations | Caps exist per genome, not per lineage trend |
-| Object count | Placement outpacing decay | Cell occupancy capped; **world total not** |
+| Object count | Placement outpacing decay | Cell occupancy capped and, as built (Phase 12), the world total too: `artifact.max_objects` refuses creation at the cap and ledgers the refused mass to dust, so the row's "world total not" is closed - the C12.6 ledger soak is the check that the cap and the ledger hold over 10^6 ticks |
 | Terrain modification set | Sparse set fills toward dense | Threshold flips representation; never shrinks |
 | Learned state | Plastic edge count evolving upward | Per-organism cap; population total unbounded |
 | Entity ID space | Monotonic, never reused | u64, fine, but worth stating |

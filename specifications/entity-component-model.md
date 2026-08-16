@@ -25,6 +25,13 @@ everything in the world and no cross-space tie-break policy is needed. The
 existing "index order equals ID order, IDs never recycle" invariant
 generalizes unchanged and is verified for artifacts exactly as it is for
 organisms. Organism IDs become sparse; nothing depends on their density.
+*As built (Phase 12): the counter keeps its name `next_entity_id` and there
+is no type tag - which table holds an id says what it is; `ObjectTable` is
+struct-of-arrays in ascending id order and `check_invariants` proves the
+order and the disjointness. The Inventory component is the `held` slot
+list on `ObjectState` (ids, ascending) with carried mass computed, not
+stored; the Object component is the `ObjectRecord` field list in
+`specifications/world-save-format.md`.*
 
 Every per-cell or per-bucket membership list is sorted by object ID before
 any order-sensitive iteration. A bucket built by scan order is an

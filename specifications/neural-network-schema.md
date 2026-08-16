@@ -49,7 +49,13 @@ Changes that matter for this specification:
 - **Channels.** The fixed 20 inputs and 12 outputs become a versioned
   registry. An organism binds any subset through `IoBinding` loci; unbound
   channels are never gathered or requested and cost nothing. A binding to an
-  unknown channel ID fails decode.
+  unknown channel ID fails decode. *As built (Phase 12): registry version 2
+  is world-gated on `artifact.enabled` and adds six object inputs (17-22)
+  and five object actions (113-117); an action fires when its requested
+  activation reaches `artifact.action_threshold_q16`, and the object cues
+  are heft, hardness, distance, bearing, presence and carried load - never
+  a material id or a composition depth (ADR-0028). See
+  `specifications/genome-schema-2.md`.*
 - **Bounds.** `max_nodes`, `max_edges`, `max_edges_per_node`, and
   `max_genome_bytes` cap allocation and per-tick work. Every cap rejects
   deterministically, counts, and events.

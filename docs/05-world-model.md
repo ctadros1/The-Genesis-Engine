@@ -65,6 +65,18 @@ Mutable layers in the first slice, deliberately few:
 | Food capacity override | Raises or lowers a cell's carrying capacity |
 | Material yield | Remaining extractable material; depleted by striking, regenerating on a configured schedule |
 
+*As built (Phase 12, ADR-0028, 2026-08-16): the artifact half added the
+objects that the traversability row anticipated, but not as a terrain
+layer - a cell is blocked on **entry** when it holds an unheld object of
+mass at least `artifact.blocking_mass_milli` (a placed stone blocks; a
+carried one does not), computed from the per-cell object index each tick
+and never stored. Objects are first-class entities beside organisms in the
+shared id space: stone, wood and fiber are extracted from the terrain
+yield layer by `strike`; carcasses are objects; a held object can be
+placed into the faced cell, dropped underfoot, struck to fracture, or
+combined with a free one into a composite that owns its constituents. See
+`specifications/artifact-and-material-ontology.md`.*
+
 **Elevation stays immutable.** It feeds coastline derivation, drainage, and
 the temperature lapse term, and the generator validates land fraction and
 connectivity against it. Making it mutable means revalidating those

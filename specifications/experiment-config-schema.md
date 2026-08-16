@@ -183,8 +183,10 @@ rather than a convention.
   final checksums, build provenance, and the analysis versions applied.
 - Each new subsystem adds a config section that participates in the
   canonical hash **only when enabled**, following the D-014 precedent:
-  `contest`, `genome2`, `plasticity`, `social`, `materials`, `artifacts`,
-  `worldmod`, `physiology`. A disabled section is behaviorally inert by
+  `contest`, `genome2`, `plasticity`, `social`, `artifact` (as built, one
+  section carrying the material registry hash rather than the two named
+  `materials` and `artifacts` here - the registry has no configuration of
+  its own), `worldmod`, `physiology`. A disabled section is behaviorally inert by
   construction, so a world with all of them disabled hashes and replays
   identically to its predecessor phase and preserves that phase's fixtures.
 - Structural and safety caps are config, never constants:

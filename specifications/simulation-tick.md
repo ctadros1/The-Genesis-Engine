@@ -41,6 +41,21 @@ increments the benchmark schema version.
   (Phase 13).
 - `finalize` commits the signal field (Phase 13).
 
+*As built, Phase 12 artifact half (ADR-0028; `world/artifact_tick.rs`):*
+`environment` regenerates the yield layer on its cadence; `spatial_index`
+rebuilds the per-cell object index (Rule 2 order); `sense` writes the six
+object cues from the previous tick's committed table; `controllers`
+gathers cues 17-22 and reads intents 113-117 against the threshold;
+`apply` runs `artifact_phase` after contest resolution - drops, then places
+at the faced cell's centre, then pick-up and combine claims resolved
+jointly by (priority, distance², organism id), then strikes summed per
+target and terrain strikes, then consumption, then condition B's
+end-of-tick destruction, then exposure and carry accounting, then
+queue-then-allocate creation and compaction; `lifecycle` drops what the
+dead held at their positions after the death loop, spawns carcass objects
+from the death, and decays every unowned object after births. Released or
+created objects are not targets in the tick that released or created them.
+
 The ordering rules below are extended by
 `specifications/determinism-extensions.md`, which is normative. The four
 additions most easily missed:

@@ -35,6 +35,15 @@ never silently extended.
 - Per-frame bounds gain object-record and modified-cell counts, enforced
   before allocation like every existing count.
 
+*Status (2026-08-16): the artifact half of the kernel exists (ADR-0028) but
+`ALSP` 1.1 does not; objects reach nobody over the wire yet. The kernel
+side of the record above is ready - `ObjectTable` carries id, position,
+material, integrity, depth and holder, and the composition list is a
+separate owned vector that need never travel - and the version increment
+is still the rule when the frames are added. Object counts and the ledger
+reach the operator through the run manifest and `lifesim artifact`, not
+the stream, so an experiment does not wait on the observer.*
+
 Unchanged and non-negotiable: genome and controller matrices never appear in
 state frames, which matters more after Phase 9 because variable-topology
 genomes are larger and more variable in size than schema 1's fixed 2,862

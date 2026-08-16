@@ -72,7 +72,7 @@ new set of interactions to validate.
 | Layer | Mutable | Effect | Notes |
 |---|---|---|---|
 | Food biomass | Already mutable | Consumption and regrowth | Unchanged; already in the snapshot |
-| Traversability override | New | Blocks or permits movement through a cell | Set by placed blocking objects and by digging |
+| Traversability override | New | Blocks or permits movement through a cell | Set by placed blocking objects and by digging. *As built (Phase 12 artifact half): not a layer - entry into a cell is refused while it holds an unheld object of mass ≥ `artifact.blocking_mass_milli`, read from the per-cell object index (ADR-0028); digging does not exist* |
 | Food capacity override | New | Raises or lowers a cell's carrying capacity `K` | Set by clearing or by deposited organic material |
 | Material yield | New | Remaining extractable material in a cell | Depleted by `strike`, regenerates on a configured schedule |
 

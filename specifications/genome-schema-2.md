@@ -157,6 +157,28 @@ Consequences:
 
 This is the mechanism that stops "every new capability is a schema bump".
 
+*As built (Phase 12 artifact half, ADR-0028, D-114).* The registry is
+**world-gated rather than globally bumped**: `CHANNEL_REGISTRY_VERSION`
+stays 1, and `CHANNELS_V2` (inputs 17-22 `object_present`,
+`object_distance`, `object_bearing`, `object_heft`, `object_hardness`,
+`carried_load`; actions 113-117 `pick_up`, `drop`, `place`, `strike`,
+`combine`) is offered only when `artifact.enabled`
+(`SimConfig::channel_registry_version()` returns 2 then, 1 otherwise, and
+the world's version enters the genome2 config block). The encoder stamps a
+genome with the *smallest registry version that covers its bindings*
+(`Genome2::required_channel_registry_version`), so a genome that binds no
+object channel encodes byte for byte as it did before and the Phase 9 and
+11 fixtures are unmoved; the decoder accepts 1 and 2 and validates each
+binding with `channel_offered(channel_id, registry)`, so a genome bound to
+`pick_up` is refused, closed, in a world without the section
+(`bindings_offered_by`, at construction and at restore). Founders are born
+with no object bindings and duplication copies only what exists, so a
+sixth operator, **bind**, adds one `IoBinding` locus to a channel drawn
+from those the world offers (`genome2.mutation.binding_q16`,
+`OP_BINDING = 6`, hashed only when nonzero, D-114): without it no lineage
+could ever reach an object action, and every artifact campaign records its
+rate as the floor on reachability.
+
 ## Structural Caps
 
 Unbounded genomes make snapshot size, memory, and migration unprovable.
@@ -347,6 +369,7 @@ Recombination` for value mutation (preserving the existing convention) and
 | Deletion | Remove a contiguous run | Guarded: a deletion that would orphan an edge, remove the last `IoBinding` for a required channel, or drop the node count below `min_nodes` is rejected and counted |
 | Insertion | Add one new `Edge` locus between two existing nodes, or one new `Node` with one in-edge and one out-edge | Available as an explicitly configured alternative to duplication-only growth, so the two can be compared (ADR-0013) |
 | Transposition | Move a contiguous run to another position on the same or another chromosome | Changes linkage without changing content |
+| Bind (Phase 12, D-114) | Add one `IoBinding` locus on a drawn haplotype/chromosome, from a node drawn among that haplotype's present nodes to a channel drawn among every channel the world's registry offers, with a bounded drawn gain; the locus's homology id is derived from (node, channel), so the same binding drawn twice in a lineage is a `HomologyCollision` rather than a duplicate | `binding_q16` per birth, `binding_applied` counted per class and hashed only when nonzero, so a zero rate leaves every earlier fixture unmoved. Rejected (counted, evented) as `Inapplicable` with no node, as `HomologyCollision` when the binding exists, and by the structural caps when the added locus would break them |
 
 Rejected operations are counted per class in the state counters, hashed, and
 surfaced as bounded events. Silent rejection is not permitted; an experiment

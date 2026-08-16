@@ -33,6 +33,15 @@ migration whose result must be byte-identical to a format 1 load, and format
 1 readers and tests stay in the build permanently. This is the largest
 operational risk in the plan and the byte-identity test is its guard.
 
+*As built (Phase 12, 2026-08-16): the terrain split above landed with the
+mutable-world half (format 4, section 12); the artifact half then took the
+format to 7 - forced by two new config fields, the artifact section and
+`genome2.mutation.binding_q16`, not by objects - and added section 15
+(`SECTION_OBJECTS`, present when `artifact.enabled`), whose layout and
+count-bounding rule are in `specifications/world-save-format.md`. Format 6
+files load through `FORMAT6_TO_CURRENT`; a world with the section on cannot
+be written as format 6.*
+
 Two other storage-relevant changes:
 
 - **The append-only event-log file, deferred under D-019, moves into Phase 5
