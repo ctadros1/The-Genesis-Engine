@@ -65,6 +65,7 @@ this manifest.
 - scripts/run-phase10-benchmarks.sh
 - scripts/run-phase11-benchmarks.sh
 - scripts/run-renderer-benchmarks.sh
+- scripts/run-voxel-spike-benchmarks.sh
 
 The five fixture scripts every change must keep passing, plus the Phase 0
 clean-process check that predates them:
@@ -267,6 +268,9 @@ afterwards.
 - experiments/results/phase11-c111-reanalysis-v2-plasticity.txt
 - experiments/results/phase11-conjunction-census.txt
 - experiments/results/phase11-conjunction-census-raw.txt
+- experiments/results/phase11-reachability-manifest.txt
+- experiments/results/phase11-reachability-conjunction.txt
+- experiments/results/phase11-reachability-findings.txt
 - experiments/results/phase11-benchmark-measurements.txt
 
 The Phase 11 campaign's own `.alac` and `.alif` artifacts (1.8 GB) are
@@ -289,6 +293,34 @@ may need re-deriving should keep them.
 - apps/observer/src/vite-env.d.ts
 - apps/observer/tests/bench.spec.ts
 - apps/observer/tests/e2e.spec.ts
+
+## Voxel Measurement Spike (ADR-0024 evidence)
+
+Standalone and isolated from `apps/observer`, which is unmodified. Runs on
+synthetic fixtures only: no kernel, protocol, save-format, determinism, or
+config-hash contact. No generative model in the render path.
+
+- apps/observer-voxel-spike/README.md
+- apps/observer-voxel-spike/EVIDENCE.md
+- apps/observer-voxel-spike/index.html
+- apps/observer-voxel-spike/package.json
+- apps/observer-voxel-spike/package-lock.json
+- apps/observer-voxel-spike/tsconfig.json
+- apps/observer-voxel-spike/src/main.ts
+- apps/observer-voxel-spike/src/bench.ts
+- apps/observer-voxel-spike/src/palette.ts
+- apps/observer-voxel-spike/src/derive.ts
+- apps/observer-voxel-spike/src/terrain-mesh.ts
+- apps/observer-voxel-spike/src/voxel-renderer.ts
+- apps/observer-voxel-spike/src/mat4.ts
+- apps/observer-voxel-spike/src/synthetic.ts
+- apps/observer-voxel-spike/src/rng.ts
+- apps/observer-voxel-spike/src/style.css
+- apps/observer-voxel-spike/src/vite-env.d.ts
+- apps/observer-voxel-spike/tests/derive.test.ts
+- apps/observer-voxel-spike/tests/terrain-mesh.test.ts
+- apps/observer-voxel-spike/scripts/run-benchmark.mjs
+- apps/observer-voxel-spike/scripts/analyse-greedy-merge.mjs
 
 ## Phase 0 Spikes
 

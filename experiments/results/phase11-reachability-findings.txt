@@ -1,0 +1,184 @@
+PHASE 11 REACHABILITY 2x2: FINDINGS
+===================================
+
+Campaign phase11-reachability, hash 0x8efbcf9694206dc6, 48 worlds, 0 failed,
+60,000 ticks each, 4,651.7 wall seconds on genesis-engine (x86_64 Linux, 8
+workers). Built at commit 974cb7d. Pre-registration:
+experiments/phase11-reachability-preregistration.md, committed before the run.
+
+Arms: N (neither), C (chain only), M (moat only), B (both). 12 seeds each,
+matched across arms.
+
+
+1. THE PRE-REGISTERED DECISION, APPLIED
+---------------------------------------
+
+Bar, fixed in advance: the arm's `full_conjunction` count exceeds N's in at
+least 10 of 12 seed-matched pairs. Ties count as failures.
+
+On EXPRESSED plastic edges - the measure section 6's power calculation was
+built on:
+
+    C vs N   10 of 12 wins, 1 loss,  1 tie    MEETS the bar
+    B vs N   11 of 12 wins, 1 loss,  0 ties   MEETS the bar
+    M vs N    4 of 12 wins, 5 losses, 3 ties  FAILS
+
+On EDGE ALLELES:
+
+    C vs N    3 of 12    FAILS
+    M vs N    1 of 12    FAILS
+    B vs N    1 of 12    FAILS
+
+**These do not conflict, and section 2 explains why the allele measure cannot
+answer this question.** No threshold was changed. C meets the bar at exactly
+10 of 12, with no margin, and that is stated rather than rounded up.
+
+
+2. THE ALLELE MEASURE IS BLIND TO THE CHAIN, BY CONSTRUCTION
+------------------------------------------------------------
+
+The pre-registration's section 3 named "edge alleles, and separately expressed
+plastic edges" as the primary outcome. **That was a defect in the
+pre-registration and it is mine.** The two measures cannot both answer this,
+and which one could was knowable before the run from ADR-0027.
+
+ADR-0027 applies the chain's remap in `compile_with_budget`, and deliberately
+leaves `PlasticityGenes::normalized` reducing mod 5. The allele census reads
+the normalized genotype; the expressed census reads the compiled plan. So the
+chain is invisible at the allele level by design.
+
+Measured, and this is the discriminating check rather than an argument:
+
+    allele-level non_static     N 6.42%   C 6.62%   M 6.22%   B 5.90%
+    expressed non_static        N ~7%     C 100%    M ~7%     B 100%
+
+The chain does not move the allele-level marginal at all, in either arm that
+has it on. An instrument that cannot see the factor cannot test it.
+
+Section 6 - the power calculation that justifies the 10-of-12 bar - is
+explicitly derived "working from the expressed histogram". The bar was
+therefore powered for the expressed measure and never for the allele one.
+Reporting the expressed result as the answer is faithful to the document; the
+allele result is reported beside it and is uninformative for C and B.
+
+**What should have happened:** section 3 should have named one measure, and
+noticing which required only reading ADR-0027 next to it. Recorded so the next
+pre-registration checks that its outcome measure can observe its factor.
+
+
+3. THE EFFECT SIZE MATCHES THE PRE-REGISTERED PREDICTION
+---------------------------------------------------------
+
+    predicted   10.7x   (0.0888 x 0.1476 x 48,119 = 631 against 59)
+    observed    13.0x   (468 against 36)
+
+The prediction was made before the run from the published census's marginals,
+and its reasoning was that `rule != 0` is the binding condition at 6.54
+percent rather than a 4-in-5 lottery. That reasoning holds.
+
+Per world, count and max beside the mean (D-098):
+
+    N   mean  3.0   max  21   (one world carries 21 of 36)
+    C   mean 39.0   max 266   (one world carries 266 of 468)
+
+**Both arms are concentrated and neither total should be read alone.** C wins
+10 of 12 pairs, so its result is not carried by its largest world - but its
+total is.
+
+
+4. THE MOAT FAILS ITS BAR, AND DOES SOMETHING ELSE ENTIRELY
+------------------------------------------------------------
+
+M reaches 4 of 12 and its total is *lower* than N's (19 against 36). Pricing
+only moved edges does not improve reachability and may slightly reduce it.
+
+What it does do is exactly what it was built to do:
+
+    plasticity cost, milli-EU
+      N  100,568,219        M      40,895      2,459x cheaper
+      C   98,997,904        B     377,449        262x cheaper
+
+The moat drains the moat. It does not shorten the chain, and the 2x2 is what
+separates those two claims - which is why D-107 insisted on it.
+
+
+5. MECHANISM CONFIRMATIONS
+---------------------------
+
+`static` steps, which are the rule-0 early return:
+
+    N  479,266,538      C  0      M  468,980,336      B  0
+
+Zero in both chain arms. The chain removes rule 0 completely, as designed.
+
+Learned state actually moved:
+
+    nonzero_learned    N   8    C 448    M  15    B 138
+    max_abs_q16        N 15,054  C 441,275  M 20,773  B 131,000
+
+Learning is 56x more common under the chain than without it.
+
+
+6. THE HEBBIAN CONCENTRATION, PREDICTED AND MEASURED
+-----------------------------------------------------
+
+ADR-0027 predicted that under the chain the founder's untouched allele maps to
+LIVE_RULE_BASE, so the standing population would be about 92 percent plain
+Hebbian, and made reporting this an obligation. Measured:
+
+    compiled rule histogram
+      N   rule0 92.4%  rule1  1.7%  rule2 1.6%  rule3 2.2%  rule4 2.1%
+      M   rule0 94.9%  rule1  1.6%  rule2 1.4%  rule3 0.8%  rule4 1.3%
+      C   rule0  0.0%  rule1 92.5%  rule2 1.3%  rule3 3.0%  rule4 3.2%
+      B   rule0  0.0%  rule1 94.7%  rule2 2.2%  rule3 1.8%  rule4 1.2%
+
+92.5 and 94.7 percent against a predicted "about 92". The prediction was made
+before the campaign and is confirmed.
+
+**And the obligation earned itself.** Clamp saturations:
+
+    N 0      C 733      M 0      B 0
+
+C is the only arm with saturations, and it is the arm with the chain and
+without the moat: every edge pays, nearly every edge is Hebbian, and the
+bounded Hebbian rule reaches its clamp 733 times. Without this number on the
+record, C's result would read as "learning works" rather than as "learning
+works, and the arm is 92 percent plain Hebbian and has started hitting the
+bound". `LEARN_LIMIT_Q16` is doing work here, and a future campaign that
+removed the clamp would be measuring something different.
+
+
+7. WHAT THIS DOES AND DOES NOT SUPPORT
+---------------------------------------
+
+Supported, on the pre-registered bar and measure:
+
+  - The chain shortens the conjunction and makes the phenotype reachable:
+    C 10 of 12, B 11 of 12, with a 13.0x effect close to the 10.7x predicted
+    in advance.
+  - D-107's reading of Phase 11's null as *reachability* rather than
+    selection is strengthened. The conjunction was not being selected away;
+    it was not being assembled, and removing one condition assembles it.
+
+NOT supported:
+
+  - Any claim that plasticity is now *useful*. This campaign measures whether
+    the genotype and the compiled phenotype exist, not whether carrying them
+    pays. Payoff was deliberately not the endpoint (D-100 and C11.1's second
+    confound make the behavioural statistic unsafe), and nothing here speaks
+    to it.
+  - Any claim about the moat improving reachability. It fails its bar.
+  - Any interaction claim. None was tested; at 12 seeds on this count it
+    would have no power, and B is reported against N on the same bar as the
+    others. That B (11 of 12) and C (10 of 12) are close, while B's learned
+    state is lower than C's (138 against 448), is descriptive only.
+
+Limitations carried from the pre-registration: no multiplicity correction
+across the three bars; no power claim for the moat arms; E-variable held on
+rather than crossed; 12 seeds.
+
+One limitation not in the pre-registration, found here: the campaign was built
+at 974cb7d, which carries a `stable_hash` regression fixed in 2e1d298. It
+cannot affect these results - `stable_hash` is provenance and is never read by
+the tick, and every arm sets `plasticity.enabled true`, where both versions of
+the block are identical - but it is recorded rather than omitted.
