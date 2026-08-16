@@ -439,6 +439,7 @@ may need re-deriving should keep them.
 - decisions/0024-voxel-rendering-and-derived-appearance.md
 - decisions/0025-demography-before-culture.md
 - decisions/0026-intra-world-parallelism.md
+- decisions/0027-live-rule-zero-and-the-rule-id-space.md
 - decisions/README.md
 - decisions/adr-template.md
 

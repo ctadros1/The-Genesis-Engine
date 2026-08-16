@@ -732,7 +732,7 @@ Increment C - the moat, then the 2x2 campaign, pre-registered as in D-107.
   be priced against it and the difference reported, which was not possible
   before.
 
-## Open design question blocking increment B, raised 2026-08-15
+## RESOLVED 2026-08-15 by ADR-0027 - was blocking increment B
 
 **The handoff says "remap the rule ONCE in `compile_with_budget`". That
 cannot, on its own, produce what D-107 asked for**, and the gap is worth
@@ -753,7 +753,19 @@ Getting a uniform four-way draw means the flag reaches
 carrying `rule_id = 4` is meaningful in the flag-off arm and out of range in
 the flag-on arm, so the arms no longer share a genome-validity predicate.
 
-Three options, none yet chosen:
+**Chosen: (a).** ADR-0027 and D-110. The deciding evidence is the
+lifetime-learning review section 6.3, not a preference: the rule that option
+(b) doubles is plain Hebbian, which the review rates "strongly supported as a
+baseline; unsupported as the sole production rule". An arm biased toward the
+least stable rule could produce or destroy its own effect.
+
+One thing the check turned up that the obvious worry gets backwards: genome
+validity does **not** become config-dependent, because `normalized` reduces
+rather than rejects and every bit pattern still names some rule. What does
+change is that the arms no longer share a genotype-to-phenotype map, so a
+genome may not be transplanted between arms - which the 2x2 does not do.
+
+Options considered:
 - **(a) Flag reaches the draw and the reduction.** Uniform over four live
   rules, which is what "remove the dead value" means. Costs a
   config-dependent genome validity and a bigger blast radius than a compile
@@ -763,7 +775,8 @@ Three options, none yet chosen:
 - **(c) Keep the 5-way draw and treat id 0 as a fifth live rule that
   duplicates one of the four.** Same objection as (b), stated more honestly.
 
-Consult `genesis-neuroevolution` and the lifetime-learning review before
-choosing - AGENTS.md requires it for any plasticity criterion or ADR, and
-ADR-0022 is the record of what skipping it costs. Whatever is chosen needs
-an ADR, because it changes what a `rule_id` allele means.
+Implementation shape, for whoever picks this up: the effective rule count
+must reach `structmut.rs:633`'s draw and all eight `normalized()` call sites
+across `structmut.rs`, `genome2.rs` and `develop.rs`; `compile_with_budget`
+maps `r` to live rule `r + 1`; `plasticity::step` still receives a rule and
+stays pure. ADR-0027's "Evidence Required To Accept" is the test list.
