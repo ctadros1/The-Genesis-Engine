@@ -3991,6 +3991,7 @@ impl World {
             return;
         };
         let cost_per_edge_thousandths = self.plastic_edge_cost_milli_thousandths;
+        let price_moved_only = self.config.plasticity.price_moved_edges_only;
 
         for index in 0..self.ids.len() {
             let plan = &schema2.plans[index];
@@ -3998,6 +3999,9 @@ impl World {
             let learned_row = &mut learn.learned_q16[index];
             let trace_row = &mut learn.trace_q16[index];
             let before = learn.faults[index];
+            // The moat's charge basis, counted in the same pass that does the
+            // work. Zero when the moat is off, and unread in that case.
+            let mut moved_edges = 0_i64;
             // Ascending `homology_id`: `plastic_edges` was built in the
             // compile pass over `network.edges`, which is already in that
             // order, so this loop inherits the spec's update order instead of
@@ -4032,6 +4036,25 @@ impl World {
                 // and reported it; counting and eventing it is this loop's
                 // half of the controller-fault policy.
                 learn.counters.record(&outcome);
+                // **State movement, not `StepKind::Applied`.** `Applied` means
+                // the rule form ran and the state was rewritten *possibly to
+                // the same value*, and the only non-`Applied` kinds are the
+                // rule-0 early return and an unreachable refusal - so under
+                // `live_rule_zero`, which removes rule 0, every edge is
+                // `Applied` and a moat priced on it would charge exactly what
+                // the unpriced engine charges. That would make the moat a
+                // no-op in both arms where the chain is on and collapse the
+                // 2x2's fourth arm into its second. D-107 named this failure
+                // in advance; the campaign pre-registration records the
+                // correction.
+                if outcome.state
+                    != (LearnedState {
+                        learned_q16,
+                        trace_q16: trace_row[slot],
+                    })
+                {
+                    moved_edges += 1;
+                }
                 if outcome.fault {
                     learn.faults[index] = learn.faults[index].saturating_add(1);
                 }
@@ -4068,8 +4091,18 @@ impl World {
             // other cost in this file does, correctly, because they are
             // charged once per organism against a large number - made a
             // plastic edge free at the shipped rate.
-            let owed = plan.plastic_edges.len() as i64 * cost_per_edge_thousandths
-                + i64::from(learn.cost_remainder[index]);
+            // **The price basis is an arm of D-107's 2x2, so it is a config
+            // read and not a constant.** With the moat off this is
+            // `plastic_edges.len()` exactly as it has always been, so no
+            // fixture moves; with it on, an edge that wrote nothing this tick
+            // pays nothing this tick.
+            let charged_edges = if price_moved_only {
+                moved_edges
+            } else {
+                plan.plastic_edges.len() as i64
+            };
+            let owed =
+                charged_edges * cost_per_edge_thousandths + i64::from(learn.cost_remainder[index]);
             let cost = owed / 1_000;
             // Non-negative by construction: both terms are non-negative, so
             // the remainder needs no sign handling and stays inside 0..1000.

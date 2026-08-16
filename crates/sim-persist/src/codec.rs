@@ -1,4 +1,4 @@
-//! ALIF world snapshot format, version 5.
+//! ALIF world snapshot format, version 6.
 //!
 //! Layout (all little-endian, matching the kernel's canonical hashing):
 //!
@@ -77,7 +77,19 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = 5;
+pub const FORMAT_VERSION: u16 = 6;
+/// Format 5 reserves one config byte for `plasticity.live_rule_zero`.
+///
+/// **The second config-block bump in as many increments, and the repetition
+/// is the point rather than an accident.** Format 5's note argues that a
+/// positional, unconditional config block cannot grow without a version bump.
+/// That argument does not weaken with use: `plasticity.price_moved_edges_only`
+/// is one more byte, one more format, one more retained reader and writer.
+/// Anyone adding a third field should expect the same cost and budget for it,
+/// or propose a self-describing config block in an ADR - which would have to
+/// explain how an absent trailing field avoids being "altered meaning on
+/// load", the rule that makes defaulting one unacceptable.
+pub const FORMAT_VERSION_5: u16 = 5;
 /// Format 4 stores terrain modifications and the composed terrain checksum.
 ///
 /// Retained as a reader and a writer, not as history. It was the current
@@ -763,8 +775,15 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     // conflated: `SimConfig::stable_hash` appends for a different reason (its
     // order is the definition of every hash already issued) and gates each
     // section on being enabled. This block is unconditional.
-    if format >= FORMAT_VERSION {
+    if format >= FORMAT_VERSION_5 {
         writer.u8(u8::from(config.plasticity.live_rule_zero));
+    }
+    // Format 6's byte, appended after format 5's for the same reason format
+    // 5's was appended after `probe`: each format's config body stays a byte
+    // prefix of the next, so the difference between any two adjacent formats
+    // is one assertion rather than a re-description of the layout.
+    if format >= FORMAT_VERSION {
+        writer.u8(u8::from(config.plasticity.price_moved_edges_only));
     }
     writer.0
 }
@@ -977,8 +996,15 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // world the file describes actually ran with. It is the same kind of
     // identity the 3-to-4 transform uses for the composed terrain checksum,
     // and it is why the migration's `expected_loss` is still the empty string.
-    if format >= FORMAT_VERSION {
+    if format >= FORMAT_VERSION_5 {
         config.plasticity.live_rule_zero = reader.u8()? != 0;
+    }
+    // Format 6's byte. Left at `false` for an older body, and that is a
+    // resolution rather than an invention on the same terms as format 5's:
+    // every world that could write a format-5 or format-4 file priced every
+    // flagged edge, because no other pricing existed.
+    if format >= FORMAT_VERSION {
+        config.plasticity.price_moved_edges_only = reader.u8()? != 0;
     }
     Ok(config)
 }
@@ -2244,6 +2270,45 @@ pub fn encode_snapshot_format4(
     )
 }
 
+/// Encode a **format 5** snapshot.
+///
+/// Retained on the same terms as `encode_snapshot_format3` and
+/// `encode_snapshot_format4`: the acceptance requirement for the 5-to-6
+/// migration is byte identity against a real legacy file, and no `.alif` file
+/// exists in the repository, so a legacy file has to be constructible.
+///
+/// It refuses a state whose `plasticity.price_moved_edges_only` is set,
+/// because a format 5 file has no byte for it and writing one anyway would
+/// produce a file describing a world that prices every flagged edge - a
+/// different experiment, silently.
+pub fn encode_snapshot_format5(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    if state.config.plasticity.price_moved_edges_only {
+        return Err(CodecError::FieldNotInFormat {
+            field: "plasticity.price_moved_edges_only",
+            format: FORMAT_VERSION_5,
+        });
+    }
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_5,
+        SAVE_STATE_VERSION,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn encode_snapshot_versioned(
     state: &SaveState,
@@ -2454,6 +2519,17 @@ pub fn decode_snapshot_format3(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// actually ran with, since rule 0 was a no-op in all of them.
 pub fn decode_snapshot_format4(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_4, SAVE_STATE_VERSION)
+}
+
+/// Full decode of a **format 5** snapshot.
+///
+/// Permanent, for the reason `decode_snapshot_format4` is: it is the reader
+/// the 5-to-6 migration's byte-identity requirement is stated against. What
+/// it produces is the current `SaveState` with
+/// `plasticity.price_moved_edges_only` at `false` - the value every world
+/// that could write a format-5 file actually ran with.
+pub fn decode_snapshot_format5(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_5, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

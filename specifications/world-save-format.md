@@ -125,11 +125,12 @@ pure function of `(seed, config)`, which is a change of meaning; this is not
 one, and Phase 11 set the precedent in the other direction by adding four
 config fields and a whole optional section without moving it.
 
-### The registry has two transforms, and both land on the current format
+### The registry's transforms all land on the current format
 
-`FORMAT3_TO_CURRENT` and `FORMAT4_TO_CURRENT`. Neither chains:
-`decode_snapshot_migrating` applies exactly one transform, so a format-3 file
-goes to format 5 in one hop and never becomes an intermediate format-4 file.
+`FORMAT3_TO_CURRENT`, `FORMAT4_TO_CURRENT`, and - since format 6 -
+`FORMAT5_TO_CURRENT`. None chains: `decode_snapshot_migrating` applies exactly
+one transform, so a format-3 file goes to the current format in one hop and
+never becomes an intermediate format-4 or format-5 file.
 Both declare `expected_loss: ""` and both are entitled to. A format-4 world
 ran with `live_rule_zero` false by construction, not by default: no build
 that could write a format-4 file had a live rule 0 to switch on.
@@ -167,6 +168,42 @@ null. The refusal comes out in the change that remaps the rule in
 `compile_with_budget` (D-107 option A3). The field is **not** in the config
 hash until then, because a hash difference claims a replay-lineage split and
 there is not one yet.
+
+## Phase 11 Implementation Notes: ALIF Format 6, A Second Config Byte
+
+`FORMAT_VERSION` is 6; `FORMAT_VERSION_5` is retained with
+`encode_snapshot_format5` and `decode_snapshot_format5`, and
+`FORMAT5_TO_CURRENT` joins the registry. The added field is
+`plasticity.price_moved_edges_only` (D-111, the moat).
+
+Everything in the format-5 section above applies unchanged, and the
+**repetition is the point**: a positional, unconditional config block cannot
+grow without a version bump, and that cost does not amortise. A third config
+field should expect the same, or an ADR should propose a self-describing
+config block - which would have to explain how an absent trailing field avoids
+being meaning altered on load, the rule that makes defaulting one
+unacceptable.
+
+### The recurring test trap, and its single guard
+
+D-108 recorded two instances of one shape: a test named for a format that
+builds its subject with the *current-format* writer, which is the same thing
+only until the next bump. Format 6 produced a third, in `format5.rs`.
+
+`format6.rs::each_adjacent_format_adds_exactly_one_config_byte` replaces the
+class. It walks a table of retained writers - format 4, format 5, current -
+and asserts for every adjacent pair that the newer config body is the older
+one plus exactly one byte, that the older body is a byte prefix of the newer,
+that the appended byte is the flag's false value in a default world, and that
+the whole file grows by exactly one byte.
+
+**Adding format 7 means adding one row to that table.** A format that does not
+extend its predecessor by exactly one byte names itself in the failure
+message.
+
+Format 3 is deliberately outside the chain: it differs from format 4 by a
+*section* and a logical-state version, not by a config byte, and
+`phase12_format4.rs` owns that comparison.
 
 ## Planned Successor: ALIF Format 2 (Phase 12)
 

@@ -531,8 +531,31 @@ fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     reencode(source, state)
 }
 
+/// Format 5 to the current format.
+///
+/// The one field format 6 adds is `plasticity.price_moved_edges_only`, and a
+/// format-5 world priced every flagged edge - not by default but by
+/// construction, since no build that wrote a format-5 file had another
+/// pricing to select. So this transform invents nothing either.
+static FORMAT5_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_5,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format5_to_current,
+};
+
+fn migrate_format5_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format5(bytes)?;
+    // Unobservable for the reason recorded on `migrate_format4_to_current`:
+    // the reader already resolves it this way. Kept, and kept documented as
+    // unbacked rather than credited to a test that cannot see it.
+    state.config.plasticity.price_moved_edges_only = false;
+    reencode(source, state)
+}
+
 fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
     let (source, mut state) = codec::decode_snapshot_format4(bytes)?;
+    state.config.plasticity.price_moved_edges_only = false;
     // The one field format 5 adds, written out for the reason the three above
     // are: the transform states its own resolution rather than borrowing the
     // reader's. Everything else in a format 4 file is present in a format 5
@@ -550,6 +573,7 @@ fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     // defence-in-depth against a future reader whose resolution changes, and
     // documented as unbacked rather than credited to a test that cannot see it.
     state.config.plasticity.live_rule_zero = false;
+    state.config.plasticity.price_moved_edges_only = false;
     reencode(source, state)
 }
 
@@ -597,6 +621,7 @@ pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, 
         codec::FORMAT_VERSION => Ok(None),
         codec::FORMAT_VERSION_3 => Ok(Some(&FORMAT3_TO_CURRENT)),
         codec::FORMAT_VERSION_4 => Ok(Some(&FORMAT4_TO_CURRENT)),
+        codec::FORMAT_VERSION_5 => Ok(Some(&FORMAT5_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \

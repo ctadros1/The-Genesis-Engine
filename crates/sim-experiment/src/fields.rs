@@ -324,6 +324,10 @@ config_fields! {
     // nonzero `lamarckian_fraction_q16`, so the sweep's `false -> true`
     // perturbation exercises the codec without ever building such a world.
     "plasticity.live_rule_zero" => plasticity.live_rule_zero: bool,
+    // The moat. Registered beside the chain because D-107's 2x2 crosses them
+    // and both arms have to be expressible as a campaign delta; a factor that
+    // cannot be named in a campaign file cannot be an arm.
+    "plasticity.price_moved_edges_only" => plasticity.price_moved_edges_only: bool,
     // Phase 12. `worldmod.enabled` and `worldmod.patch_enabled` are separate
     // fields on purpose, and so is the scale: the phase's three arms are
     // "section off", "section on, schedule on, scale 1.0" and "section on,

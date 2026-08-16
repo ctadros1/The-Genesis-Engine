@@ -1072,3 +1072,102 @@ fn the_cost_remainder_survives_a_save_and_is_refused_when_it_is_not_a_fraction()
         "expected a typed refusal naming the remainder, got {error:?}"
     );
 }
+
+// --- the moat: D-107's price basis, and the trap it was nearly built into ----
+
+/// The moat charges less than the flat price, **and it still charges less
+/// when the chain is on.**
+///
+/// The second clause is the whole test. The obvious implementation prices on
+/// `StepKind::Applied`, and `Applied` means "the rule form ran and the state
+/// was rewritten, *possibly to the same value*". The only non-`Applied` kinds
+/// are the rule-0 early return and an unreachable refusal - so under
+/// `live_rule_zero`, which removes rule 0, every plastic edge is `Applied`,
+/// `applied == plastic_edges.len()`, and a moat priced on it charges exactly
+/// what the unpriced engine charges. The moat would be a **no-op in both arms
+/// where the chain is on**, collapsing the 2x2's fourth arm into its second,
+/// and every test that only checked the chain-off case would still pass.
+///
+/// D-107 named this failure before either half was built:
+/// "applied-step pricing must charge on the learned state actually moving,
+/// not on a step being taken, or it would re-charge exactly what it set out
+/// to stop charging for."
+///
+/// So the price basis is state movement, and this asserts it where it would
+/// otherwise silently not hold.
+#[test]
+fn the_moat_still_charges_less_than_the_flat_price_when_the_chain_is_on() {
+    fn cost_after(moat: bool, chain: bool, rule_id: u8, eta: f32) -> i128 {
+        let mut config = learning_config(0x5eed_cafe_f00d_beef);
+        config.plasticity.price_moved_edges_only = moat;
+        config.plasticity.live_rule_zero = chain;
+        let mut world = plastic_world(config, rule_id, eta);
+        run(&mut world, 400);
+        world.metrics().plasticity_cost_milli as i128
+    }
+
+    // Rule 0 with the chain off: every edge is a no-op, and the flat price
+    // charges for all of them anyway. This is the 95.43 percent the
+    // confirmatory campaign paid for nothing.
+    let flat_dead = cost_after(false, false, sim_core::RULE_STATIC, 0.0);
+    let moat_dead = cost_after(true, false, sim_core::RULE_STATIC, 0.0);
+    assert!(
+        flat_dead > 0,
+        "the flat price charged nothing, so there is no moat to measure against"
+    );
+    assert_eq!(
+        moat_dead, 0,
+        "an edge whose rule writes nothing must cost nothing under the moat; \
+         charged {moat_dead} against a flat {flat_dead}"
+    );
+
+    // **The clause that catches applied-step pricing.** With the chain on,
+    // rule 0 is remapped to a live rule, so every edge returns `Applied` -
+    // but `eta` is still zero, so no learned state moves and the moat must
+    // still charge nothing. Priced on `Applied`, this would equal the flat
+    // price.
+    let flat_chained = cost_after(false, true, sim_core::RULE_STATIC, 0.0);
+    let moat_chained = cost_after(true, true, sim_core::RULE_STATIC, 0.0);
+    assert!(
+        flat_chained > 0,
+        "the flat price charged nothing with the chain on: {flat_chained}"
+    );
+    assert_eq!(
+        moat_chained, 0,
+        "under the chain every edge is StepKind::Applied, so a moat priced on \
+         Applied charges the flat price and the 2x2's B arm collapses into C. \
+         Charged {moat_chained} against a flat {flat_chained}"
+    );
+
+    // ...and the moat is not simply "charge nothing": an edge that does move
+    // its learned state still pays.
+    let moat_live = cost_after(true, false, sim_core::RULE_HEBBIAN, 0.5);
+    assert!(
+        moat_live > 0,
+        "the moat charged nothing for edges that actually learned, so it is a \
+         cost removal rather than a repricing"
+    );
+}
+
+/// The moat does not move a world that has it off.
+///
+/// The flag is gated so that every existing fixture and every arm that does
+/// not select it are untouched, and this asserts that rather than arguing it.
+#[test]
+fn a_world_with_the_moat_off_is_bit_identical_to_one_from_before_it_existed() {
+    let base = learning_config(0x5eed_cafe_f00d_beef);
+    let mut explicit_off = base;
+    explicit_off.plasticity.price_moved_edges_only = false;
+    assert_eq!(base.stable_hash(), explicit_off.stable_hash());
+
+    let mut left = plastic_world(base, sim_core::RULE_HEBBIAN, 0.25);
+    let mut right = plastic_world(explicit_off, sim_core::RULE_HEBBIAN, 0.25);
+    run(&mut left, 300);
+    run(&mut right, 300);
+    assert_eq!(left.state_checksum(), right.state_checksum());
+
+    // ...and turning it on does move the hash, so it is a new replay lineage.
+    let mut on = base;
+    on.plasticity.price_moved_edges_only = true;
+    assert_ne!(base.stable_hash(), on.stable_hash());
+}

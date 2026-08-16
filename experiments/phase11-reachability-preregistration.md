@@ -51,10 +51,43 @@ Four arms, crossed, 12 seeds each, 48 worlds. Seeds are matched across arms.
 
 The chain factor is `plasticity.live_rule_zero`. The moat factor is the field
 the moat increment introduces; **this document fixes the design, and the
-increment must adopt a field that expresses exactly it** - price on
-`StepKind::Applied`, not on `plastic_edges.len()`. If the increment finds it
-cannot, that is a change to the design and this pre-registration is superseded
-rather than reinterpreted.
+increment must adopt a field that expresses exactly it**: charge for an edge
+only when that edge's learned state actually moved this tick.
+
+### AMENDMENT, 2026-08-16, before the moat was built and before any campaign ran
+
+This section first said "price on `StepKind::Applied`, not on
+`plastic_edges.len()`". **That is wrong and would have silently destroyed the
+2x2's factorial structure.** It is corrected here rather than reinterpreted
+later, which is what the paragraph above reserves the right to do.
+
+`StepKind::Applied`'s own definition is "the rule form ran and the learned
+state was rewritten (**possibly to the same value**)". The only kinds that are
+not `Applied` are `Static` - the rule-0 early return - and `Refused`, which is
+unreachable through a validated genome. **The chain removes rule 0.** So in
+arms C and B, where the chain is on, every plastic edge returns `Applied`,
+`applied == plastic_edges.len()`, and a moat priced on `Applied` charges
+exactly what today's engine charges. Arm B would have been the chain arm
+wearing a second flag, and the 2x2 would have had three distinct arms and a
+duplicate.
+
+This is precisely the failure D-107 anticipated in writing - "applied-step
+pricing must charge on the learned state actually moving, not on a step being
+taken, or it would re-charge exactly what it set out to stop charging for" -
+and the first draft of this document reintroduced it by naming the wrong
+mechanism.
+
+The corrected basis is **state movement**: an edge pays when
+`outcome.state != LearnedState { learned_q16, trace_q16 }` as it stood before
+the step, which covers both the learned weight and the eligibility trace. That
+is `LearnedState` in full, and it is what "the learned state actually moving"
+means.
+
+The design intent is unchanged - do not charge for machinery that does
+nothing - and only the mechanism named to express it has moved.
+
+`plasticity_updates_applied`, added by the counter split, remains the right
+diagnostic to report; it is simply not the right *price*.
 
 Everything else - seeds, ticks, map, mutation rates, patch schedule - is held
 at the confirmatory campaign's values, so this campaign's N arm is comparable

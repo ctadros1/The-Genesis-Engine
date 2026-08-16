@@ -22,10 +22,11 @@ pub use actionlog::{
 pub use checkpoint::{AsyncCheckpointer, CheckpointOutcome, CheckpointRequest, SubmitResult};
 
 pub use codec::{
-    CodecError, FLAG_ZSTD, FORMAT_VERSION, FORMAT_VERSION_3, FORMAT_VERSION_4, MAX_STORED_LEN,
-    MAX_UNCOMPRESSED_LEN, SAVE_STATE_VERSION_3, SNAPSHOT_MAGIC, SnapshotInfo, crc32,
-    decode_snapshot, decode_snapshot_format3, decode_snapshot_format4, encode_snapshot,
-    encode_snapshot_format3, encode_snapshot_format4, peek_format_version, read_info,
+    CodecError, FLAG_ZSTD, FORMAT_VERSION, FORMAT_VERSION_3, FORMAT_VERSION_4, FORMAT_VERSION_5,
+    MAX_STORED_LEN, MAX_UNCOMPRESSED_LEN, SAVE_STATE_VERSION_3, SNAPSHOT_MAGIC, SnapshotInfo,
+    crc32, decode_snapshot, decode_snapshot_format3, decode_snapshot_format4,
+    decode_snapshot_format5, encode_snapshot, encode_snapshot_format3, encode_snapshot_format4,
+    encode_snapshot_format5, peek_format_version, read_info,
 };
 pub use eventlog::{
     EVENT_LOG_FORMAT_VERSION, EVENT_LOG_MAGIC, EventLogError, EventLogInfo, EventLogRecorder,

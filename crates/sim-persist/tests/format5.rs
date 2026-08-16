@@ -17,7 +17,7 @@
 //! | A format-4 header over a format-5 body is refused | `a_format_5_file_relabelled_as_format_4_is_refused` |
 //! | A format-5 header over a format-4 body is refused | `a_format_4_file_relabelled_as_format_5_is_refused` |
 //! | The format-4 writer refuses what it cannot express | `the_format_4_writer_refuses_a_state_carrying_the_format_5_field` |
-//! | The registry names both transforms and refuses the rest | `the_registry_registers_two_transforms_and_refuses_everything_else` |
+//! | The registry names every older format and refuses the rest | `the_registry_registers_every_older_format_and_refuses_everything_else` |
 //! | The new field survives its own format's round trip | `live_rule_zero_survives_the_format_5_round_trip` |
 //! | Declared lengths are bounded by the check that names them | `an_adversarial_config_section_length_is_refused_by_the_bound_that_names_it` |
 //! | Every truncated config body is refused, CRCs resealed | `every_truncated_config_body_is_refused` |
@@ -25,8 +25,9 @@
 
 use sim_core::{SimConfig, World};
 use sim_persist::{
-    CodecError, FORMAT_VERSION, FORMAT_VERSION_3, FORMAT_VERSION_4, decode_snapshot,
-    decode_snapshot_format4, encode_snapshot, encode_snapshot_format4, migration_for,
+    CodecError, FORMAT_VERSION, FORMAT_VERSION_3, FORMAT_VERSION_4, FORMAT_VERSION_5,
+    decode_snapshot, decode_snapshot_format4, encode_snapshot, encode_snapshot_format4,
+    migration_for,
 };
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
@@ -334,8 +335,23 @@ fn the_format_4_config_body_is_the_format_5_body_without_its_last_byte() {
     let state = world.export_state();
     let checksum = world.state_checksum();
 
-    let five = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode format 5");
+    // **`encode_snapshot_format5`, not `encode_snapshot`.** This test is about
+    // format 4 against format 5 and must keep being about that after format 6
+    // exists. It used the current-format writer, which was the same thing for
+    // exactly as long as 5 was current - the third instance of that trap in
+    // this file's history, after the two in `phase12_format4.rs`.
+    // `format6.rs` carries the parameterised version that makes the whole
+    // class a single assertion.
+    let five = sim_persist::encode_snapshot_format5(
+        &state,
+        1,
+        0,
+        checksum,
+        sim_persist::BUILD_VERSION,
+        0,
+        None,
+    )
+    .expect("encode format 5");
     let four = encode_snapshot_format4(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
         .expect("encode format 4");
 
@@ -378,7 +394,7 @@ fn the_format_4_config_body_is_the_format_5_body_without_its_last_byte() {
 #[test]
 fn a_format_5_file_relabelled_as_format_4_is_refused() {
     let world = rich_world(300);
-    let native = encode_snapshot(
+    let native = sim_persist::encode_snapshot_format5(
         &world.export_state(),
         1,
         0,
@@ -413,9 +429,9 @@ fn a_format_4_file_relabelled_as_format_5_is_refused() {
         None,
     )
     .expect("encode format 4");
-    let forged = relabel(&legacy, FORMAT_VERSION);
+    let forged = relabel(&legacy, FORMAT_VERSION_5);
     assert_eq!(
-        decode_snapshot(&forged).err(),
+        sim_persist::decode_snapshot_format5(&forged).err(),
         Some(CodecError::TruncatedSection),
         "a format 4 payload read as format 5 must run out of config body"
     );
@@ -482,7 +498,7 @@ fn live_rule_zero_survives_the_format_5_round_trip() {
     let mut state = world.export_state();
     state.config.plasticity.live_rule_zero = true;
 
-    let bytes = encode_snapshot(
+    let bytes = sim_persist::encode_snapshot_format5(
         &state,
         1,
         0,
@@ -492,7 +508,7 @@ fn live_rule_zero_survives_the_format_5_round_trip() {
         None,
     )
     .expect("encode format 5");
-    let (_, decoded) = decode_snapshot(&bytes).expect("decode format 5");
+    let (_, decoded) = sim_persist::decode_snapshot_format5(&bytes).expect("decode format 5");
     assert!(
         decoded.config.plasticity.live_rule_zero,
         "the flag did not survive the codec, which is D-065's defect in its \
@@ -506,14 +522,14 @@ fn live_rule_zero_survives_the_format_5_round_trip() {
 /// Two transforms, both landing on the current format, and everything else
 /// refused.
 #[test]
-fn the_registry_registers_two_transforms_and_refuses_everything_else() {
+fn the_registry_registers_every_older_format_and_refuses_everything_else() {
     assert!(
         migration_for(FORMAT_VERSION)
             .expect("the current format is not an error")
             .is_none(),
         "the current format must not route through a transform"
     );
-    for registered in [FORMAT_VERSION_3, FORMAT_VERSION_4] {
+    for registered in [FORMAT_VERSION_3, FORMAT_VERSION_4, FORMAT_VERSION_5] {
         let migration = migration_for(registered)
             .expect("registered")
             .expect("has a transform");

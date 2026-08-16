@@ -457,6 +457,29 @@ pub struct PlasticityConfig {
     /// avoid. The same refusal, for the same reason, guards
     /// `lamarckian_fraction_q16`.
     pub live_rule_zero: bool,
+    /// Charge the per-edge cost only for edges whose learned state moved.
+    ///
+    /// **The moat half of D-107's 2x2.** Today every flagged edge pays
+    /// whatever it does, and the measured consequence is that ~95 percent of
+    /// the confirmatory campaign's 221,410,876 milli-EU bought rule-0
+    /// no-ops - so the flagged half of the path to plasticity is deleterious
+    /// while its interior is exactly neutral. A plateau with a moat.
+    ///
+    /// **The basis is state movement, not `StepKind::Applied`, and the
+    /// difference is load-bearing.** `Applied` means "the rule form ran and
+    /// the learned state was rewritten, possibly to the same value"; the only
+    /// non-`Applied` kinds are the rule-0 early return and an unreachable
+    /// refusal. Since `live_rule_zero` removes rule 0, pricing on `Applied`
+    /// would charge every edge in exactly the arms where the chain is on -
+    /// making the moat a no-op there and collapsing the 2x2's fourth arm into
+    /// its second. D-107 anticipated this in writing; the campaign
+    /// pre-registration records the correction.
+    ///
+    /// Held separate from `plastic_edge_cost_milli_per_s` rather than folded
+    /// into it as a second rate, because the 2x2 needs the price *basis* to
+    /// be an arm and a rate of zero is a different experiment - it removes
+    /// the cost rather than repricing it.
+    pub price_moved_edges_only: bool,
 }
 
 impl PlasticityConfig {
@@ -478,6 +501,10 @@ impl PlasticityConfig {
             // default is not a policy preference - it is the value that makes
             // a format-4 file and a format-5 file describe the same world.
             live_rule_zero: false,
+            // False, and false is what every world that has run had: the
+            // shipped price is per flagged edge, and D-098's finding is about
+            // that price rather than about a bug in it.
+            price_moved_edges_only: false,
         }
     }
 }
@@ -1845,6 +1872,13 @@ impl SimConfig {
             if self.plasticity.live_rule_zero {
                 hasher.update(b"lifesim-live-rule-zero");
                 hasher.update_u32(u32::from(crate::plasticity::LIVE_RULE_COUNT));
+            }
+            // Appended after the chain's word, hashed only when set, for the
+            // reason every section before it was: this function's order is
+            // the definition of every hash already issued. Repricing plastic
+            // edges changes what selection sees and is a new replay lineage.
+            if self.plasticity.price_moved_edges_only {
+                hasher.update(b"lifesim-plasticity-moat");
             }
         }
         // Phase 12 section, **appended after Phase 11's and hashed only when

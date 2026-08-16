@@ -159,7 +159,7 @@ Kernel tests and in-tree benchmarks:
 
 ## Persistence And Artifacts (`sim-persist`)
 
-Snapshot codec (ALIF, format 5, with retained format 3 and format 4 readers
+Snapshot codec (ALIF, format 6, with retained format 3, 4 and 5 readers
 and writers), the event log (ALEV 1), the spatial sample
 log (ALSS 1), and the per-individual action sample log (ALAC 1):
 
@@ -179,6 +179,7 @@ log (ALSS 1), and the per-individual action sample log (ALAC 1):
 - crates/sim-persist/tests/phase11_action_section.rs
 - crates/sim-persist/tests/phase12_format4.rs
 - crates/sim-persist/tests/format5.rs
+- crates/sim-persist/tests/format6.rs
 - crates/sim-persist/tests/bench_saves.rs
 - crates/sim-persist/tests/bench_phase9_snapshot.rs
 - crates/sim-persist/tests/bench_phase11_snapshot.rs
