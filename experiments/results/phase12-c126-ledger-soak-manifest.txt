@@ -1,0 +1,159 @@
+manifest-version 1
+format phase5-manifest-v1
+campaign phase12-c126-ledger-soak
+campaign-hash 0x671b7fb1466a55f6
+build lifesim-0.1.0
+behavior-policy phase1-behavior-v1
+behavior-policy phase2-behavior-v1
+rng-version lifesim-rng-v1
+worldgen-version lifesim-worldgen-v1
+genome-schema-version 1
+event-schema-version 6
+analysis-version lifesim-similarity-v1
+ticks 1000000
+workers 1
+runs 1
+failed-runs 0
+condition A 0x25a611e448c16b12
+run index=0 condition=A seed=0x0000000000002fa9 delta_hash=0x25a611e448c16b12 config_hash=0x44e757ca9ab499c1 terrain_checksum=0xac2e7ffc34ea3107 state_checksum=0x4c1a8d451053e124 ticks=1000000 population=3352 extinct=false energy_milli=26637082 biomass_milli=147560430 max_ancestry_depth=1144 births=3545757 deaths_starvation=2558640 deaths_old_age=0 capacity_rejections=0 dropped_events=0 event_log_bytes=0 snapshot_bytes=1550480 attacks=6856330 deaths_by_damage=886189 carcasses=0 spatial_samples=0 action_samples=0 deaths_senescence=2443 deaths_extrinsic=95333 deaths_juvenile=50522 max_age_observed=11849 capacity_milli=939622467 mean_nodes_milli=30849 mean_edges_milli=1916 median_nodes=31 median_edges=2 distinct_structures=69 structmut_applied=4671153 structmut_rejected=150841 mean_modules_milli=0 median_modules=0 distinct_morphologies=0 nonviable_bodies=0 refused_node_budget=0 paired_births=3545757 pair_rejected_capacity=0 pair_rejected_placement=38 pair_rejected_energy=0 pair_rejected_nonviable=852376 controller_faults=0 mutated_trait_genes=0 mutated_neural_genes=0 structmut_point_applied=3545696 structmut_duplication_applied=229997 structmut_deletion_applied=28291 structmut_insertion_applied=0 structmut_transposition_applied=0 structmut_rejected_homology_collision=143844 structmut_rejected_orphaned=6897 structmut_rejected_min_nodes=80 structmut_rejected_no_bindings=20 structmut_rejected_cap=0 structmut_rejected_inapplicable=0 structmut_rejected_cycle=0 structmut_rejected_invalid=0 structmut_binding_applied=867169 artifact_created_extracted=838060 artifact_created_fractured=1065651 artifact_created_combined=527 artifact_created_carcass=983061 artifact_picked_up=69855 artifact_dropped=33685 artifact_placed=3727 artifact_struck_objects=2384191 artifact_struck_terrain=838060 artifact_fractured=1715308 artifact_disassembled=425 artifact_combined=527 artifact_consumed_events=61038473 artifact_decayed_away=1168165 artifact_worn_away=30 artifact_death_drops=21487 artifact_ephemeral_destroyed=0 artifact_refused_no_target=10620031 artifact_refused_capacity=86260 artifact_refused_held_cap=6671103 artifact_refused_contested=569 artifact_refused_nothing_held=58013779 artifact_refused_occupancy_cap=2616 artifact_refused_invalid_cell=96 artifact_refused_depleted=3979286 artifact_refused_no_yield=0 artifact_refused_object_cap=0 artifact_refused_depth_cap=939 artifact_refused_breadth_cap=0 artifact_refused_joint_failed=247 artifact_ledger_mass_extracted_milli=231987250 artifact_ledger_mass_carcass_milli=5385985978 artifact_ledger_mass_decayed_milli=2164304574 artifact_ledger_mass_consumed_milli=3245989375 artifact_ledger_mass_dust_milli=204507153 artifact_ledger_energy_extracted_milli=40489632 artifact_ledger_energy_carcass_milli=5385985978 artifact_ledger_energy_decayed_milli=3111469196 artifact_ledger_energy_consumed_milli=2283638360 artifact_ledger_energy_dust_milli=30917101 artifact_objects_total=3450 artifact_objects_free=3242 artifact_composites_depth2=45 artifact_placed_total=437 artifact_organism_ticks=4556526321
+campaign-source-begin
+| # Phase 12 confirmatory campaign: C12.1, C12.2 and C12.3.
+| #
+| # ============================================================
+| # PRE-REGISTRATION. Committed before the campaign was run.
+| # The companion document is experiments/phase12-artifact-preregistration.md;
+| # the decision rules and every constant they use are in
+| # sim_analysis::ArtifactPlan::preregistered and are echoed into the report.
+| # ============================================================
+| #
+| # WHAT THIS CAMPAIGN IS FOR. C12.1, C12.2 and C12.3 have stood at NOT
+| # BUILT since the phase opened. The artifact half now exists (ADR-0028,
+| # commits 80e73d3..07d773b) and this campaign gives the three criteria their
+| # controls and their thresholds. A null on any of them is a result and is
+| # reported as one; the plan's own risk table names C12.3 as the criterion
+| # most likely to return null and says so in advance.
+| #
+| # THE PHASE'S OWN PRIOR IS UNFAVOURABLE AND IS RECORDED HERE RATHER THAN
+| # DISCOVERED LATER. Two pilots on disjoint seeds (39321 and 30583, on the
+| # phase2 default world, 60,000 ticks, binding 0.25) showed: strikes in the
+| # thousands, pick-ups in the tens, placements zero, combinations zero in a
+| # thriving world of 2,400; and a collapsed world of 7 with nothing. Every
+| # object action needs a lineage to have bound its channel by mutation
+| # (D-114) and, for placement and combination, to have bound two channels
+| # in one line of descent - the same conjunction structure that produced
+| # Phase 11's reachability null. That is the structure of the question, not
+| # a reason to change it.
+| #
+| # ------------------------------------------------------------
+| # CONDITIONS. Four arms, 30 seeds each, matched on seed and horizon.
+| # ------------------------------------------------------------
+| #
+| #   A  artifacts persistent, combination enabled     (artifact defaults)
+| #   B  artifacts ephemeral: what lands is destroyed at the end of its tick
+| #      (artifact.ephemeral true); actions exist and cost the same
+| #   C  actions permitted but physically inert (artifact.inert true): every
+| #      requested action is charged and counted, nothing changes; the control
+| #      that separates "actions fire" from "actions pay"
+| #   D  combination disabled (artifact.max_composition_depth 0)
+| #
+| # Every arm carries the same bind rate, so the mutational supply of object
+| # bindings is common-mode; every arm carries the contest section, so
+| # carcass objects exist in all four (they are ecology, not action).
+| #
+| # THE BASE WORLD is the Phase 11 confirmatory base (128 x 128, 200
+| # founders, capacity 240,000, physiology with the extrinsic hazard at 13,
+| # point rate 65535, duplication 6554) with the relocating patch OFF: the
+| # yield layer needs the worldmod section, the schedule does not belong in a
+| # question about objects. Chosen because it is a known-stable ecology with
+| # births in the hundreds per 10,000 ticks, not for anything about objects.
+| #
+| # BINDING RATE 16384 (0.25 per birth). Calibrated on the pilots above by a
+| # rule about the mechanism, not the outcome: at 0.10 the thriving pilot
+| # reached its first pick-up at tick ~40,000 with 4 in 60,000; at 0.25 it
+| # reached 23. The rule was "the median pilot world binds and successfully
+| # fires pick_up inside the horizon"; 0.25 satisfies it in the thriving
+| # pilot and nothing satisfies it in the collapsed one. Higher rates were not
+| # tried, so this is a lower bound on what the campaign could have used, and
+| # it is recorded as such.
+| #
+| # EFFECT SIZES AND BARS (sim_analysis::ArtifactPlan::preregistered):
+| #   C12.1  successful pick_up + place + combine per million organism-ticks,
+| #          A minus C, SESOI 10 ppm, directed increase, bar 20 of 30
+| #   C12.2a median placed-object lifetime > median organism lifespan, 15 of 30
+| #   C12.2b stratified exposure effect on offspring per thousand ticks of
+| #          life > 0, exposure floor 5% of life, at least 20 exposed
+| #          organisms per world, bar 20 of 30; both halves required
+| #   C12.3  depth-two composites per thousand organisms, last third minus
+| #          first third of the run, SESOI 0.5 per thousand (500 milli),
+| #          N = 20 of 30 - the N the plan left unstated, fixed here as the
+| #          smallest count with a one-sided binomial p < 0.05 at a null rate
+| #          of one half, the same bar C12.1 states; D asserted zero
+| #   Extinct worlds count against every bar. Analysis seed 0xa11fac750b1ec751.
+| #
+| # EVENT LOGS ON: the analysis reads them. Actions off, spatial off.
+| 
+| campaign phase12-c126-ledger-soak
+| ticks 1000000
+| workers 1
+| seeds 12201
+| base preset phase2
+| base cells_x 128
+| base cells_y 128
+| base initial_organisms 200
+| base max_entities 40000
+| base cell_capacity_milli 240000
+| base genome2.enabled true
+| base physiology.enabled true
+| base physiology.extrinsic_hazard_q16_per_s 13
+| base genome2.mutation.point_q16 65535
+| base genome2.mutation.point_delta_q16 3277
+| base genome2.mutation.duplication_q16 6554
+| base genome2.mutation.deletion_q16 655
+| base genome2.mutation.insertion_q16 0
+| base genome2.mutation.transposition_q16 0
+| base genome2.mutation.max_run 3
+| base genome2.mutation.binding_q16 16384
+| base genome2.caps.max_loci_per_chromosome 160
+| base genome2.caps.max_nodes 160
+| base genome2.caps.max_edges 160
+| base genome2.caps.max_edges_per_node 32
+| base genome2.caps.max_genome_bytes 16384
+| base contest.enabled true
+| base worldmod.enabled true
+| base worldmod.patch_enabled false
+| base worldmod.max_material_overrides 8192
+| base artifact.enabled true
+| base artifact.max_objects 4096
+| base artifact.max_objects_per_cell 8
+| base artifact.max_composition_breadth 8
+| base artifact.max_held_objects 1
+| base artifact.max_candidates 8
+| base artifact.carry_capacity_milli 4000
+| base artifact.carry_move_cost_q16 65536
+| base artifact.hold_cost_milli_per_s 20
+| base artifact.action_cost_milli 60
+| base artifact.strike_cost_milli 120
+| base artifact.action_threshold_q16 32768
+| base artifact.reach_m 2
+| base artifact.consume_reach_m 2
+| base artifact.perception_range_m 8
+| base artifact.strike_force_q16 262144
+| base artifact.strike_mass_reference_milli 2000
+| base artifact.fracture_margin_q16 65536
+| base artifact.max_fragments 4
+| base artifact.min_fragment_mass_milli 100
+| base artifact.joint_floor_q16 16384
+| base artifact.blocking_mass_milli 3000
+| base artifact.terrain_yield_milli 6000
+| base artifact.extraction_milli 800
+| base artifact.yield_regen_milli 400
+| base artifact.yield_regen_interval_ticks 600
+| base artifact.stone_relative_q16 39322
+| base artifact.wood_relative_q16 16384
+| condition A
+| set A artifact.max_composition_depth 4
+| output events off
+| check-interval 5000
+| output snapshots on
+| output actions off
+campaign-source-end
