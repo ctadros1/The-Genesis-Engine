@@ -836,7 +836,7 @@ const OBJECT_PREFIX_BYTES: usize = 8 + 2 + 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 + 8 + 8
 /// word offset, walked the way `decode_objects` reads them rather than
 /// assumed - so the offsets patched below track the encoder's layout exactly
 /// and the walk itself is a check that this constant agrees with it.
-fn object_layout(bytes: &[u8], body_start: usize, body_len: usize) -> (usize, Vec<usize>) {
+fn object_layout(bytes: &[u8], body_start: usize, body_len: usize) -> (usize, Vec<usize>, usize) {
     let count_offset = body_start;
     let count = u64::from_le_bytes(bytes[count_offset..count_offset + 8].try_into().unwrap());
     let mut offset = body_start + 8;
@@ -847,14 +847,20 @@ fn object_layout(bytes: &[u8], body_start: usize, body_len: usize) -> (usize, Ve
         let breadth = u64::from_le_bytes(bytes[offset..offset + 8].try_into().unwrap());
         offset += 8 + breadth as usize * 8;
     }
+    // After the table proper: objects_allocated_total (8), the ledger (10
+    // i128 terms), the counters (30 u64 terms), then the per-organism
+    // observation rows behind their own count word (8 + 8 + 1 each).
+    let trailer = 8 + 10 * 16 + 30 * 8;
+    let rows_offset = offset + trailer;
+    let rows = u64::from_le_bytes(bytes[rows_offset..rows_offset + 8].try_into().unwrap());
     assert_eq!(
-        offset,
-        body_start + body_len - (8 + 10 * 16 + 30 * 8),
+        rows_offset + 8 + rows as usize * 17,
+        body_start + body_len,
         "the layout walk disagrees with the encoder, so the offsets found above \
          are not the counts (objects_allocated_total: 8, ledger: 10 i128 terms, \
-         counters: 30 u64 terms)"
+         counters: 30 u64 terms, observation rows: 8 + 17 each)"
     );
-    (count_offset, breadth_offsets)
+    (count_offset, breadth_offsets, rows_offset)
 }
 
 /// Every declared count in the objects section is bounded before allocation:
@@ -880,7 +886,7 @@ fn every_declared_count_in_the_objects_section_is_bounded() {
         "the unpatched snapshot must decode, or every refusal below is vacuous"
     );
 
-    let (count_offset, breadth_offsets) = object_layout(&bytes, body_start, body_len);
+    let (count_offset, breadth_offsets, rows_offset) = object_layout(&bytes, body_start, body_len);
     assert_eq!(
         breadth_offsets.len(),
         4,
@@ -919,6 +925,7 @@ fn every_declared_count_in_the_objects_section_is_bounded() {
         composite_breadth_offset,
         CodecError::ValueOutOfRange("object composition length"),
     );
+    probe(rows_offset, CodecError::ValueOutOfRange("object observation rows"));
 }
 
 /// Push three simple `MATERIAL_STONE` objects with no composite and no held

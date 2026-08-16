@@ -930,10 +930,14 @@ impl World {
                         "object table: {violation:?}"
                     )));
                 }
+                // The per-organism observations arrive in the table and must
+                // be population-long; the caches are rebuilt from it.
+                same_length(table.exposure_ticks.len(), "objects.exposure_ticks")?;
                 let mut objects = crate::artifact::ObjectState::from_table(table);
-                for _ in 0..population {
-                    objects.push_organism();
-                }
+                objects.band_thresholds = world.capacity_band_thresholds();
+                objects.held = vec![Vec::new(); population];
+                objects.intents = vec![Default::default(); population];
+                objects.perception = vec![[0.0; 6]; population];
                 objects.rebuild_held(&state.ids);
                 if !objects.held_is_consistent(&state.ids) {
                     return Err(RestoreError::StateInvalid(

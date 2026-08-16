@@ -340,6 +340,18 @@ pub enum EventKind {
         action: u8,
         reason: u8,
     },
+    /// An organism's object history, emitted once at its death: ticks spent
+    /// standing in a cell with a live placed object, ticks spent holding
+    /// something, its age, and the capacity band of its birth cell. C12.2's
+    /// per-organism record, paired by id with its births in the same log.
+    /// Observation only; nothing in the tick reads it.
+    ObjectExposure {
+        id: u64,
+        exposure_ticks: u64,
+        carry_ticks: u64,
+        age_ticks: u64,
+        birth_band: u8,
+    },
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1267,8 +1279,11 @@ impl World {
         // decides anything here.
         if world.config.artifact.enabled {
             let mut objects = crate::artifact::ObjectState::with_capacity(world.ids.len());
-            for _ in 0..world.ids.len() {
-                objects.push_organism();
+            objects.band_thresholds = world.capacity_band_thresholds();
+            for index in 0..world.ids.len() {
+                let cell = world.cell_of(world.x_fp[index], world.y_fp[index]);
+                let band = objects.band_of(world.terrain.capacity_milli[cell]);
+                objects.push_organism(band);
             }
             world.objects = Some(objects);
         }
@@ -1834,6 +1849,20 @@ impl World {
 
     pub fn artifact_enabled(&self) -> bool {
         self.objects.is_some()
+    }
+
+    /// Quintile boundaries of baseline capacity over habitable cells: the
+    /// stratifier for C12.2's matched comparison, a pure function of the
+    /// terrain.
+    pub(crate) fn capacity_band_thresholds(&self) -> [i64; 4] {
+        crate::artifact::ObjectState::band_thresholds_of(
+            self.terrain
+                .capacity_milli
+                .iter()
+                .copied()
+                .filter(|&capacity| capacity > 0)
+                .collect(),
+        )
     }
 
     /// Per-organism neutral marker alleles, in entity-ID order. Empty when no
@@ -4561,8 +4590,10 @@ impl World {
             if let Some(state) = self.action_census.as_mut() {
                 state.push_organism();
             }
+            let birth_capacity = self.terrain.capacity_milli[self.cell_of(x, y)];
             if let Some(state) = self.objects.as_mut() {
-                state.push_organism();
+                let band = state.band_of(birth_capacity);
+                state.push_organism(band);
             }
             self.counters.births_total += 1;
             self.push_event(next_tick, EventKind::Birth { id, parent_id });
@@ -4621,8 +4652,10 @@ impl World {
                 if let Some(state) = self.action_census.as_mut() {
                     state.push_organism();
                 }
+                let birth_capacity = self.terrain.capacity_milli[self.cell_of(child.x_fp, child.y_fp)];
                 if let Some(state) = self.objects.as_mut() {
-                    state.push_organism();
+                    let band = state.band_of(birth_capacity);
+                    state.push_organism(band);
                 }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;

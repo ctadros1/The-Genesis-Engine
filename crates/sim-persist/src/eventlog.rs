@@ -92,6 +92,7 @@ const TAG_TERRAIN_STRUCK: u8 = 19;
 const TAG_OBJECT_COMBINED: u8 = 20;
 const TAG_OBJECT_CONSUMED: u8 = 21;
 const TAG_OBJECT_ACTION_REFUSED: u8 = 22;
+const TAG_OBJECT_EXPOSURE: u8 = 23;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -209,6 +210,8 @@ pub struct ReconstructedCounters {
     pub objects_consumed_total: u64,
     pub object_refusals_by_reason: [u64; 13],
     pub object_refusals_total: u64,
+    /// `ObjectExposure` records seen: one per death in an artifact world.
+    pub object_exposure_records: u64,
 }
 
 impl ReconstructedCounters {
@@ -299,6 +302,7 @@ impl ReconstructedCounters {
                     *slot += 1;
                 }
             }
+            EventKind::ObjectExposure { .. } => self.object_exposure_records += 1,
         }
     }
 }
@@ -724,6 +728,20 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.push(action);
             out.push(reason);
         }
+        EventKind::ObjectExposure {
+            id,
+            exposure_ticks,
+            carry_ticks,
+            age_ticks,
+            birth_band,
+        } => {
+            out.push(TAG_OBJECT_EXPOSURE);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&exposure_ticks.to_le_bytes());
+            out.extend_from_slice(&carry_ticks.to_le_bytes());
+            out.extend_from_slice(&age_ticks.to_le_bytes());
+            out.push(birth_band);
+        }
     }
 }
 
@@ -1075,6 +1093,23 @@ fn decode_events_into(
                     return Err(EventLogError::ValueOutOfRange("object refuse reason"));
                 }
                 EventKind::ObjectActionRefused { id, action, reason }
+            }
+            TAG_OBJECT_EXPOSURE => {
+                let id = short!(cursor.u64());
+                let exposure_ticks = short!(cursor.u64());
+                let carry_ticks = short!(cursor.u64());
+                let age_ticks = short!(cursor.u64());
+                let birth_band = short!(cursor.u8());
+                if birth_band > 4 {
+                    return Err(EventLogError::ValueOutOfRange("birth band"));
+                }
+                EventKind::ObjectExposure {
+                    id,
+                    exposure_ticks,
+                    carry_ticks,
+                    age_ticks,
+                    birth_band,
+                }
             }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.

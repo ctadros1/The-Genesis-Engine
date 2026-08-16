@@ -704,6 +704,23 @@ pub struct ObjectTable {
     pub objects_allocated_total: u64,
     pub ledger: ObjectLedger,
     pub counters: ObjectCounters,
+    /// Per-organism observation, parallel to the world's organism arrays:
+    /// ticks the organism has spent standing in a cell that held a live
+    /// **placed** free object (`creator_id != 0`). C12.2's exposure
+    /// measure. Written every tick and read by nothing in the tick (ADR-0016);
+    /// saved and hashed for the reason the action census is, so a restored
+    /// world agrees with the one it was saved from about every organism's
+    /// history; emitted in `ObjectExposure` at death so the analysis can
+    /// pair it with the organism's reproductive output.
+    pub exposure_ticks: Vec<u64>,
+    /// Ticks the organism has held at least one object. Same terms.
+    pub carry_ticks: Vec<u64>,
+    /// The baseline-capacity band (0..=4, quintile of the terrain's habitable
+    /// cells) of the cell the organism was born in. The stratifier C12.2's
+    /// matched comparison needs: placed objects sit where organisms are, and
+    /// where organisms are is where the food is. Fixed at birth; founders
+    /// take their spawn cell's band.
+    pub birth_band: Vec<u8>,
 }
 
 /// Structural defects a decoded or live table can carry. Each is its own
@@ -915,6 +932,12 @@ impl ObjectTable {
         {
             return Some(TableViolation::Ragged);
         }
+        if self.carry_ticks.len() != self.exposure_ticks.len()
+            || self.birth_band.len() != self.exposure_ticks.len()
+            || self.birth_band.iter().any(|&band| band > 4)
+        {
+            return Some(TableViolation::Ragged);
+        }
         for index in 1..n {
             if self.ids[index - 1] >= self.ids[index] {
                 return Some(TableViolation::Order(index));
@@ -1042,6 +1065,9 @@ impl ObjectTable {
             objects_allocated_total,
             ledger,
             counters,
+            exposure_ticks,
+            carry_ticks,
+            birth_band,
         } = self;
         hasher.update(b"lifesim-object-state-v1");
         hasher.update(ARTIFACT_POLICY_VERSION.as_bytes());
@@ -1074,6 +1100,14 @@ impl ObjectTable {
         hasher.update_u64(*objects_allocated_total);
         ledger.hash_into(hasher);
         counters.hash_into(hasher);
+        // The per-organism observations, after everything above so the
+        // object-table bytes are a prefix of the whole. Length-framed.
+        hasher.update_u64(exposure_ticks.len() as u64);
+        for index in 0..exposure_ticks.len() {
+            hasher.update_u64(exposure_ticks[index]);
+            hasher.update_u64(carry_ticks[index]);
+            hasher.update_u32(u32::from(birth_band[index]));
+        }
     }
 }
 
@@ -1108,6 +1142,10 @@ pub struct ObjectState {
     /// bearing, heft, hardness, carried load. Written in `Sense`, read by
     /// the controller gather, never saved or hashed.
     pub perception: Vec<[f32; 6]>,
+    /// The four baseline-capacity quintile boundaries over the terrain's
+    /// habitable cells, for `birth_band`. A pure function of the terrain,
+    /// computed once at construction and again at restore; never saved.
+    pub band_thresholds: [i64; 4],
 }
 
 impl ObjectState {
@@ -1118,6 +1156,7 @@ impl ObjectState {
             held: Vec::with_capacity(organisms),
             intents: Vec::with_capacity(organisms),
             perception: Vec::with_capacity(organisms),
+            band_thresholds: [i64::MAX; 4],
         }
     }
 
@@ -1128,11 +1167,36 @@ impl ObjectState {
         }
     }
 
-    /// One more organism (a birth): nothing held, no intent.
-    pub fn push_organism(&mut self) {
+    /// Quintile boundaries of the given habitable-cell capacities. Sorted
+    /// once; the boundaries are the values at the 20/40/60/80 percent ranks,
+    /// so a cell's band is the number of boundaries at or below its capacity.
+    pub fn band_thresholds_of(mut capacities: Vec<i64>) -> [i64; 4] {
+        if capacities.is_empty() {
+            return [i64::MAX; 4];
+        }
+        capacities.sort_unstable();
+        let n = capacities.len();
+        let at = |fraction: usize| capacities[(n * fraction / 5).min(n - 1)];
+        [at(1), at(2), at(3), at(4)]
+    }
+
+    /// The band (0..=4) a cell of the given baseline capacity falls in.
+    pub fn band_of(&self, capacity_milli: i64) -> u8 {
+        self.band_thresholds
+            .iter()
+            .filter(|&&threshold| capacity_milli >= threshold)
+            .count() as u8
+    }
+
+    /// One more organism (a birth): nothing held, no intent, no history, born
+    /// into `birth_band`.
+    pub fn push_organism(&mut self, birth_band: u8) {
         self.held.push(Vec::new());
         self.intents.push(ObjectIntent::default());
         self.perception.push([0.0; 6]);
+        self.table.exposure_ticks.push(0);
+        self.table.carry_ticks.push(0);
+        self.table.birth_band.push(birth_band.min(4));
     }
 
     /// Compact the per-organism arrays with the world's removal flags.
@@ -1145,6 +1209,9 @@ impl ObjectState {
         });
         crate::world::retain_by_flags(&mut self.intents, remove);
         crate::world::retain_by_flags(&mut self.perception, remove);
+        crate::world::retain_by_flags(&mut self.table.exposure_ticks, remove);
+        crate::world::retain_by_flags(&mut self.table.carry_ticks, remove);
+        crate::world::retain_by_flags(&mut self.table.birth_band, remove);
     }
 
     /// Rebuild `held` from `holder_id` for the given ascending organism IDs.

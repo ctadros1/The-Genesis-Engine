@@ -541,3 +541,69 @@ fn a_world_with_held_objects_and_composites_round_trips_and_steps_identically() 
     world.check_invariants().unwrap();
     restored.check_invariants().unwrap();
 }
+
+// --- C12.2's per-organism observation -------------------------------------
+
+/// Standing in a cell with a placed object counts an exposure tick; holding
+/// something counts a carry tick; both survive a save round trip and leave
+/// with the organism as an `ObjectExposure` event; and a placed object that
+/// landed this tick counts from the next.
+#[test]
+fn exposure_and_carry_ticks_are_recorded_saved_and_emitted_at_death() {
+    let mut config = artifact_config(SEED);
+    config.initial_organisms = 2;
+    let world = scripted_world(config, &[CHANNEL_REST]);
+    let mut state = world.export_state();
+    let (a, b) = (state.ids[0], state.ids[1]);
+    let (x, y) = (state.x_fp[0], state.y_fp[0]);
+    let table = state.objects.as_mut().unwrap();
+    let base = state.next_entity_id;
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    // A placed object in a's cell (creator set), and an object held by b.
+    let mut placed = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    placed.creator_id = b;
+    let mut held = sim_core::ObjectRecord::simple(base + 1, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    held.holder_id = b;
+    table.ledger.mass_extracted_milli += i128::from(placed.mass_milli + held.mass_milli);
+    table.push(placed);
+    table.push(held);
+    table.objects_allocated_total += 2;
+    state.next_entity_id += 2;
+    let bands: Vec<u8> = table.birth_band.clone();
+    let mut world = World::from_state(state).expect("restores");
+    run(&mut world, 10);
+    let table = world.object_table().unwrap();
+    assert_eq!(table.exposure_ticks[0], 10, "a stood on a placed object for ten ticks");
+    assert_eq!(table.carry_ticks[1], 10, "b held something for ten ticks");
+    assert_eq!(table.exposure_ticks[1], if world.organism_detail(b).map(|d| (d.x_fp, d.y_fp)) == Some((x, y)) { 10 } else { table.exposure_ticks[1] });
+    // Save round trip keeps the histories.
+    let saved = world.export_state();
+    let restored = World::from_state(saved.clone()).expect("restores");
+    assert_eq!(restored.object_table().unwrap().exposure_ticks, table.exposure_ticks);
+    assert_eq!(restored.object_table().unwrap().birth_band, bands);
+    assert_eq!(restored.state_checksum(), world.state_checksum());
+    // Death emits the record.
+    let mut state = world.export_state();
+    state.config.basal_cost_milli_per_s = 10_000_000;
+    let mut world = World::from_state(state).unwrap();
+    world.step();
+    let mut seen = 0;
+    for event in world.events() {
+        if let EventKind::ObjectExposure { id, exposure_ticks, carry_ticks, age_ticks, birth_band } = event.kind {
+            seen += 1;
+            if id == a {
+                assert!(exposure_ticks >= 10, "{exposure_ticks}");
+                assert_eq!(carry_ticks, 0);
+            }
+            if id == b {
+                assert!(carry_ticks >= 10, "{carry_ticks}");
+            }
+            assert!(age_ticks >= 10);
+            assert!(birth_band <= 4);
+        }
+    }
+    assert_eq!(seen, 2, "one record per death");
+    // The birth band is a pure function of the terrain: every founder's band
+    // is within range and the thresholds put at least one founder somewhere.
+    assert!(bands.iter().all(|&band| band <= 4));
+}

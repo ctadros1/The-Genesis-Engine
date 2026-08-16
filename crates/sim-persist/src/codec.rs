@@ -1587,6 +1587,13 @@ fn encode_objects(table: &sim_core::ObjectTable) -> Vec<u8> {
     for value in table.counters.to_array() {
         section.u64(value);
     }
+    // Per-organism observations, population-long, after the table proper.
+    section.u64(table.exposure_ticks.len() as u64);
+    for index in 0..table.exposure_ticks.len() {
+        section.u64(table.exposure_ticks[index]);
+        section.u64(table.carry_ticks[index]);
+        section.u8(table.birth_band[index]);
+    }
     section.0
 }
 
@@ -1669,6 +1676,19 @@ fn decode_objects(reader: &mut Reader) -> Result<sim_core::ObjectTable, CodecErr
         *slot = reader.u64()?;
     }
     table.counters = sim_core::ObjectCounters::from_array(counters);
+    let organisms = reader.u64()?;
+    if !allocation_fits(organisms, 8 + 8 + 1, 0, reader.remaining()) {
+        return Err(CodecError::ValueOutOfRange("object observation rows"));
+    }
+    for _ in 0..organisms {
+        table.exposure_ticks.push(reader.u64()?);
+        table.carry_ticks.push(reader.u64()?);
+        let band = reader.u8()?;
+        if band > 4 {
+            return Err(CodecError::ValueOutOfRange("birth band"));
+        }
+        table.birth_band.push(band);
+    }
     Ok(table)
 }
 

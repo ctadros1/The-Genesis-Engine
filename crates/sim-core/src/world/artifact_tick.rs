@@ -825,6 +825,28 @@ impl World {
             }
         }
 
+        // --- 6b. Observation: exposure and carrying, per organism. Read from
+        // the tick-start cell index (a placed object that landed this tick
+        // counts from next tick, like everything else released this tick),
+        // written to counters nothing in the tick reads.
+        for index in 0..population {
+            let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+            let exposed = objects.cell_index.get(cell).is_some_and(|bucket| {
+                bucket.iter().any(|&table_index| {
+                    let table_index = table_index as usize;
+                    objects.table.creator_id[table_index] != 0
+                        && !destroyed[table_index]
+                        && objects.table.is_free(table_index)
+                })
+            });
+            if exposed {
+                objects.table.exposure_ticks[index] += 1;
+            }
+            if !objects.held[index].is_empty() {
+                objects.table.carry_ticks[index] += 1;
+            }
+        }
+
         // --- 7. Allocate pending creations, then compact. ---
         self.commit_pending(next_tick, &mut objects, pending, &mut destroyed);
         self.compact_objects(&mut objects, &destroyed);
@@ -1041,7 +1063,22 @@ impl World {
             return;
         };
         for index in 0..self.ids.len() {
-            if !dead[index] || objects.held[index].is_empty() {
+            if !dead[index] {
+                continue;
+            }
+            // The organism's object history leaves with it, in the log.
+            let id = self.ids[index];
+            self.push_event(
+                next_tick,
+                EventKind::ObjectExposure {
+                    id,
+                    exposure_ticks: objects.table.exposure_ticks[index],
+                    carry_ticks: objects.table.carry_ticks[index],
+                    age_ticks: self.age_ticks[index],
+                    birth_band: objects.table.birth_band[index],
+                },
+            );
+            if objects.held[index].is_empty() {
                 continue;
             }
             let held: Vec<u64> = std::mem::take(&mut objects.held[index]);
