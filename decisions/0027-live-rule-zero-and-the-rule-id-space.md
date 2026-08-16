@@ -154,6 +154,53 @@ granularity). A world with a live rule 0 is a different experiment and a new
 replay lineage. With the flag clear the hash is byte-identical and the Phase 11
 fixture does not move.
 
+## Consequence Found During Implementation: The Founder Lands On Hebbian
+
+**Not anticipated by this ADR when it was written, found by a test failing for
+the right reason, and it is the most important thing on this page.**
+
+The founder stores `rule_id = 0`. Under the remap, `0 % LIVE_RULE_COUNT` is 0,
+so the founder's allele names `LIVE_RULE_BASE` - **plain Hebbian**. The
+published census measures 93.46 percent of compiled plastic edges still
+carrying the founder's value, because the mutation rate is low and the
+population sits near its founder rather than near the draw's equilibrium. So
+with the flag set, the *standing population* is overwhelmingly Hebbian:
+measured at 92 percent in
+`a_flag_on_config_compiles_only_live_rules_and_draws_them_uniformly`.
+
+**This is D-107's objection to option A1 arriving at the population level
+after being avoided at the draw level.** The draw is uniform over the four
+live rules and a test asserts it. The population is not, and cannot be, and
+the difference between those two statements is the whole finding. It is also
+uncomfortable in a specific way: option (b) was rejected on this page for
+giving plain Hebbian 40 percent, and the adopted option gives it 92 percent of
+the standing population.
+
+**It is not, however, a reason to reverse the decision, and the reasoning is
+worth being explicit about.** Under *any* scheme in which every `rule_id`
+names a live rule, the founder's id names some live rule, and every untouched
+allele inherits it. The concentration is a consequence of a low mutation rate
+meeting a founder-dominated population - not of which mapping was chosen. The
+alternatives are to not remove the dead value at all (that is, decline A3,
+which D-107 adopted on measured grounds) or to spread untouched alleles by
+something heritable, which is option (e) and correlates rule identity with
+lineage. Neither is better.
+
+Two things follow, and both are obligations rather than observations:
+
+1. **The 2x2's primary endpoint is unaffected and this is part of why it was
+   the right choice.** It counts completions of the conjunction; it does not
+   ask which rule completed it. A reachability count is invariant to this
+   concentration in a way that any payoff or stability measure would not be.
+2. **The compiled rule histogram must be reported in every arm**, together
+   with `plasticity_saturations_total`. The review's warning about plain
+   Hebbian is about runaway weights, and this engine's Hebbian is bounded -
+   `LEARN_LIMIT_Q16` clamps it - so the clamp is the mitigation and the
+   saturation counter is the measurement of how hard it is working. Without
+   both numbers, an arm that destabilised because nearly everything was
+   Hebbian would read as "learning is harmful" rather than as "we made
+   nearly everything Hebbian". The campaign pre-registration carries this.
+
 ## Performance Implications
 
 None expected. The change is a modulus and an addition on a path already

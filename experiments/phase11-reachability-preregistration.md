@@ -93,6 +93,24 @@ within-lifetime behavioural shift is made by this campaign.
 - **`plasticity_updates_applied` beside `plasticity_updates_total`** in every
   arm. The total counts edges visited; only the applied count says the
   arithmetic ran. Reporting the total alone is the D-098 error.
+- **The compiled rule histogram, and `plasticity_saturations_total`, in every
+  arm.** Added 2026-08-16 after implementing the chain, and the reason is a
+  measured consequence rather than a precaution. The founder stores
+  `rule_id = 0`, the remap sends it to `LIVE_RULE_BASE`, and 93 percent of
+  compiled plastic edges still carry the founder's value - so under the chain
+  the standing population is about 92 percent **plain Hebbian**, the rule the
+  lifetime-learning review singles out for runaway weights. This engine's
+  Hebbian is bounded (`LEARN_LIMIT_Q16`), so the clamp is the mitigation and
+  the saturation counter measures how hard it is working. Without both
+  numbers on the record, an arm that destabilised because nearly everything
+  was Hebbian would read as "learning is harmful" rather than as "we made
+  nearly everything Hebbian". See ADR-0027's implementation-consequence
+  section.
+
+  **The primary endpoint is unaffected**, and this is part of why reachability
+  was the right choice: it counts completions and does not ask which rule
+  completed. A payoff or stability endpoint would have been confounded by this
+  and a reachability one is not.
 
 ## 5. Secondary outcomes
 

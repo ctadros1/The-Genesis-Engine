@@ -2250,6 +2250,71 @@ mod tests {
         );
     }
 
+    /// The two accessors that connect ADR-0027's flag to the engine.
+    ///
+    /// **Both of these survived a mutation run**, and for the same reason:
+    /// every other ADR-0027 test builds a `PlasticityBudget` by hand or is
+    /// handed the draw count as a literal, so the flag's route from
+    /// `SimConfig` into the kernel was pinned nowhere. The arithmetic on
+    /// either side was pinned to death; the wiring between them was not.
+    ///
+    /// What each defect does, stated so a future reader knows what these
+    /// assertions are worth:
+    ///
+    /// - `plasticity_budget()` dropping the flag leaves a configured world
+    ///   compiling every plastic edge onto the dead rule, while the config
+    ///   hash still moves - so the arm starts its own replay lineage and is
+    ///   behaviourally identical to its control. That is the failure the
+    ///   increment-A refusal existed to prevent, arriving through the wiring.
+    /// - `plasticity_rule_draw_count()` returning 5 while the remap divides
+    ///   by 4 sends draw values 0 and 4 both to rule 1, giving plain Hebbian
+    ///   40 percent against 20 each for the rest. That is ADR-0027's rejected
+    ///   option (b) reconstructed by accident.
+    #[test]
+    fn the_flag_reaches_the_budget_and_the_draw_count_or_it_reaches_nothing() {
+        let mut on = SimConfig::phase11_default(1);
+        on.plasticity.live_rule_zero = true;
+        let off = SimConfig::phase11_default(1);
+        assert!(!off.plasticity.live_rule_zero);
+
+        assert_eq!(
+            on.plasticity_budget(),
+            crate::controller2::PlasticityBudget::edges(32).with_live_rule_zero()
+        );
+        assert!(on.plasticity_budget().live_rule_zero);
+        assert!(!off.plasticity_budget().live_rule_zero);
+
+        assert_eq!(
+            on.plasticity_rule_draw_count(),
+            crate::plasticity::LIVE_RULE_COUNT
+        );
+        assert_eq!(
+            off.plasticity_rule_draw_count(),
+            crate::genome2::PLASTICITY_RULE_COUNT
+        );
+        assert_ne!(
+            crate::plasticity::LIVE_RULE_COUNT,
+            crate::genome2::PLASTICITY_RULE_COUNT,
+            "the two counts are equal, so the assertions above cannot tell them apart"
+        );
+
+        // Both accessors are gated on the section, not only on the flag. A
+        // world with plasticity disabled compiles no plastic edge for the
+        // remap to act on, and its draw must stay where it was or the flag
+        // would move a world that has no plasticity at all.
+        let mut disabled = SimConfig::phase2_default(1);
+        disabled.plasticity.live_rule_zero = true;
+        assert!(!disabled.plasticity.enabled);
+        assert_eq!(
+            disabled.plasticity_budget(),
+            crate::controller2::PlasticityBudget::disabled()
+        );
+        assert_eq!(
+            disabled.plasticity_rule_draw_count(),
+            crate::genome2::PLASTICITY_RULE_COUNT
+        );
+    }
+
     #[test]
     fn the_worldmod_section_is_inert_when_disabled_and_hashed_when_enabled() {
         // D-014 at the config layer, and the disabled half is what four

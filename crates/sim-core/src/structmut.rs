@@ -2825,4 +2825,151 @@ mod tests {
             "the draw produced a value outside its narrowed range: {narrow:?}"
         );
     }
+    /// **The end-to-end composition test, and it exists because two mutations
+    /// survived without it.**
+    ///
+    /// Every other ADR-0027 test builds a `PlasticityBudget` by hand or is
+    /// handed `rule_draw_count` as a literal, so the two `SimConfig`
+    /// accessors that connect the flag to the engine were pinned nowhere. A
+    /// mutation run found both:
+    ///
+    /// - `plasticity_budget()` dropping `.with_live_rule_zero()` survived the
+    ///   whole workspace. A world configured with the flag would compile every
+    ///   plastic edge with the identity map, so `rule_id` 0 stays
+    ///   `RULE_STATIC` and the arm is **behaviourally identical to its
+    ///   control while still carrying a different config hash** - it presents
+    ///   as a distinct experiment and is not one. That is exactly the failure
+    ///   the increment-A refusal existed to prevent, arriving through the
+    ///   accessor instead of the flag.
+    /// - `plasticity_rule_draw_count()` always returning 5 survived too, and
+    ///   silently recreates the distribution ADR-0027 rejected: the draw
+    ///   ranges over five values while the remap maps `r -> 1 + (r % 4)`, so
+    ///   0 and 4 both land on rule 1 and plain Hebbian gets 40 percent
+    ///   against 20 each for the others. That is option (b) verbatim.
+    ///
+    /// Neither is visible to a test that assumes one half. This one composes
+    /// them through the config, which is the only place they meet.
+    #[test]
+    fn a_flag_on_config_compiles_only_live_rules_and_draws_them_uniformly() {
+        fn histogram(
+            config: &crate::config::SimConfig,
+        ) -> [u32; crate::plasticity::RULE_COUNT as usize] {
+            let mutation = plastic_config();
+            let mut counters = MutationCounters::default();
+            let mut hits = [0_u32; crate::plasticity::RULE_COUNT as usize];
+            // **Mutations accumulate along a lineage rather than one per
+            // fresh founder.** An edge only compiles as plastic once it has
+            // been hit on its flag, and only carries a drawn rule once it has
+            // been hit on `rule_id`; one mutation per founder makes the joint
+            // vanishingly rare, and the first cut of this test measured 48
+            // edges all still carrying the founder's rule. Iterating is also
+            // what a real run does. The alternative - seeding the founder
+            // with the flag already set - would be a fixture that authors the
+            // thing under test.
+            for lineage in 0..300_u64 {
+                let mut subject = founder();
+                for generation in 0..40_u64 {
+                    let _ = mutate(
+                        &mut subject,
+                        &mutation,
+                        &caps(),
+                        &mut counters,
+                        109,
+                        generation,
+                        lineage,
+                        // The real accessor, not a literal.
+                        config.plasticity_rule_draw_count(),
+                    );
+                    if subject.validate_structure(&caps()).is_err() {
+                        break;
+                    }
+                }
+                let Ok(decoded) = Genome2::decode(&subject.encode(), &caps()) else {
+                    continue;
+                };
+                let network = decoded.express_network();
+                // The other real accessor.
+                let plan =
+                    crate::controller2::compile_with_budget(&network, config.plasticity_budget())
+                        .expect("compiles");
+                for edge in &plan.plastic_edges {
+                    hits[edge.rule.rule_id as usize] += 1;
+                }
+            }
+            hits
+        }
+
+        let mut on = crate::config::SimConfig::phase11_default(0x5eed_cafe_f00d_beef);
+        on.plasticity.live_rule_zero = true;
+        let mut off = on;
+        off.plasticity.live_rule_zero = false;
+
+        let with_flag = histogram(&on);
+        let without_flag = histogram(&off);
+
+        // Guard the guard: without a nonzero sample the assertions below are
+        // assertions about an empty histogram.
+        let total: u32 = with_flag.iter().sum();
+        assert!(
+            total > 100,
+            "only {total} plastic edges compiled, so the histogram proves nothing: {with_flag:?}"
+        );
+
+        // (1) The dead rule is unreachable with the flag set, and reachable -
+        //     indeed dominant - without it. The second half is what says the
+        //     first is about the flag rather than about the founder.
+        //
+        //     **This is the clause that catches `plasticity_budget()` dropping
+        //     `.with_live_rule_zero()`**, which survived a whole-workspace
+        //     mutation run: with that defect the flag still moves the config
+        //     hash, so the arm presents as a distinct experiment while
+        //     compiling every edge onto the dead rule exactly as its control
+        //     does.
+        assert_eq!(
+            with_flag[crate::plasticity::RULE_STATIC as usize],
+            0,
+            "a flag-on config compiled an edge onto the dead rule: {with_flag:?}"
+        );
+        assert!(
+            without_flag[crate::plasticity::RULE_STATIC as usize] > 0,
+            "the dead rule was unreachable even with the flag clear, so this \
+             test is not measuring the flag: {without_flag:?}"
+        );
+
+        // (2) Every live rule is reachable. Not a uniformity assertion - see
+        //     the note below on why the compiled population is not uniform
+        //     and must not be asserted to be.
+        for rule_id in crate::plasticity::LIVE_RULE_BASE..crate::plasticity::RULE_COUNT {
+            assert!(
+                with_flag[rule_id as usize] > 0,
+                "rule {rule_id} is unreachable under the flag: {with_flag:?}"
+            );
+        }
+
+        // (3) **The founder's untouched allele compiles as `LIVE_RULE_BASE`,
+        //     and the standing population is dominated by it.** Pinned here
+        //     rather than left to be rediscovered, because it is the
+        //     consequence of ADR-0027 that the ADR did not anticipate: the
+        //     founder stores `rule_id` 0, `0 % LIVE_RULE_COUNT` is 0, so
+        //     every allele that has never had a rule mutation names
+        //     `LIVE_RULE_BASE` - which is plain Hebbian.
+        //
+        //     The *draw* is uniform, and
+        //     `the_fresh_rule_draw_narrows_to_the_live_rules_under_the_flag`
+        //     asserts that. The *population* is not, because the mutation
+        //     rate is low and the census measures 93 percent of alleles still
+        //     carrying the founder's value. Asserting uniformity here would
+        //     be asserting something false about a real population.
+        //
+        //     D-110 and the campaign pre-registration carry the reporting
+        //     obligation this creates.
+        let base = with_flag[crate::plasticity::LIVE_RULE_BASE as usize];
+        assert!(
+            base * 2 > total,
+            "the founder-inherited rule no longer dominates the compiled \
+             population ({base} of {total}). That is not necessarily wrong, but it \
+             contradicts what D-110 records and the pre-registration reports on, \
+             so one of the three has to change: {with_flag:?}"
+        );
+    }
 }
