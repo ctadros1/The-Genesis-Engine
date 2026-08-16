@@ -23,7 +23,7 @@
 //! does with the request is what is under test.
 
 use sim_core::{
-    Activation, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_STRIKE, EventKind,
+    Activation, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_STRIKE, EventKind,
     Genome2, GenomeCaps, InheritanceMode, Locus, LocusKind, MATERIAL_STONE, NodeRole,
     ObjectAction, RefuseReason, RestoreError, STRUCTURAL_HOMOLOGY_BASE, SimConfig, World,
 };
@@ -606,4 +606,460 @@ fn exposure_and_carry_ticks_are_recorded_saved_and_emitted_at_death() {
     // The birth band is a pure function of the terrain: every founder's band
     // is within range and the thresholds put at least one founder somewhere.
     assert!(bands.iter().all(|&band| band <= 4));
+}
+
+// --- object perception (ADR-0028 section 5) ---------------------------------
+
+/// The six cues are what the controller saw: presence, a distance that
+/// falls with range, a signed bearing, heft as a share of what the organism
+/// could carry, hardness as a share of the hardest material, and carried
+/// load. Never a material id, never a depth. Placed at exactly two metres
+/// ahead of a frozen organism facing +x, a stone reads: present 1, distance
+/// 1 - 2/8, bearing 0, heft mass/capacity, hardness 1 (stone is the hardest
+/// material). Nothing in range reads all zeros; a held object reads as load.
+#[test]
+fn object_cues_report_presence_distance_bearing_heft_hardness_and_load() {
+    let mut config = artifact_config(SEED);
+    config.initial_organisms = 1;
+    config.artifact.perception_range_m = 8;
+    config.artifact.carry_capacity_milli = 4_000;
+    let world = scripted_world(config, &[CHANNEL_REST]);
+    // Nothing in the world: every cue is zero.
+    let mut empty = World::from_state(world.export_state()).unwrap();
+    empty.step();
+    assert_eq!(empty.object_perception(0), Some([0.0; 6]));
+
+    let mut state = world.export_state();
+    let organism = state.ids[0];
+    let (x, y) = (state.x_fp[0], state.y_fp[0]);
+    state.phase2.as_mut().unwrap().heading_bam[0] = 0; // facing +x
+    let table = state.objects.as_mut().unwrap();
+    let base = state.next_entity_id;
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    let fp = sim_core::FP_PER_METER;
+    let ahead = sim_core::ObjectRecord::simple(base, stone, 1_000, x + 2 * fp, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    table.ledger.mass_extracted_milli += i128::from(ahead.mass_milli);
+    table.push(ahead);
+    table.objects_allocated_total += 1;
+    state.next_entity_id += 1;
+    let mut world = World::from_state(state).unwrap();
+    world.step();
+    let cues = world.object_perception(0).unwrap();
+    let scale = world.organism_detail(organism).unwrap().phase2.map_or(1_000, |_| 1_000);
+    let _ = scale;
+    assert_eq!(cues[0], 1.0, "present");
+    assert!((cues[1] - 0.75).abs() < 0.02, "distance 1 - 2/8, got {}", cues[1]);
+    assert!(cues[2].abs() < 0.02, "dead ahead, got bearing {}", cues[2]);
+    assert!(cues[3] > 0.0 && cues[3] <= 1.0, "heft is a share of capacity, got {}", cues[3]);
+    assert!((cues[4] - 1.0).abs() < 1e-6, "stone is the hardest material, got {}", cues[4]);
+    assert_eq!(cues[5], 0.0, "holding nothing");
+    // The same stone to the left (+y at heading 0 is a positive cross
+    // product) reads a positive bearing; and a held object reads as load.
+    let mut state = world.export_state();
+    let table = state.objects.as_mut().unwrap();
+    table.x_fp[0] = x;
+    table.y_fp[0] = y + 2 * fp;
+    let mut held = sim_core::ObjectRecord::simple(base + 1, stone, 2_000, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    held.holder_id = organism;
+    table.ledger.mass_extracted_milli += i128::from(held.mass_milli);
+    table.push(held);
+    table.objects_allocated_total += 1;
+    state.next_entity_id += 1;
+    let mut world = World::from_state(state).unwrap();
+    world.step();
+    let cues = world.object_perception(0).unwrap();
+    assert!(cues[2] > 0.5, "to the left reads a positive bearing, got {}", cues[2]);
+    assert!(cues[5] > 0.0, "a held object reads as carried load, got {}", cues[5]);
+    // Held objects are not "present" targets: only free ones are sensed, so
+    // taking the free stone away leaves presence at zero while load stays.
+    let mut state = world.export_state();
+    let table = state.objects.as_mut().unwrap();
+    table.x_fp[0] = x + 20 * fp; // out of range
+    let mut world = World::from_state(state).unwrap();
+    world.step();
+    let cues = world.object_perception(0).unwrap();
+    assert_eq!(cues[0], 0.0, "the held stone is not a sensed target");
+    assert!(cues[5] > 0.0);
+}
+
+// --- blocking (ADR-0028 section 3: entry-only, by mass) ---------------------
+
+/// A ring of stones at or above `blocking_mass_milli` around an organism
+/// keeps it in its cell for as long as they stand; the same ring below the
+/// threshold does not. Blocking is on entry only: the organism inside its
+/// own cell is free to move within it, and nothing about a carried stone
+/// blocks anyone.
+#[test]
+fn a_heavy_free_object_blocks_entry_and_a_light_one_does_not() {
+    let mut config = artifact_config(SEED);
+    config.artifact.blocking_mass_milli = 3_000;
+    let world = scripted_world(config, &[]);
+    let state = world.export_state();
+    let cell_fp = state.config.cell_size_fp();
+    let cells_x = state.config.cells_x as i32;
+    let cells_y = state.config.cells_y as i32;
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    // Find, in an unblocked control, an organism that changes cell inside
+    // the horizon, so the blocked assertion is about a mover.
+    let horizon = 120;
+    let mut control = World::from_state(state.clone()).unwrap();
+    let start: Vec<usize> = state.ids.iter().enumerate().map(|(i, _)| control.cell_index_of(state.x_fp[i], state.y_fp[i])).collect();
+    let mut first_mover: Option<(usize, u64)> = None;
+    for _ in 0..horizon {
+        control.step();
+        for (i, &id) in state.ids.iter().enumerate() {
+            if first_mover.is_none()
+                && let Some(detail) = control.organism_detail(id)
+                && control.cell_index_of(detail.x_fp, detail.y_fp) != start[i]
+            {
+                first_mover = Some((i, id));
+            }
+        }
+    }
+    let (mover, mover_id) = first_mover.expect("some organism changes cell in the control");
+    let ring = |state: &mut sim_core::SaveState, mass: i64| {
+        let (x, y) = (state.x_fp[mover], state.y_fp[mover]);
+        let (cx, cy) = (x / cell_fp, y / cell_fp);
+        let table = state.objects.as_mut().unwrap();
+        for dy in -2..=2_i32 {
+            for dx in -2..=2_i32 {
+                if dx == 0 && dy == 0 {
+                    continue;
+                }
+                let (nx, ny) = (cx + dx, cy + dy);
+                if nx < 0 || ny < 0 || nx >= cells_x || ny >= cells_y {
+                    continue;
+                }
+                let id = state.next_entity_id;
+                state.next_entity_id += 1;
+                // `simple` takes a volume and derives the mass from the
+                // material's density; the threshold is on mass, so set it.
+                let mut record = sim_core::ObjectRecord::simple(
+                    id,
+                    stone,
+                    1_000,
+                    nx * cell_fp + cell_fp / 2,
+                    ny * cell_fp + cell_fp / 2,
+                    0,
+                    sim_core::CAUSE_EXTRACTED,
+                    0,
+                );
+                record.mass_milli = mass;
+                table.ledger.mass_extracted_milli += i128::from(mass);
+                table.push(record);
+                table.objects_allocated_total += 1;
+            }
+        }
+    };
+    let cell_of_mover = |world: &World| {
+        let detail = world.organism_detail(mover_id).expect("the mover is alive");
+        world.cell_index_of(detail.x_fp, detail.y_fp)
+    };
+    // Heavy ring: the mover never leaves its cell.
+    let mut heavy = state.clone();
+    ring(&mut heavy, 3_000);
+    let mut world = World::from_state(heavy).expect("restores");
+    let home = cell_of_mover(&world);
+    for _ in 0..horizon {
+        world.step();
+        world.check_invariants().unwrap();
+        assert_eq!(cell_of_mover(&world), home, "the mover left a cell ringed by blocking stones");
+    }
+    // Light ring, same layout: the mover leaves as it did in the control.
+    let mut light = state.clone();
+    ring(&mut light, 2_999);
+    let mut world = World::from_state(light).expect("restores");
+    let home = cell_of_mover(&world);
+    let mut left = false;
+    for _ in 0..horizon {
+        world.step();
+        if cell_of_mover(&world) != home {
+            left = true;
+            break;
+        }
+    }
+    assert!(left, "a ring of sub-threshold stones must not block");
+}
+
+// --- carcass objects (ADR-0028 section 9) -----------------------------------
+
+/// With the section on, a death that leaves energy makes a carcass *object*
+/// with a fresh id (material 4, mass = energy = the contest share of what
+/// was left) and the Phase 7 carcass table stays empty; every
+/// `CarcassCreated` pairs with an `ObjectCreated` of the same id and energy.
+#[test]
+fn a_death_with_energy_left_makes_a_carcass_object_and_no_phase7_carcass() {
+    let mut config = artifact_config(SEED);
+    config.physiology.enabled = true;
+    // A hazard high enough that founders die with energy in hand.
+    config.physiology.extrinsic_hazard_q16_per_s = 2_000;
+    let mut world = scripted_world(config, &[CHANNEL_REST]);
+    let mut paired = 0;
+    for _ in 0..200 {
+        world.step();
+        world.check_invariants().unwrap();
+        let events = world.events();
+        for event in events {
+            if let EventKind::CarcassCreated { id, energy_milli, .. } = event.kind {
+                let created = events.iter().find(|other| {
+                    matches!(other.kind, EventKind::ObjectCreated { id: object, material_id, cause, mass_milli, energy_milli: e, .. }
+                        if object == id && material_id == sim_core::MATERIAL_CARCASS && cause == sim_core::CAUSE_CARCASS
+                            && mass_milli == energy_milli && e == energy_milli)
+                });
+                assert!(created.is_some(), "a carcass without its object record: {event:?}");
+                paired += 1;
+                assert!(energy_milli > 0);
+            }
+        }
+    }
+    let counters = world.object_counters().unwrap();
+    assert!(paired > 0, "no carcass was made in 200 ticks: {counters:?}");
+    assert_eq!(counters.created_carcass, paired);
+    assert_eq!(world.metrics().carcasses, 0, "the Phase 7 carcass table stays empty with the section on");
+    let table = world.object_table().unwrap();
+    assert!(table.material_id.iter().any(|&m| m == sim_core::MATERIAL_CARCASS));
+    // A carcass object decays: its energy falls tick over tick and the loss
+    // is ledgered, so what the ledger says the table holds is what it holds.
+    let ledger = world.object_ledger().unwrap();
+    assert!(ledger.energy_decayed_milli > 0, "carcasses decay: {ledger:?}");
+    assert_eq!(table.total_energy_milli(), ledger.expected_energy_milli());
+}
+
+// --- combination: the joint draw and the depth cap ------------------------
+
+/// A joint floor of one whole refuses every combination as `JointFailed`
+/// (the draw cannot reach it), charged and counted; the constituents are
+/// untouched. The same scene with the floor at zero combines (the companion
+/// test above), so the floor is the knob and not a coincidence.
+#[test]
+fn a_joint_floor_the_draw_cannot_reach_refuses_every_combine_by_name() {
+    let mut config = artifact_config(SEED);
+    config.initial_organisms = 1;
+    config.artifact.reach_m = 8;
+    config.artifact.joint_floor_q16 = 65_536;
+    config.artifact.action_cost_milli = 500;
+    let world = scripted_world(config.clone(), &[CHANNEL_COMBINE, CHANNEL_REST]);
+    let mut state = world.export_state();
+    let organism = state.ids[0];
+    let (x, y) = (state.x_fp[0], state.y_fp[0]);
+    let table = state.objects.as_mut().unwrap();
+    let base = state.next_entity_id;
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    held.holder_id = organism;
+    let target = sim_core::ObjectRecord::simple(base + 1, stone, 600, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    table.ledger.mass_extracted_milli += i128::from(held.mass_milli + target.mass_milli);
+    table.push(held);
+    table.push(target);
+    table.objects_allocated_total += 2;
+    state.next_entity_id += 2;
+    // The control is the same scene with nobody asking to combine.
+    let mut control_state = state.clone();
+    let caps = control_state.config.genome2.caps;
+    let schema2 = control_state.schema2.as_mut().unwrap();
+    let mut genome = Genome2::decode(&schema2.genomes[0], &caps).unwrap();
+    for haplotype in &mut genome.haplotypes {
+        haplotype.chromosomes[0].retain(|locus| {
+            !matches!(locus.kind, LocusKind::IoBinding { channel_id, .. } if channel_id == CHANNEL_COMBINE)
+        });
+    }
+    schema2.genomes[0] = genome.encode();
+    let mut control = World::from_state(control_state).unwrap();
+    run(&mut control, 5);
+    let mut world = World::from_state(state).unwrap();
+    run(&mut world, 5);
+    let counters = world.object_counters().unwrap();
+    assert_eq!(counters.combined, 0);
+    assert_eq!(counters.refused_joint_failed, 5, "one refusal per attempt: {counters:?}");
+    let table = world.object_table().unwrap();
+    assert_eq!(table.len(), 2, "both constituents untouched");
+    assert_eq!(table.holder_id[0], organism);
+    assert_eq!(table.owner_id[1], 0);
+    assert!(
+        world.organism_detail(organism).unwrap().energy_milli
+            < control.organism_detail(organism).unwrap().energy_milli,
+        "a refused combine is still charged"
+    );
+}
+
+/// `max_composition_depth` binds on the composite that *would* be made: a
+/// depth-one composite combined with a simple object is depth two, refused
+/// `DepthCap` at a cap of one and made at a cap of four.
+#[test]
+fn the_depth_cap_refuses_the_composite_that_would_exceed_it() {
+    let scene = |max_depth: u32| {
+        let mut config = artifact_config(SEED);
+        config.initial_organisms = 1;
+        config.artifact.reach_m = 8;
+        config.artifact.joint_floor_q16 = 0;
+        config.artifact.max_composition_depth = max_depth;
+        let world = scripted_world(config, &[CHANNEL_COMBINE, CHANNEL_REST]);
+        let mut state = world.export_state();
+        let organism = state.ids[0];
+        let (x, y) = (state.x_fp[0], state.y_fp[0]);
+        let table = state.objects.as_mut().unwrap();
+        let base = state.next_entity_id;
+        let stone = sim_core::material(MATERIAL_STONE).unwrap();
+        let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        held.holder_id = organism;
+        let target = sim_core::ObjectRecord::simple(base + 1, stone, 600, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        table.ledger.mass_extracted_milli += i128::from(held.mass_milli + target.mass_milli);
+        table.push(held);
+        table.push(target);
+        table.objects_allocated_total += 2;
+        state.next_entity_id += 2;
+        let mut world = World::from_state(state).unwrap();
+        world.step(); // depth-one composite at base + 2, free, in reach
+        assert_eq!(world.object_counters().unwrap().combined, 1);
+        // Hand the composite to the organism and put a fresh stone in reach.
+        let mut state = world.export_state();
+        let table = state.objects.as_mut().unwrap();
+        let composite = table.index_of(base + 2).unwrap();
+        table.holder_id[composite] = organism;
+        let extra = sim_core::ObjectRecord::simple(base + 3, stone, 500, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        table.ledger.mass_extracted_milli += i128::from(extra.mass_milli);
+        table.push(extra);
+        table.objects_allocated_total += 1;
+        state.next_entity_id += 1;
+        let mut world = World::from_state(state).expect("a held composite restores");
+        world.step();
+        world.check_invariants().unwrap();
+        world
+    };
+    let capped = scene(1);
+    let counters = capped.object_counters().unwrap();
+    assert_eq!(counters.combined, 1, "the second combine was refused: {counters:?}");
+    assert_eq!(counters.refused_depth_cap, 1);
+    let open = scene(4);
+    let counters = open.object_counters().unwrap();
+    assert_eq!(counters.combined, 2, "the second combine was made: {counters:?}");
+    assert_eq!(counters.refused_depth_cap, 0);
+    let table = open.object_table().unwrap();
+    assert_eq!(table.count_with_depth_at_least(2), 1);
+    let deep = (0..table.len()).find(|&i| table.depth[i] == 2).unwrap();
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    let mass_of = |volume: i64| sim_core::ObjectRecord::simple(0, stone, volume, 0, 0, 0, sim_core::CAUSE_EXTRACTED, 0).mass_milli;
+    assert_eq!(
+        table.mass_milli[deep],
+        mass_of(400) + mass_of(600) + mass_of(500),
+        "a depth-two composite carries every constituent's mass"
+    );
+}
+
+// --- placement geometry ------------------------------------------------------
+
+/// A placed object lands at the centre of the cell one cell-length ahead of
+/// the placer, whatever the placer's own offset in its cell; a placer at the
+/// map edge facing out is refused `InvalidCell`, and so is one facing a cell
+/// that is not traversable.
+#[test]
+fn a_placed_object_lands_at_the_faced_cells_centre_and_off_map_is_invalid() {
+    let mut config = artifact_config(SEED);
+    config.initial_organisms = 1;
+    let world = scripted_world(config, &[CHANNEL_PLACE, CHANNEL_REST]);
+    let state = world.export_state();
+    let cell_fp = state.config.cell_size_fp();
+    let organism = state.ids[0];
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    let scene = |x: i32, y: i32, heading: u16| {
+        let mut state = state.clone();
+        state.x_fp[0] = x;
+        state.y_fp[0] = y;
+        state.phase2.as_mut().unwrap().heading_bam[0] = heading;
+        let table = state.objects.as_mut().unwrap();
+        let base = state.next_entity_id;
+        let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        held.holder_id = organism;
+        table.ledger.mass_extracted_milli += i128::from(held.mass_milli);
+        table.push(held);
+        table.objects_allocated_total += 1;
+        state.next_entity_id += 1;
+        let mut world = World::from_state(state).expect("restores");
+        world.step();
+        world.check_invariants().unwrap();
+        world
+    };
+    // Find a traversable cell whose +x neighbour is traversable too, away
+    // from the edge, and stand near that cell's far side facing +x.
+    let cells_x = state.config.cells_x as i32;
+    let cells_y = state.config.cells_y as i32;
+    let probe = World::from_state(state.clone()).unwrap();
+    let mut found = None;
+    'search: for cy in 1..cells_y - 1 {
+        for cx in 1..cells_x - 2 {
+            let here = (cy * cells_x + cx) as usize;
+            let next = here + 1;
+            if probe.effective_traversable(here) && probe.effective_traversable(next) {
+                found = Some((cx, cy));
+                break 'search;
+            }
+        }
+    }
+    let (cx, cy) = found.expect("two adjacent land cells");
+    let x = cx * cell_fp + cell_fp - 3; // near the far side of the cell
+    let y = cy * cell_fp + 5;
+    let world = scene(x, y, 0);
+    let counters = world.object_counters().unwrap();
+    assert_eq!(counters.placed, 1, "{counters:?}");
+    let table = world.object_table().unwrap();
+    assert_eq!(table.holder_id[0], 0);
+    assert_eq!(
+        (table.x_fp[0], table.y_fp[0]),
+        ((cx + 1) * cell_fp + cell_fp / 2, cy * cell_fp + cell_fp / 2),
+        "snapped to the faced cell's centre, not to the placer's offset"
+    );
+    // At a map edge facing out: off the map, refused by name. Any edge cell
+    // that is land will do; the heading faces its edge (BAM: 0 = +x,
+    // 16384 = +y, 32768 = -x, 49152 = -y).
+    let mut edge_cell = None;
+    for cy in 0..cells_y {
+        for cx in 0..cells_x {
+            let heading = if cx == cells_x - 1 {
+                0
+            } else if cx == 0 {
+                32_768
+            } else if cy == cells_y - 1 {
+                16_384
+            } else if cy == 0 {
+                49_152
+            } else {
+                continue;
+            };
+            if probe.effective_traversable((cy * cells_x + cx) as usize) {
+                edge_cell = Some((cx, cy, heading));
+                break;
+            }
+        }
+        if edge_cell.is_some() {
+            break;
+        }
+    }
+    // The generated map is an island - its edges are water - so the off-map
+    // branch is only reachable if some edge cell is land; when it is not,
+    // the same refusal is exercised on the coast below, which this map
+    // always has.
+    if let Some((ex, ey, heading)) = edge_cell {
+        let edge = scene(ex * cell_fp + cell_fp / 2, ey * cell_fp + cell_fp / 2, heading);
+        let counters = edge.object_counters().unwrap();
+        assert_eq!(counters.placed, 0, "{counters:?}");
+        assert_eq!(counters.refused_invalid_cell, 1, "{counters:?}");
+        assert_eq!(edge.object_table().unwrap().holder_id[0], organism, "still held");
+    }
+    // A non-traversable faced cell (the coast) is refused the same way.
+    let mut water = None;
+    'water: for cy in 1..cells_y - 1 {
+        for cx in 1..cells_x - 2 {
+            let here = (cy * cells_x + cx) as usize;
+            if probe.effective_traversable(here) && !probe.effective_traversable(here + 1) {
+                water = Some((cx, cy));
+                break 'water;
+            }
+        }
+    }
+    let (cx, cy) = water.expect("a land cell with water to its +x");
+    let shore = scene(cx * cell_fp + cell_fp / 2, cy * cell_fp + cell_fp / 2, 0);
+    let counters = shore.object_counters().unwrap();
+    assert_eq!(counters.refused_invalid_cell, 1, "facing water: {counters:?}");
+    assert_eq!(counters.placed, 0);
+    assert_eq!(shore.object_table().unwrap().holder_id[0], organism, "still held");
 }

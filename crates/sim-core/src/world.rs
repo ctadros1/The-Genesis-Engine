@@ -1847,6 +1847,16 @@ impl World {
         self.objects.as_ref().map(|objects| objects.table.ledger)
     }
 
+    /// The six object cues (17-22: present, distance, bearing, heft,
+    /// hardness, carried load) written for organism `index` in the last
+    /// `Sense` phase; `None` without the section or out of range. Read-only,
+    /// for tests and diagnostics: the values are what the controller saw.
+    pub fn object_perception(&self, index: usize) -> Option<[f32; 6]> {
+        self.objects
+            .as_ref()
+            .and_then(|objects| objects.perception.get(index).copied())
+    }
+
     pub fn artifact_enabled(&self) -> bool {
         self.objects.is_some()
     }
