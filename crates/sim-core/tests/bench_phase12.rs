@@ -167,3 +167,141 @@ fn modification_write_cost_as_a_function_of_set_size() {
     }
     assert_eq!(world.worldmod_state().expect("section").len(), written);
 }
+
+// ---------------------------------------------------------------------------
+// The artifact half (ADR-0028): what the section costs per tick, disabled,
+// enabled with nobody bound to it, and driven by a scripted population.
+//
+// `PHASE12-BENCH` markers, collected by `scripts/run-phase12-benchmarks.sh`.
+// The three arms isolate the seam from the work, as the mutable-world arms
+// above do: `disabled` is the baseline; `quiet` pays the section's fixed
+// per-tick costs (the six cues per organism, the object index rebuild over
+// an empty table, the intent gather) and nothing else, because no founder
+// binds an object channel and the bind rate is zero; `scripted` is the
+// `--artifact` trace's population - every founder striking, picking up,
+// placing, dropping or combining from tick one - which is far busier than
+// any evolved world will be, so it is an upper bound on the per-tick cost
+// of the actions themselves and it is reported beside the object count that
+// produced it.
+// ---------------------------------------------------------------------------
+
+use sim_core::{
+    Activation, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_STRIKE,
+    Genome2, GenomeCaps, Locus, LocusKind, NodeRole, STRUCTURAL_HOMOLOGY_BASE,
+};
+
+fn artifact_base_config(enabled: bool) -> SimConfig {
+    let mut config = SimConfig::phase2_default(SEED);
+    config.cells_x = 128;
+    config.cells_y = 128;
+    config.initial_organisms = 200;
+    config.max_entities = 4_000;
+    config.genome2.enabled = true;
+    config.worldmod.enabled = true;
+    config.contest.enabled = true;
+    config.artifact.enabled = enabled;
+    config.artifact.action_cost_milli = 6;
+    config.artifact.strike_cost_milli = 12;
+    config.validate().expect("validates");
+    config
+}
+
+fn bind_always_on(genome: &mut Genome2, channel: u16, salt: u32) {
+    let node_id = STRUCTURAL_HOMOLOGY_BASE + 50_000 + salt * 10;
+    for haplotype in &mut genome.haplotypes {
+        let chromosome = &mut haplotype.chromosomes[0];
+        chromosome.push(Locus {
+            homology_id: node_id,
+            gene_lineage_id: u64::from(node_id),
+            mutation_event_id: 0,
+            kind: LocusKind::Node {
+                role: NodeRole::Output,
+                activation_id: Activation::TanhApprox.id(),
+                bias: 8.0,
+                time_constant: 0,
+            },
+        });
+        chromosome.push(Locus {
+            homology_id: node_id + 1,
+            gene_lineage_id: u64::from(node_id + 1),
+            mutation_event_id: 0,
+            kind: LocusKind::IoBinding { node: node_id, channel_id: channel, gain: 1.0 },
+        });
+        chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+    }
+}
+
+/// The `--artifact` trace's script, by founder index.
+fn scripted_artifact_world(config: SimConfig) -> World {
+    const SCRIPTS: [&[u16]; 4] = [
+        &[CHANNEL_STRIKE],
+        &[CHANNEL_STRIKE, CHANNEL_PICK_UP, CHANNEL_PLACE],
+        &[CHANNEL_STRIKE, CHANNEL_PICK_UP, CHANNEL_COMBINE],
+        &[CHANNEL_PICK_UP, CHANNEL_DROP],
+    ];
+    let world = World::new(config).expect("world");
+    let mut state = world.export_state();
+    let caps: GenomeCaps = state.config.genome2.caps;
+    let schema2 = state.schema2.as_mut().expect("schema 2");
+    for index in 0..schema2.genomes.len() {
+        let script = SCRIPTS[index % SCRIPTS.len()];
+        let mut genome = Genome2::decode(&schema2.genomes[index], &caps).expect("decodes");
+        for (salt, &channel) in script.iter().enumerate() {
+            bind_always_on(&mut genome, channel, salt as u32);
+        }
+        genome.validate_structure(&caps).expect("validates");
+        schema2.genomes[index] = genome.encode();
+        for _ in 0..script.len() {
+            schema2.activation_values[index].push(0.0);
+            schema2.activation_prior[index].push(0.0);
+        }
+    }
+    World::from_state(state).expect("restores")
+}
+
+fn tick_cost_of(mut world: World) -> (f64, World) {
+    for _ in 0..WARMUP_TICKS {
+        world.step();
+    }
+    let mut samples = Vec::with_capacity(SAMPLE_TICKS as usize);
+    for _ in 0..SAMPLE_TICKS {
+        let started = Instant::now();
+        world.step();
+        samples.push(started.elapsed().as_secs_f64() * 1_000_000.0);
+    }
+    (median(&mut samples), world)
+}
+
+#[test]
+#[ignore = "timed benchmark; run with --ignored"]
+fn artifact_tick_cost_disabled_quiet_and_scripted() {
+    let (disabled_us, disabled) = tick_cost_of(World::new(artifact_base_config(false)).expect("world"));
+    let (quiet_us, quiet) = tick_cost_of(World::new(artifact_base_config(true)).expect("world"));
+    let (scripted_us, scripted) = tick_cost_of(scripted_artifact_world(artifact_base_config(true)));
+    let quiet_counters = quiet.object_counters().expect("section on");
+    let scripted_counters = scripted.object_counters().expect("section on");
+    let scripted_table = scripted.object_table().expect("section on");
+    assert_eq!(
+        quiet_counters.successes(),
+        0,
+        "the quiet arm did something: {quiet_counters:?}"
+    );
+    assert!(
+        scripted_counters.picked_up > 0 && scripted_counters.struck_terrain > 0,
+        "the scripted arm did nothing: {scripted_counters:?}"
+    );
+    println!(
+        "PHASE12-BENCH artifact-tick cells=16384 founders=200 \
+         disabled_us={disabled_us:.1} disabled_population={} \
+         quiet_us={quiet_us:.1} quiet_population={} quiet_objects={} \
+         scripted_us={scripted_us:.1} scripted_population={} scripted_objects={} \
+         scripted_actions_total={} scripted_refusals_total={}",
+        disabled.population(),
+        quiet.population(),
+        quiet.object_table().map_or(0, |table| table.len()),
+        scripted.population(),
+        scripted_table.len(),
+        scripted_counters.successes(),
+        scripted_counters.refusals(),
+    );
+}
