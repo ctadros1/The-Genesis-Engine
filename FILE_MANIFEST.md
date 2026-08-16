@@ -241,6 +241,8 @@ afterwards.
 - experiments/phase9-c91-confirmatory.campaign
 - experiments/phase10-c103-confirmatory.campaign
 - experiments/phase11-c111-confirmatory.campaign
+- experiments/phase11-c111-agematched-preregistration.md
+- experiments/phase11-reachability-preregistration.md
 
 - experiments/results/phase7-c71-pilot-manifest.txt
 - experiments/results/phase7-c71-pilot-spatial.txt
