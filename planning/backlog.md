@@ -719,3 +719,51 @@ Increment B - `plasticity.live_rule_zero` becomes behavioural. NEXT.
   and cannot be an arm of the 2x2 anyway: both arms must run on one build.
 
 Increment C - the moat, then the 2x2 campaign, pre-registered as in D-107.
+
+- The **counter split is DONE 2026-08-15** and was the stated prerequisite.
+  `WorldMetrics` carries `plasticity_updates_applied`, `_static` and
+  `_refused` beside the total; fixture schema 6 -> 7; the verify script's
+  "not a control" list gained `"plasticity_updates_applied":0,`. No checksum
+  moved - the counters were already separate inside `PlasticityCounters` and
+  only the export collapsed them.
+- The moat itself is **not** done. `world.rs` still debits
+  `plan.plastic_edges.len() * cost_per_edge_thousandths` with no reference to
+  the rule. With `plasticity_updates_applied` now exported, the moat arm can
+  be priced against it and the difference reported, which was not possible
+  before.
+
+## Open design question blocking increment B, raised 2026-08-15
+
+**The handoff says "remap the rule ONCE in `compile_with_budget`". That
+cannot, on its own, produce what D-107 asked for**, and the gap is worth
+settling before code rather than after.
+
+`structmut.rs:633` draws `rule_id` uniformly over `PLASTICITY_RULE_COUNT`
+(5) and `genome2.rs:257` reduces a stored id mod 5 at expression time. D-107
+A3 is "remove the dead value from the rule id space so every `rule_id` names
+a live rule". A compile-time remap sees a 5-way draw and has four live rules
+to map it onto, so **some rule gets twice the probability of the others** -
+and choosing which is exactly the "authors which learning form evolution
+starts adjacent to" objection that D-107 raised to reject option A1.
+
+Getting a uniform four-way draw means the flag reaches
+`PLASTICITY_RULE_COUNT` as well - the draw and the mod - not only
+`compile_with_budget`. That has a consequence to state rather than discover:
+**genome validity becomes config-dependent across the 2x2's arms.** A genome
+carrying `rule_id = 4` is meaningful in the flag-off arm and out of range in
+the flag-on arm, so the arms no longer share a genome-validity predicate.
+
+Three options, none yet chosen:
+- **(a) Flag reaches the draw and the reduction.** Uniform over four live
+  rules, which is what "remove the dead value" means. Costs a
+  config-dependent genome validity and a bigger blast radius than a compile
+  remap.
+- **(b) Compile-time remap `r -> (r % 4) + 1`.** Narrow, but doubles rule 1's
+  share and is A1's objection wearing a different hat.
+- **(c) Keep the 5-way draw and treat id 0 as a fifth live rule that
+  duplicates one of the four.** Same objection as (b), stated more honestly.
+
+Consult `genesis-neuroevolution` and the lifetime-learning review before
+choosing - AGENTS.md requires it for any plasticity criterion or ADR, and
+ADR-0022 is the record of what skipping it costs. Whatever is chosen needs
+an ADR, because it changes what a `rule_id` allele means.

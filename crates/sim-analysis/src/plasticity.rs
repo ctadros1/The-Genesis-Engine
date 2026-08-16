@@ -836,6 +836,14 @@ pub struct WorldPlasticity {
     /// second explains a null in the first.
     pub plastic_edges_total: u64,
     pub plasticity_updates_total: u64,
+    /// Updates that **moved learned state**, carried beside the total for the
+    /// reason `learned_edges_nonzero` is carried beside the mean (D-098):
+    /// `plasticity_updates_total` counts plastic edges *visited*, and 95.43
+    /// percent of the confirmatory campaign's 1.1 billion were the rule-0
+    /// early return. A report citing the total as evidence the mechanism ran
+    /// is citing the wrong number, and until this field existed there was no
+    /// right one to cite.
+    pub plasticity_updates_applied: u64,
     pub mean_abs_learned_milli: u64,
 }
 
@@ -937,6 +945,11 @@ pub struct PlasticityOutcome {
     pub total_set_marker_alleles: u64,
     pub median_population: i64,
     pub total_plasticity_updates: u64,
+    /// The applied half of `total_plasticity_updates`. Reported beside it,
+    /// never instead of it: the pair is what distinguishes "the machinery was
+    /// carried" from "the machinery did something", and a single number
+    /// answers only the first (D-098).
+    pub total_plasticity_updates_applied: u64,
 }
 
 pub fn summarise(
@@ -1034,6 +1047,7 @@ pub fn summarise(
         total_set_marker_alleles: worlds.iter().map(|w| w.alleles.set_marker_alleles).sum(),
         median_population: pick(worlds.iter().map(|w| w.population as i64).collect()),
         total_plasticity_updates: worlds.iter().map(|w| w.plasticity_updates_total).sum(),
+        total_plasticity_updates_applied: worlds.iter().map(|w| w.plasticity_updates_applied).sum(),
     }
 }
 
@@ -1213,7 +1227,8 @@ pub fn render(
                  mean_eta_milli={} marker_value_milli={} plastic_fraction_milli={} \
                  marker_set_fraction_milli={} eta_excess_milli={} plastic_excess_milli={} \
                  moved_eta_alleles={} moved_marker_alleles={} plastic_edges_total={} \
-                 plasticity_updates={} mean_abs_learned_milli={} no_variance={} selected={}",
+                 plasticity_updates={} plasticity_updates_applied={} \
+                 mean_abs_learned_milli={} no_variance={} selected={}",
                 world.seed,
                 world.alleles.organisms,
                 world.alleles.edge_alleles,
@@ -1230,6 +1245,7 @@ pub fn render(
                 world.alleles.moved_marker_alleles,
                 world.plastic_edges_total,
                 world.plasticity_updates_total,
+                world.plasticity_updates_applied,
                 world.mean_abs_learned_milli,
                 world.alleles.no_variance(),
                 world.selected_over_drift(plan),
@@ -2751,6 +2767,7 @@ mod tests {
             alleles,
             plastic_edges_total: 0,
             plasticity_updates_total: 0,
+            plasticity_updates_applied: 0,
             mean_abs_learned_milli: 0,
         }
     }
@@ -3158,6 +3175,7 @@ mod tests {
             total_set_marker_alleles: 0,
             median_population: 0,
             total_plasticity_updates: 0,
+            total_plasticity_updates_applied: 0,
         };
         let mut control = empty.clone();
         control.condition = "C".to_owned();

@@ -1304,6 +1304,7 @@ fn command_plasticity(options: Options) -> Result<(), String> {
                 alleles,
                 plastic_edges_total: metrics.plastic_edges_total,
                 plasticity_updates_total: metrics.plasticity_updates_total,
+                plasticity_updates_applied: metrics.plasticity_updates_applied,
                 mean_abs_learned_milli: metrics.mean_abs_learned_milli,
             });
         }
@@ -1944,7 +1945,7 @@ fn command_fixture(options: Options) -> Result<(), String> {
         let (channel_registry, activation_registry) = registry_versions();
         println!(
             concat!(
-                "{{\"fixture_schema_version\":6,\"phase\":\"phase11\",",
+                "{{\"fixture_schema_version\":7,\"phase\":\"phase11\",",
                 "\"behavior_policy\":\"{}\",\"genome2_policy\":\"{}\",",
                 "\"meiosis_policy\":\"{}\",\"structmut_policy\":\"{}\",",
                 "\"controller2_policy\":\"{}\",\"plasticity_policy\":\"{}\",",
@@ -1954,6 +1955,13 @@ fn command_fixture(options: Options) -> Result<(), String> {
                 "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
                 "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
                 "\"plastic_edges_total\":{},\"plasticity_updates_total\":{},",
+                // Inserted **before** `controller_faults_total`, not appended.
+                // `scripts/verify-phase11-determinism.sh` greps for
+                // `"controller_faults_total":0}` with the closing brace, which
+                // pins that field as the last one in the object; appending
+                // here would fail the script with a message about faults.
+                "\"plasticity_updates_applied\":{},\"plasticity_updates_static\":{},",
+                "\"plasticity_updates_refused\":{},",
                 "\"plasticity_anomalies_total\":{},\"mean_abs_learned_milli\":{},",
                 "\"learned_edges_nonzero\":{},\"max_abs_learned_milli\":{},",
                 "\"plasticity_cost_milli\":{},\"controller_faults_total\":{}}}"
@@ -1977,6 +1985,9 @@ fn command_fixture(options: Options) -> Result<(), String> {
             metrics.population,
             metrics.plastic_edges_total,
             metrics.plasticity_updates_total,
+            metrics.plasticity_updates_applied,
+            metrics.plasticity_updates_static,
+            metrics.plasticity_updates_refused,
             metrics.plasticity_anomalies_total,
             metrics.mean_abs_learned_milli,
             metrics.learned_edges_nonzero,

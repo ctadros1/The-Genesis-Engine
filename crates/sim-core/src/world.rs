@@ -526,10 +526,42 @@ pub struct MetricsSnapshot {
     /// `plasticity_anomalies_total` under D-074.
     pub learned_edges_nonzero: u64,
     pub max_abs_learned_milli: u64,
-    /// Plastic-edge updates applied, and the anomaly half - faults plus
-    /// clamp saturations. Runaway plasticity destabilizing controllers into
-    /// noise is a named risk of this phase and this is its measurement.
+    /// Plastic edges **visited**, and the anomaly half - faults plus clamp
+    /// saturations. Runaway plasticity destabilizing controllers into noise is
+    /// a named risk of this phase and this is its measurement.
+    ///
+    /// **"Visited", not "applied", and the difference was 95.43 percent.**
+    /// This is `PlasticityCounters::total_evaluated` - applied plus static
+    /// plus refused - and the confirmatory findings read its 1,109,373,897 as
+    /// "the mechanism executed a billion times" when 1.06 billion of those
+    /// were `StepKind::Static`: the early return for a flagged edge whose rule
+    /// is 0, taken before any gene is read. One number that can only answer
+    /// one question, read as answering both (D-098). The three dispositions
+    /// below are what actually answer it, and this sum is kept beside them
+    /// rather than replaced, exactly as `plasticity_anomalies_total` was kept
+    /// when D-074 split it.
     pub plasticity_updates_total: u64,
+    /// Updates that **moved learned state**: `StepKind::Applied`.
+    ///
+    /// This is the number a report means when it says the mechanism ran, and
+    /// the one applied-step pricing charges against (D-107). A run with a
+    /// large `plasticity_updates_total` and a zero here is a world that
+    /// carried the machinery and never used it - which is what the Phase 11
+    /// campaign measured, and could not say.
+    pub plasticity_updates_applied: u64,
+    /// Flagged edges whose rule is Static, returning before any gene is read.
+    ///
+    /// Not noise: a rule-0 plastic edge still pays the per-edge energy cost,
+    /// so this is how a campaign tells "plasticity was selected down by
+    /// turning the rule off" from "plasticity was selected down by dropping
+    /// the flag".
+    pub plasticity_updates_static: u64,
+    /// Rule ids outside the registry. Expected to stay at zero forever; a
+    /// nonzero value is a genome-validation bug report, so it is reported
+    /// separately rather than folded into either number above - D-074's
+    /// lesson that a bug signal summed into a busy counter stops being a
+    /// signal.
+    pub plasticity_updates_refused: u64,
     pub plasticity_anomalies_total: u64,
     /// Split out of `plasticity_anomalies_total`, which sums both, because
     /// the halves mean opposite things: a saturation is the clamp working
@@ -1376,6 +1408,15 @@ impl World {
                 .learn
                 .as_ref()
                 .map_or(0, |l| l.counters.total_evaluated()),
+            plasticity_updates_applied: self
+                .learn
+                .as_ref()
+                .map_or(0, |l| l.counters.updates_applied),
+            plasticity_updates_static: self.learn.as_ref().map_or(0, |l| l.counters.updates_static),
+            plasticity_updates_refused: self
+                .learn
+                .as_ref()
+                .map_or(0, |l| l.counters.updates_refused),
             plasticity_anomalies_total: self
                 .learn
                 .as_ref()

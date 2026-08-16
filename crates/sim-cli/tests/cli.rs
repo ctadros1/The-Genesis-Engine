@@ -306,7 +306,7 @@ fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
     assert_eq!(stdout(&first), stdout(&second));
     let line = stdout(&first);
     for expected in [
-        "\"fixture_schema_version\":6",
+        "\"fixture_schema_version\":7",
         "\"phase\":\"phase11\"",
         "\"plasticity_policy\":\"lifesim-plasticity-v2\"",
         "\"rule_registry\":1",
@@ -318,6 +318,27 @@ fn phase11_trace_is_identical_across_clean_processes_and_pinned() {
         "\"population\":1",
         "\"plastic_edges_total\":2",
         "\"plasticity_updates_total\":400000",
+        // **The split, and the reason the total above is not enough.** The
+        // confirmatory campaign reported 1,109,373,897 updates of which
+        // 95.43 percent were `StepKind::Static` - the early return for a
+        // flagged edge whose rule is 0, taken before any gene is read - and
+        // the finding was written up as "the mechanism executed a billion
+        // times". A total that sums applied, static and refused answers
+        // "how many plastic edges were visited", never "how many learned",
+        // and only the first question has a bearing on whether anything
+        // happened.
+        //
+        // This trace is the pure case and is pinned as such: every visit
+        // applies, because the one organism's two edges carry a live rule
+        // and a nonzero eta for all 200,000 ticks. A static count above
+        // zero here would mean the fixture had started measuring the
+        // early return instead of the arithmetic.
+        "\"plasticity_updates_applied\":400000",
+        "\"plasticity_updates_static\":0",
+        // Zero forever, and asserted rather than assumed: a rule id outside
+        // the registry is a genome-validation bug report, and this fixture
+        // is where it would first show.
+        "\"plasticity_updates_refused\":0",
         // Both plastic edges actually moved. `plastic_edges_total` says how
         // many edges *could* learn and this says how many *did*, which is the
         // distinction D-098 was published for want of: a mean over all the

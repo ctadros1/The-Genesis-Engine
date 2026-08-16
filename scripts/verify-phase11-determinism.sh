@@ -76,10 +76,18 @@ done
 # counts faults and clamp saturations, and a trace that saturates has stopped
 # measuring accumulation and started measuring a constant - the runaway
 # plasticity this phase's risk table names.
+# `plasticity_updates_applied` is here as well as the total, and it is the
+# stronger of the two. The total counts plastic edges *visited* - applied plus
+# static plus refused - so a world whose every flagged edge carries rule 0
+# returns a large total having learned nothing, which is what 95.43 percent of
+# the confirmatory campaign's 1.1 billion "updates" were (D-098). A trace that
+# still reported a nonzero total while the arithmetic stopped running would
+# pass the old list unchanged.
 for forbidden in \
   '"population":0,' \
   '"plastic_edges_total":0,' \
   '"plasticity_updates_total":0,' \
+  '"plasticity_updates_applied":0,' \
   '"mean_abs_learned_milli":0,' \
   '"learned_edges_nonzero":0,'
 do
