@@ -294,7 +294,16 @@ impl ReconstructedCounters {
             }
             EventKind::ObjectStruck { .. } => self.objects_struck_total += 1,
             EventKind::TerrainStruck { .. } => self.terrain_struck_total += 1,
-            EventKind::ObjectCombined { .. } => self.objects_combined_total += 1,
+            EventKind::ObjectCombined { .. } => {
+                self.objects_combined_total += 1;
+                // A composite's creation record *is* its `ObjectCombined`:
+                // the kernel emits no separate `ObjectCreated` for it (the
+                // constituents' records already carry the mass and energy),
+                // so the created-by-cause slot for `CAUSE_COMBINED` is
+                // filled from here. `phase12_object_events.rs` is the
+                // check that this equals `created_combined`.
+                self.objects_created_by_cause[usize::from(sim_core::CAUSE_COMBINED - 1)] += 1;
+            }
             EventKind::ObjectConsumed { .. } => self.objects_consumed_total += 1,
             EventKind::ObjectActionRefused { reason, .. } => {
                 self.object_refusals_total += 1;

@@ -106,8 +106,8 @@ Reserved successors, appended in phase order:
 | 10 | PlasticityInit | 11 | Initial plastic-state seeding at birth (zero by default policy; the stream exists so a nonzero policy does not renumber) |
 | 11 | Signal | 13 | Emission noise and channel corruption |
 | 12 | Perception | 13 | Selection among tied perception candidates |
-| 13 | Artifact | 12 | Placement site selection, combination outcome variance, fracture products |
-| 14 | MaterialYield | 12 | Extraction yield variance |
+| 13 | Artifact | 12 | Combination joint draw (subject = pair key of the two constituents), fracture fragment count and split (subject = target object id) - the only object-phase draws; placement has no site draw, it lands at the faced cell's centre (ADR-0028) |
+| 14 | MaterialYield | 12 | Extraction yield variance on a terrain strike (subject = striker id) |
 | 15 | Development | 14 | Ontogenetic variance at developmental checkpoints |
 | 16 | Mortality | 8 | Age-dependent and extrinsic hazard draws |
 | 17 | Morphogenesis | 10 | Developmental growth-program variance (unused under the default fully deterministic policy) |
@@ -155,7 +155,10 @@ safe.
 ## Rule 2: One Shared Monotonic Object ID Space
 
 Organisms and artifacts share a single monotonic `next_object_id` counter
-with a type tag. IDs are strictly increasing, never reused within a world
+with a type tag. *As built (Phase 12, ADR-0028): the field keeps its name
+`next_entity_id`; objects and organisms draw from it alike, an object id is
+never an organism id, and `World::check_invariants` proves it. There is no
+type tag - the kind is known from which table holds the id.* IDs are strictly increasing, never reused within a world
 lineage, and define one total order over everything in the world.
 
 Rationale: a single order removes the need for any cross-space tie-break
@@ -173,7 +176,10 @@ Consequences that must be honored:
   order is an implementation detail and may never be read in scan order.
 - `next_entity_id` in save-state version 1 becomes `next_object_id` in
   version 2; the registered format 1 to format 2 migration copies the value
-  and writes an empty artifact table.
+  and writes an empty artifact table. *As built: `SAVE_STATE_VERSION` stays
+  2 and the field keeps its name; the object table is a new snapshot section
+  (`SECTION_OBJECTS = 15`) that older files simply lack, so no value is
+  copied and no table is written for them (`FORMAT6_TO_CURRENT`).*
 
 ## Rule 3: Roles Are Assigned By ID Comparison, Not Traversal
 
@@ -187,7 +193,11 @@ function of the participants' IDs.
   when both are symmetric the lower ID is the initiator.
 - Contested resource or object acquisition: resolved by (priority, distance
   squared, object ID), then by a pair-key lottery if configuration enables
-  one.
+  one. *As built (Phase 12): pick-up and combine claims on one object are
+  resolved by (priority descending, distance squared ascending, organism id
+  ascending) and there is no lottery and no configuration for one; the
+  loser is refused `Contested`. Rule 1's pair key is used for the joint
+  draw of a combination, not for who gets the object.*
 
 ## Rule 4: Social Learning Is Read-Prior, Commit-After
 
@@ -286,7 +296,7 @@ only when that subsystem's state exists:
 | `lifesim-activation-state-v1` | Per-node activation vector | genome schema 2 |
 | `lifesim-learn-state-v1` | Per-plastic-edge Q16 learned deltas, modulator state | plasticity enabled |
 | `lifesim-signal-state-v1` | Committed signal field | social enabled |
-| `lifesim-object-state-v1` | Artifact table, per-cell occupancy | artifacts enabled |
+| `lifesim-object-state-v1` | Object table (materials, masses, integrity, energy, composition, owner, holder), held slots, per-object exposure and carry ticks, ledger and counters; per-cell occupancy is rebuilt and not hashed | `artifact.enabled` - appended **last**, after every Phase 11 section (Rule 8), so the earlier fixtures are unmoved |
 | `lifesim-terrainmod-state-v1` | Terrain override deltas, composed terrain checksum | mutable world enabled |
 | `lifesim-physiology-state-v1` | Developmental stage, accumulated hazard, disease load | physiology enabled |
 | `lifesim-climate-state-v1` | Dynamic temperature and moisture fields | climate enabled |
@@ -347,8 +357,8 @@ canonical config hash only when their section is enabled:
 | - | `lifesim-probe-v1` | Phase 11 measurement section: the action-class set, the partition/indicator split, `TURN_BAND_MILLI`, and the neutral marker locus. Hashed only when `probe.enabled`, and appended after Phase 12's section, so the five fixtures are unmoved. Enabling it starts a new replay lineage in both halves: the marker changes what point mutation can land on, and the census changes what is stored and checksummed |
 | - | `lifesim-action-census-v1` | Action-class set and classification policy (Phase 11). A histogram recorded under one version is not comparable with one recorded under another, so the version is folded into the config hash and into the `.alac` header's `policy_hash` |
 | - | `lifesim-social-v1` | Perception and signalling (Phase 13) |
-| - | `lifesim-material-v1` | Material registry and properties (Phase 12) |
-| - | `lifesim-artifact-v1` | Object actions and combination physics (Phase 12) |
+| - | `lifesim-material-v1` | Material registry and properties (Phase 12, `MATERIAL_REGISTRY_VERSION = 1`: stone, wood, fiber, carcass; the registry hash is folded into the artifact config block) |
+| - | `lifesim-artifact-v1` | Object actions, affordances by physics, combination and fracture (Phase 12, ADR-0028); hashed only when `artifact.enabled`, after the probe block; the block also carries `CHANNEL_REGISTRY_VERSION_ARTIFACT = 2` |
 | - | `lifesim-worldmod-v1` | Terrain modification rules (Phase 12) |
 | - | `lifesim-physiology-v1` | Allometry, ontogeny, senescence (Phase 13) |
 | `lifesim-worldgen-v1` | `lifesim-worldgen-v2` | Adds moisture, temperature, and biome fields (Phase 6). v1 worlds keep v1 forever, so their terrain checksums and both fixtures are unaffected |
@@ -373,12 +383,18 @@ config hash, because an analysis version can never affect a world:
 `lifesim-similarity-v1` (existing), `lifesim-era-v1`,
 `lifesim-tradition-v1`, `lifesim-spatial-index-v1` (Phase 7),
 `lifesim-plasticity-analysis-v1` (Phase 11, C11.1 and C11.2),
-`lifesim-conjunction-census-v1` (Phase 11, descriptive).
+`lifesim-conjunction-census-v1` (Phase 11, descriptive),
+`lifesim-artifact-analysis-v1` (Phase 12, C12.1-C12.3).
 
 Save framing versions are separate again: ALIF format 1 (existing), ALIF
 format 2 (Phase 12) - **in practice ALIF format 4**, since the Phase 9 and
 Phase 11 sections landed first, and **ALIF format 5 is current**, which
-reserves one config byte for `plasticity.live_rule_zero`; see
+reserves one config byte for `plasticity.live_rule_zero`, and **ALIF format
+7 is current** (Phase 12 artifact half: the artifact config block and
+`genome2.mutation.binding_q16` appended to the config record, section 15
+for objects, `binding_applied` in the schema-2 counters). Format 6 files
+read through the retained format-6 reader; format 7 refuses to write a
+format-6 file for a world with the section on. See
 `specifications/world-save-format.md`.
 Artifact framing versions are separate from both: ALEV format 1 (event log,
 Phase 5), ALSS format 1 (spatial samples, Phase 7), ALAC format 1

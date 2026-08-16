@@ -78,8 +78,9 @@ events carry tick and typed payload only.
 
 ## Planned Successor: Event Schema Versions 3 And Up
 
-`EVENT_SCHEMA_VERSION` reached 3 with Phase 7 and **4 with Phase 9's
-`StructuralMutationRejected`**. Earlier payloads are unchanged at every
+`EVENT_SCHEMA_VERSION` reached 3 with Phase 7, **4 with Phase 9's
+`StructuralMutationRejected`**, 5 with Phase 11's `PlasticityFault` (tag
+13), and **6 with Phase 12's artifact half** (tags 14-23, below). Earlier payloads are unchanged at every
 step; each increment is additive. A reader that encounters an unknown
 event type fails closed rather than skipping it, because a silently skipped
 event would corrupt any analysis that counts rates.
@@ -104,10 +105,24 @@ New bounded payloads, grouped by the phase that adds them:
 | 11 | `PlasticityFault` | organism, neutralized non-finite count |
 | 13 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
 | 13 | `PerceptionFault` | organism, neutralized count |
-| 12 | `ObjectCreated` / `ObjectDestroyed` | object ID, material, creator, composition depth |
-| 12 | `ObjectCombined` / `ObjectFractured` | inputs, output, joint quality or fragment count |
-| 12 | `ObjectActionRejected` | actor, action, typed reason |
-| 12 | `TerrainModified` | actor, layer, cell, old and new value |
+| 12 | `ObjectCreated` **(shipped, tag 14, version 6)** | object id, material, `DestroyCause`-style create cause (extracted, fractured, combined, carcass), mass, energy, parent id |
+| 12 | `ObjectDestroyed` **(tag 15)** | object id, `DestroyCause` id (consumed, fractured, combined-into, decayed, disassembled, ephemeral) |
+| 12 | `ObjectPickedUp` **(tag 16)** | object id, holder, cell it was taken from |
+| 12 | `ObjectReleased` **(tag 17)** | object id, holder, `placed` flag, cell it landed in - a placed-object episode is `ObjectReleased{placed:true}` to the same id's next `ObjectPickedUp` or `ObjectDestroyed` |
+| 12 | `ObjectStruck` **(tag 18)** | striker, target, force contributed; the fracture, if any, is the target's `ObjectDestroyed{fractured}` and the fragments' `ObjectCreated` |
+| 12 | `TerrainStruck` **(tag 19)** | striker, cell, extracted volume, material |
+| 12 | `ObjectCombined` **(tag 20)** | composite id, held id, target id, combiner, depth, joint quality - this *is* the composite's creation record; no `ObjectCreated` is emitted for a composite (its mass and energy are the constituents' records summed) |
+| 12 | `ObjectConsumed` **(tag 21)** | object id, consumer, energy assimilated |
+| 12 | `ObjectActionRefused` **(tag 22)** | actor, `ObjectAction` id, `RefuseReason` id (13 typed reasons; every refusal events, so fire and success rates are separable and a cap that binds is visible) |
+| 12 | `ObjectExposure` **(tag 23)** | organism, exposure ticks, carry ticks, age, birth band - emitted once at death; C12.2's per-organism record |
+| 12 | `TerrainModified` | actor, layer, cell, old and new value (mutable-world half; not an event as built - the yield layer is a rebuilt field) |
+
+`ObjectFractured` from the earlier draft does not exist: a fracture is
+told entirely by the target's `ObjectDestroyed` and its fragments'
+`ObjectCreated{parent_id = target}`, so the log carries no second account
+of the same fact. Counter reconstruction covers the object counters
+(`ObjectCounters`) exactly as it covers `Counters`: with zero drops every
+object counter is reproduced from tags 14-22 (`ReconstructedCounters`).
 | 8 | `DeathByHazard` / `DeathBySenescence` | organism, cause, age, accumulated hazard |
 | 10 | `NonViableBody` | child, failed validation reason |
 | 14 | `DiseaseTransmitted` | source, target, load |

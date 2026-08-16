@@ -205,6 +205,69 @@ Format 3 is deliberately outside the chain: it differs from format 4 by a
 *section* and a logical-state version, not by a config byte, and
 `phase12_format4.rs` owns that comparison.
 
+## Phase 12 Implementation Notes: ALIF Format 7 And Section 15, Objects
+
+Implemented in `crates/sim-persist/src/codec.rs` (ADR-0028, D-115).
+`FORMAT_VERSION` is 7; `FORMAT_VERSION_6` is retained with
+`encode_snapshot_format6` and `decode_snapshot_format6`, and
+`FORMAT6_TO_CURRENT` joins the registry (`store::resolve_format7_defaults`
+supplies the absent artifact block and `binding_q16 = 0`, both of which are
+"section off", so a format-6 world restores to the same replay lineage it
+was saved from).
+
+**The bump was forced by two config fields, not by the objects.** Format 7
+appends to the positional config block, in this order: the artifact section
+(`enabled`, `inert`, `ephemeral`, the six caps, the three carry fields, the
+three costs and the threshold, the three reaches, the five strike/fracture
+fields, `joint_floor_q16`, `blocking_mass_milli`, the five yield fields, the
+two material weights - `FORMAT7_CONFIG_BYTES` in total, asserted by
+`format7.rs::each_adjacent_format_adds_the_declared_config_bytes`, which is
+the format-6 chain table with a per-row byte delta instead of the fixed
+"one byte"), then `genome2.mutation.binding_q16` (u16). The schema-2
+counters section gains one trailing u64, `binding_applied`, at format 7 and
+above. Format 6 is refused as a write target for any world with the artifact
+section enabled or a nonzero bind rate (`refuse_format7_state`), for the
+same reason format 4 refused format 3: the older file could not say what the
+world was.
+
+**Section 15 (`SECTION_OBJECTS`), present when `artifact.enabled`**, did not
+by itself need the bump (the tag-12/tag-14 precedent: a new section under a
+new tag is only ever present when its config flag is on, and a file with the
+flag off simply lacks it). Its body:
+
+    u64 count
+    count x { u64 id, u16 material, i32 x_fp, i32 y_fp, i32 integrity_q16,
+              i64 mass_milli, i64 energy_milli, u32 hardness_q16,
+              u32 durability_q16, u32 decay_q16, u64 holder_id, u64 owner_id,
+              u8 depth, u64 created_tick, u64 creator_id, u8 cause,
+              u64 parent_id, u64 composition_len, composition_len x u64 }
+    u64 objects_allocated_total
+    10 x i128 ledger (ObjectLedger::FIELD_NAMES order)
+    30 x u64 counters (ObjectCounters::FIELD_NAMES order)
+    u64 population; population x { u64 exposure_ticks, u64 carry_ticks, u8 birth_band }
+
+Every count is bounded before allocation with the exact fixed minimum an
+item occupies (`OBJECT_FIXED_BYTES = 100`, which *includes* the
+composition-length word). D-115's evidence-trap entry records why that
+sentence is in the spec: a first draft counted that word twice, the bound was
+8 bytes per object too strict, and every table above roughly fifty objects
+was refused as oversized while a three-object round-trip test passed.
+`format7.rs::a_two_hundred_object_table_round_trips` is the guard.
+
+Restore rebuilds the per-cell occupancy index and the held-object slots from
+the table (`ObjectState::from_table`, `rebuild_held`, `rebuild_cell_index`)
+and refuses, by name (`RestoreError::StateInvalid("object table: ...")`), a
+table whose ids are not strictly ascending, whose composition names an
+absent or unowned constituent, whose depth exceeds the cap or is not
+1 + max(constituents), or whose ledger's expected mass and energy differ from
+the table's (`ObjectTable::violation`); a `holder_id` naming an organism that
+is not in the save is refused separately. Object-versus-organism id
+collision is checked by `World::check_invariants`, which the restore tests
+call. None of that is stored twice.
+
+The Phase 1, 2, 9 and 11 fixtures are unmoved: a world without the section
+hashes no artifact block (D-014) and reports channel-registry version 1.
+
 ## Planned Successor: ALIF Format 2 (Phase 12)
 
 Design: `specifications/mutable-world-state.md`. Decision: ADR-0015.
