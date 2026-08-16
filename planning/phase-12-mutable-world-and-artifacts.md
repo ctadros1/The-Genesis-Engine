@@ -177,6 +177,17 @@ artifact half is NOT STARTED.** The two halves are separable and were built
 in that order because Phase 11's C11.1 needs the terrain-override layer and
 nothing else from this phase.
 
+**Status 2026-08-16: the artifact half is IN PROGRESS under ADR-0028**,
+which records the design and every departure from the commissioned review
+and from the 2026-08-04 spec. Two things found on the way that this plan
+must carry: (1) D-114 - no schema-2 lineage could ever bind a channel its
+founder did not, so the phase adds a `bind` mutation operator, off by
+default and common-mode across the four conditions, without which C12.1's
+null would be guaranteed by mechanism; (2) the four conditions are realised
+as settable fields of the `artifact` section (`inert` for C, `ephemeral`
+for B, `max_composition_depth = 0` for D). Nothing below has changed except
+where marked; the criteria's thresholds are as they were.
+
 - [ ] **C12.1 Object actions are used, not just fired.** Under A, the rate
       of successful pick-up, place, and combine actions exceeds the rate
       under C by the stated effect size in at least 20 of 30 seeds. Condition
