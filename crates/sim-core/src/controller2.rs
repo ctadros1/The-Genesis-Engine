@@ -60,17 +60,84 @@ pub const NOT_PLASTIC: u32 = u32::MAX;
 /// update it did not evolve.
 pub const NO_MODULATOR: u32 = u32::MAX;
 
-/// How many of an expressed network's flagged edges this world compiles as
-/// plastic.
+/// What this world's plasticity settings mean to the compiler.
 ///
-/// `None` is the plasticity section disabled, and it is not the same as
-/// `Some(0)`: with `None` no edge is compiled plastic, nothing is counted as
-/// over the cap, and the plan, the evaluation and the checksum are exactly
-/// what they were before Phase 11 existed. That distinction is what
-/// discharges Rule 0's Phase 11 clause - `EDGE_FLAG_PLASTIC` is already a
-/// flag on every schema-2 edge, so acting on it without a gate would move the
-/// Phase 9 fixture while every disabled section stayed disabled.
-pub type PlasticityBudget = Option<u32>;
+/// A struct rather than the bare `Option<u32>` it was, because ADR-0027 adds
+/// a second, independent thing the compiler needs to know. Two booleans'
+/// worth of state in one parameter beats two parameters that can be passed in
+/// the wrong order.
+///
+/// `max_plastic_edges` is `None` when the plasticity section is disabled, and
+/// that is **not** the same as `Some(0)`: with `None` no edge is compiled
+/// plastic, nothing is counted as over the cap, and the plan, the evaluation
+/// and the checksum are exactly what they were before Phase 11 existed. That
+/// distinction is what discharges Rule 0's Phase 11 clause -
+/// `EDGE_FLAG_PLASTIC` is already a flag on every schema-2 edge, so acting on
+/// it without a gate would move the Phase 9 fixture while every disabled
+/// section stayed disabled.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct PlasticityBudget {
+    pub max_plastic_edges: Option<u32>,
+    /// ADR-0027: every `rule_id` names a live rule.
+    ///
+    /// The remap happens **once, here in `compile_with_budget`**, so
+    /// `plasticity::step` keeps receiving a rule and stays a pure function of
+    /// the rule it is handed. A flag consulted inside `step` would put a
+    /// world-level setting on the hottest path in the kernel and make the
+    /// rule's meaning depend on something the rule cannot see.
+    pub live_rule_zero: bool,
+}
+
+impl PlasticityBudget {
+    /// The plasticity section is off. Pre-Phase-11 behaviour exactly.
+    pub const fn disabled() -> Self {
+        Self {
+            max_plastic_edges: None,
+            live_rule_zero: false,
+        }
+    }
+
+    /// Up to `limit` plastic edges per organism, rule 0 still dead.
+    pub const fn edges(limit: u32) -> Self {
+        Self {
+            max_plastic_edges: Some(limit),
+            live_rule_zero: false,
+        }
+    }
+
+    /// The same budget with ADR-0027's remap live.
+    pub const fn with_live_rule_zero(self) -> Self {
+        Self {
+            live_rule_zero: true,
+            ..self
+        }
+    }
+
+    /// The rule id an expressed allele names under this world's settings.
+    ///
+    /// With the flag clear this is the identity, which is what keeps every
+    /// existing fixture exactly where it is. With it set, ids map onto the
+    /// four live rules: `LIVE_RULE_BASE + (r % LIVE_RULE_COUNT)`.
+    ///
+    /// **The `%` is a clamp, not a distribution choice**, and ADR-0027 records
+    /// why that distinction matters. `structmut`'s draw is the only place a
+    /// fresh `rule_id` is ever produced, and under this flag it draws over
+    /// `LIVE_RULE_COUNT` values - so every allele in circulation in a world
+    /// that has run with the flag from tick 0 is already in range and the `%`
+    /// never fires. It exists for the two ways an out-of-range id could
+    /// arrive anyway: a save written with the flag clear and reloaded with it
+    /// set, or a `seeded` founder set carrying an arbitrary id. Those fail
+    /// safe onto a live rule rather than out of the registry - but they are
+    /// also the case where the distribution stops being uniform, so a
+    /// campaign that reloads across the flag has to report it.
+    pub const fn effective_rule_id(self, rule_id: u8) -> u8 {
+        if self.live_rule_zero {
+            plasticity::LIVE_RULE_BASE + (rule_id % plasticity::LIVE_RULE_COUNT)
+        } else {
+            rule_id
+        }
+    }
+}
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum CompileError {
@@ -193,7 +260,7 @@ impl CompiledNetwork {
 
 /// Compile an expressed network with no plasticity, the pre-Phase-11 form.
 pub fn compile(network: &ExpressedNetwork) -> Result<CompiledNetwork, CompileError> {
-    compile_with_budget(network, None)
+    compile_with_budget(network, PlasticityBudget::disabled())
 }
 
 /// Compile an expressed network, admitting up to `budget` plastic edges.
@@ -232,7 +299,7 @@ pub fn compile_with_budget(
         // identically, and pays no plastic-edge cost - which is a bounded
         // outcome rather than a refused birth. Refusing would make the cap a
         // lethal structural constraint on a value C11.7 has not measured yet.
-        let plastic_slot = match budget {
+        let plastic_slot = match budget.max_plastic_edges {
             Some(limit) if edge.plastic => {
                 if plastic_edges.len() as u32 >= limit {
                     plastic_over_cap += 1;
@@ -269,7 +336,12 @@ pub fn compile_with_budget(
                         source,
                         weight: edge.weight,
                         rule: PlasticityRule {
-                            rule_id: genes.rule_id,
+                            // ADR-0027's remap, applied **once, here**. The
+                            // compiled plan is what `plasticity::step` reads,
+                            // so a rule that reaches the learn phase already
+                            // names a live entry and `step` stays a pure
+                            // function of the rule it is handed.
+                            rule_id: budget.effective_rule_id(genes.rule_id),
                             eta: genes.eta,
                             coefficients: genes.coefficients,
                             decay_q16: plasticity::decay_to_q16(genes.decay),
@@ -1153,7 +1225,8 @@ mod tests {
         // plastic chain, so the presynaptic capture runs on every tick, and
         // `plastic_pre` joins the tuple - a capture that pushed instead of
         // writing in place would grow a capacity and fail here.
-        let plan = compile_with_budget(&plastic_chain(RULE_HEBBIAN, 0), Some(8)).expect("compiles");
+        let plan = compile_with_budget(&plastic_chain(RULE_HEBBIAN, 0), PlasticityBudget::edges(8))
+            .expect("compiles");
         assert_eq!(plan.plastic_edge_count(), 2, "nothing plastic to capture");
         let learned = vec![0_i32; plan.plastic_edge_count()];
         let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
@@ -1197,7 +1270,8 @@ mod tests {
         // so hashing either would make the checksum depend on where in the
         // tick it was taken. `plastic_pre` is the Phase 11 addition and is
         // checked the same way `gathered` is.
-        let plan = compile_with_budget(&plastic_chain(RULE_HEBBIAN, 0), Some(8)).expect("compiles");
+        let plan = compile_with_budget(&plastic_chain(RULE_HEBBIAN, 0), PlasticityBudget::edges(8))
+            .expect("compiles");
         let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         assert!(
             !state.gathered.is_empty() && !state.plastic_pre.is_empty(),
@@ -1225,7 +1299,8 @@ mod tests {
         // already set on schema-2 edges, so a build that acted on it without
         // a config gate would change every existing schema-2 world.
         let network = plastic_chain(RULE_HEBBIAN, 0);
-        let disabled = compile_with_budget(&network, None).expect("compiles");
+        let disabled =
+            compile_with_budget(&network, PlasticityBudget::disabled()).expect("compiles");
         assert_eq!(disabled.plastic_edge_count(), 0);
         assert_eq!(disabled.plastic_over_cap, 0);
         assert!(
@@ -1244,7 +1319,7 @@ mod tests {
         }
         assert_eq!(disabled, compile(&unflagged).expect("compiles"));
 
-        let enabled = compile_with_budget(&network, Some(8)).expect("compiles");
+        let enabled = compile_with_budget(&network, PlasticityBudget::edges(8)).expect("compiles");
         assert_eq!(enabled.plastic_edge_count(), 2);
         assert_eq!(
             enabled
@@ -1273,7 +1348,7 @@ mod tests {
     #[test]
     fn the_budget_caps_plastic_edges_in_homology_order_and_counts_the_refusals() {
         let network = plastic_chain(RULE_HEBBIAN, 0);
-        let capped = compile_with_budget(&network, Some(1)).expect("compiles");
+        let capped = compile_with_budget(&network, PlasticityBudget::edges(1)).expect("compiles");
         assert_eq!(capped.plastic_edge_count(), 1);
         assert_eq!(capped.plastic_over_cap, 1);
         // The lower homology_id keeps the slot; the refused edge falls back
@@ -1296,7 +1371,7 @@ mod tests {
         // steps - which is exactly the collapse the spec's "a modulated rule
         // with no modulator is inert" clause exists to prevent.
         let mut network = plastic_chain(RULE_MODULATED_HEBBIAN, 20);
-        let hidden = compile_with_budget(&network, Some(8)).expect("compiles");
+        let hidden = compile_with_budget(&network, PlasticityBudget::edges(8)).expect("compiles");
         assert!(
             hidden
                 .plastic_edges
@@ -1309,14 +1384,17 @@ mod tests {
         // role is Modulatory. Without this the assertion above would pass on
         // an implementation that never resolved a modulator at all.
         network.nodes[1].role = NodeRole::Modulatory;
-        let gated = compile_with_budget(&network, Some(8)).expect("compiles");
+        let gated = compile_with_budget(&network, PlasticityBudget::edges(8)).expect("compiles");
         assert!(
             gated.plastic_edges.iter().all(|edge| edge.modulator == 1),
             "a Modulatory node did not gate its edges"
         );
         // Node id 0 stays "ungated", which for a modulated rule is inert.
-        let ungated = compile_with_budget(&plastic_chain(RULE_MODULATED_HEBBIAN, 0), Some(8))
-            .expect("compiles");
+        let ungated = compile_with_budget(
+            &plastic_chain(RULE_MODULATED_HEBBIAN, 0),
+            PlasticityBudget::edges(8),
+        )
+        .expect("compiles");
         assert!(
             ungated
                 .plastic_edges
@@ -1330,7 +1408,8 @@ mod tests {
         // The delta must change evaluation, and the compiled plan must be
         // exactly what it was: a plan whose weights had been mutated would be
         // silently reset by the next restore, and nothing would say so.
-        let plan = compile_with_budget(&plastic_chain(RULE_STATIC, 0), Some(8)).expect("compiles");
+        let plan = compile_with_budget(&plastic_chain(RULE_STATIC, 0), PlasticityBudget::edges(8))
+            .expect("compiles");
         let before = plan.clone();
         let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let mut requests = ActionRequests::new();
@@ -1380,7 +1459,7 @@ mod tests {
             },
             plastic(50, 20, 30, 1.0, RULE_HEBBIAN, 0),
         ];
-        let plan = compile_with_budget(&network, Some(8)).expect("compiles");
+        let plan = compile_with_budget(&network, PlasticityBudget::edges(8)).expect("compiles");
         let mut state = ActivationState::for_network(plan.node_count(), plan.plastic_edge_count());
         let learned = vec![0_i32; plan.plastic_edge_count()];
         let mut requests = ActionRequests::new();
@@ -1437,5 +1516,177 @@ mod tests {
             "commit did not advance the prior-state buffer"
         );
         assert_eq!(output_of(&after, 101), Some(1.0));
+    }
+
+    // --- ADR-0027: the remap narrows the id space, it does not turn it -------
+
+    /// With the flag clear, `effective_rule_id` is the identity on every id
+    /// the registry defines **and** on ids outside it.
+    ///
+    /// The second half is the load-bearing one: it is what says the flag-off
+    /// arm is byte-identical to every build before ADR-0027, including for
+    /// the stored-but-unreduced values `PlasticityGenes::normalized` exists
+    /// to tolerate.
+    #[test]
+    fn with_the_flag_clear_the_rule_id_is_untouched() {
+        let budget = PlasticityBudget::edges(8);
+        assert!(!budget.live_rule_zero);
+        for rule_id in 0..=u8::MAX {
+            assert_eq!(
+                budget.effective_rule_id(rule_id),
+                rule_id,
+                "rule {rule_id} moved with the flag clear"
+            );
+        }
+        assert_eq!(
+            PlasticityBudget::disabled().effective_rule_id(plasticity::RULE_STATIC),
+            plasticity::RULE_STATIC
+        );
+    }
+
+    /// With the flag set, **every** id names a live rule and none names the
+    /// dead one.
+    #[test]
+    fn with_the_flag_set_no_rule_id_names_the_dead_value() {
+        let budget = PlasticityBudget::edges(8).with_live_rule_zero();
+        for rule_id in 0..=u8::MAX {
+            let effective = budget.effective_rule_id(rule_id);
+            assert_ne!(
+                effective,
+                plasticity::RULE_STATIC,
+                "rule {rule_id} still reaches the dead value"
+            );
+            assert!(
+                plasticity::rule_in_registry(effective),
+                "rule {rule_id} mapped to {effective}, which is outside the registry"
+            );
+        }
+    }
+
+    /// The map is **uniform** over the four live rules across the range the
+    /// mutation draw can produce.
+    ///
+    /// This is the assertion ADR-0027 turns on, and the reason option (b) was
+    /// rejected: `r -> (r % 4) + 1` applied to a five-value draw gives rule 1
+    /// forty percent and the rest twenty each, which authors a preference for
+    /// plain Hebbian - the rule the lifetime-learning review rates as
+    /// "unsupported as the sole production rule". A uniform map authors
+    /// nothing.
+    #[test]
+    fn the_remap_is_uniform_over_the_live_rules() {
+        let budget = PlasticityBudget::edges(8).with_live_rule_zero();
+        let mut hits = [0_u32; plasticity::RULE_COUNT as usize];
+        for drawn in 0..plasticity::LIVE_RULE_COUNT {
+            hits[budget.effective_rule_id(drawn) as usize] += 1;
+        }
+        assert_eq!(
+            hits[plasticity::RULE_STATIC as usize],
+            0,
+            "the dead value was reachable from the draw's range"
+        );
+        for rule_id in plasticity::LIVE_RULE_BASE..plasticity::RULE_COUNT {
+            assert_eq!(
+                hits[rule_id as usize], 1,
+                "rule {rule_id} is not equiprobable: {hits:?}"
+            );
+        }
+    }
+
+    /// The founder compiles to an inert controller under **both** settings,
+    /// so the two arms of the 2x2 start identical.
+    ///
+    /// D-107's whole argument for A3 over A1 is that `eta == 0` makes the
+    /// founder inert whatever rule its allele nominally names, so narrowing
+    /// the id space hands it nothing. That is an argument about the founder,
+    /// and this is the founder: `rule_id` 0 with `eta` 0, which the flag maps
+    /// to a live rule and which must still do nothing.
+    #[test]
+    fn the_founder_is_inert_under_both_settings() {
+        let mut network = chain();
+        network.edges = vec![
+            ExpressedEdge {
+                plastic: true,
+                plasticity: PlasticityGenes {
+                    rule_id: plasticity::RULE_STATIC,
+                    eta: 0.0,
+                    coefficients: [1.0, 0.0, 0.0, 0.0],
+                    decay: 0.0,
+                    modulator_node: 0,
+                },
+                ..edge(40, 10, 20, 1.0)
+            },
+            ExpressedEdge {
+                plastic: true,
+                plasticity: PlasticityGenes {
+                    rule_id: plasticity::RULE_STATIC,
+                    eta: 0.0,
+                    coefficients: [1.0, 0.0, 0.0, 0.0],
+                    decay: 0.0,
+                    modulator_node: 0,
+                },
+                ..edge(50, 20, 30, 1.0)
+            },
+        ];
+
+        let off = compile_with_budget(&network, PlasticityBudget::edges(8)).expect("compiles");
+        let on = compile_with_budget(&network, PlasticityBudget::edges(8).with_live_rule_zero())
+            .expect("compiles");
+
+        // The flag *does* reach the plan - otherwise this test would pass
+        // with the remap deleted.
+        assert_eq!(off.plastic_edges[0].rule.rule_id, plasticity::RULE_STATIC);
+        assert_ne!(on.plastic_edges[0].rule.rule_id, plasticity::RULE_STATIC);
+
+        // ...and changes nothing about what the founder does, because eta is
+        // zero under either rule.
+        for (left, right) in off.plastic_edges.iter().zip(on.plastic_edges.iter()) {
+            let signals = plasticity::EdgeSignals {
+                pre: 0.9,
+                post: 0.8,
+                modulator: 0.0,
+                w_eff: 1.0,
+            };
+            let from_off =
+                plasticity::step(left.rule, signals, plasticity::LearnedState::default());
+            let from_on =
+                plasticity::step(right.rule, signals, plasticity::LearnedState::default());
+            assert_eq!(
+                from_off.state,
+                plasticity::LearnedState::default(),
+                "the founder learned with the flag clear"
+            );
+            assert_eq!(
+                from_on.state,
+                plasticity::LearnedState::default(),
+                "the founder learned with the flag set, so the two arms do not start identical"
+            );
+        }
+    }
+
+    /// The flag reaches the compiled plan, and only the rule id moves.
+    #[test]
+    fn the_flag_moves_the_rule_and_nothing_else_about_the_plan() {
+        let network = plastic_chain(plasticity::RULE_STATIC, 0);
+        let off = compile_with_budget(&network, PlasticityBudget::edges(8)).expect("compiles");
+        let on = compile_with_budget(&network, PlasticityBudget::edges(8).with_live_rule_zero())
+            .expect("compiles");
+
+        assert_eq!(off.plastic_edges.len(), on.plastic_edges.len());
+        assert_eq!(off.plastic_over_cap, on.plastic_over_cap);
+        for (left, right) in off.plastic_edges.iter().zip(on.plastic_edges.iter()) {
+            assert_eq!(left.homology_id, right.homology_id);
+            assert_eq!(left.source, right.source);
+            assert_eq!(left.target, right.target);
+            assert_eq!(left.weight, right.weight);
+            assert_eq!(left.modulator, right.modulator);
+            assert_eq!(left.rule.eta, right.rule.eta);
+            assert_eq!(left.rule.coefficients, right.rule.coefficients);
+            assert_eq!(left.rule.decay_q16, right.rule.decay_q16);
+            assert_ne!(left.rule.rule_id, right.rule.rule_id);
+        }
+        // A world with the section disabled compiles no plastic edges at all,
+        // so the flag has nothing to act on - which is why the budget gates it.
+        let disabled = compile_with_budget(&network, PlasticityBudget::disabled()).expect("ok");
+        assert!(disabled.plastic_edges.is_empty());
     }
 }

@@ -96,6 +96,32 @@ pub const RULE_MODULATED_HEBBIAN: u8 = 3;
 /// the modulator.
 pub const RULE_ELIGIBILITY_TRACE: u8 = 4;
 
+/// The live rules, as a contiguous run starting at [`RULE_HEBBIAN`].
+///
+/// ADR-0027's arithmetic, kept here beside the registry it describes rather
+/// than written out in `controller2.rs`, so that adding a rule cannot leave
+/// the remap describing the old registry. The static assertion below is what
+/// makes that a compile error rather than a silent one.
+///
+/// **These do not author a preference.** The run is `1..=4` because that is
+/// where the four live rules already sat; the remap narrows the id space's
+/// width and does not choose which rule anything lands on more often than
+/// any other. D-107 rejected making rule 0 name a particular rule for exactly
+/// the reason this constant must not become one.
+pub const LIVE_RULE_BASE: u8 = RULE_HEBBIAN;
+pub const LIVE_RULE_COUNT: u8 = RULE_COUNT - 1;
+
+const _: () = assert!(
+    LIVE_RULE_BASE == RULE_STATIC + 1,
+    "the live rules must start immediately after the dead value, or the \
+     ADR-0027 remap skips a rule or lands on the dead one"
+);
+const _: () = assert!(
+    LIVE_RULE_BASE as u16 + LIVE_RULE_COUNT as u16 == RULE_COUNT as u16,
+    "the live rules must be a contiguous run ending at the last registry \
+     entry, or the ADR-0027 remap cannot reach every rule"
+);
+
 /// 1.0 in Q16.
 pub const ONE_Q16: i32 = 1 << 16;
 

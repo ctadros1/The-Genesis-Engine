@@ -1168,20 +1168,6 @@ impl SimConfig {
                     i64::from(plasticity.lamarckian_fraction_q16),
                 ));
             }
-            // Same shape, same reason, and it comes out in the change that
-            // makes rule 0 live. The field exists now because the snapshot
-            // byte had to be reserved by a format bump before anything could
-            // depend on it (ALIF 5); the *behaviour* is a separate increment.
-            // Accepting `true` in between would hand a campaign an arm that
-            // is bit-identical to its own control and report it as a null.
-            if plasticity.live_rule_zero {
-                return Err(ConfigError::PhysiologyRange(
-                    "live_rule_zero is set but rule 0 is still a no-op in this build; the flag is \
-                     encoded by ALIF format 5 and becomes behavioural in the increment that \
-                     remaps the rule in compile_with_budget (D-107 option A3)",
-                    1,
-                ));
-            }
         }
         // Phase 12. **Inside `validate_subsystems`, never appended to
         // `validate_contest`** - D-084 records that appending checks there
@@ -1849,6 +1835,17 @@ impl SimConfig {
             hasher.update_i64(self.plasticity.plastic_edge_cost_milli_per_s);
             hasher.update_u32(self.plasticity.max_plastic_edges);
             hasher.update_u32(self.plasticity.lamarckian_fraction_q16);
+            // ADR-0027, hashed **only when set** and appended after the
+            // fields that were already here. A world with a live rule 0 is a
+            // different experiment - the same allele names a different rule,
+            // and the mutation draw has a different range - so it is a new
+            // replay lineage and must be. A world with the flag clear hashes
+            // byte-identically to one from before the flag existed, which is
+            // what keeps the Phase 11 fixture where it is.
+            if self.plasticity.live_rule_zero {
+                hasher.update(b"lifesim-live-rule-zero");
+                hasher.update_u32(u32::from(crate::plasticity::LIVE_RULE_COUNT));
+            }
         }
         // Phase 12 section, **appended after Phase 11's and hashed only when
         // enabled**. Appended for the reason every section before it was:
@@ -1907,10 +1904,36 @@ impl SimConfig {
     /// same as a budget of zero: with `None` no edge is compiled plastic at
     /// all and nothing is counted as refused, so the compiled plan is
     /// byte-identical to the one this world produced before Phase 11.
+    /// `live_rule_zero` is carried here too, and it is gated on `enabled` for
+    /// the same reason the cap is: a disabled section compiles exactly the
+    /// plan it compiled before Phase 11, and a remap applied to a world with
+    /// no plastic edges would be a difference with nothing to differ about.
     pub fn plasticity_budget(&self) -> crate::controller2::PlasticityBudget {
-        self.plasticity
-            .enabled
-            .then_some(self.plasticity.max_plastic_edges)
+        if !self.plasticity.enabled {
+            return crate::controller2::PlasticityBudget::disabled();
+        }
+        let budget = crate::controller2::PlasticityBudget::edges(self.plasticity.max_plastic_edges);
+        if self.plasticity.live_rule_zero {
+            budget.with_live_rule_zero()
+        } else {
+            budget
+        }
+    }
+
+    /// The rule count `structmut`'s fresh-rule draw ranges over.
+    ///
+    /// ADR-0027: with the flag set the draw is uniform over the four live
+    /// rules rather than over five values one of which is dead. This is the
+    /// **only** place the flag changes what a mutation produces; everything
+    /// else about a `rule_id` allele - storage, crossover, the mod-5
+    /// reduction in `PlasticityGenes::normalized` - is untouched, because
+    /// this draw is the only place a fresh id is ever born.
+    pub fn plasticity_rule_draw_count(&self) -> u8 {
+        if self.plasticity.enabled && self.plasticity.live_rule_zero {
+            crate::plasticity::LIVE_RULE_COUNT
+        } else {
+            crate::genome2::PLASTICITY_RULE_COUNT
+        }
     }
 
     pub fn world_extent_x_fp(&self) -> i32 {
@@ -2217,8 +2240,14 @@ mod tests {
 
         // The budget is `None` when the section is off, which is not the same
         // as a budget of zero: `None` compiles no plastic edge at all.
-        assert_eq!(SimConfig::phase2_default(1).plasticity_budget(), None);
-        assert_eq!(SimConfig::phase11_default(1).plasticity_budget(), Some(32));
+        assert_eq!(
+            SimConfig::phase2_default(1).plasticity_budget(),
+            crate::controller2::PlasticityBudget::disabled()
+        );
+        assert_eq!(
+            SimConfig::phase11_default(1).plasticity_budget(),
+            crate::controller2::PlasticityBudget::edges(32)
+        );
     }
 
     #[test]

@@ -152,6 +152,9 @@ fn c10_4_single_locus_mutations_do_not_produce_unrelated_bodies() {
             seed,
             1,
             u64::from(trial),
+            // The flag-off count, so this test measures the morphological map
+            // and not ADR-0027's remap.
+            sim_core::PLASTICITY_RULE_COUNT,
         );
         let after_rules = rules_of(&child);
         if before_rules == after_rules {

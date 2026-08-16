@@ -94,10 +94,10 @@ pub use genome::{
 pub use genome2::{
     EDGE_FLAG_DELAYED, EDGE_FLAG_DISABLED, EDGE_FLAG_PLASTIC, ExpressedBinding, ExpressedEdge,
     ExpressedNetwork, ExpressedNode, GENOME2_MAGIC, GENOME2_POLICY_VERSION, GENOME2_SCHEMA_VERSION,
-    Genome2, Genome2Error, GenomeCaps, Haplotype, Locus, LocusKind, MARKER_FLAG_NEUTRAL, PLOIDY,
-    PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE, TRAIT_HOMOLOGY_LIMIT,
-    VALUE_LIMIT, blend_by_dominance, derive_gene_lineage_id, derive_homology_id,
-    derive_mutation_event_id, registry_versions,
+    Genome2, Genome2Error, GenomeCaps, Haplotype, Locus, LocusKind, MARKER_FLAG_NEUTRAL,
+    PLASTICITY_RULE_COUNT, PLOIDY, PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE,
+    TRAIT_HOMOLOGY_LIMIT, VALUE_LIMIT, blend_by_dominance, derive_gene_lineage_id,
+    derive_homology_id, derive_mutation_event_id, registry_versions,
 };
 pub use meiosis::{
     Gamete, InheritanceMode, MAX_EXTRA_CROSSOVERS, MEIOSIS_POLICY_VERSION, MeiosisConfig, gamete,
@@ -119,11 +119,12 @@ pub use physiology::{
     thermal_cost_milli,
 };
 pub use plasticity::{
-    EdgeSignals, LEARN_LIMIT_Q16, LearnedState, ONE_Q16, PLASTICITY_POLICY_VERSION,
-    PlasticityCounters, PlasticityRule, RULE_COUNT, RULE_ELIGIBILITY_TRACE, RULE_HEBBIAN,
-    RULE_MODULATED_HEBBIAN, RULE_OJA, RULE_REGISTRY_VERSION, RULE_STATIC, StepKind, StepOutcome,
-    accumulate_clamped, decay_to_q16, decay_toward_zero, effective_weight, q16_to_f32,
-    rule_in_registry, rule_is_modulated, step as plasticity_step, to_q16, to_q16_checked,
+    EdgeSignals, LEARN_LIMIT_Q16, LIVE_RULE_BASE, LIVE_RULE_COUNT, LearnedState, ONE_Q16,
+    PLASTICITY_POLICY_VERSION, PlasticityCounters, PlasticityRule, RULE_COUNT,
+    RULE_ELIGIBILITY_TRACE, RULE_HEBBIAN, RULE_MODULATED_HEBBIAN, RULE_OJA, RULE_REGISTRY_VERSION,
+    RULE_STATIC, StepKind, StepOutcome, accumulate_clamped, decay_to_q16, decay_toward_zero,
+    effective_weight, q16_to_f32, rule_in_registry, rule_is_modulated, step as plasticity_step,
+    to_q16, to_q16_checked,
 };
 pub use registry::{
     ACTIVATION_LINEAR, ACTIVATION_REGISTRY_VERSION, ACTIVATION_TANH, Activation,

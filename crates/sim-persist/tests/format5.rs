@@ -21,7 +21,7 @@
 //! | The new field survives its own format's round trip | `live_rule_zero_survives_the_format_5_round_trip` |
 //! | Declared lengths are bounded by the check that names them | `an_adversarial_config_section_length_is_refused_by_the_bound_that_names_it` |
 //! | Every truncated config body is refused, CRCs resealed | `every_truncated_config_body_is_refused` |
-//! | The flag is refused by validation until it is behavioural | `validation_refuses_the_flag_while_it_does_nothing` |
+//! | The flag builds a world and starts a replay lineage | `the_flag_builds_a_world_and_starts_its_own_replay_lineage` |
 
 use sim_core::{SimConfig, World};
 use sim_persist::{
@@ -664,29 +664,55 @@ fn every_truncated_config_body_is_refused() {
     );
 }
 
-// --- the flag is declared, not yet live --------------------------------------
+// --- the flag is live, and it starts a replay lineage -------------------------
 
-/// Validation refuses `live_rule_zero` while it does nothing.
+/// The flag builds a world, and setting it moves the config hash.
 ///
-/// The flag is encoded a whole increment before it is behavioural, because
-/// `encode_config` is positional and the byte had to be reserved by a format
-/// bump first. Accepting `true` in that window would hand a campaign an arm
-/// bit-identical to its own control and report the result as a null - the
-/// exact failure the 2x2 exists to avoid. The refusal comes out in the change
-/// that remaps the rule.
+/// **This test replaced a refusal, and the swap is the point.** While the byte
+/// was encoded but inert (ALIF format 5, D-108), `validate` rejected `true`,
+/// because accepting a flag that changed nothing would hand a campaign an arm
+/// bit-identical to its own control and get reported as a null. ADR-0027 makes
+/// the flag behavioural and deletes that refusal, so the test that pinned it
+/// has to become the test that pins what replaced it - otherwise removing a
+/// refusal silently removes its coverage too.
+///
+/// The hash assertion is the substantive half. A world whose every `rule_id`
+/// names a different rule, and whose mutation draw has a different range, is a
+/// different experiment; it must not share a replay lineage with the arm it is
+/// compared against.
 #[test]
-fn validation_refuses_the_flag_while_it_does_nothing() {
-    let mut config = SimConfig::phase11_default(SEED);
+fn the_flag_builds_a_world_and_starts_its_own_replay_lineage() {
+    let clear = SimConfig::phase11_default(SEED);
+    let mut set = clear;
+    set.plasticity.live_rule_zero = true;
+
     assert!(
-        World::new(config).is_ok(),
-        "the carrier config must build, or the refusal below proves nothing"
+        World::new(clear).is_ok(),
+        "the carrier config must build, or nothing below means anything"
     );
-    config.plasticity.live_rule_zero = true;
-    let error = World::new(config).expect_err("the flag is refused");
-    let text = error.to_string();
     assert!(
-        text.contains("live_rule_zero"),
-        "the refusal must name the field: {text}"
+        World::new(set).is_ok(),
+        "the flag is behavioural now and must no longer be refused"
+    );
+
+    assert_ne!(
+        clear.stable_hash(),
+        set.stable_hash(),
+        "setting the flag must start a new replay lineage: the same allele \
+         names a different rule and the mutation draw has a different range"
+    );
+
+    // ...and it is gated on the section, so a world with plasticity disabled
+    // hashes identically either way. Without this the flag would move worlds
+    // that have no plastic edges for it to act on.
+    let mut off = SimConfig::phase2_default(SEED);
+    assert!(!off.plasticity.enabled);
+    let off_hash = off.stable_hash();
+    off.plasticity.live_rule_zero = true;
+    assert_eq!(
+        off_hash,
+        off.stable_hash(),
+        "the flag moved a world whose plasticity section is disabled"
     );
 }
 

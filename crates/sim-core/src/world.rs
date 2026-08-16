@@ -3453,6 +3453,7 @@ impl World {
                                 self.config.world_seed,
                                 next_tick,
                                 child_id,
+                                self.config.plasticity_rule_draw_count(),
                             );
                         }
                         let hash = crate::checksum::fnv1a64(&child.encode());

@@ -366,6 +366,14 @@ impl Default for MutationConfig {
 /// operator" - and a cap that is counted but never evented is exactly what
 /// left C9.6 partial.
 #[must_use]
+/// `rule_draw_count` is `SimConfig::plasticity_rule_draw_count()`: the number
+/// of values the fresh-rule draw ranges over. It is a parameter rather than
+/// the `PLASTICITY_RULE_COUNT` constant because ADR-0027's flag narrows it to
+/// the live rules, and **this draw is the only place a fresh `rule_id` is
+/// ever born** - every other path copies or reduces an allele that already
+/// existed, which is why the flag reaches here and nowhere else in the genome
+/// layer.
+#[allow(clippy::too_many_arguments)]
 pub fn mutate(
     genome: &mut Genome2,
     config: &MutationConfig,
@@ -374,6 +382,7 @@ pub fn mutate(
     world_seed: u64,
     tick: u64,
     child_id: u64,
+    rule_draw_count: u8,
 ) -> MutationReport {
     let draw = |index: u32| {
         named_random(
@@ -433,7 +442,7 @@ pub fn mutate(
     // 1. Point mutation.
     if fires(config.point_q16, value_draw(0)) {
         match try_operator(genome, caps, counters, RejectReason::Invalid, |working| {
-            point_mutate(working, config, &value_draw)
+            point_mutate(working, config, &value_draw, rule_draw_count)
         }) {
             Ok(true) => counters.point_applied += 1,
             Ok(false) => {}
@@ -532,7 +541,12 @@ fn chromosome_pick(genome: &Genome2, value: u64) -> (usize, usize) {
     (haplotype, chromosome)
 }
 
-fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32) -> u64) -> bool {
+fn point_mutate(
+    genome: &mut Genome2,
+    config: &MutationConfig,
+    draw: &dyn Fn(u32) -> u64,
+    rule_draw_count: u8,
+) -> bool {
     let (haplotype, chromosome) = chromosome_pick(genome, draw(1));
     // **A modulator must name a node on the *same haplotype***, gathered
     // here because the chromosome is about to be borrowed mutably and
@@ -630,7 +644,12 @@ fn point_mutate(genome: &mut Genome2, config: &MutationConfig, draw: &dyn Fn(u32
             // spelled out on the node arm above.
             let target = draw(8) % 7;
             let which_coefficient = (draw(9) % 4) as usize;
-            let fresh_rule = (draw(10) % u64::from(crate::genome2::PLASTICITY_RULE_COUNT)) as u8;
+            // **One draw at position 10, whatever the count.** The modulus
+            // changes; the stream, the position and the number of draws do
+            // not, so no fixture can move because of ADR-0027's flag and
+            // `specifications/determinism-extensions.md`'s rule against
+            // value-dependent stream positions is not engaged.
+            let fresh_rule = (draw(10) % u64::from(rule_draw_count)) as u8;
             let modulator_pick = draw(11) as usize;
             // Drawn from this haplotype's own node list, with 0 (ungated) as
             // one more outcome so an edge can lose its modulator as easily
@@ -1208,6 +1227,7 @@ mod tests {
                 7,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             subject.validate_structure(&caps()).unwrap_or_else(|error| {
                 panic!("child {child} produced an invalid genome: {error}")
@@ -1235,8 +1255,26 @@ mod tests {
             let mut second = founder();
             let mut counters_a = MutationCounters::default();
             let mut counters_b = MutationCounters::default();
-            let _ = mutate(&mut first, &config, &caps(), &mut counters_a, 3, 9, child);
-            let _ = mutate(&mut second, &config, &caps(), &mut counters_b, 3, 9, child);
+            let _ = mutate(
+                &mut first,
+                &config,
+                &caps(),
+                &mut counters_a,
+                3,
+                9,
+                child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
+            );
+            let _ = mutate(
+                &mut second,
+                &config,
+                &caps(),
+                &mut counters_b,
+                3,
+                9,
+                child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
+            );
             assert_eq!(first, second, "child {child} is not reproducible");
             assert_eq!(counters_a, counters_b);
         }
@@ -1264,6 +1302,7 @@ mod tests {
                 11,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             // Either haplotype may be the one duplicated, so both are
             // inspected; checking only slot 0 would silently halve the
@@ -1319,6 +1358,7 @@ mod tests {
                 13,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             for locus in after.loci() {
                 let known = before
@@ -1370,6 +1410,7 @@ mod tests {
                 17,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             assert!(node_count(&subject) >= 6, "min_nodes was breached");
         }
@@ -1402,6 +1443,7 @@ mod tests {
                 19,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             assert!(subject.haplotypes[0].chromosomes[0].len() <= 21);
         }
@@ -1437,6 +1479,7 @@ mod tests {
                 23,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             let mut before: Vec<u32> = two_chromosome
                 .loci()
@@ -1476,6 +1519,7 @@ mod tests {
                 29,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             let before_edges = before
                 .loci()
@@ -1514,6 +1558,7 @@ mod tests {
                 31,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
         }
         for locus in subject.loci() {
@@ -1588,6 +1633,7 @@ mod tests {
                 37,
                 generation,
                 generation,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             lineage
                 .validate_structure(&caps())
@@ -1677,6 +1723,7 @@ mod tests {
                 101,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             for (index, (key, kind)) in indexed(&subject).into_iter().enumerate() {
                 assert_eq!(key, before[index].0, "the locus key set moved");
@@ -1858,10 +1905,20 @@ mod tests {
                         }
                     };
                     let mut marker = single_locus(marker_kind);
-                    let marker_applied = point_mutate(&mut marker, &config, &draw);
+                    let marker_applied = point_mutate(
+                        &mut marker,
+                        &config,
+                        &draw,
+                        crate::genome2::PLASTICITY_RULE_COUNT,
+                    );
                     let mut edge = single_locus(edge_kind);
                     assert!(
-                        point_mutate(&mut edge, &config, &draw),
+                        point_mutate(
+                            &mut edge,
+                            &config,
+                            &draw,
+                            crate::genome2::PLASTICITY_RULE_COUNT
+                        ),
                         "the edge arm declined target {target}, so there is nothing to match"
                     );
 
@@ -1970,9 +2027,19 @@ mod tests {
                     }
                 };
                 let mut on = single_locus(marker_kind);
-                let on_applied = point_mutate(&mut on, &enabled, &draw);
+                let on_applied = point_mutate(
+                    &mut on,
+                    &enabled,
+                    &draw,
+                    crate::genome2::PLASTICITY_RULE_COUNT,
+                );
                 let mut off = single_locus(marker_kind);
-                let off_applied = point_mutate(&mut off, &disabled, &draw);
+                let off_applied = point_mutate(
+                    &mut off,
+                    &disabled,
+                    &draw,
+                    crate::genome2::PLASTICITY_RULE_COUNT,
+                );
                 assert_eq!(
                     (marker_of(&on), on_applied),
                     (marker_of(&off), off_applied),
@@ -1983,7 +2050,12 @@ mod tests {
                 // equality above would be trivially true of a config that
                 // gated nothing.
                 let mut edge = single_locus(edge_kind);
-                assert!(point_mutate(&mut edge, &disabled, &draw));
+                assert!(point_mutate(
+                    &mut edge,
+                    &disabled,
+                    &draw,
+                    crate::genome2::PLASTICITY_RULE_COUNT
+                ));
                 let (weight, flags, plasticity) = edge_of(&edge);
                 assert_eq!(plasticity.eta, 0.5, "eta moved with the gate off");
                 assert_eq!(flags, 0, "the plastic flag moved with the gate off");
@@ -2016,7 +2088,12 @@ mod tests {
         };
         let draw = |index: u32| -> u64 { if index == 8 { 1 } else { 0 } };
         let mut marker = single_locus(set);
-        assert!(point_mutate(&mut marker, &config, &draw));
+        assert!(point_mutate(
+            &mut marker,
+            &config,
+            &draw,
+            crate::genome2::PLASTICITY_RULE_COUNT
+        ));
         assert_eq!(
             marker_of(&marker),
             (0.0, 0),
@@ -2057,6 +2134,7 @@ mod tests {
                 109,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             for (before, after) in indexed(&seed).into_iter().zip(indexed(&subject)) {
                 assert_eq!(before.0, after.0, "the locus key set moved");
@@ -2188,6 +2266,7 @@ mod tests {
                 211,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             for (before, after) in indexed(&seed).into_iter().zip(indexed(&subject)) {
                 assert_eq!(before.0, after.0, "the locus key set moved");
@@ -2295,6 +2374,7 @@ mod tests {
                 103,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             if subject.loci().any(|locus| match plasticity_of(locus.kind) {
                 Some((_, _, flags)) => flags & crate::genome2::EDGE_FLAG_PLASTIC == 0,
@@ -2331,6 +2411,7 @@ mod tests {
                 107,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             // Through the codec, so this is a property of a storable genome
             // rather than of an in-memory one.
@@ -2375,6 +2456,7 @@ mod tests {
                 109,
                 child,
                 child,
+                crate::genome2::PLASTICITY_RULE_COUNT,
             );
             let decoded =
                 Genome2::decode(&subject.encode(), &caps()).expect("a mutated genome decodes");
@@ -2421,7 +2503,12 @@ mod tests {
                     plasticity_enabled: enabled,
                     ..always(3_277)
                 };
-                let changed = point_mutate(&mut genome, &config, &draw);
+                let changed = point_mutate(
+                    &mut genome,
+                    &config,
+                    &draw,
+                    crate::genome2::PLASTICITY_RULE_COUNT,
+                );
                 (seen.into_inner(), genome, changed)
             };
             let (indices_off, genome_off, changed_off) = run(false);
@@ -2545,6 +2632,7 @@ mod tests {
                     113,
                     generation,
                     generation,
+                    crate::genome2::PLASTICITY_RULE_COUNT,
                 );
                 for locus in lineage.loci() {
                     let Some((_, genes, flags)) = plasticity_of(locus.kind) else {
@@ -2633,6 +2721,108 @@ mod tests {
             schema1.stable_hash(),
             base.stable_hash(),
             "a schema-1 config's hash moved for a schema-2 field"
+        );
+    }
+    // --- ADR-0027: the fresh-rule draw narrows with the flag ------------------
+
+    /// The draw ranges over the four live rules with the flag set, and over
+    /// all five values with it clear - **measured through `mutate`**, not
+    /// through a reimplementation of the modulus.
+    ///
+    /// The distinction matters here more than usual. The whole point of
+    /// ADR-0027 is which values a *mutation* can produce, and a test that
+    /// computed `draw % count` itself would agree with a `mutate` that had
+    /// stopped consulting the count at all.
+    ///
+    /// # Why the sweep runs from two different starting rules
+    ///
+    /// A mutation is only observable as a *change*, so a draw that lands on
+    /// the value the locus already holds is invisible. Run from the founder
+    /// alone - whose `rule_id` is 0 - the sweep therefore reports rule 0 as
+    /// unreachable and would have failed for a reason that has nothing to do
+    /// with the flag. Two starting values, unioned, leave no blind spot: each
+    /// covers the other's.
+    #[test]
+    fn the_fresh_rule_draw_narrows_to_the_live_rules_under_the_flag() {
+        // Point mutation only, so the locus key set is stable across a
+        // mutation and the index-wise diff below is exact. A config that let
+        // duplication or deletion run would change the locus count.
+        let config = plastic_config();
+
+        fn seeded_founder(rule_id: u8) -> Genome2 {
+            let mut genome = founder();
+            for haplotype in genome.haplotypes.iter_mut() {
+                for locus in haplotype.chromosomes.iter_mut().flatten() {
+                    if let LocusKind::Edge { plasticity, .. } = &mut locus.kind {
+                        plasticity.rule_id = rule_id;
+                    }
+                }
+            }
+            genome
+        }
+
+        let observed = |rule_draw_count: u8| {
+            let mut hits = [0_u32; crate::genome2::PLASTICITY_RULE_COUNT as usize];
+            let mut counters = MutationCounters::default();
+            for start in [0_u8, 1_u8] {
+                for child in 0..6_000_u64 {
+                    let mut subject = seeded_founder(start);
+                    let before: Vec<Option<(f32, PlasticityGenes, u8)>> = indexed(&subject)
+                        .into_iter()
+                        .map(|(_, kind)| plasticity_of(kind))
+                        .collect();
+                    let _ = mutate(
+                        &mut subject,
+                        &config,
+                        &caps(),
+                        &mut counters,
+                        101,
+                        child,
+                        child,
+                        rule_draw_count,
+                    );
+                    for (index, (_, kind)) in indexed(&subject).into_iter().enumerate() {
+                        let (Some((_, p0, _)), Some((_, p1, _))) =
+                            (before[index], plasticity_of(kind))
+                        else {
+                            continue;
+                        };
+                        if p0.rule_id != p1.rule_id {
+                            hits[p1.rule_id as usize] += 1;
+                        }
+                    }
+                }
+            }
+            hits
+        };
+
+        // Flag clear: all five values reachable, including the dead one.
+        let wide = observed(crate::genome2::PLASTICITY_RULE_COUNT);
+        for rule_id in 0..crate::genome2::PLASTICITY_RULE_COUNT {
+            assert!(
+                wide[rule_id as usize] > 0,
+                "rule {rule_id} is unreachable with the flag clear: {wide:?}"
+            );
+        }
+
+        // Flag set: the draw's range is 0..LIVE_RULE_COUNT. Every value in it
+        // appears and the value above it never does.
+        //
+        // **`assert!(> 0)` on each is the load-bearing half**; without it a
+        // draw stuck on a single value would satisfy the zero assertion below
+        // it. `compile_with_budget` is what turns these into rules 1..=4, and
+        // that half is pinned in `controller2.rs`.
+        let narrow = observed(crate::plasticity::LIVE_RULE_COUNT);
+        for drawn in 0..crate::plasticity::LIVE_RULE_COUNT {
+            assert!(
+                narrow[drawn as usize] > 0,
+                "draw value {drawn} never appeared under the flag: {narrow:?}"
+            );
+        }
+        assert_eq!(
+            narrow[(crate::plasticity::RULE_COUNT - 1) as usize],
+            0,
+            "the draw produced a value outside its narrowed range: {narrow:?}"
         );
     }
 }

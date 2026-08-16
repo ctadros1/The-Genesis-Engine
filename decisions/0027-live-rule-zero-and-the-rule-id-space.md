@@ -54,13 +54,47 @@ one rule the most likely single outcome of a rule mutation.
 
 ## Proposed Decision
 
-**Adopt (a).** When `plasticity.live_rule_zero` is set, the effective rule
-count is 4 for both the structural-mutation draw and the expression-time
-reduction, and `compile_with_budget` maps the expressed id `r` to live rule
-`r + 1`. When the flag is clear, everything is exactly as it is today.
+**Adopt (a).** When `plasticity.live_rule_zero` is set, the structural
+mutation draw is uniform over 4 values instead of 5, and
+`compile_with_budget` maps the expressed id `r` to live rule
+`(r % 4) + 1`. When the flag is clear, everything is exactly as it is today.
 
 The scope is the id space's **width**, not its contents. No rule is
 introduced, removed, reordered, or preferred.
+
+### The expression-time reduction does not need to change, and that was worth
+### checking before writing the code
+
+The first draft of this ADR said the effective count had to reach both the
+draw and `PlasticityGenes::normalized` - eight call sites across
+`structmut.rs`, `genome2.rs`, and `develop.rs`. Tracing where a `rule_id`
+can actually come from shows that is unnecessary:
+
+- **`structmut.rs:676` is the only place a fresh `rule_id` is ever produced**
+  (`plasticity.rule_id = fresh_rule`, from the draw at line 633). Every other
+  construction is a test fixture, a decode, or a crossover that copies an
+  allele that already existed.
+- The founder's `PlasticityGenes::default` is `rule_id: 0`.
+- Duplication, insertion, and transposition copy existing loci. Crossover
+  mixes existing alleles. Point mutation on any other field leaves `rule_id`
+  alone.
+
+So with the flag set from tick 0, every `rule_id` in circulation is in
+`0..4`, and `normalized`'s `% 5` is the identity on all of them. Changing it
+would be a no-op that touched three modules.
+
+The `% 4` in the compile-time map is therefore a **clamp for values that
+cannot arise under the flag**, not a distribution choice. Two ways one could:
+a save written with the flag clear and reloaded with it set, or a `seeded`
+origin-mode founder set carrying an arbitrary id. Neither occurs in the 2x2,
+which starts fresh worlds with the flag fixed per arm. **Uniformity therefore
+holds exactly where the experiment reads it**, and legacy ids fail safe onto
+a live rule rather than out of range. If a future campaign does reload across
+the flag, the non-uniformity that introduces must be reported, because at
+that point the clamp *is* a distribution choice.
+
+`plasticity::step` still receives a rule and stays a pure function of it,
+which is the property the original one-call-site instruction was protecting.
 
 ### Why (b) is rejected on evidence rather than on taste
 

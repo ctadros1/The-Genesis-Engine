@@ -1414,7 +1414,8 @@ mod tests {
         ]);
         let population = vec![network];
 
-        let enabled = expressed_conjunction_census(&population, Some(32)).expect("compiles");
+        let enabled = expressed_conjunction_census(&population, PlasticityBudget::edges(32))
+            .expect("compiles");
         assert_eq!(enabled.plastic_edges, 1);
         assert_eq!(enabled.non_static, 1);
         assert_eq!(enabled.full_conjunction, 1);
@@ -1423,7 +1424,8 @@ mod tests {
 
         // `None` is the disabled world, and it is **not** a budget of zero:
         // nothing is compiled plastic and nothing is counted as refused.
-        let disabled = expressed_conjunction_census(&population, None).expect("compiles");
+        let disabled = expressed_conjunction_census(&population, PlasticityBudget::disabled())
+            .expect("compiles");
         assert_eq!(disabled.plastic_edges, 0);
         assert_eq!(disabled.over_budget, 0);
         assert_eq!(disabled.full_conjunction, 0);
@@ -1431,7 +1433,8 @@ mod tests {
 
         // A budget of zero refuses it and says so, which is the third case
         // and the one that distinguishes "disabled" from "capped".
-        let capped = expressed_conjunction_census(&population, Some(0)).expect("compiles");
+        let capped = expressed_conjunction_census(&population, PlasticityBudget::edges(0))
+            .expect("compiles");
         assert_eq!(capped.plastic_edges, 0);
         assert_eq!(capped.over_budget, 1);
     }
@@ -1455,14 +1458,18 @@ mod tests {
                 ),
             ])]
         };
-        let wrong = expressed_conjunction_census(&build(NodeRole::Hidden), Some(32)).unwrap();
+        let wrong =
+            expressed_conjunction_census(&build(NodeRole::Hidden), PlasticityBudget::edges(32))
+                .unwrap();
         assert_eq!(wrong.plastic_edges, 1);
         assert_eq!(wrong.full_conjunction, 1);
         assert_eq!(wrong.modulator_resolved, 0);
         assert_eq!(wrong.modulated_without_modulator, 1);
         assert_eq!(wrong.full_conjunction_gated, 0);
 
-        let right = expressed_conjunction_census(&build(NodeRole::Modulatory), Some(32)).unwrap();
+        let right =
+            expressed_conjunction_census(&build(NodeRole::Modulatory), PlasticityBudget::edges(32))
+                .unwrap();
         assert_eq!(right.modulator_resolved, 1);
         assert_eq!(right.modulated_without_modulator, 0);
         assert_eq!(right.full_conjunction_gated, 1);

@@ -458,7 +458,7 @@ mod tests {
     fn state_stays_in_lockstep_across_births_and_deaths() {
         let mut state = Schema2State::with_capacity(4);
         for _ in 0..4 {
-            assert!(state.push_organism(founder(), None));
+            assert!(state.push_organism(founder(), PlasticityBudget::disabled()));
         }
         assert_eq!(state.len(), 4);
         assert_eq!(state.plans.len(), 4);
@@ -607,7 +607,7 @@ mod tests {
         let sizes = [1_u32, 2, 3, 4, 5];
         let mut state = Schema2State::with_capacity(sizes.len());
         for inputs in sizes {
-            assert!(state.push_organism(fan_in(inputs), None));
+            assert!(state.push_organism(fan_in(inputs), PlasticityBudget::disabled()));
         }
         // Distinct prior-state buffers: a recurrent organism's memory lives
         // here, and it is the array a length-only test cannot see move.
@@ -630,7 +630,7 @@ mod tests {
         let survivors: Vec<usize> = (0..sizes.len()).filter(|index| !removed[*index]).collect();
         let mut fresh = Schema2State::with_capacity(survivors.len());
         for &index in &survivors {
-            assert!(fresh.push_organism(fan_in(sizes[index]), None));
+            assert!(fresh.push_organism(fan_in(sizes[index]), PlasticityBudget::disabled()));
         }
         for (slot, &index) in survivors.iter().enumerate() {
             fresh.activations[slot]
@@ -673,8 +673,8 @@ mod tests {
     #[test]
     fn structure_statistics_report_what_c9_1_measures() {
         let mut state = Schema2State::with_capacity(2);
-        state.push_organism(founder(), None);
-        state.push_organism(founder(), None);
+        state.push_organism(founder(), PlasticityBudget::disabled());
+        state.push_organism(founder(), PlasticityBudget::disabled());
         let (nodes, edges) = state.mean_structure_milli();
         assert_eq!(nodes, 3_000, "three nodes, in milli");
         assert_eq!(edges, 2_000);
@@ -691,9 +691,9 @@ mod tests {
             hasher.finish()
         };
         let mut left = Schema2State::with_capacity(1);
-        left.push_organism(founder(), None);
+        left.push_organism(founder(), PlasticityBudget::disabled());
         let mut right = Schema2State::with_capacity(1);
-        right.push_organism(founder(), None);
+        right.push_organism(founder(), PlasticityBudget::disabled());
         assert_eq!(hash(&left), hash(&right));
 
         // A differing activation must move it, because that is a recurrent
@@ -707,7 +707,7 @@ mod tests {
         let mut other = Schema2State::with_capacity(1);
         other.push_organism(
             founder_from_traits(&[0.25; crate::genome::TRAIT_COUNT]),
-            None,
+            PlasticityBudget::disabled(),
         );
         assert_ne!(hash(&left), hash(&other));
     }
