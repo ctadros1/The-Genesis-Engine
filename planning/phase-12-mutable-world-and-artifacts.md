@@ -236,8 +236,12 @@ where marked; the criteria's thresholds are as they were.
       `scripts/verify-phase12-determinism.sh` pins the `--artifact` trace at
       8,000 ticks (config `0xc64259e739b525d4`, state `0x853d257398a2718c`),
       refuses a vacuous fixture mechanism by mechanism, and shows conditions
-      B and C replaying as distinct lineages. The mutable-world half's
-      modification-set clauses stand as written above.
+      B and C replaying as distinct lineages. **Cross-platform on
+      2026-08-16**: the same script passed on `genesis-engine` (Ubuntu
+      24.04, x86_64, system toolchain at the pinned channel) against the
+      constants pinned on macOS arm64, alongside the Phase 9 and 11 scripts
+      and the 745-test workspace suite at `fdb2f1d`. The mutable-world
+      half's modification-set clauses stand as written above.
 - [x] **C12.5 Save format correctness. Met, every clause, each
       mutation-verified.** ALIF **format 4** (not 2; see the version
       correction above), `SAVE_STATE_VERSION` 2, with the format-3 reader
