@@ -436,6 +436,27 @@ pub struct PlasticityConfig {
     /// policy that would implement it, so adopting one later cannot renumber
     /// a stream.
     pub lamarckian_fraction_q16: u32,
+    /// Whether rule id 0 names a live learning rule instead of a no-op.
+    ///
+    /// **Declared and encoded here; it does not reach the kernel yet.**
+    /// This is D-107's adopted option A3 - remove the dead value from the
+    /// rule id space so a point mutation on target 2 can no longer be spent
+    /// on nothing - carried as a runtime setting rather than a compile-time
+    /// registry change, because the 2x2 it exists for must run both arms
+    /// against the same seeds on one build, and a constant cannot be an arm.
+    ///
+    /// It is a field on the config, and therefore in the snapshot, **before**
+    /// it is a behaviour, and that ordering is forced rather than chosen:
+    /// `encode_config` is positional, so the byte has to be reserved by a
+    /// format bump (ALIF 5) before anything can depend on it, and the 120
+    /// format-4 campaign artifacts still being read for re-analysis must not
+    /// stop decoding on the way. Until the kernel half lands, `validate`
+    /// **refuses** `true` rather than accepting it - an accepted flag that
+    /// changed nothing would produce runs that look like the treatment arm
+    /// and are the control, which is the exact false null the 2x2 exists to
+    /// avoid. The same refusal, for the same reason, guards
+    /// `lamarckian_fraction_q16`.
+    pub live_rule_zero: bool,
 }
 
 impl PlasticityConfig {
@@ -452,6 +473,11 @@ impl PlasticityConfig {
             plastic_edge_cost_milli_per_s: 2,
             max_plastic_edges: 32,
             lamarckian_fraction_q16: 0,
+            // False, and false is what every world that has ever run had.
+            // Rule 0 has been a no-op for the whole of Phase 11, so this
+            // default is not a policy preference - it is the value that makes
+            // a format-4 file and a format-5 file describe the same world.
+            live_rule_zero: false,
         }
     }
 }
@@ -1140,6 +1166,20 @@ impl SimConfig {
                     "lamarckian_fraction_q16 is nonzero but no inheritance policy is implemented; \
                      see specifications/plasticity-and-learning.md",
                     i64::from(plasticity.lamarckian_fraction_q16),
+                ));
+            }
+            // Same shape, same reason, and it comes out in the change that
+            // makes rule 0 live. The field exists now because the snapshot
+            // byte had to be reserved by a format bump before anything could
+            // depend on it (ALIF 5); the *behaviour* is a separate increment.
+            // Accepting `true` in between would hand a campaign an arm that
+            // is bit-identical to its own control and report it as a null.
+            if plasticity.live_rule_zero {
+                return Err(ConfigError::PhysiologyRange(
+                    "live_rule_zero is set but rule 0 is still a no-op in this build; the flag is \
+                     encoded by ALIF format 5 and becomes behavioural in the increment that \
+                     remaps the rule in compile_with_budget (D-107 option A3)",
+                    1,
                 ));
             }
         }

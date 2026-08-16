@@ -648,27 +648,74 @@ being read for re-analysis, so silently breaking them is not acceptable.
 
 **So the order is: format 5 first, then the flag.**
 
-Increment A - ALIF format 5:
-- `FORMAT_VERSION` 4 -> 5, `FORMAT_VERSION_4` retained.
-- A retained format-4 reader. Cheaper than it sounds: format 5 differs from 4
-  by one byte in the config block, so this is a parameterised decode rather
-  than a second decoder - but it must be written and tested as a real reader.
-- `FORMAT4_TO_FORMAT5` in `migration_for`, following `FORMAT3_TO_FORMAT4`.
-- Standing rule 2 applies: declared counts and lengths patched to adversarial
-  values with CRCs resealed, not bit flips.
-- Byte-identity clause, as C12.5 required for 3->4: a migrated file must equal
-  a native format-5 load, compared as `SaveState`, then as world equality,
-  then over 200 further ticks.
+Increment A - ALIF format 5: **DONE 2026-08-15.** See D-108 and the Phase 11
+notes in `specifications/world-save-format.md`. What shipped, against what was
+planned:
 
-Increment B - `plasticity.live_rule_zero`:
-- The WIP is saved at `scratchpad/item2-chain-flag-WIP.diff` (251 lines) and
-  compiles as far as sim-core. `PlasticityBudget` becomes a struct carrying
-  `max_plastic_edges` and the flag, with the rule remap done once at compile
-  time in `compile_with_budget` so `plasticity::step` stays a pure function of
-  the rule it is handed.
+- `FORMAT_VERSION` 4 -> 5, `FORMAT_VERSION_4` retained, plus a retained
+  format-4 **writer** (`encode_snapshot_format4`) that was not in the plan and
+  is required: there is no `.alif` file in the repository, so the only way to
+  produce a real legacy file to migrate is to write one.
+- The reader is a real reader - the version is threaded through
+  `decode_payload` to `decode_config`, which is the single place the format
+  difference is expressed, so it cannot drift from what a format-4 file holds.
+- `FORMAT4_TO_CURRENT` in `migration_for`. Named for its **source**, not its
+  target: `FORMAT3_TO_FORMAT4`'s `to_format` was already `FORMAT_VERSION`, so
+  its name went stale the moment the constant moved. Both transforms land on
+  the current format in one hop; `decode_snapshot_migrating` applies one.
+- Standing rule 2 applied to the config section's declared length at seven
+  adversarial values with the payload CRC resealed each time, plus every
+  truncated-body prefix - including the one-byte-short case, which is exactly
+  a format-4 body and the only one an implementation could want to accept.
+- Byte-identity clause discharged at all three levels: `SaveState`, world
+  equality, and 200 further ticks.
+
+Three things the increment turned up that were not anticipated, all one class -
+**a comparison or a helper written against "the current format" while meaning
+"format 4"**:
+
+1. `SECTION_WORLDMOD` and `SECTION_ACTION_CENSUS` were guarded by
+   `format < FORMAT_VERSION`. At format 5 that refuses both sections in every
+   format-4 file on disk. Now `FORMAT_VERSION_4`.
+2. `a_format_3_file_carrying_a_format_4_section_is_refused` built its subject
+   with the current-format writer, so it began failing on the new config byte
+   before reaching the section it exists to test - still red, but for the
+   wrong reason, and it would have been green again with the guard defect in
+   place.
+3. `a_disabled_world_encodes_the_payload_format_3_wrote` compared a format-5
+   file against a format-3 one and asserted they differ in two bytes.
+
+Also recorded as an open question (2026-08-15): the retained format-3 reader
+can only read the format-3 files this build's own writer produces, because
+Phase 11 grew the config block seventeen bytes *inside* format 3. Nothing is
+broken by it today - no pre-Phase-11 format-3 file exists - but it is why
+format 5 is a bump rather than an append.
+
+**The field is encoded, not behavioural.** `validate` refuses
+`live_rule_zero == true` and the flag is not in the config hash, both of which
+come out in increment B. No fixture moved.
+
+Increment B - `plasticity.live_rule_zero` becomes behavioural. NEXT.
+- The WIP diff referred to here is **gone** - it lived in a scratchpad that did
+  not survive the session. Rebuild from this description; it is complete.
+- `PlasticityBudget` (today a bare `Option<u32>` type alias in
+  `controller2.rs`) becomes a struct carrying `max_plastic_edges` and the
+  flag, with `disabled()` / `edges(n)` / `with_live_rule_zero()`. The rule
+  remap is done **once** in `compile_with_budget` so `plasticity::step` stays
+  a pure function of the rule it is handed.
+- Delete the `validate` refusal added in increment A, in the same commit that
+  gives the flag effect - and re-check every test whose world might now reach
+  a live rule 0, because a test whose two sides both become the same error
+  passes with the defect present.
 - Hashed **only when true** (D-014 at field granularity), so the Phase 11
-  fixture does not move for a setting nobody switched on.
-- Registered in `FIELD_NAMES` and in the codec, or
-  `config_field_coverage.rs` fails - which is standing rule 3 working.
+  fixture does not move for a setting nobody switched on. Increment A
+  deliberately left it out of the hash: a hash difference claims a
+  replay-lineage split, and there was not one while the flag did nothing.
+- Already registered in `FIELD_NAMES` and in the codec by increment A, so
+  `config_field_coverage.rs` has been defending it from the start - which is
+  standing rule 3 working, one increment earlier than it had to.
+- Do **not** redo this as a constants change. `RULE_COUNT` 5 -> 4 plus a
+  renumber builds sim-core, breaks sim-analysis, moves fixtures for no reason,
+  and cannot be an arm of the 2x2 anyway: both arms must run on one build.
 
 Increment C - the moat, then the 2x2 campaign, pre-registered as in D-107.

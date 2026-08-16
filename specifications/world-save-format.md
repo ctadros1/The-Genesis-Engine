@@ -64,6 +64,110 @@ per-segment CRC32, strictly ascending segment ticks, and the entity id in
 every 44-byte record so an analysis keys on the organism rather than on the
 array slot.
 
+## Phase 11 Implementation Notes: ALIF Format 5, One Config Byte
+
+Implemented in `crates/sim-persist/src/codec.rs`. `FORMAT_VERSION` is 5;
+`FORMAT_VERSION_4` is retained, with `encode_snapshot_format4` and
+`decode_snapshot_format4` permanent members of the build.
+
+**The whole difference is one byte appended to the end of the config section
+body**: `plasticity.live_rule_zero`, written unconditionally at format 5 and
+absent at format 4.
+
+### Why this one is a version bump when sections 12, 13 and 14 were not
+
+Every optional *section* added since format 3 is absent from a world that
+does not have it, so a build that predates one reads a file lacking it
+unchanged. The config block has no such property. `encode_config` is
+positional and unconditional, so one new field shifts `worldmod` and `probe`
+by a byte and every existing format-4 file decodes as
+`ValueOutOfRange("section trailing bytes")` or, worse, as plausible garbage.
+
+The 120 format-4 campaign artifacts are still read for re-analysis, so
+breaking them is not acceptable. The alternative - appending the field and
+letting old files fail - is a mistake format 3 already made quietly: Phase 11
+grew the config block by seventeen bytes *within* format 3, so the retained
+format-3 reader can only read the format-3 files this build's own writer
+produces. That is survivable there because no pre-Phase-11 format-3 file
+exists. It would not be survivable here. This is recorded as an open item
+rather than repaired; see `docs/21-open-questions.md`.
+
+### The byte is appended, not filed with its own block
+
+`live_rule_zero` belongs to the plasticity config and is written after
+`probe`, which is the last block. The reason is a property worth more than
+the grouping: **appended, the format-4 config body is a byte prefix of the
+format-5 body for the same world.** That is one assertion a test can make
+(`the_format_4_config_body_is_the_format_5_body_without_its_last_byte`) and a
+reader can check by eye. Filed next to `plasticity.lamarckian_fraction_q16`,
+the two bodies would diverge from that offset on, `worldmod` and `probe`
+would sit at different offsets in the two formats, and the only way to state
+the difference would be to re-describe the layout.
+
+This ordering is **not** the config *hash* order and the two must not be
+conflated. `SimConfig::stable_hash` appends for a different reason - its
+order is the definition of every hash already issued - and gates each section
+on being enabled. The codec block is unconditional.
+
+### Both directions fail closed on the body, before the header
+
+A format-5 body read as format 4 leaves one byte over and fails the
+trailing-bytes check every section runs. A format-4 body read as format 5
+runs out of body on the last field and fails `TruncatedSection`. Neither
+depends on the header's version word, which is not checksummed - so a file
+with a forged version word is refused too, in both directions.
+
+### The logical state version does not move
+
+`SAVE_STATE_VERSION` stays 2. Format 5 adds a config *field* and changes no
+existing field's meaning. Version 2 was bumped when terrain stopped being a
+pure function of `(seed, config)`, which is a change of meaning; this is not
+one, and Phase 11 set the precedent in the other direction by adding four
+config fields and a whole optional section without moving it.
+
+### The registry has two transforms, and both land on the current format
+
+`FORMAT3_TO_CURRENT` and `FORMAT4_TO_CURRENT`. Neither chains:
+`decode_snapshot_migrating` applies exactly one transform, so a format-3 file
+goes to format 5 in one hop and never becomes an intermediate format-4 file.
+Both declare `expected_loss: ""` and both are entitled to. A format-4 world
+ran with `live_rule_zero` false by construction, not by default: no build
+that could write a format-4 file had a live rule 0 to switch on.
+
+The transforms are named for their **source** and not their target, because
+the target moves. `FORMAT3_TO_FORMAT4`'s `to_format` was already
+`codec::FORMAT_VERSION`, so the day format 5 landed the constant said 5 while
+the name said 4.
+
+### A version guard names the format that introduced the section
+
+`SECTION_WORLDMOD` and `SECTION_ACTION_CENSUS` are guarded against
+`FORMAT_VERSION_4`, not `FORMAT_VERSION`. Written against the current
+version, the comparison is correct only while the introducing format is
+current; at format 5 it becomes "refuse these sections in every format-4
+file", which is every campaign artifact on disk, reported as an error naming
+the section rather than the comparison.
+
+### The write side refuses what it cannot express
+
+`encode_snapshot_format4` returns `CodecError::FieldNotInFormat` for a state
+whose `live_rule_zero` is set, rather than dropping the field. That error is
+distinct from `SectionNotInFormat` because a config field has no tag and the
+refusal is write-side only. Silently writing the file would produce one that
+describes a world with rule 0 dead - the "never alter meaning during load"
+rule broken one step earlier, where nothing downstream can detect it.
+
+### Status of the field itself
+
+Encoded and migrated here; **not yet behavioural**. `SimConfig::validate`
+refuses `live_rule_zero == true`, on the same grounds it refuses a nonzero
+`lamarckian_fraction_q16`: an accepted flag that changed nothing would hand a
+campaign an arm bit-identical to its own control and report the result as a
+null. The refusal comes out in the change that remaps the rule in
+`compile_with_budget` (D-107 option A3). The field is **not** in the config
+hash until then, because a hash difference claims a replay-lineage split and
+there is not one yet.
+
 ## Planned Successor: ALIF Format 2 (Phase 12)
 
 Design: `specifications/mutable-world-state.md`. Decision: ADR-0015.

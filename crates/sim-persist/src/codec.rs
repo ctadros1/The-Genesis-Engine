@@ -1,4 +1,4 @@
-//! ALIF world snapshot format, version 4.
+//! ALIF world snapshot format, version 5.
 //!
 //! Layout (all little-endian, matching the kernel's canonical hashing):
 //!
@@ -50,7 +50,39 @@ use sim_core::{
 use std::fmt;
 
 pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
+/// Format 5 reserves one byte in the config block for
+/// `plasticity.live_rule_zero`.
+///
+/// **The smallest format change there has been, and the first one forced by
+/// the config block rather than by a section.** Every optional *section*
+/// added since format 3 - learn, morphology, worldmod, action census - is
+/// absent from a world that does not have it, so a build that predates one
+/// reads a file that lacks it unchanged. The config block has no such
+/// property: `encode_config` is positional and unconditional, so one new
+/// field shifts `worldmod` and `probe` by a byte and every existing format-4
+/// file decodes as garbage or, more often, as
+/// `ValueOutOfRange("section trailing bytes")`.
+///
+/// That is why this is a version bump and not an append. The 120 format-4
+/// campaign artifacts are still read for re-analysis, and the alternative -
+/// appending the field and letting old files fail - is the mistake format 3
+/// already made silently: Phase 11 grew the config block by seventeen bytes
+/// *within* format 3, so the retained format-3 reader can only read format-3
+/// files this build's own writer produces. That is survivable there because
+/// no pre-Phase-11 format-3 file exists. It would not be survivable here.
+///
+/// The two registered migrations are **3 to current** and **4 to current**.
+/// `encode_snapshot_format4` and `decode_snapshot_format4` stay in the build
+/// permanently, on the same grounds as their format-3 counterparts: the
+/// acceptance requirement is byte identity against what the format-4 reader
+/// produces, and a comparison you have deleted one side of is not a
+/// comparison.
+pub const FORMAT_VERSION: u16 = 5;
 /// Format 4 stores terrain modifications and the composed terrain checksum.
+///
+/// Retained as a reader and a writer, not as history. It was the current
+/// format for the whole Phase 12 mutable-world half and every campaign
+/// artifact on disk is one.
 ///
 /// **It is 4 and not 2, and the difference is not bookkeeping.** Every
 /// sentence in `specifications/mutable-world-state.md`, in
@@ -61,13 +93,13 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// version number that is already taken is the specific mistake this
 /// paragraph exists to have prevented.
 ///
-/// The one registered migration is **3 to 4**. Formats 1 and 2 have none,
-/// by design and by physics rather than by neglect - see their notes below.
-/// `decode_snapshot_format3` and `encode_snapshot_format3` stay in the build
-/// permanently, because the acceptance requirement for the migration is byte
-/// identity against what the format 3 reader produces, and a comparison you
-/// have deleted one side of is not a comparison.
-pub const FORMAT_VERSION: u16 = 4;
+/// Formats 1 and 2 have no migration, by design and by physics rather than
+/// by neglect - see their notes below. `decode_snapshot_format3` and
+/// `encode_snapshot_format3` stay in the build permanently, because the
+/// acceptance requirement for the migration is byte identity against what the
+/// format 3 reader produces, and a comparison you have deleted one side of is
+/// not a comparison.
+pub const FORMAT_VERSION_4: u16 = 4;
 /// Format 3 makes the Phase 2 section describe its own two counts.
 ///
 /// Format 2 wrote one count and drove the per-organism loop from
@@ -268,6 +300,21 @@ pub enum CodecError {
         tag: u16,
         format: u16,
     },
+    /// A **config field** that does not exist in the format version being
+    /// written, holding a value that version cannot express.
+    ///
+    /// Distinct from `SectionNotInFormat` because a config field is not a
+    /// section: it has no tag, it is never optional, and the refusal is on
+    /// the *write* side only. `encode_snapshot_format4` returns this rather
+    /// than dropping `plasticity.live_rule_zero`, on the same grounds the
+    /// format 3 writer refuses a state carrying a worldmod section - silently
+    /// writing a file that describes a different world is the "never alter
+    /// meaning during load" rule broken one step earlier, where it is harder
+    /// to notice.
+    FieldNotInFormat {
+        field: &'static str,
+        format: u16,
+    },
 }
 
 impl fmt::Display for CodecError {
@@ -443,7 +490,16 @@ fn write_section(out: &mut Vec<u8>, tag: u16, flags: u16, body: Vec<u8>) {
     out.extend_from_slice(&checksum.to_le_bytes());
 }
 
-fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
+/// Encode the config section for a given framing version.
+///
+/// `format` is a parameter because format 5's only difference from format 4
+/// is one byte in this block, and unlike every optional *section* that
+/// difference cannot be gated on the state: a config is written
+/// unconditionally, so the byte is present in every format-5 file and absent
+/// from every format-4 one. `decode_config` takes the same parameter and the
+/// two must be read together - they are the definition of the format
+/// difference, and there is nowhere else it is expressed.
+fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     let mut writer = Writer(Vec::new());
     writer.u64(config.world_seed);
     writer.u32(config.cells_x);
@@ -692,10 +748,36 @@ fn encode_config(config: &sim_core::SimConfig) -> Vec<u8> {
     writer.u8(u8::from(probe.enabled));
     writer.u8(u8::from(probe.action_census_enabled));
     writer.u8(u8::from(probe.marker_locus_enabled));
+    // Format 5's one byte, **appended at the end rather than filed with the
+    // plasticity block it belongs to**, and the reason is a property worth
+    // more than the grouping: appended, the format-4 config body is a byte
+    // *prefix* of the format-5 body for the same world. That is a single
+    // assertion a test can make and a reader can check by eye
+    // (`the_format_4_config_body_is_a_prefix_of_the_format_5_body`). Filed
+    // next to `plasticity.lamarckian_fraction_q16`, the two bodies would
+    // instead differ from that point on, `worldmod` and `probe` would sit at
+    // different offsets in the two formats, and the only way to state the
+    // difference would be to re-describe the layout.
+    //
+    // The order here is not the config *hash* order and the two must not be
+    // conflated: `SimConfig::stable_hash` appends for a different reason (its
+    // order is the definition of every hash already issued) and gates each
+    // section on being enabled. This block is unconditional.
+    if format >= FORMAT_VERSION {
+        writer.u8(u8::from(config.plasticity.live_rule_zero));
+    }
     writer.0
 }
 
-fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError> {
+/// Decode the config section written by `encode_config` at the same version.
+///
+/// Read the two together. A format-4 body reaching this at format 5 runs out
+/// of bytes on the last field and fails `TruncatedSection`; a format-5 body
+/// reaching it at format 4 leaves one byte over and fails the trailing-bytes
+/// check every section runs. Both directions fail closed on the *body* alone,
+/// before the header's version word is consulted at all - which is what makes
+/// a file with a forged version word fail too.
+fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig, CodecError> {
     let mut config = sim_core::SimConfig::phase1_default(reader.u64()?);
     config.cells_x = reader.u32()?;
     config.cells_y = reader.u32()?;
@@ -889,26 +971,41 @@ fn decode_config(reader: &mut Reader) -> Result<sim_core::SimConfig, CodecError>
     config.probe.enabled = reader.u8()? != 0;
     config.probe.action_census_enabled = reader.u8()? != 0;
     config.probe.marker_locus_enabled = reader.u8()? != 0;
+    // Format 5's byte. Left at its `false` default for a format-4 body, and
+    // that is a resolution rather than an invention: rule 0 was a no-op in
+    // every build that could write a format-4 file, so `false` is what the
+    // world the file describes actually ran with. It is the same kind of
+    // identity the 3-to-4 transform uses for the composed terrain checksum,
+    // and it is why the migration's `expected_loss` is still the empty string.
+    if format >= FORMAT_VERSION {
+        config.plasticity.live_rule_zero = reader.u8()? != 0;
+    }
     Ok(config)
 }
 
 /// Encode the payload for a given framing version.
 ///
-/// `format` is a parameter rather than a constant because the format 3 writer
-/// is a permanent part of the build: it is one half of the migration's
-/// byte-identity comparison, and a comparison against a reimplementation of
-/// the old writer would test the reimplementation. The only differences it
-/// makes are the two Phase 12 additions below, and both are gated on the
-/// *state* rather than on the version, so a format 4 file for a world without
-/// the section is byte-identical to the format 3 file for the same world -
-/// which `encode_snapshot_format3` asserts by construction.
-fn encode_payload(state: &SaveState) -> Vec<u8> {
+/// A retained writer for every format that has a retained reader, because the
+/// acceptance requirement for each migration is byte identity against a real
+/// legacy file, and a comparison against a reimplementation of the old writer
+/// would test the reimplementation.
+///
+/// **The parameter became real at format 5.** Until then it was documented as
+/// a parameter and was not one: the format 3-to-4 differences were the
+/// worldmod section and the composed checksum, both gated on the *state*
+/// rather than the version, so a format 4 file for a world without the
+/// section is byte-identical to the format 3 file for the same world and the
+/// function needed no version at all. Format 5's difference is a config byte
+/// that is written unconditionally, so it can only be gated on the version -
+/// which is why `encode_config` now takes one and this function has to pass
+/// it down.
+fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
     let mut payload = Vec::new();
     write_section(
         &mut payload,
         SECTION_CONFIG,
         0,
-        encode_config(&state.config),
+        encode_config(&state.config, format),
     );
 
     let mut meta = Writer(Vec::new());
@@ -1488,7 +1585,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 if config.is_some() {
                     return Err(CodecError::DuplicateSection(tag));
                 }
-                config = Some(decode_config(&mut reader)?);
+                config = Some(decode_config(&mut reader, format)?);
             }
             SECTION_WORLD_META => {
                 if meta.is_some() {
@@ -1929,7 +2026,16 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 });
             }
             SECTION_WORLDMOD => {
-                if format < FORMAT_VERSION {
+                // **`FORMAT_VERSION_4`, not `FORMAT_VERSION`.** This section
+                // arrived *in* format 4, so the version it must be compared
+                // against is the one that introduced it and not whichever
+                // version happens to be current. Written as `< FORMAT_VERSION`
+                // it read correctly for exactly as long as format 4 was
+                // current, and the moment format 5 landed it would have
+                // refused this section in every format-4 file - which is every
+                // campaign artifact on disk - with an error naming the section
+                // rather than the comparison.
+                if format < FORMAT_VERSION_4 {
                     return Err(CodecError::SectionNotInFormat { tag, format });
                 }
                 if worldmod.is_some() {
@@ -1938,7 +2044,10 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 worldmod = Some(decode_worldmod(&mut reader, section_flags, body.len())?);
             }
             SECTION_ACTION_CENSUS => {
-                if format < FORMAT_VERSION {
+                // `FORMAT_VERSION_4` for the reason the worldmod arm above
+                // gives: the constant names the format that introduced the
+                // section, permanently, not the format that is current.
+                if format < FORMAT_VERSION_4 {
                     return Err(CodecError::SectionNotInFormat { tag, format });
                 }
                 if action_census.is_some() {
@@ -2086,6 +2195,55 @@ pub fn encode_snapshot_format3(
     )
 }
 
+/// Encode a **format 4** snapshot.
+///
+/// Kept in the build permanently alongside `decode_snapshot_format4`, for the
+/// reason `encode_snapshot_format3` is: the acceptance requirement for the
+/// 4-to-5 migration is byte identity against a real legacy file, so a legacy
+/// file has to be constructible, and the 120 format-4 campaign artifacts are
+/// not in the repository.
+///
+/// It refuses a state whose `plasticity.live_rule_zero` is set, because a
+/// format 4 file has no byte for it and writing one anyway would produce a
+/// file describing a world with rule 0 dead - the same class of silent
+/// meaning change the format 3 writer refuses for the worldmod section, and
+/// the one this whole format bump exists to prevent.
+///
+/// The save-state version is `SAVE_STATE_VERSION`, not a `_4` constant, and
+/// that is deliberate: format 5 adds a config *field* and changes no existing
+/// field's meaning, so the logical state version does not move. Version 2
+/// was bumped when terrain stopped being a pure function of `(seed, config)`,
+/// which is a change of meaning; this is not one. Phase 11 set the precedent
+/// in the other direction by adding four config fields and a whole optional
+/// section without moving it.
+pub fn encode_snapshot_format4(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    if state.config.plasticity.live_rule_zero {
+        return Err(CodecError::FieldNotInFormat {
+            field: "plasticity.live_rule_zero",
+            format: FORMAT_VERSION_4,
+        });
+    }
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_4,
+        SAVE_STATE_VERSION,
+    )
+}
+
 #[allow(clippy::too_many_arguments)]
 fn encode_snapshot_versioned(
     state: &SaveState,
@@ -2102,7 +2260,7 @@ fn encode_snapshot_versioned(
     if build.len() > MAX_BUILD_LEN {
         return Err(CodecError::BuildStringTooLong(build.len()));
     }
-    let payload = encode_payload(state);
+    let payload = encode_payload(state, format_version);
     let uncompressed_len = payload.len() as u64;
     let (stored, flags) = match compression_level {
         Some(level) => (
@@ -2278,6 +2436,24 @@ pub fn decode_snapshot(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecE
 /// `World::from_state` re-derives and verifies it rather than trusting it.
 pub fn decode_snapshot_format3(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_3, SAVE_STATE_VERSION_3)
+}
+
+/// Full decode of a **format 4** snapshot.
+///
+/// Permanent, not transitional, for the reason `decode_snapshot_format3` is:
+/// this is the reader the 4-to-5 migration's byte-identity requirement is
+/// stated against, and it stays in the build for as long as that requirement
+/// does.
+///
+/// It is a real reader rather than a wrapper that strips a byte. The single
+/// difference is threaded through `decode_payload` to `decode_config`, which
+/// is the one place the format is expressed, so this function cannot drift
+/// away from what a format-4 file actually contains. What it produces is the
+/// current `SaveState` with `plasticity.live_rule_zero` at `false` - not an
+/// invention, but the value every world that could write a format-4 file
+/// actually ran with, since rule 0 was a no-op in all of them.
+pub fn decode_snapshot_format4(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_4, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

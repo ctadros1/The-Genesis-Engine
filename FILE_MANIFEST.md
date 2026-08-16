@@ -159,7 +159,8 @@ Kernel tests and in-tree benchmarks:
 
 ## Persistence And Artifacts (`sim-persist`)
 
-Snapshot codec (ALIF, format 4), the event log (ALEV 1), the spatial sample
+Snapshot codec (ALIF, format 5, with retained format 3 and format 4 readers
+and writers), the event log (ALEV 1), the spatial sample
 log (ALSS 1), and the per-individual action sample log (ALAC 1):
 
 - crates/sim-persist/Cargo.toml

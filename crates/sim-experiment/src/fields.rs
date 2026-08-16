@@ -315,6 +315,15 @@ config_fields! {
     "plasticity.plastic_edge_cost_milli_per_s" => plasticity.plastic_edge_cost_milli_per_s: i64,
     "plasticity.max_plastic_edges" => plasticity.max_plastic_edges: u32,
     "plasticity.lamarckian_fraction_q16" => plasticity.lamarckian_fraction_q16: u32,
+    // `live_rule_zero` is registered in the same change that encodes it, not
+    // in the later one that gives it behaviour, and the order is what makes
+    // `config_field_coverage.rs` defend it from the start: a field that is
+    // settable but unregistered is a field the sweep never perturbs, which is
+    // how the whole genome2 section went two phases undefended. Validation
+    // refuses `true` until the kernel half lands, exactly as it refuses a
+    // nonzero `lamarckian_fraction_q16`, so the sweep's `false -> true`
+    // perturbation exercises the codec without ever building such a world.
+    "plasticity.live_rule_zero" => plasticity.live_rule_zero: bool,
     // Phase 12. `worldmod.enabled` and `worldmod.patch_enabled` are separate
     // fields on purpose, and so is the scale: the phase's three arms are
     // "section off", "section on, schedule on, scale 1.0" and "section on,

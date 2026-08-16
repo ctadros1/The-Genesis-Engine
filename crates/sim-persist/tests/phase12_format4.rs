@@ -623,8 +623,13 @@ fn the_format_3_migration_is_byte_identical_to_a_format_3_load() {
     // `SaveState` derives `PartialEq` and covers every field of the logical
     // state including the config.
     let (legacy_info, legacy_state) = decode_snapshot_format3(&legacy).expect("legacy decode");
+    // At the **current** format, which is 5 and was 4 when this was written.
+    // The 3-to-current transform is one hop: it re-encodes at whatever
+    // `encode_snapshot` writes, so a format 3 file never passes through an
+    // intermediate format 4 file, and `to_format` above is asserted against
+    // `FORMAT_VERSION` rather than a literal for exactly that reason.
     let (migrated_info, migrated_state) =
-        decode_snapshot(&migrated.bytes).expect("the migrated file decodes at format 4");
+        decode_snapshot(&migrated.bytes).expect("the migrated file decodes at the current format");
     assert_eq!(migrated_info.format_version, FORMAT_VERSION);
     assert_eq!(migrated_state, legacy_state, "the migrated state differs");
     assert_eq!(
@@ -663,8 +668,12 @@ fn the_format_3_migration_is_byte_identical_to_a_format_3_load() {
 }
 
 /// Formats 1 and 2 have no migration and every unknown version fails closed.
+///
+/// Format 3's half of the registry. Format 4's, and the count of registered
+/// transforms, are asserted in `format5.rs` - the registry is no longer a
+/// one-entry table and this file is not the place that owns that fact.
 #[test]
-fn the_registry_registers_exactly_one_transform_and_refuses_everything_else() {
+fn the_registry_registers_format_3_and_refuses_the_formats_below_it() {
     assert!(
         migration_for(FORMAT_VERSION)
             .expect("the current format is not an error")
@@ -694,11 +703,28 @@ fn the_registry_registers_exactly_one_transform_and_refuses_everything_else() {
 /// version words is all it takes to produce this file, and a reader that
 /// parsed sections without regard to the version it was told would happily
 /// accept it and then migrate a world that never existed.
+///
+/// **The forged file is built by the format 4 writer, not by `encode`.** It
+/// used the current-format writer, which was the same thing for as long as
+/// format 4 was current and stopped being so at format 5: a format 5 payload
+/// read as format 3 fails on the extra config byte, in the config section,
+/// long before section 13 is reached - so the test still passed something and
+/// no longer tested the section guard at all. The claim here is about format
+/// 4's section in a format 3 file, so the file has to be a format 4 one.
 #[test]
 fn a_format_3_file_carrying_a_format_4_section_is_refused() {
     let world = modified_world(20, 200, ONE_Q16, 600);
     let state = world.export_state();
-    let mut forged = encode(&state, world.state_checksum());
+    let mut forged = sim_persist::encode_snapshot_format4(
+        &state,
+        1,
+        0,
+        world.state_checksum(),
+        sim_persist::BUILD_VERSION,
+        0,
+        None,
+    )
+    .expect("encode format 4");
     forged[OFFSET_FORMAT..OFFSET_FORMAT + 2].copy_from_slice(&FORMAT_VERSION_3.to_le_bytes());
     forged[OFFSET_SAVE_STATE_VERSION..OFFSET_SAVE_STATE_VERSION + 2]
         .copy_from_slice(&SAVE_STATE_VERSION_3.to_le_bytes());
@@ -767,13 +793,30 @@ fn a_disabled_world_encodes_the_payload_format_3_wrote() {
     let state = world.export_state();
     let checksum = world.state_checksum();
 
-    let current = encode(&state, checksum);
+    // **The format 4 writer, not `encode`.** C12.8's claim is that *format 4*
+    // encodes a disabled world exactly as format 3 did, and it stays true;
+    // what changed is that `encode` stopped meaning format 4. Format 5 adds an
+    // unconditional config byte, so it is one byte longer than format 3 for
+    // every world including this one - and the format 5 side of that
+    // comparison is stated as its own assertion in `format5.rs`
+    // (`the_format_4_config_body_is_the_format_5_body_without_its_last_byte`)
+    // rather than being smuggled into this one by leaving `encode` here.
+    let legacy_four = sim_persist::encode_snapshot_format4(
+        &state,
+        1,
+        0,
+        checksum,
+        sim_persist::BUILD_VERSION,
+        0,
+        None,
+    )
+    .expect("encode format 4");
     let legacy =
         encode_snapshot_format3(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
             .expect("encode format 3");
-    assert_eq!(current.len(), legacy.len());
-    let differing: Vec<usize> = (0..current.len())
-        .filter(|index| current[*index] != legacy[*index])
+    assert_eq!(legacy_four.len(), legacy.len());
+    let differing: Vec<usize> = (0..legacy_four.len())
+        .filter(|index| legacy_four[*index] != legacy[*index])
         .collect();
     assert_eq!(
         differing,

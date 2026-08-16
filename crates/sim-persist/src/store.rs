@@ -465,40 +465,102 @@ impl fmt::Debug for Migration {
     }
 }
 
-/// Format 3 to format 4.
+/// Format 3 to the current format.
 ///
-/// **The only migration there is, and the only one there will be.** Formats 1
-/// and 2 have none, by design and by physics: a format 1 file cannot say what
-/// its climate settings were, and a format 2 schema-2 file does not contain
-/// the per-organism state format 3 added, because format 2 drove that loop
-/// from a count that is zero in a schema-2 world. Transforming either would
-/// mean inventing state, which is exactly the "never alter meaning during
-/// load" rule this crate exists to keep. They fail closed, permanently, and
-/// the actionable advice is to keep the file and use a build that reads it.
+/// **Named for its source and not for its target, because the target moves.**
+/// It was `FORMAT3_TO_FORMAT4` and its `to_format` was already
+/// `codec::FORMAT_VERSION`, so the day format 5 landed the constant said 5
+/// while the name said 4 - a transform whose name is one version stale is the
+/// kind of thing that gets read rather than checked. Every registered
+/// transform lands on the current format in one hop; there is no chaining,
+/// because `decode_snapshot_migrating` applies exactly one.
+///
+/// Formats 1 and 2 have none, by design and by physics: a format 1 file
+/// cannot say what its climate settings were, and a format 2 schema-2 file
+/// does not contain the per-organism state format 3 added, because format 2
+/// drove that loop from a count that is zero in a schema-2 world.
+/// Transforming either would mean inventing state, which is exactly the
+/// "never alter meaning during load" rule this crate exists to keep. They
+/// fail closed, permanently, and the actionable advice is to keep the file
+/// and use a build that reads it.
 ///
 /// Format 3 is different in kind: everything in a format 3 file is still
-/// present in a format 4 file with the same meaning, and the two Phase 12
+/// present in a current file with the same meaning, and all three later
 /// additions have honest values for a world that predates them. An absent
-/// modification section is what a world with no overrides has, and
+/// modification section is what a world with no overrides has,
 /// `composed := baseline` is not a guess but the identity
 /// `TerrainModState::composed_checksum` is written to satisfy for the empty
-/// set. Nothing is inferred and nothing is lost.
-static FORMAT3_TO_FORMAT4: Migration = Migration {
+/// set, and rule 0 was a no-op in every build that could write the file.
+/// Nothing is inferred and nothing is lost.
+static FORMAT3_TO_CURRENT: Migration = Migration {
     from_format: codec::FORMAT_VERSION_3,
     to_format: codec::FORMAT_VERSION,
     expected_loss: "",
-    transform: migrate_format3_to_format4,
+    transform: migrate_format3_to_current,
 };
 
-fn migrate_format3_to_format4(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+/// Format 4 to the current format.
+///
+/// The one field format 5 adds is `plasticity.live_rule_zero`, and a
+/// format-4 world ran with it `false` - not by default but by construction,
+/// since no build that wrote a format-4 file had a live rule 0 to switch on.
+/// So this transform invents nothing and `expected_loss` is the empty string,
+/// exactly as it is for format 3.
+static FORMAT4_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_4,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format4_to_current,
+};
+
+fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
     let (source, mut state) = codec::decode_snapshot_format3(bytes)?;
     // **Written out rather than inherited from the decoder.** The format 3
-    // reader already resolves both fields this way, and stating them here
-    // anyway is what makes this a transform with a policy instead of a
+    // reader already resolves all three fields this way, and stating them
+    // here anyway is what makes this a transform with a policy instead of a
     // wrapper around a reader: if the reader's resolution ever changed, the
     // migration's contract would not silently change with it.
+    //
+    // None of the three is observable by a test today, for the reason set out
+    // on `migrate_format4_to_current` below - the reader already agrees with
+    // every one of them, so deleting a line changes no output. Recorded there
+    // rather than claimed away here.
     state.worldmod = None;
     state.composed_terrain_checksum = state.terrain_checksum;
+    state.config.plasticity.live_rule_zero = false;
+    reencode(source, state)
+}
+
+fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format4(bytes)?;
+    // The one field format 5 adds, written out for the reason the three above
+    // are: the transform states its own resolution rather than borrowing the
+    // reader's. Everything else in a format 4 file is present in a format 5
+    // file unchanged, which is why nothing else appears here.
+    //
+    // **This assignment is not observable by any test, and saying so is the
+    // point.** A mutation run deleting it left the whole `sim-persist` suite
+    // green, because `decode_config` at format 4 skips the byte and leaves the
+    // field at its `false` default - so the line only ever writes `false` over
+    // `false`. The same is true of the three assignments in
+    // `migrate_format3_to_current`, so this is a property of the pattern and
+    // not an oversight here. Setting it to `true` *is* caught, which is the
+    // half that matters: the tests pin the transform's *output*, and what they
+    // cannot pin is which of two agreeing paths produced it. Kept as
+    // defence-in-depth against a future reader whose resolution changes, and
+    // documented as unbacked rather than credited to a test that cannot see it.
+    state.config.plasticity.live_rule_zero = false;
+    reencode(source, state)
+}
+
+/// Re-encode a migrated state at the current format, preserving provenance.
+///
+/// Shared by both transforms rather than written twice, because the header
+/// fields a migration must carry through are a property of migrating and not
+/// of any one source format - and the version this pair was written at, the
+/// 3-to-4 transform's body was the only statement of them, so a second
+/// transform would have had to restate them correctly from reading it.
+fn reencode(source: SnapshotInfo, state: SaveState) -> Result<MigratedSave, StoreError> {
     // Compression is preserved as a property, not as a level: no file records
     // the level it was written at, so a migrated file may differ in size from
     // its source. Size is not part of the contract; the decoded state is.
@@ -533,7 +595,8 @@ const MIGRATION_COMPRESSION_LEVEL: i32 = 3;
 pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, String> {
     match format_version {
         codec::FORMAT_VERSION => Ok(None),
-        codec::FORMAT_VERSION_3 => Ok(Some(&FORMAT3_TO_FORMAT4)),
+        codec::FORMAT_VERSION_3 => Ok(Some(&FORMAT3_TO_CURRENT)),
+        codec::FORMAT_VERSION_4 => Ok(Some(&FORMAT4_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \

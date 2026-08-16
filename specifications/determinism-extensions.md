@@ -377,7 +377,9 @@ config hash, because an analysis version can never affect a world:
 
 Save framing versions are separate again: ALIF format 1 (existing), ALIF
 format 2 (Phase 12) - **in practice ALIF format 4**, since the Phase 9 and
-Phase 11 sections landed first; see `specifications/world-save-format.md`.
+Phase 11 sections landed first, and **ALIF format 5 is current**, which
+reserves one config byte for `plasticity.live_rule_zero`; see
+`specifications/world-save-format.md`.
 Artifact framing versions are separate from both: ALEV format 1 (event log,
 Phase 5), ALSS format 1 (spatial samples, Phase 7), ALAC format 1
 (per-individual action samples, Phase 11).
