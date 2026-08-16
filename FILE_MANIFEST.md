@@ -178,6 +178,7 @@ log (ALSS 1), and the per-individual action sample log (ALAC 1):
 - crates/sim-persist/tests/config_round_trip.rs
 - crates/sim-persist/tests/phase11_action_section.rs
 - crates/sim-persist/tests/phase12_format4.rs
+- crates/sim-persist/tests/format5.rs
 - crates/sim-persist/tests/bench_saves.rs
 - crates/sim-persist/tests/bench_phase9_snapshot.rs
 - crates/sim-persist/tests/bench_phase11_snapshot.rs
@@ -261,6 +262,7 @@ afterwards.
 - experiments/results/phase11-c111-confirmatory-manifest.txt
 - experiments/results/phase11-c111-confirmatory-plasticity.txt
 - experiments/results/phase11-c111-confirmatory-findings.txt
+- experiments/results/phase11-c111-reanalysis-v2-plasticity.txt
 - experiments/results/phase11-conjunction-census.txt
 - experiments/results/phase11-conjunction-census-raw.txt
 - experiments/results/phase11-benchmark-measurements.txt
