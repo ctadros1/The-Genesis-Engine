@@ -19,6 +19,7 @@
 //! and `docs/08-genetics-and-evolution.md`.
 
 mod actioncensus;
+mod artifact;
 mod checksum;
 mod climate;
 mod config;
@@ -29,6 +30,7 @@ mod develop;
 mod genome;
 mod genome2;
 mod learnstate;
+mod material;
 mod meiosis;
 mod morphology;
 mod morphstate;
@@ -46,6 +48,11 @@ mod terrainmod;
 mod world;
 mod worldgen;
 
+pub use artifact::{
+    ARTIFACT_POLICY_VERSION, CAUSE_CARCASS, CAUSE_COMBINED, CAUSE_EXTRACTED, CAUSE_FRACTURED,
+    DestroyCause, INTEGRITY_WHOLE_Q16, ObjectAction, ObjectCounters, ObjectIntent, ObjectLedger,
+    ObjectRecord, ObjectState, ObjectTable, RefuseReason, TableViolation, cause_is_known,
+};
 pub use actioncensus::{
     ACTION_CENSUS_POLICY_VERSION, ACTION_CLASS_COUNT, ActionCensusCounters, ActionClass,
     LOCOMOTION_CLASS_COUNT, TURN_BAND_MILLI, locomotion as locomotion_class,
@@ -56,8 +63,9 @@ pub use climate::{
     ClimateState, classify as classify_biome, drift_milli, season_milli,
 };
 pub use config::{
-    BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
-    Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig,
+    ArtifactConfig, BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
+    Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_COMPOSITION_DEPTH, MAX_FRAGMENTS,
+    MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig,
     PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig,
     SimConfig, WorldModConfig, WorldgenVersion,
 };
@@ -99,6 +107,12 @@ pub use genome2::{
     TRAIT_HOMOLOGY_LIMIT, VALUE_LIMIT, blend_by_dominance, derive_gene_lineage_id,
     derive_homology_id, derive_mutation_event_id, registry_versions,
 };
+pub use material::{
+    MATERIAL_CARCASS, MATERIAL_COUNT, MATERIAL_FIBER, MATERIAL_POLICY_VERSION,
+    MATERIAL_REGISTRY_VERSION, MATERIAL_STONE, MATERIAL_WOOD, MATERIALS, MaterialDef,
+    hash_registry_into as hash_material_registry_into, material, material_exists,
+    max_hardness_q16,
+};
 pub use meiosis::{
     Gamete, InheritanceMode, MAX_EXTRA_CROSSOVERS, MEIOSIS_POLICY_VERSION, MeiosisConfig, gamete,
     recombine as recombine2,
@@ -128,8 +142,12 @@ pub use plasticity::{
 };
 pub use registry::{
     ACTIVATION_LINEAR, ACTIVATION_REGISTRY_VERSION, ACTIVATION_TANH, Activation,
-    CHANNEL_REGISTRY_VERSION, CHANNELS, ChannelDirection, ChannelEntry, NodeRole, channel,
-    channel_exists, input_channels, output_channels,
+    CHANNEL_CARRIED_LOAD, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_OBJECT_BEARING,
+    CHANNEL_OBJECT_DISTANCE, CHANNEL_OBJECT_HARDNESS, CHANNEL_OBJECT_HEFT, CHANNEL_OBJECT_PRESENT,
+    CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_REGISTRY_VERSION, CHANNEL_REGISTRY_VERSION_ARTIFACT,
+    CHANNEL_STRIKE, CHANNELS, CHANNELS_V2, ChannelDirection, ChannelEntry, NodeRole, channel,
+    channel_exists, channel_offered, channel_version, channels_for, input_channels,
+    output_channels,
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{

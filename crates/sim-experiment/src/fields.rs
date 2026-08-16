@@ -297,6 +297,11 @@ config_fields! {
     // exactly the "visible gap rather than a silent one" standing rule 3
     // describes.
     "genome2.mutation.point_delta_q16" => genome2.mutation.point_delta_q16: u32,
+    // Phase 12's `bind` operator (D-114). Zero by default and hashed only
+    // when nonzero; every Phase 12 condition arm sets the same value, so it
+    // is common-mode for C12.1-C12.3 and has to be expressible as a `base`
+    // line.
+    "genome2.mutation.binding_q16" => genome2.mutation.binding_q16: u32,
     "genome2.mutation.regulatory_enabled" => genome2.mutation.regulatory_enabled: bool,
     // Phase 11's A/B ablation lives on this one flag, so without the entry
     // the phase's two conditions are not expressible as a campaign at all.
@@ -361,6 +366,42 @@ config_fields! {
     "morphology.caps.max_modules" => morphology.caps.max_modules: u16,
     "morphology.caps.max_growth_steps" => morphology.caps.max_growth_steps: u16,
     "morphology.caps.lattice_radius" => morphology.caps.lattice_radius: i16,
+    // Phase 12 artifact section (ADR-0028). Every field, because the sweep
+    // in `config_field_coverage.rs` drives itself from this list and a field
+    // absent from it is defended by nothing; and because the four campaign
+    // conditions are `set` lines on `inert`, `ephemeral` and
+    // `max_composition_depth`, which therefore have to be nameable.
+    "artifact.enabled" => artifact.enabled: bool,
+    "artifact.inert" => artifact.inert: bool,
+    "artifact.ephemeral" => artifact.ephemeral: bool,
+    "artifact.max_objects" => artifact.max_objects: u32,
+    "artifact.max_objects_per_cell" => artifact.max_objects_per_cell: u32,
+    "artifact.max_composition_depth" => artifact.max_composition_depth: u32,
+    "artifact.max_composition_breadth" => artifact.max_composition_breadth: u32,
+    "artifact.max_held_objects" => artifact.max_held_objects: u32,
+    "artifact.max_candidates" => artifact.max_candidates: u32,
+    "artifact.carry_capacity_milli" => artifact.carry_capacity_milli: i64,
+    "artifact.carry_move_cost_q16" => artifact.carry_move_cost_q16: u32,
+    "artifact.hold_cost_milli_per_s" => artifact.hold_cost_milli_per_s: i64,
+    "artifact.action_cost_milli" => artifact.action_cost_milli: i64,
+    "artifact.strike_cost_milli" => artifact.strike_cost_milli: i64,
+    "artifact.action_threshold_q16" => artifact.action_threshold_q16: i32,
+    "artifact.reach_m" => artifact.reach_m: u32,
+    "artifact.consume_reach_m" => artifact.consume_reach_m: u32,
+    "artifact.perception_range_m" => artifact.perception_range_m: u32,
+    "artifact.strike_force_q16" => artifact.strike_force_q16: u32,
+    "artifact.strike_mass_reference_milli" => artifact.strike_mass_reference_milli: i64,
+    "artifact.fracture_margin_q16" => artifact.fracture_margin_q16: u32,
+    "artifact.max_fragments" => artifact.max_fragments: u32,
+    "artifact.min_fragment_mass_milli" => artifact.min_fragment_mass_milli: i64,
+    "artifact.joint_floor_q16" => artifact.joint_floor_q16: u32,
+    "artifact.blocking_mass_milli" => artifact.blocking_mass_milli: i64,
+    "artifact.terrain_yield_milli" => artifact.terrain_yield_milli: i64,
+    "artifact.extraction_milli" => artifact.extraction_milli: i64,
+    "artifact.yield_regen_milli" => artifact.yield_regen_milli: i64,
+    "artifact.yield_regen_interval_ticks" => artifact.yield_regen_interval_ticks: u64,
+    "artifact.stone_relative_q16" => artifact.stone_relative_q16: u32,
+    "artifact.wood_relative_q16" => artifact.wood_relative_q16: u32,
 }
 
 /// Every field on which two configs disagree, in `FIELD_NAMES` order.

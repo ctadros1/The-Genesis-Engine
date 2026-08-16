@@ -140,6 +140,148 @@ pub struct SimConfig {
     /// to the config hash or the state checksum, and no locus type that did
     /// not exist before appears in any genome.
     pub probe: ProbeConfig,
+    /// Phase 12 artifact section, disabled by default. Same D-014 rule and
+    /// the same four-fixture obligation `worldmod` carries. Disabled, no
+    /// object table exists, no object channel is offered, the world's channel
+    /// registry version is 1, nothing is appended to the config hash or the
+    /// state checksum, and `spawn_carcass` takes the Phase 7 path.
+    pub artifact: ArtifactConfig,
+}
+
+/// Versioned Phase 12 artifact policy (`lifesim-artifact-v1`, ADR-0028).
+///
+/// Enabling this adds objects to the world, eleven channels to the registry
+/// the organisms of this world may bind, one pass to `Apply` and one to
+/// `Lifecycle`. It changes no rule any earlier phase runs: movement gains one
+/// entry check, the movement cost gains one multiplier that is exactly one
+/// for an organism holding nothing, and consumption of an object's energy
+/// runs beside biomass feeding on the same arithmetic.
+///
+/// # There is no recipe here
+///
+/// Nothing in this struct names a combination, a material pair, a tool, or a
+/// structure. Every field is a cap, a cost, a threshold on a physical
+/// quantity, or a rate. The three fields that realise the campaign's control
+/// arms (`inert`, `ephemeral`, and `max_composition_depth = 0`) remove
+/// physics; none adds any.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ArtifactConfig {
+    pub enabled: bool,
+    /// Condition C: every action resolves, costs, counts and events, and
+    /// changes nothing in the world. Separates "actions fire" from "actions
+    /// pay" (the plan's four-condition design).
+    pub inert: bool,
+    /// Condition B: an object dropped or placed this tick is destroyed at the
+    /// end of it, ledgered to dust. Persistence removed, nothing else.
+    pub ephemeral: bool,
+
+    // Caps (C12.7). Each rejects deterministically, counts, and events.
+    pub max_objects: u32,
+    pub max_objects_per_cell: u32,
+    /// Depth of a composite; 0 is condition D, simple objects only.
+    pub max_composition_depth: u32,
+    pub max_composition_breadth: u32,
+    pub max_held_objects: u32,
+    /// Truncation of every sorted candidate set (Rule 5). Enters the hash
+    /// because changing it is a replay-lineage change.
+    pub max_candidates: u32,
+
+    // Carrying.
+    /// Capacity at body scale 1,000; scales with `body_scale_milli` (D-085).
+    pub carry_capacity_milli: i64,
+    /// Movement-cost multiplier per unit of carried / capacity, Q16.
+    pub carry_move_cost_q16: u32,
+    /// Per-second hold cost at full load, scaled by carried / capacity.
+    pub hold_cost_milli_per_s: i64,
+
+    // Costs, charged on every attempt whether or not it succeeds.
+    pub action_cost_milli: i64,
+    pub strike_cost_milli: i64,
+    /// Request value, Q16, above which a bound action channel fires.
+    pub action_threshold_q16: i32,
+
+    // Reach.
+    pub reach_m: u32,
+    pub consume_reach_m: u32,
+    pub perception_range_m: u32,
+
+    // Striking and fracture.
+    /// Bare force at body scale 1,000, in hardness units (Q16).
+    pub strike_force_q16: u32,
+    /// Held mass that adds one full hardness to the force.
+    pub strike_mass_reference_milli: i64,
+    /// Multiplier on hardness the summed force must reach, Q16.
+    pub fracture_margin_q16: u32,
+    /// Fragment count upper bound; the lower bound is 2.
+    pub max_fragments: u32,
+    /// A fragment lighter than this is dust rather than an object.
+    pub min_fragment_mass_milli: i64,
+
+    // Combination.
+    /// Joint draws below this fail the attempt, Q16.
+    pub joint_floor_q16: u32,
+
+    // Occupancy.
+    /// A free object at or above this mass blocks entry to its cell.
+    pub blocking_mass_milli: i64,
+
+    // Terrain yield (the material-yield layer's producer and consumer).
+    pub terrain_yield_milli: i64,
+    /// Volume per terrain strike before variance and density.
+    pub extraction_milli: i64,
+    pub yield_regen_milli: i64,
+    pub yield_regen_interval_ticks: u64,
+    /// Relative elevation above the coastline, Q16, at or above which a cell
+    /// yields stone; wood at or above `wood_relative_q16`; fiber below.
+    pub stone_relative_q16: u32,
+    pub wood_relative_q16: u32,
+}
+
+/// Largest composition depth a config may ask for: `depth` is a `u8` in the
+/// object table and the checked identity is `depth <= cap`.
+pub const MAX_COMPOSITION_DEPTH: u32 = 16;
+/// Largest fragment fan-out a config may ask for.
+pub const MAX_FRAGMENTS: u32 = 16;
+
+impl ArtifactConfig {
+    /// Documented Phase 12 defaults (disabled by default). Provisional, as
+    /// every cap and rate in this repo is; the specification records the
+    /// reasoning beside each.
+    pub fn artifact_default() -> Self {
+        Self {
+            enabled: false,
+            inert: false,
+            ephemeral: false,
+            max_objects: 4_096,
+            max_objects_per_cell: 8,
+            max_composition_depth: 4,
+            max_composition_breadth: 8,
+            max_held_objects: 1,
+            max_candidates: 8,
+            carry_capacity_milli: 4_000,
+            carry_move_cost_q16: Q16_ONE,
+            hold_cost_milli_per_s: 20,
+            action_cost_milli: 60,
+            strike_cost_milli: 120,
+            action_threshold_q16: (Q16_ONE / 2) as i32,
+            reach_m: 2,
+            consume_reach_m: 2,
+            perception_range_m: 8,
+            strike_force_q16: 4 * Q16_ONE,
+            strike_mass_reference_milli: 2_000,
+            fracture_margin_q16: Q16_ONE,
+            max_fragments: 4,
+            min_fragment_mass_milli: 400,
+            joint_floor_q16: Q16_ONE / 4,
+            blocking_mass_milli: 3_000,
+            terrain_yield_milli: 6_000,
+            extraction_milli: 800,
+            yield_regen_milli: 400,
+            yield_regen_interval_ticks: 600,
+            stone_relative_q16: 39_322,
+            wood_relative_q16: 16_384,
+        }
+    }
 }
 
 /// Versioned Phase 11 measurement policy (`lifesim-probe-v1`).
@@ -926,6 +1068,7 @@ impl SimConfig {
             plasticity: PlasticityConfig::plasticity_default(),
             worldmod: WorldModConfig::worldmod_default(),
             probe: ProbeConfig::probe_default(),
+            artifact: ArtifactConfig::artifact_default(),
         }
     }
 
@@ -1330,6 +1473,129 @@ impl SimConfig {
                 0,
             ));
         }
+        // Phase 12 artifact section, validated on the same terms and in the
+        // same function (D-084).
+        let artifact = &self.artifact;
+        if artifact.enabled {
+            // Schema 1's fixed topology cannot bind a channel it was not
+            // built with, so a schema-1 artifact world would have objects
+            // nobody could ever touch: C12.1's null produced by the
+            // configuration. Refused rather than allowed to run quietly.
+            if !self.genome2.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "artifact.enabled requires genome2",
+                    0,
+                ));
+            }
+            // The material-yield layer is mutable-world state; a terrain
+            // strike writes it.
+            if !self.worldmod.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "artifact.enabled requires worldmod",
+                    0,
+                ));
+            }
+            for (name, value) in [
+                ("artifact.max_objects", u64::from(artifact.max_objects)),
+                ("artifact.max_objects_per_cell", u64::from(artifact.max_objects_per_cell)),
+                ("artifact.max_composition_breadth", u64::from(artifact.max_composition_breadth)),
+                ("artifact.max_held_objects", u64::from(artifact.max_held_objects)),
+                ("artifact.max_candidates", u64::from(artifact.max_candidates)),
+                ("artifact.reach_m", u64::from(artifact.reach_m)),
+                ("artifact.consume_reach_m", u64::from(artifact.consume_reach_m)),
+                ("artifact.perception_range_m", u64::from(artifact.perception_range_m)),
+                ("artifact.strike_force_q16", u64::from(artifact.strike_force_q16)),
+                ("artifact.fracture_margin_q16", u64::from(artifact.fracture_margin_q16)),
+                ("artifact.yield_regen_interval_ticks", artifact.yield_regen_interval_ticks),
+            ] {
+                if value == 0 {
+                    return Err(ConfigError::PhysiologyRange(name, 0));
+                }
+            }
+            for (name, value) in [
+                ("artifact.carry_capacity_milli", artifact.carry_capacity_milli),
+                ("artifact.strike_mass_reference_milli", artifact.strike_mass_reference_milli),
+                ("artifact.min_fragment_mass_milli", artifact.min_fragment_mass_milli),
+                ("artifact.blocking_mass_milli", artifact.blocking_mass_milli),
+                ("artifact.extraction_milli", artifact.extraction_milli),
+            ] {
+                if value <= 0 {
+                    return Err(ConfigError::PhysiologyRange(name, value));
+                }
+            }
+            for (name, value) in [
+                ("artifact.hold_cost_milli_per_s", artifact.hold_cost_milli_per_s),
+                ("artifact.action_cost_milli", artifact.action_cost_milli),
+                ("artifact.strike_cost_milli", artifact.strike_cost_milli),
+                ("artifact.terrain_yield_milli", artifact.terrain_yield_milli),
+                ("artifact.yield_regen_milli", artifact.yield_regen_milli),
+            ] {
+                if value < 0 {
+                    return Err(ConfigError::PhysiologyRange(name, value));
+                }
+            }
+            if artifact.max_composition_depth > MAX_COMPOSITION_DEPTH {
+                return Err(ConfigError::PhysiologyRange(
+                    "artifact.max_composition_depth",
+                    i64::from(artifact.max_composition_depth),
+                ));
+            }
+            if artifact.max_composition_breadth < 2 {
+                return Err(ConfigError::PhysiologyRange(
+                    "artifact.max_composition_breadth",
+                    i64::from(artifact.max_composition_breadth),
+                ));
+            }
+            if artifact.max_fragments < 2 || artifact.max_fragments > MAX_FRAGMENTS {
+                return Err(ConfigError::PhysiologyRange(
+                    "artifact.max_fragments",
+                    i64::from(artifact.max_fragments),
+                ));
+            }
+            if artifact.joint_floor_q16 > Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(
+                    "artifact.joint_floor_q16",
+                    artifact.joint_floor_q16,
+                ));
+            }
+            if artifact.action_threshold_q16 < -(Q16_ONE as i32)
+                || artifact.action_threshold_q16 > Q16_ONE as i32
+            {
+                return Err(ConfigError::ControllerThreshold(
+                    "artifact.action_threshold_q16",
+                    artifact.action_threshold_q16,
+                ));
+            }
+            if artifact.stone_relative_q16 > Q16_ONE
+                || artifact.wood_relative_q16 > artifact.stone_relative_q16
+            {
+                return Err(ConfigError::FractionOutOfRange(
+                    "artifact.stone_relative_q16",
+                    artifact.stone_relative_q16,
+                ));
+            }
+            // A per-cell cap above the world cap can never bind, and a
+            // held cap above the world cap likewise; neither is a defect,
+            // but a fragment fan-out that cannot fit under the world cap
+            // means every fracture is partly dust by construction. Refused
+            // so the campaign that hits it is told rather than left to read
+            // it as physics.
+            if artifact.max_fragments > artifact.max_objects {
+                return Err(ConfigError::PhysiologyRange(
+                    "artifact.max_fragments exceeds max_objects",
+                    i64::from(artifact.max_fragments),
+                ));
+            }
+        } else if artifact.inert || artifact.ephemeral {
+            // A condition arm switched on with the section off is refused
+            // rather than treated as off, exactly as a probe feature is: a
+            // campaign that asked for condition C and silently got a
+            // section-less world would report a null it never measured.
+            return Err(ConfigError::PhysiologyRange(
+                "an artifact condition is enabled while artifact.enabled is false",
+                0,
+            ));
+        }
         let physiology = &self.physiology;
         if physiology.enabled {
             if !(1..=6).contains(&physiology.basal_exponent_quarters) {
@@ -1614,6 +1880,18 @@ impl SimConfig {
 
     /// Canonical config hash over the schema version, policy versions, and
     /// every field in declaration order.
+    /// The channel registry version this world offers its organisms: 2 when
+    /// the artifact section is enabled, else 1. What the genome2 config block
+    /// hashes, what `bind` draws from, and what a genome's bindings are
+    /// validated against at construction and restore (ADR-0028 section 7).
+    pub fn channel_registry_version(&self) -> u16 {
+        if self.artifact.enabled {
+            crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT
+        } else {
+            crate::registry::CHANNEL_REGISTRY_VERSION
+        }
+    }
+
     pub fn stable_hash(&self) -> u64 {
         let mut hasher = Fnv1a64::new();
         hasher.update(b"lifesim-config");
@@ -1780,9 +2058,13 @@ impl SimConfig {
             hasher.update(crate::controller2::CONTROLLER2_POLICY_VERSION.as_bytes());
             // The registries are part of what a genome means, so their
             // versions enter the hash: the same loci under a different
-            // channel registry describe a different organism.
-            let (channels, activations) = crate::genome2::registry_versions();
-            hasher.update_u32(u32::from(channels));
+            // channel registry describe a different organism. **The channel
+            // registry version is the one this world offers**, which is 1
+            // for every world without the artifact section - so every hash
+            // issued before the artifact half existed is unchanged - and 2
+            // for a world with it (ADR-0028 section 7).
+            let (_, activations) = crate::genome2::registry_versions();
+            hasher.update_u32(u32::from(self.channel_registry_version()));
             hasher.update_u32(u32::from(activations));
             let caps = &self.genome2.caps;
             hasher.update_u32(u32::from(caps.max_chromosomes));
@@ -1928,6 +2210,52 @@ impl SimConfig {
             hasher.update_i32(crate::actioncensus::TURN_BAND_MILLI);
             hasher.update_u32(u32::from(self.probe.action_census_enabled));
             hasher.update_u32(u32::from(self.probe.marker_locus_enabled));
+        }
+        // Phase 12 artifact section, **appended after every section before it
+        // and hashed only when enabled**, for the reason every one of them
+        // was: this function's order is the definition of every existing
+        // config hash. Enabling objects changes the hash and starts a new
+        // replay lineage, which is correct - a world with objects in it is not
+        // the same experiment as one without - and the material registry and
+        // the channel set this world offers are part of what the section
+        // means, on the terms the channel registry is part of what a genome
+        // means.
+        if self.artifact.enabled {
+            let artifact = &self.artifact;
+            hasher.update(b"lifesim-artifact-config");
+            hasher.update(crate::artifact::ARTIFACT_POLICY_VERSION.as_bytes());
+            crate::material::hash_registry_into(&mut hasher);
+            hasher.update_u32(u32::from(crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT));
+            hasher.update_u32(u32::from(artifact.inert));
+            hasher.update_u32(u32::from(artifact.ephemeral));
+            hasher.update_u32(artifact.max_objects);
+            hasher.update_u32(artifact.max_objects_per_cell);
+            hasher.update_u32(artifact.max_composition_depth);
+            hasher.update_u32(artifact.max_composition_breadth);
+            hasher.update_u32(artifact.max_held_objects);
+            hasher.update_u32(artifact.max_candidates);
+            hasher.update_i64(artifact.carry_capacity_milli);
+            hasher.update_u32(artifact.carry_move_cost_q16);
+            hasher.update_i64(artifact.hold_cost_milli_per_s);
+            hasher.update_i64(artifact.action_cost_milli);
+            hasher.update_i64(artifact.strike_cost_milli);
+            hasher.update_i32(artifact.action_threshold_q16);
+            hasher.update_u32(artifact.reach_m);
+            hasher.update_u32(artifact.consume_reach_m);
+            hasher.update_u32(artifact.perception_range_m);
+            hasher.update_u32(artifact.strike_force_q16);
+            hasher.update_i64(artifact.strike_mass_reference_milli);
+            hasher.update_u32(artifact.fracture_margin_q16);
+            hasher.update_u32(artifact.max_fragments);
+            hasher.update_i64(artifact.min_fragment_mass_milli);
+            hasher.update_u32(artifact.joint_floor_q16);
+            hasher.update_i64(artifact.blocking_mass_milli);
+            hasher.update_i64(artifact.terrain_yield_milli);
+            hasher.update_i64(artifact.extraction_milli);
+            hasher.update_i64(artifact.yield_regen_milli);
+            hasher.update_u64(artifact.yield_regen_interval_ticks);
+            hasher.update_u32(artifact.stone_relative_q16);
+            hasher.update_u32(artifact.wood_relative_q16);
         }
         hasher.finish()
     }

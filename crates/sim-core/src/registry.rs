@@ -27,9 +27,26 @@
 //! Phase 7** and nothing else, so Phase 9 measures the effect of structural
 //! freedom and not the effect of new senses.
 
-/// Bumped when an entry is added. Enters the config hash, so a world that
-/// declares one registry version can never be confused with another.
+/// Registry version 1: the post-Phase-7 channel set. Enters the config hash
+/// (as the version a world *offers*, see `SimConfig::channel_registry_version`),
+/// so a world that declares one registry version can never be confused with
+/// another.
+///
+/// **This constant did not move when the artifact half added channels, and
+/// the reason is recorded rather than left to look like an oversight.** The
+/// module doc above promises that growing the registry "does not invalidate
+/// a single existing schema-2 genome"; the ALG2 codec stamps the version and
+/// refuses a mismatch outright (`genome2.rs`), so bumping this would have
+/// made every schema-2 genome on disk undecodable, and hashing it
+/// unconditionally inside the genome2 config block would have moved the
+/// Phase 9 and 11 fixtures. So the artifact channels are **version 2**, a
+/// world's version is 2 only when its artifact section is enabled, and a
+/// genome stamps the smallest version that covers its bindings (ADR-0028
+/// section 7). Both promises now hold: no genome is invalidated, and a
+/// world that offers more channels hashes differently.
 pub const CHANNEL_REGISTRY_VERSION: u16 = 1;
+/// Registry version 2: version 1 plus the eleven artifact channels.
+pub const CHANNEL_REGISTRY_VERSION_ARTIFACT: u16 = 2;
 pub const ACTIVATION_REGISTRY_VERSION: u16 = 1;
 
 /// Whether the world supplies a channel to the organism or accepts one from
@@ -105,6 +122,73 @@ pub const CHANNELS: &[ChannelEntry] = &[
     output(107, "follow"),
     output(108, "avoid"),
 ];
+
+/// The channels registry version 2 adds (Phase 12 artifact half). Offered
+/// only by a world whose artifact section is enabled; absent, unbindable and
+/// undrawable everywhere else, so no world that existed before them can tell
+/// they exist.
+///
+/// Inputs 17-22 are cues, not labels (review 1.3, ADR-0022 A3): heft is the
+/// target's mass over the perceiver's own carry capacity and hardness is
+/// over the registry maximum; no channel carries a material ID or a
+/// composite depth. Outputs 113-117 are the five actions. **109-112 stay
+/// unallocated forever**: the doc on `CHANNELS` reserves 101..=112 for
+/// schema 1's outputs and excludes its four memory outputs from ever being
+/// channels, and an ID that is ambiguous between "reserved" and "free" is
+/// not worth four values.
+pub const CHANNELS_V2: &[ChannelEntry] = &[
+    input(17, "object_present"),
+    input(18, "object_distance"),
+    input(19, "object_bearing"),
+    input(20, "object_heft"),
+    input(21, "object_hardness"),
+    input(22, "carried_load"),
+    output(113, "pick_up"),
+    output(114, "drop"),
+    output(115, "place"),
+    output(116, "strike"),
+    output(117, "combine"),
+];
+
+pub const CHANNEL_OBJECT_PRESENT: u16 = 17;
+pub const CHANNEL_OBJECT_DISTANCE: u16 = 18;
+pub const CHANNEL_OBJECT_BEARING: u16 = 19;
+pub const CHANNEL_OBJECT_HEFT: u16 = 20;
+pub const CHANNEL_OBJECT_HARDNESS: u16 = 21;
+pub const CHANNEL_CARRIED_LOAD: u16 = 22;
+pub const CHANNEL_PICK_UP: u16 = 113;
+pub const CHANNEL_DROP: u16 = 114;
+pub const CHANNEL_PLACE: u16 = 115;
+pub const CHANNEL_STRIKE: u16 = 116;
+pub const CHANNEL_COMBINE: u16 = 117;
+
+/// The smallest registry version that offers `id`, or `None` for an id no
+/// version knows.
+pub fn channel_version(id: u16) -> Option<u16> {
+    if CHANNELS.iter().any(|entry| entry.id == id) {
+        Some(CHANNEL_REGISTRY_VERSION)
+    } else if CHANNELS_V2.iter().any(|entry| entry.id == id) {
+        Some(CHANNEL_REGISTRY_VERSION_ARTIFACT)
+    } else {
+        None
+    }
+}
+
+/// Whether registry `version` offers channel `id`. Fails closed on a version
+/// this build does not know.
+pub fn channel_offered(id: u16, version: u16) -> bool {
+    channel_version(id).is_some_and(|needed| needed <= version && version <= CHANNEL_REGISTRY_VERSION_ARTIFACT)
+}
+
+/// Every channel registry `version` offers, in ID order within each
+/// direction's block. `None` for an unknown version.
+pub fn channels_for(version: u16) -> Option<impl Iterator<Item = &'static ChannelEntry>> {
+    match version {
+        CHANNEL_REGISTRY_VERSION => Some(CHANNELS.iter().chain(CHANNELS_V2[..0].iter())),
+        CHANNEL_REGISTRY_VERSION_ARTIFACT => Some(CHANNELS.iter().chain(CHANNELS_V2.iter())),
+        _ => None,
+    }
+}
 
 /// Activation registry version 1.
 ///
@@ -184,20 +268,30 @@ impl NodeRole {
     }
 }
 
+/// The entry for a channel id in **any** version this build knows. The codec
+/// and the compiler use this: a genome that names a channel decodes and
+/// compiles regardless of which world it is in; whether the world *offers*
+/// the channel is a separate check (`channel_offered`) made at world
+/// construction and restore.
 pub fn channel(id: u16) -> Option<&'static ChannelEntry> {
-    CHANNELS.iter().find(|entry| entry.id == id)
+    CHANNELS
+        .iter()
+        .chain(CHANNELS_V2.iter())
+        .find(|entry| entry.id == id)
 }
 
 pub fn channel_exists(id: u16) -> bool {
     channel(id).is_some()
 }
 
+/// Version-1 input channels.
 pub fn input_channels() -> impl Iterator<Item = &'static ChannelEntry> {
     CHANNELS
         .iter()
         .filter(|entry| entry.direction == ChannelDirection::Input)
 }
 
+/// Version-1 output channels.
 pub fn output_channels() -> impl Iterator<Item = &'static ChannelEntry> {
     CHANNELS
         .iter()
@@ -236,12 +330,61 @@ mod tests {
     fn an_unknown_channel_is_absent_rather_than_defaulted() {
         assert!(channel_exists(1));
         assert!(channel_exists(101));
-        for unknown in [0_u16, 17, 50, 100, 109, 999, u16::MAX] {
+        for unknown in [0_u16, 23, 50, 100, 109, 110, 111, 112, 118, 999, u16::MAX] {
             assert!(
                 !channel_exists(unknown),
                 "channel {unknown} should not exist"
             );
             assert!(channel(unknown).is_none());
+        }
+    }
+
+    #[test]
+    fn version_two_adds_exactly_the_artifact_channels_and_offers_them_only_at_two() {
+        // Six cues, five actions, all distinct from version 1 and from each
+        // other, and none of them in 109..=112.
+        assert_eq!(CHANNELS_V2.len(), 11);
+        assert_eq!(
+            CHANNELS_V2
+                .iter()
+                .filter(|entry| entry.direction == ChannelDirection::Input)
+                .count(),
+            6
+        );
+        let all: BTreeSet<u16> = CHANNELS
+            .iter()
+            .chain(CHANNELS_V2.iter())
+            .map(|entry| entry.id)
+            .collect();
+        assert_eq!(all.len(), CHANNELS.len() + CHANNELS_V2.len(), "duplicate id across versions");
+        let names: BTreeSet<&str> = CHANNELS
+            .iter()
+            .chain(CHANNELS_V2.iter())
+            .map(|entry| entry.name)
+            .collect();
+        assert_eq!(names.len(), CHANNELS.len() + CHANNELS_V2.len());
+        for entry in CHANNELS_V2 {
+            assert!(!(109..=112).contains(&entry.id), "{}", entry.name);
+            assert_eq!(channel_version(entry.id), Some(CHANNEL_REGISTRY_VERSION_ARTIFACT));
+            assert!(!channel_offered(entry.id, CHANNEL_REGISTRY_VERSION), "{}", entry.name);
+            assert!(channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_ARTIFACT), "{}", entry.name);
+            assert!(channel_exists(entry.id));
+        }
+        for entry in CHANNELS {
+            assert_eq!(channel_version(entry.id), Some(CHANNEL_REGISTRY_VERSION));
+            assert!(channel_offered(entry.id, CHANNEL_REGISTRY_VERSION));
+            assert!(channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_ARTIFACT));
+        }
+        // An unknown version offers nothing, even a version-1 channel.
+        assert!(!channel_offered(1, 0));
+        assert!(!channel_offered(1, 3));
+        assert!(channels_for(3).is_none());
+        assert_eq!(channels_for(1).unwrap().count(), CHANNELS.len());
+        assert_eq!(channels_for(2).unwrap().count(), CHANNELS.len() + CHANNELS_V2.len());
+        // No perception cue names a material or a depth.
+        for entry in CHANNELS_V2 {
+            assert!(!entry.name.contains("material"), "{}", entry.name);
+            assert!(!entry.name.contains("depth"), "{}", entry.name);
         }
     }
 

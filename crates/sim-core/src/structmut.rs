@@ -61,6 +61,11 @@ pub const OP_DUPLICATION: u8 = 2;
 pub const OP_DELETION: u8 = 3;
 pub const OP_INSERTION: u8 = 4;
 pub const OP_TRANSPOSITION: u8 = 5;
+/// Binding insertion (Phase 12, ADR-0028 section 8, D-114): one new
+/// `IoBinding` locus for a drawn node and a drawn channel of the world's
+/// registry. The first operator that can change *which channels* a lineage
+/// binds; every earlier operator preserved the founder's channel set.
+pub const OP_BINDING: u8 = 6;
 
 /// Why an attempted operation did not happen.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -185,6 +190,12 @@ pub struct MutationCounters {
     pub deletion_applied: u64,
     pub insertion_applied: u64,
     pub transposition_applied: u64,
+    /// `bind` operations applied. **Hashed only when nonzero, under its own
+    /// tag**, so a world in which no binding was ever inserted - every world
+    /// that predates the operator - hashes byte-identically to before it
+    /// existed. The same D-014 field-granularity reasoning as
+    /// `binding_q16`, applied to state.
+    pub binding_applied: u64,
 
     pub rejected_homology_collision: u64,
     pub rejected_orphaned: u64,
@@ -204,13 +215,14 @@ impl MutationCounters {
     /// one bucket or the other, which is what stops it from silently
     /// vanishing out of the totals, the checksum, and the manifest - the
     /// exact defect that made two restored checksums differ in Phase 9.
-    fn partitioned(&self) -> ([u64; 5], [u64; 8]) {
+    fn partitioned(&self) -> ([u64; 6], [u64; 8]) {
         let Self {
             point_applied,
             duplication_applied,
             deletion_applied,
             insertion_applied,
             transposition_applied,
+            binding_applied,
             rejected_homology_collision,
             rejected_orphaned,
             rejected_min_nodes,
@@ -227,6 +239,7 @@ impl MutationCounters {
                 deletion_applied,
                 insertion_applied,
                 transposition_applied,
+                binding_applied,
             ],
             [
                 rejected_homology_collision,
@@ -266,10 +279,40 @@ impl MutationCounters {
         // The hashed order is the declaration order and is permanent: it is
         // the same order `partitioned` returns, so the compiler enforces
         // that a new counter reaches the checksum.
+        //
+        // `binding_applied` is the exception, and deliberately: it is
+        // hashed after the thirteen original counters, under its own tag,
+        // and **only when nonzero**. Hashed unconditionally, a fourteenth
+        // zero would move the checksum of every schema-2 world - the Phase 9
+        // and 11 fixtures included - for an operator none of them can run.
+        // A world in which a binding was ever inserted has a different
+        // trajectory anyway, and the tag keeps the appended word
+        // self-describing.
         let (applied, rejected) = self.partitioned();
+        let [
+            point_applied,
+            duplication_applied,
+            deletion_applied,
+            insertion_applied,
+            transposition_applied,
+            binding_applied,
+        ] = applied;
         hasher.update(b"lifesim-structmut-counters-v1");
-        for value in applied.into_iter().chain(rejected) {
+        for value in [
+            point_applied,
+            duplication_applied,
+            deletion_applied,
+            insertion_applied,
+            transposition_applied,
+        ]
+        .into_iter()
+        .chain(rejected)
+        {
             hasher.update_u64(value);
+        }
+        if binding_applied > 0 {
+            hasher.update(b"lifesim-structmut-binding-v1");
+            hasher.update_u64(binding_applied);
         }
     }
 }
@@ -329,6 +372,17 @@ pub struct MutationConfig {
     /// Half-width of a point mutation's bounded delta, Q16 of the value's
     /// own range.
     pub point_delta_q16: u32,
+    /// Rate of the `bind` operator, Q16 per reproduction. **Zero by
+    /// default and hashed only when nonzero** (D-014 at field granularity,
+    /// the precedent `plasticity_enabled` set), so every world that
+    /// predates it hashes and evolves exactly as before. Nonzero, a child
+    /// may gain one `IoBinding` locus binding a uniformly drawn node to a
+    /// uniformly drawn channel of the registry version its world offers.
+    ///
+    /// Without this no schema-2 lineage can ever bind a channel its founder
+    /// did not (D-114): point mutation moves a binding's gain, insertion adds
+    /// edges and nodes, duplication copies a channel id unchanged.
+    pub binding_q16: u32,
 }
 
 impl Default for MutationConfig {
@@ -349,6 +403,10 @@ impl Default for MutationConfig {
             plasticity_enabled: false,
             max_run: 3,
             point_delta_q16: 3_277, // 0.05
+            // Off by default: D-114's operator must be behaviorally inert
+            // until it is switched on, or every schema-2 world that predates
+            // it changes meaning.
+            binding_q16: 0,
         }
     }
 }
@@ -383,6 +441,7 @@ pub fn mutate(
     tick: u64,
     child_id: u64,
     rule_draw_count: u8,
+    channel_registry_version: u16,
 ) -> MutationReport {
     let draw = |index: u32| {
         named_random(
@@ -490,6 +549,19 @@ pub fn mutate(
             Err(reason) => {
                 counters.reject(reason);
                 report.push(OP_TRANSPOSITION, reason);
+            }
+        }
+    }
+
+    // 6. Binding insertion (D-114). Appended after every operator that
+    // existed before it, on draw indices none of them use, so a world with
+    // the rate at zero takes exactly the draws it took before.
+    if fires(config.binding_q16, draw(64)) {
+        match bind(genome, caps, world_seed, tick, child_id, channel_registry_version, &draw) {
+            Ok(()) => counters.binding_applied += 1,
+            Err(reason) => {
+                counters.reject(reason);
+                report.push(OP_BINDING, reason);
             }
         }
     }
@@ -991,6 +1063,90 @@ fn insert(
     }
 }
 
+/// Insert one `IoBinding` locus: a uniformly drawn node of one haplotype
+/// bound to a uniformly drawn channel of the world's registry, gain uniform
+/// in `[-VALUE_LIMIT, VALUE_LIMIT]`.
+///
+/// **No preference of any kind.** Inputs and outputs are drawn from one
+/// list, so an Input-role node can be bound to an action and an Output-role
+/// node to a sense; direction is the channel's property (`controller2`
+/// files the binding by it), and both are legal networks today. Choosing
+/// "sensible" pairings would be authoring which channels a lineage reaches
+/// first, which is the outcome-naming ADR-0012 forbids. Two bindings of one
+/// node to one channel are legal too - `controller2` sums them - and a
+/// deletion can remove one later.
+///
+/// The channel list is the registry version **this world offers**: a world
+/// without the artifact section can never bind an object channel by
+/// mutation, which is what keeps a version-1 world's genomes decodable as
+/// version 1 (ADR-0028 section 7).
+fn bind(
+    genome: &mut Genome2,
+    caps: &GenomeCaps,
+    world_seed: u64,
+    tick: u64,
+    child_id: u64,
+    channel_registry_version: u16,
+    draw: &dyn Fn(u32) -> u64,
+) -> Result<(), RejectReason> {
+    let (haplotype, chromosome) = chromosome_pick(genome, draw(65));
+    let nodes: Vec<u32> = genome.haplotypes[haplotype]
+        .chromosomes
+        .iter()
+        .flatten()
+        .filter(|locus| matches!(locus.kind, LocusKind::Node { .. }))
+        .map(|locus| locus.homology_id)
+        .collect();
+    if nodes.is_empty() {
+        return Err(RejectReason::Inapplicable);
+    }
+    let Some(channels) = crate::registry::channels_for(channel_registry_version) else {
+        return Err(RejectReason::Inapplicable);
+    };
+    let channels: Vec<u16> = channels.map(|entry| entry.id).collect();
+    let node = nodes[(draw(66) as usize) % nodes.len()];
+    let channel_id = channels[(draw(67) as usize) % channels.len()];
+    // The homology id is derived from the node and the channel, so the same
+    // binding drawn twice in one lineage collides rather than duplicates -
+    // and a lineage that already carries it is told so.
+    let fresh = derive_homology_id(
+        u32::from(channel_id) ^ node.rotate_left(16),
+        OP_BINDING,
+        0,
+        0,
+    );
+    let occupied = genome.haplotypes[haplotype]
+        .chromosomes
+        .iter()
+        .flatten()
+        .any(|locus| locus.homology_id == fresh);
+    if occupied {
+        return Err(RejectReason::HomologyCollision);
+    }
+    let mut working = genome.clone();
+    working.haplotypes[haplotype].chromosomes[chromosome].push(Locus {
+        homology_id: fresh,
+        gene_lineage_id: derive_gene_lineage_id(world_seed, tick, child_id, fresh),
+        mutation_event_id: derive_mutation_event_id(world_seed, tick, child_id, OP_BINDING, 0),
+        kind: LocusKind::IoBinding {
+            node,
+            channel_id,
+            gain: ((draw(68) & 0xffff) as f32 / 32_768.0 - 1.0) * VALUE_LIMIT,
+        },
+    });
+    working.haplotypes[haplotype].chromosomes[chromosome]
+        .sort_unstable_by_key(|locus| locus.homology_id);
+    match working.validate_structure(caps) {
+        Ok(()) => {
+            *genome = working;
+            Ok(())
+        }
+        Err(crate::genome2::Genome2Error::CapExceeded(_)) => Err(RejectReason::Cap),
+        Err(crate::genome2::Genome2Error::DanglingReference { .. }) => Err(RejectReason::Orphaned),
+        Err(_) => Err(RejectReason::Invalid),
+    }
+}
+
 fn transpose(
     genome: &mut Genome2,
     config: &MutationConfig,
@@ -1175,6 +1331,7 @@ mod tests {
             plasticity_enabled: false,
             max_run: 3,
             point_delta_q16: rate,
+            binding_q16: 0,
         }
     }
 
@@ -1215,6 +1372,7 @@ mod tests {
             plasticity_enabled: true,
             max_run: 3,
             point_delta_q16: 6_554,
+            binding_q16: 0,
         };
         let mut counters = MutationCounters::default();
         for child in 0..2_000_u64 {
@@ -1228,6 +1386,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             subject.validate_structure(&caps()).unwrap_or_else(|error| {
                 panic!("child {child} produced an invalid genome: {error}")
@@ -1264,6 +1423,7 @@ mod tests {
                 9,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             let _ = mutate(
                 &mut second,
@@ -1274,6 +1434,7 @@ mod tests {
                 9,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             assert_eq!(first, second, "child {child} is not reproducible");
             assert_eq!(counters_a, counters_b);
@@ -1303,6 +1464,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             // Either haplotype may be the one duplicated, so both are
             // inspected; checking only slot 0 would silently halve the
@@ -1359,6 +1521,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             for locus in after.loci() {
                 let known = before
@@ -1411,6 +1574,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             assert!(node_count(&subject) >= 6, "min_nodes was breached");
         }
@@ -1444,6 +1608,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             assert!(subject.haplotypes[0].chromosomes[0].len() <= 21);
         }
@@ -1480,6 +1645,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             let mut before: Vec<u32> = two_chromosome
                 .loci()
@@ -1520,6 +1686,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             let before_edges = before
                 .loci()
@@ -1559,6 +1726,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
         }
         for locus in subject.loci() {
@@ -1611,6 +1779,7 @@ mod tests {
             plasticity_enabled: false,
             max_run: 2,
             point_delta_q16: 3_277,
+            binding_q16: 0,
         };
         let mut counters = MutationCounters::default();
         let mut lineage = founder();
@@ -1634,6 +1803,7 @@ mod tests {
                 generation,
                 generation,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             lineage
                 .validate_structure(&caps())
@@ -1724,6 +1894,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             for (index, (key, kind)) in indexed(&subject).into_iter().enumerate() {
                 assert_eq!(key, before[index].0, "the locus key set moved");
@@ -2135,6 +2306,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             for (before, after) in indexed(&seed).into_iter().zip(indexed(&subject)) {
                 assert_eq!(before.0, after.0, "the locus key set moved");
@@ -2267,6 +2439,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             for (before, after) in indexed(&seed).into_iter().zip(indexed(&subject)) {
                 assert_eq!(before.0, after.0, "the locus key set moved");
@@ -2375,6 +2548,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             if subject.loci().any(|locus| match plasticity_of(locus.kind) {
                 Some((_, _, flags)) => flags & crate::genome2::EDGE_FLAG_PLASTIC == 0,
@@ -2412,6 +2586,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             // Through the codec, so this is a property of a storable genome
             // rather than of an in-memory one.
@@ -2457,6 +2632,7 @@ mod tests {
                 child,
                 child,
                 crate::genome2::PLASTICITY_RULE_COUNT,
+                crate::registry::CHANNEL_REGISTRY_VERSION,
             );
             let decoded =
                 Genome2::decode(&subject.encode(), &caps()).expect("a mutated genome decodes");
@@ -2602,6 +2778,7 @@ mod tests {
                 plasticity_enabled: enabled,
                 max_run: 2,
                 point_delta_q16: 3_277,
+                binding_q16: 0,
             };
             let mut counters = MutationCounters::default();
             let mut lineage = seeded.clone();
@@ -2633,6 +2810,7 @@ mod tests {
                     generation,
                     generation,
                     crate::genome2::PLASTICITY_RULE_COUNT,
+                    crate::registry::CHANNEL_REGISTRY_VERSION,
                 );
                 for locus in lineage.loci() {
                     let Some((_, genes, flags)) = plasticity_of(locus.kind) else {
@@ -2780,6 +2958,7 @@ mod tests {
                         child,
                         child,
                         rule_draw_count,
+                        crate::registry::CHANNEL_REGISTRY_VERSION,
                     );
                     for (index, (_, kind)) in indexed(&subject).into_iter().enumerate() {
                         let (Some((_, p0, _)), Some((_, p1, _))) =
@@ -2879,6 +3058,7 @@ mod tests {
                         lineage,
                         // The real accessor, not a literal.
                         config.plasticity_rule_draw_count(),
+                        crate::registry::CHANNEL_REGISTRY_VERSION,
                     );
                     if subject.validate_structure(&caps()).is_err() {
                         break;

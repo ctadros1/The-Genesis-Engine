@@ -107,6 +107,10 @@ fn point_only() -> MutationConfig {
         plasticity_enabled: false,
         max_run: 1,
         point_delta_q16: 3_277,
+        // Phase 12's operator stays off here for the reason plasticity's gate
+        // does: a binding inserted in place of a growth-rule change would
+        // drop C10.4's effective count for a reason unrelated to morphology.
+        binding_q16: 0,
     }
 }
 
@@ -155,6 +159,7 @@ fn c10_4_single_locus_mutations_do_not_produce_unrelated_bodies() {
             // The flag-off count, so this test measures the morphological map
             // and not ADR-0027's remap.
             sim_core::PLASTICITY_RULE_COUNT,
+            sim_core::CHANNEL_REGISTRY_VERSION,
         );
         let after_rules = rules_of(&child);
         if before_rules == after_rules {

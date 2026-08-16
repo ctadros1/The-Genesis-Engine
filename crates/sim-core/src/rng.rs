@@ -40,18 +40,26 @@ pub enum RngSystem {
     /// stream exists so that adopting the `lamarckian_fraction_q16`
     /// experimental condition later cannot renumber an existing stream.
     PlasticityInit = 10,
+    /// Object physics (Phase 12 artifact half): fragment count on a fracture
+    /// (subject: the struck object's ID, draw 0) and joint quality on a
+    /// combination (subject: `pair_key(combiner, target)`, draw 0). Placement
+    /// takes no draw in this version - `place` lands in the faced cell or is
+    /// refused, never snapped - so the "placement site selection" the
+    /// determinism spec reserved for this stream is unused and stays
+    /// reserved.
+    Artifact = 13,
+    /// Extraction yield variance on a terrain strike (Phase 12 artifact
+    /// half): subject the cell index, draw 0.
+    MaterialYield = 14,
     /// Terrain modification schedules (Phase 12): today, the relocating
     /// resource patch's centre.
     ///
-    /// **11 and 12 are skipped and 13 and 14 are not taken.**
-    /// `planning/phase-12-mutable-world-and-artifacts.md` reserves `Artifact`
-    /// = 13 and `MaterialYield` = 14 for the artifact half, so this stream
-    /// takes 15 rather than the next free value. Stream numbers are
-    /// permanent - renumbering one silently changes every world that draws on
-    /// it - so taking 13 now and discovering the artifact half needs it later
-    /// would be a lineage break for no reason. 11 and 12 are left free
-    /// deliberately, as spare capacity between the organism streams and the
-    /// world streams.
+    /// **11 and 12 are skipped.** 13 and 14 were reserved for the artifact
+    /// half before this stream was allocated, so it took 15 rather than the
+    /// next free value; the artifact half has since taken them. Stream
+    /// numbers are permanent - renumbering one silently changes every world
+    /// that draws on it. 11 and 12 are left free deliberately, as spare
+    /// capacity between the organism streams and the world streams.
     ///
     /// Keyed on the *epoch* (`tick / relocate_interval_ticks`) as the
     /// subject, not on a cell or an organism, which is what makes the patch a

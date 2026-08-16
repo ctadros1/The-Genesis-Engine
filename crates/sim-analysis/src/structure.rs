@@ -222,6 +222,7 @@ fn accumulate(total: MutationCounters, add: MutationCounters) -> MutationCounter
         deletion_applied,
         insertion_applied,
         transposition_applied,
+        binding_applied,
         rejected_homology_collision,
         rejected_orphaned,
         rejected_min_nodes,
@@ -237,6 +238,7 @@ fn accumulate(total: MutationCounters, add: MutationCounters) -> MutationCounter
         deletion_applied: more_deletion_applied,
         insertion_applied: more_insertion_applied,
         transposition_applied: more_transposition_applied,
+        binding_applied: more_binding_applied,
         rejected_homology_collision: more_rejected_homology_collision,
         rejected_orphaned: more_rejected_orphaned,
         rejected_min_nodes: more_rejected_min_nodes,
@@ -252,6 +254,7 @@ fn accumulate(total: MutationCounters, add: MutationCounters) -> MutationCounter
         deletion_applied: deletion_applied + more_deletion_applied,
         insertion_applied: insertion_applied + more_insertion_applied,
         transposition_applied: transposition_applied + more_transposition_applied,
+        binding_applied: binding_applied + more_binding_applied,
         rejected_homology_collision: rejected_homology_collision + more_rejected_homology_collision,
         rejected_orphaned: rejected_orphaned + more_rejected_orphaned,
         rejected_min_nodes: rejected_min_nodes + more_rejected_min_nodes,
@@ -477,6 +480,7 @@ pub fn render(
             deletion_applied,
             insertion_applied,
             transposition_applied,
+            binding_applied,
             rejected_homology_collision,
             rejected_orphaned,
             rejected_min_nodes,
@@ -495,6 +499,7 @@ pub fn render(
              duplication_applied={duplication_applied} deletion_applied={deletion_applied} \
              insertion_applied={insertion_applied} \
              transposition_applied={transposition_applied} \
+             binding_applied={binding_applied} \
              rejected_homology_collision={rejected_homology_collision} \
              rejected_orphaned={rejected_orphaned} rejected_min_nodes={rejected_min_nodes} \
              rejected_no_bindings={rejected_no_bindings} rejected_cap={rejected_cap} \

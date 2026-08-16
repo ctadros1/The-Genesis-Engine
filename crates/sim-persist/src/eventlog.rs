@@ -82,6 +82,16 @@ const TAG_STRUCTURAL_MUTATION_REJECTED: u8 = 12;
 // Phase 11, event schema 5. Additive; tags 1-12 are unchanged, so every log
 // written before this build decodes byte for byte.
 const TAG_PLASTICITY_FAULT: u8 = 13;
+// Phase 12 artifact half, event schema 6. Additive; tags 1-13 are unchanged.
+const TAG_OBJECT_CREATED: u8 = 14;
+const TAG_OBJECT_DESTROYED: u8 = 15;
+const TAG_OBJECT_PICKED_UP: u8 = 16;
+const TAG_OBJECT_RELEASED: u8 = 17;
+const TAG_OBJECT_STRUCK: u8 = 18;
+const TAG_TERRAIN_STRUCK: u8 = 19;
+const TAG_OBJECT_COMBINED: u8 = 20;
+const TAG_OBJECT_CONSUMED: u8 = 21;
+const TAG_OBJECT_ACTION_REFUSED: u8 = 22;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -184,6 +194,21 @@ pub struct ReconstructedCounters {
     /// `controller_faults_total` is: the kernel sums neutralized values, not
     /// fault events, so an event carrying five faults counts five.
     pub plasticity_faults_total: u64,
+    /// Phase 12 artifact half. Reconstructed per cause and per reason so the
+    /// log can be checked against `ObjectCounters` class by class; the
+    /// arrays are indexed by the permanent wire code minus one, exactly as
+    /// `structural_rejections_by_reason` is.
+    pub objects_created_by_cause: [u64; 4],
+    pub objects_destroyed_by_cause: [u64; 6],
+    pub objects_picked_up_total: u64,
+    pub objects_dropped_total: u64,
+    pub objects_placed_total: u64,
+    pub objects_struck_total: u64,
+    pub terrain_struck_total: u64,
+    pub objects_combined_total: u64,
+    pub objects_consumed_total: u64,
+    pub object_refusals_by_reason: [u64; 13],
+    pub object_refusals_total: u64,
 }
 
 impl ReconstructedCounters {
@@ -245,6 +270,34 @@ impl ReconstructedCounters {
             }
             EventKind::PlasticityFault { faults, .. } => {
                 self.plasticity_faults_total += u64::from(faults);
+            }
+            EventKind::ObjectCreated { cause, .. } => {
+                if let Some(slot) = self.objects_created_by_cause.get_mut(usize::from(cause.saturating_sub(1))) {
+                    *slot += 1;
+                }
+            }
+            EventKind::ObjectDestroyed { cause, .. } => {
+                if let Some(slot) = self.objects_destroyed_by_cause.get_mut(usize::from(cause.saturating_sub(1))) {
+                    *slot += 1;
+                }
+            }
+            EventKind::ObjectPickedUp { .. } => self.objects_picked_up_total += 1,
+            EventKind::ObjectReleased { placed, .. } => {
+                if placed {
+                    self.objects_placed_total += 1;
+                } else {
+                    self.objects_dropped_total += 1;
+                }
+            }
+            EventKind::ObjectStruck { .. } => self.objects_struck_total += 1,
+            EventKind::TerrainStruck { .. } => self.terrain_struck_total += 1,
+            EventKind::ObjectCombined { .. } => self.objects_combined_total += 1,
+            EventKind::ObjectConsumed { .. } => self.objects_consumed_total += 1,
+            EventKind::ObjectActionRefused { reason, .. } => {
+                self.object_refusals_total += 1;
+                if let Some(slot) = self.object_refusals_by_reason.get_mut(usize::from(reason.saturating_sub(1))) {
+                    *slot += 1;
+                }
             }
         }
     }
@@ -574,6 +627,96 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&faults.to_le_bytes());
         }
+        // Phase 12. Every enum-valued field is written as its permanent id
+        // (`ObjectAction::id`, `RefuseReason::id`, `DestroyCause::id`,
+        // `CAUSE_*`), never a discriminant, and the decoder refuses an id
+        // this build does not know.
+        EventKind::ObjectCreated {
+            id,
+            material_id,
+            cause,
+            mass_milli,
+            energy_milli,
+            parent_id,
+        } => {
+            out.push(TAG_OBJECT_CREATED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&material_id.to_le_bytes());
+            out.push(cause);
+            out.extend_from_slice(&mass_milli.to_le_bytes());
+            out.extend_from_slice(&energy_milli.to_le_bytes());
+            out.extend_from_slice(&parent_id.to_le_bytes());
+        }
+        EventKind::ObjectDestroyed { id, cause } => {
+            out.push(TAG_OBJECT_DESTROYED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.push(cause);
+        }
+        EventKind::ObjectPickedUp { id, holder } => {
+            out.push(TAG_OBJECT_PICKED_UP);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&holder.to_le_bytes());
+        }
+        EventKind::ObjectReleased { id, holder, placed } => {
+            out.push(TAG_OBJECT_RELEASED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&holder.to_le_bytes());
+            out.push(u8::from(placed));
+        }
+        EventKind::ObjectStruck {
+            striker,
+            target,
+            force_q16,
+        } => {
+            out.push(TAG_OBJECT_STRUCK);
+            out.extend_from_slice(&striker.to_le_bytes());
+            out.extend_from_slice(&target.to_le_bytes());
+            out.extend_from_slice(&force_q16.to_le_bytes());
+        }
+        EventKind::TerrainStruck {
+            striker,
+            cell,
+            volume_milli,
+            material_id,
+        } => {
+            out.push(TAG_TERRAIN_STRUCK);
+            out.extend_from_slice(&striker.to_le_bytes());
+            out.extend_from_slice(&cell.to_le_bytes());
+            out.extend_from_slice(&volume_milli.to_le_bytes());
+            out.extend_from_slice(&material_id.to_le_bytes());
+        }
+        EventKind::ObjectCombined {
+            composite,
+            held,
+            target,
+            combiner,
+            depth,
+            joint_q16,
+        } => {
+            out.push(TAG_OBJECT_COMBINED);
+            out.extend_from_slice(&composite.to_le_bytes());
+            out.extend_from_slice(&held.to_le_bytes());
+            out.extend_from_slice(&target.to_le_bytes());
+            out.extend_from_slice(&combiner.to_le_bytes());
+            out.push(depth);
+            out.extend_from_slice(&joint_q16.to_le_bytes());
+        }
+        EventKind::ObjectConsumed {
+            id,
+            consumer,
+            energy_milli,
+        } => {
+            out.push(TAG_OBJECT_CONSUMED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&consumer.to_le_bytes());
+            out.extend_from_slice(&energy_milli.to_le_bytes());
+        }
+        EventKind::ObjectActionRefused { id, action, reason } => {
+            out.push(TAG_OBJECT_ACTION_REFUSED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.push(action);
+            out.push(reason);
+        }
     }
 }
 
@@ -829,6 +972,95 @@ fn decode_events_into(
                     operator,
                     reason,
                 }
+            }
+            TAG_OBJECT_CREATED => {
+                let id = short!(cursor.u64());
+                let material_id = short!(cursor.u16());
+                let cause = short!(cursor.u8());
+                let mass_milli = short!(cursor.i64());
+                let energy_milli = short!(cursor.i64());
+                let parent_id = short!(cursor.u64());
+                if !sim_core::material_exists(material_id) {
+                    return Err(EventLogError::ValueOutOfRange("object material"));
+                }
+                if !sim_core::cause_is_known(cause) {
+                    return Err(EventLogError::ValueOutOfRange("object cause"));
+                }
+                EventKind::ObjectCreated {
+                    id,
+                    material_id,
+                    cause,
+                    mass_milli,
+                    energy_milli,
+                    parent_id,
+                }
+            }
+            TAG_OBJECT_DESTROYED => {
+                let id = short!(cursor.u64());
+                let cause = short!(cursor.u8());
+                if sim_core::DestroyCause::from_id(cause).is_none() {
+                    return Err(EventLogError::ValueOutOfRange("object destroy cause"));
+                }
+                EventKind::ObjectDestroyed { id, cause }
+            }
+            TAG_OBJECT_PICKED_UP => EventKind::ObjectPickedUp {
+                id: short!(cursor.u64()),
+                holder: short!(cursor.u64()),
+            },
+            TAG_OBJECT_RELEASED => {
+                let id = short!(cursor.u64());
+                let holder = short!(cursor.u64());
+                let placed = match short!(cursor.u8()) {
+                    0 => false,
+                    1 => true,
+                    _ => return Err(EventLogError::ValueOutOfRange("object placed flag")),
+                };
+                EventKind::ObjectReleased { id, holder, placed }
+            }
+            TAG_OBJECT_STRUCK => EventKind::ObjectStruck {
+                striker: short!(cursor.u64()),
+                target: short!(cursor.u64()),
+                force_q16: short!(cursor.u32()),
+            },
+            TAG_TERRAIN_STRUCK => {
+                let striker = short!(cursor.u64());
+                let cell = short!(cursor.u32());
+                let volume_milli = short!(cursor.i64());
+                let material_id = short!(cursor.u16());
+                if !sim_core::material_exists(material_id) {
+                    return Err(EventLogError::ValueOutOfRange("terrain material"));
+                }
+                EventKind::TerrainStruck {
+                    striker,
+                    cell,
+                    volume_milli,
+                    material_id,
+                }
+            }
+            TAG_OBJECT_COMBINED => EventKind::ObjectCombined {
+                composite: short!(cursor.u64()),
+                held: short!(cursor.u64()),
+                target: short!(cursor.u64()),
+                combiner: short!(cursor.u64()),
+                depth: short!(cursor.u8()),
+                joint_q16: short!(cursor.u32()),
+            },
+            TAG_OBJECT_CONSUMED => EventKind::ObjectConsumed {
+                id: short!(cursor.u64()),
+                consumer: short!(cursor.u64()),
+                energy_milli: short!(cursor.i64()),
+            },
+            TAG_OBJECT_ACTION_REFUSED => {
+                let id = short!(cursor.u64());
+                let action = short!(cursor.u8());
+                let reason = short!(cursor.u8());
+                if sim_core::ObjectAction::from_id(action).is_none() {
+                    return Err(EventLogError::ValueOutOfRange("object action"));
+                }
+                if sim_core::RefuseReason::from_id(reason).is_none() {
+                    return Err(EventLogError::ValueOutOfRange("object refuse reason"));
+                }
+                EventKind::ObjectActionRefused { id, action, reason }
             }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.

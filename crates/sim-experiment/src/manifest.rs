@@ -495,6 +495,7 @@ fn render_run(run: &RunResult) -> String {
         deletion_applied,
         insertion_applied,
         transposition_applied,
+        binding_applied,
         rejected_homology_collision,
         rejected_orphaned,
         rejected_min_nodes,
@@ -518,7 +519,8 @@ fn render_run(run: &RunResult) -> String {
              structmut_rejected_cap={rejected_cap} \
              structmut_rejected_inapplicable={rejected_inapplicable} \
              structmut_rejected_cycle={rejected_cycle} \
-             structmut_rejected_invalid={rejected_invalid}"
+             structmut_rejected_invalid={rejected_invalid} \
+             structmut_binding_applied={binding_applied}"
         ));
     }
     if let Some(sim_core::DevelopCounters {
@@ -635,6 +637,10 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
                 rejected_inapplicable: number("structmut_rejected_inapplicable").unwrap_or(0),
                 rejected_cycle: number("structmut_rejected_cycle").unwrap_or(0),
                 rejected_invalid: number("structmut_rejected_invalid").unwrap_or(0),
+                // Appended in Phase 12 (D-114). Absent from every archived
+                // manifest, so absence reads as zero - which is what those
+                // runs had, since the operator did not exist.
+                binding_applied: number("structmut_binding_applied").unwrap_or(0),
             });
     let develop = fields
         .contains_key("develop_bodies_grown")
@@ -850,6 +856,7 @@ output snapshots off
                 rejected_inapplicable: 211,
                 rejected_cycle: 212,
                 rejected_invalid: 213,
+                binding_applied: 214,
             }),
             develop: Some(sim_core::DevelopCounters {
                 bodies_grown: 301,

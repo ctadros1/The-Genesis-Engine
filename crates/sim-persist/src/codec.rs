@@ -77,7 +77,38 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = 6;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_7;
+/// Format 7 appends the Phase 12 artifact config block and
+/// `genome2.mutation.binding_q16` to the config block, adds one counter word
+/// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
+/// section 13).
+///
+/// **The third config-block bump, and the first that adds a block rather
+/// than a byte.** Format 5's and format 6's notes both said a third field
+/// should expect the same cost; here it is, thirty-odd fields at once, and
+/// the chain test in `format7.rs` asserts the byte delta per adjacent pair
+/// rather than "exactly one" (D-112 anticipated a non-one-byte extension
+/// would need "its own reasoning": the block is one section's config, it is
+/// appended in one piece so the format-6 body stays a byte prefix, and every
+/// appended byte is the field's default in a default world).
+///
+/// **Named as its own constant from the day it shipped**, and every guard
+/// that introduces something at format 7 says `FORMAT_VERSION_7`, never
+/// `FORMAT_VERSION`. D-108 recorded the trap of writing `format <
+/// FORMAT_VERSION` for a section that arrived at the then-current format;
+/// format 6's own byte was guarded `>= FORMAT_VERSION` and would have been
+/// misread the day this constant moved. Naming the introducing format at
+/// introduction time closes that trap structurally.
+pub const FORMAT_VERSION_7: u16 = 7;
+/// Format 6 reserves one config byte for `plasticity.price_moved_edges_only`.
+///
+/// Retained as a reader and a writer for the reason every earlier format is.
+/// `encode_snapshot_format6` refuses a state that carries anything format 7
+/// added - the artifact section, a nonzero `binding_q16`, a nonzero
+/// `binding_applied`, an object table - with `FieldNotInFormat` or
+/// `SectionNotInFormat`, so a format-6 file can never describe a world it has
+/// no bytes for.
+pub const FORMAT_VERSION_6: u16 = 6;
 /// Format 5 reserves one config byte for `plasticity.live_rule_zero`.
 ///
 /// **The second config-block bump in as many increments, and the repetition
@@ -210,6 +241,19 @@ const SECTION_WORLDMOD: u16 = 13;
 /// organism has an action every tick, so a sparse histogram would carry an
 /// index next to almost every entry and save nothing.
 const SECTION_ACTION_CENSUS: u16 = 14;
+/// Phase 12 object table (ADR-0028). Optional, present exactly when
+/// `config.artifact.enabled`, guarded on `FORMAT_VERSION_7` by name because
+/// that is the format that introduced it, permanently.
+///
+/// Layout: object count, then per object the seventeen fields in the order
+/// `ObjectRecord` declares them followed by the composition length and its
+/// ids; then `objects_allocated_total`, the ledger's ten `i128` terms, and
+/// the counters' thirty `u64` words. Every declared count is bounded by
+/// `allocation_fits` before its allocation (D-075).
+const SECTION_OBJECTS: u16 = 15;
+/// Bytes one object's fixed fields occupy: the bound a declared object count
+/// implies before any composition list is read.
+const OBJECT_FIXED_BYTES: u64 = 8 + 2 + 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 + 8 + 8 + 1 + 8 + 8 + 1 + 8 + 8;
 /// Bytes one organism's action row occupies. Used to bound the allocation a
 /// declared organism count implies, never to assert an exact length (D-075).
 const ACTION_CENSUS_BYTES_PER_ORGANISM: u64 = 4 * sim_core::ACTION_CLASS_COUNT as u64;
@@ -782,10 +826,112 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     // 5's was appended after `probe`: each format's config body stays a byte
     // prefix of the next, so the difference between any two adjacent formats
     // is one assertion rather than a re-description of the layout.
-    if format >= FORMAT_VERSION {
+    if format >= FORMAT_VERSION_6 {
         writer.u8(u8::from(config.plasticity.price_moved_edges_only));
     }
+    // Format 7's block: the artifact section and `binding_q16`, appended in
+    // one piece after format 6's byte for the reason format 6's was appended
+    // after format 5's - the format-6 body stays a byte prefix of the
+    // format-7 body, and every byte here is its field's default in a world
+    // that has no artifact section (`enabled` false, `binding_q16` 0), so
+    // the delta between the two formats is a fixed number of default bytes.
+    // Guarded on `FORMAT_VERSION_7` by name, permanently.
+    if format >= FORMAT_VERSION_7 {
+        encode_artifact_config(&mut writer, config);
+    }
     writer.0
+}
+
+/// The format-7 artifact block, one field per line in the order the
+/// specification's configuration table lists them, then `binding_q16`.
+/// `config_field_coverage.rs` sweeps every one of these through the real
+/// codec, so a field added to `ArtifactConfig` and not written here fails a
+/// test rather than restoring at its default.
+fn encode_artifact_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    let artifact = &config.artifact;
+    writer.u8(u8::from(artifact.enabled));
+    writer.u8(u8::from(artifact.inert));
+    writer.u8(u8::from(artifact.ephemeral));
+    writer.u32(artifact.max_objects);
+    writer.u32(artifact.max_objects_per_cell);
+    writer.u32(artifact.max_composition_depth);
+    writer.u32(artifact.max_composition_breadth);
+    writer.u32(artifact.max_held_objects);
+    writer.u32(artifact.max_candidates);
+    writer.i64(artifact.carry_capacity_milli);
+    writer.u32(artifact.carry_move_cost_q16);
+    writer.i64(artifact.hold_cost_milli_per_s);
+    writer.i64(artifact.action_cost_milli);
+    writer.i64(artifact.strike_cost_milli);
+    writer.i32(artifact.action_threshold_q16);
+    writer.u32(artifact.reach_m);
+    writer.u32(artifact.consume_reach_m);
+    writer.u32(artifact.perception_range_m);
+    writer.u32(artifact.strike_force_q16);
+    writer.i64(artifact.strike_mass_reference_milli);
+    writer.u32(artifact.fracture_margin_q16);
+    writer.u32(artifact.max_fragments);
+    writer.i64(artifact.min_fragment_mass_milli);
+    writer.u32(artifact.joint_floor_q16);
+    writer.i64(artifact.blocking_mass_milli);
+    writer.i64(artifact.terrain_yield_milli);
+    writer.i64(artifact.extraction_milli);
+    writer.i64(artifact.yield_regen_milli);
+    writer.u64(artifact.yield_regen_interval_ticks);
+    writer.u32(artifact.stone_relative_q16);
+    writer.u32(artifact.wood_relative_q16);
+    writer.u32(config.genome2.mutation.binding_q16);
+}
+
+/// Bytes the format-7 block adds to a config body. Asserted by the chain
+/// test rather than trusted: 3 + 6*4 + 8 + 4 + 8*3 + 4 + 3*4 + 4 + 8 + 4 + 4 + 8 + 4 + 8*4 + 8 + 4*2 + 4.
+pub const FORMAT7_CONFIG_BYTES: usize = 3 // enabled, inert, ephemeral
+    + 6 * 4 // six caps
+    + 8 + 4 + 8 // carry
+    + 8 + 8 + 4 // costs, threshold
+    + 3 * 4 // reach
+    + 4 + 8 + 4 + 4 + 8 // strike/fracture
+    + 4 // joint floor
+    + 8 // blocking mass
+    + 8 + 8 + 8 + 8 // yield
+    + 4 + 4 // elevation bands
+    + 4; // binding_q16
+
+fn decode_artifact_config(reader: &mut Reader, config: &mut sim_core::SimConfig) -> Result<(), CodecError> {
+    let artifact = &mut config.artifact;
+    artifact.enabled = reader.u8()? != 0;
+    artifact.inert = reader.u8()? != 0;
+    artifact.ephemeral = reader.u8()? != 0;
+    artifact.max_objects = reader.u32()?;
+    artifact.max_objects_per_cell = reader.u32()?;
+    artifact.max_composition_depth = reader.u32()?;
+    artifact.max_composition_breadth = reader.u32()?;
+    artifact.max_held_objects = reader.u32()?;
+    artifact.max_candidates = reader.u32()?;
+    artifact.carry_capacity_milli = reader.i64()?;
+    artifact.carry_move_cost_q16 = reader.u32()?;
+    artifact.hold_cost_milli_per_s = reader.i64()?;
+    artifact.action_cost_milli = reader.i64()?;
+    artifact.strike_cost_milli = reader.i64()?;
+    artifact.action_threshold_q16 = reader.i32()?;
+    artifact.reach_m = reader.u32()?;
+    artifact.consume_reach_m = reader.u32()?;
+    artifact.perception_range_m = reader.u32()?;
+    artifact.strike_force_q16 = reader.u32()?;
+    artifact.strike_mass_reference_milli = reader.i64()?;
+    artifact.fracture_margin_q16 = reader.u32()?;
+    artifact.max_fragments = reader.u32()?;
+    artifact.min_fragment_mass_milli = reader.i64()?;
+    artifact.joint_floor_q16 = reader.u32()?;
+    artifact.blocking_mass_milli = reader.i64()?;
+    artifact.terrain_yield_milli = reader.i64()?;
+    artifact.extraction_milli = reader.i64()?;
+    artifact.yield_regen_milli = reader.i64()?;
+    artifact.yield_regen_interval_ticks = reader.u64()?;
+    artifact.stone_relative_q16 = reader.u32()?;
+    artifact.wood_relative_q16 = reader.u32()?;
+    config.genome2.mutation.binding_q16 = reader.u32()?;
+    Ok(())
 }
 
 /// Decode the config section written by `encode_config` at the same version.
@@ -1003,8 +1149,15 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // resolution rather than an invention on the same terms as format 5's:
     // every world that could write a format-5 or format-4 file priced every
     // flagged edge, because no other pricing existed.
-    if format >= FORMAT_VERSION {
+    if format >= FORMAT_VERSION_6 {
         config.plasticity.price_moved_edges_only = reader.u8()? != 0;
+    }
+    // Format 7's block. Left at its defaults for an older body - no artifact
+    // section, `binding_q16` zero - and that is a resolution rather than an
+    // invention on the same terms as formats 5 and 6: no build that could
+    // write a format-6 file had an object in it or a `bind` operator to run.
+    if format >= FORMAT_VERSION_7 {
+        decode_artifact_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -1215,6 +1368,7 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
             deletion_applied,
             insertion_applied,
             transposition_applied,
+            binding_applied,
             rejected_homology_collision,
             rejected_orphaned,
             rejected_min_nodes,
@@ -1240,6 +1394,13 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
             rejected_invalid,
         ] {
             section.u64(value);
+        }
+        // Format 7's counter, written after the thirteen that came before it
+        // and only at format 7 or later, so a format-6 body is byte-identical
+        // to what format 6 wrote. The retained format-6 writer refuses a
+        // nonzero value before reaching here.
+        if format >= FORMAT_VERSION_7 {
+            section.u64(binding_applied);
         }
         write_section(&mut payload, SECTION_SCHEMA2, 0, section.0);
     }
@@ -1364,7 +1525,145 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
         section.u64(resets_total);
         write_section(&mut payload, SECTION_ACTION_CENSUS, 0, section.0);
     }
+    if let Some(objects) = state.objects.as_ref() {
+        write_section(&mut payload, SECTION_OBJECTS, 0, encode_objects(objects));
+    }
     payload
+}
+
+/// Encode the object table. Reads every field through `ObjectTable::record`,
+/// whose exhaustive `ObjectRecord` literal is what makes a field added to the
+/// table fail to compile here rather than fall out of the save (D-077).
+fn encode_objects(table: &sim_core::ObjectTable) -> Vec<u8> {
+    let mut section = Writer(Vec::new());
+    section.u64(table.len() as u64);
+    for index in 0..table.len() {
+        let sim_core::ObjectRecord {
+            id,
+            material_id,
+            x_fp,
+            y_fp,
+            integrity_q16,
+            mass_milli,
+            energy_milli,
+            hardness_q16,
+            durability_q16,
+            decay_q16,
+            holder_id,
+            owner_id,
+            depth,
+            created_tick,
+            creator_id,
+            cause,
+            parent_id,
+            composition,
+        } = table.record(index);
+        section.u64(id);
+        section.u16(material_id);
+        section.i32(x_fp);
+        section.i32(y_fp);
+        section.i32(integrity_q16);
+        section.i64(mass_milli);
+        section.i64(energy_milli);
+        section.u32(hardness_q16);
+        section.u32(durability_q16);
+        section.u32(decay_q16);
+        section.u64(holder_id);
+        section.u64(owner_id);
+        section.u8(depth);
+        section.u64(created_tick);
+        section.u64(creator_id);
+        section.u8(cause);
+        section.u64(parent_id);
+        section.u64(composition.len() as u64);
+        for constituent in composition {
+            section.u64(constituent);
+        }
+    }
+    section.u64(table.objects_allocated_total);
+    for value in table.ledger.to_array() {
+        section.i128(value);
+    }
+    for value in table.counters.to_array() {
+        section.u64(value);
+    }
+    section.0
+}
+
+/// Decode the object table, every count bounded before its allocation.
+fn decode_objects(reader: &mut Reader) -> Result<sim_core::ObjectTable, CodecError> {
+    let count = reader.u64()?;
+    if !allocation_fits(count, OBJECT_FIXED_BYTES + 8, 8, reader.remaining()) {
+        return Err(CodecError::ValueOutOfRange("object count"));
+    }
+    let mut table = sim_core::ObjectTable::default();
+    let mut last_id = 0_u64;
+    for _ in 0..count {
+        let id = reader.u64()?;
+        // Ascending is a decode-time invariant: `ObjectTable::push` asserts
+        // it in debug builds, and a table that arrives out of order is
+        // refused here by name rather than tripping that assertion.
+        if id <= last_id {
+            return Err(CodecError::ValueOutOfRange("object ids not ascending"));
+        }
+        last_id = id;
+        let material_id = reader.u16()?;
+        let x_fp = reader.i32()?;
+        let y_fp = reader.i32()?;
+        let integrity_q16 = reader.i32()?;
+        let mass_milli = reader.i64()?;
+        let energy_milli = reader.i64()?;
+        let hardness_q16 = reader.u32()?;
+        let durability_q16 = reader.u32()?;
+        let decay_q16 = reader.u32()?;
+        let holder_id = reader.u64()?;
+        let owner_id = reader.u64()?;
+        let depth = reader.u8()?;
+        let created_tick = reader.u64()?;
+        let creator_id = reader.u64()?;
+        let cause = reader.u8()?;
+        let parent_id = reader.u64()?;
+        let breadth = reader.u64()?;
+        if !allocation_fits(breadth, 8, 0, reader.remaining()) {
+            return Err(CodecError::ValueOutOfRange("object composition length"));
+        }
+        let mut composition = Vec::with_capacity(breadth as usize);
+        for _ in 0..breadth {
+            composition.push(reader.u64()?);
+        }
+        table.push(sim_core::ObjectRecord {
+            id,
+            material_id,
+            x_fp,
+            y_fp,
+            integrity_q16,
+            mass_milli,
+            energy_milli,
+            hardness_q16,
+            durability_q16,
+            decay_q16,
+            holder_id,
+            owner_id,
+            depth,
+            created_tick,
+            creator_id,
+            cause,
+            parent_id,
+            composition,
+        });
+    }
+    table.objects_allocated_total = reader.u64()?;
+    let mut ledger = [0_i128; sim_core::ObjectLedger::FIELD_COUNT];
+    for slot in &mut ledger {
+        *slot = reader.i128()?;
+    }
+    table.ledger = sim_core::ObjectLedger::from_array(ledger);
+    let mut counters = [0_u64; sim_core::ObjectCounters::FIELD_COUNT];
+    for slot in &mut counters {
+        *slot = reader.u64()?;
+    }
+    table.counters = sim_core::ObjectCounters::from_array(counters);
+    Ok(table)
 }
 
 /// Encode the terrain modification section, choosing sparse or dense per
@@ -1557,6 +1856,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut contest: Option<sim_core::ContestSaveState> = None;
     let mut worldmod: Option<TerrainModState> = None;
     let mut action_census: Option<sim_core::ActionCensusSaveState> = None;
+    let mut objects: Option<sim_core::ObjectTable> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -1958,6 +2258,9 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 ] {
                     *slot = reader.u64()?;
                 }
+                if format >= FORMAT_VERSION_7 {
+                    counters.binding_applied = reader.u64()?;
+                }
                 schema2 = Some(sim_core::Schema2SaveState {
                     genomes,
                     activation_values,
@@ -2105,6 +2408,17 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                     },
                 });
             }
+            SECTION_OBJECTS => {
+                // `FORMAT_VERSION_7` by name: the format that introduced the
+                // section, permanently (D-108).
+                if format < FORMAT_VERSION_7 {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if objects.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                objects = Some(decode_objects(&mut reader)?);
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -2131,6 +2445,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         composed_terrain_checksum: composed.unwrap_or(terrain_checksum),
         worldmod,
         action_census,
+        objects,
         ids,
         x_fp,
         y_fp,
@@ -2208,6 +2523,7 @@ pub fn encode_snapshot_format3(
             format: FORMAT_VERSION_3,
         });
     }
+    refuse_format7_state(state, FORMAT_VERSION_3)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -2257,6 +2573,7 @@ pub fn encode_snapshot_format4(
             format: FORMAT_VERSION_4,
         });
     }
+    refuse_format7_state(state, FORMAT_VERSION_4)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -2296,6 +2613,7 @@ pub fn encode_snapshot_format5(
             format: FORMAT_VERSION_5,
         });
     }
+    refuse_format7_state(state, FORMAT_VERSION_5)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -2307,6 +2625,77 @@ pub fn encode_snapshot_format5(
         FORMAT_VERSION_5,
         SAVE_STATE_VERSION,
     )
+}
+
+/// Encode a **format 6** snapshot.
+///
+/// Retained on the same terms as every earlier writer: the acceptance
+/// requirement for the 6-to-7 migration is byte identity against a real
+/// legacy file, and a legacy file has to be constructible.
+///
+/// It refuses a state carrying anything format 7 added, because a format-6
+/// file has no bytes for any of it and writing one anyway would describe a
+/// world without objects, without a `bind` operator, and without the
+/// bindings that operator inserted - a different experiment, silently.
+pub fn encode_snapshot_format6(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format7_state(state, FORMAT_VERSION_6)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_6,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// The write-side refusals every retained pre-7 writer shares: a state that
+/// carries what only format 7 can express is refused with the field or
+/// section named, before a byte is written.
+fn refuse_format7_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    if state.config.artifact.enabled
+        || state.config.artifact.inert
+        || state.config.artifact.ephemeral
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "artifact.enabled",
+            format,
+        });
+    }
+    if state.config.genome2.mutation.binding_q16 != 0 {
+        return Err(CodecError::FieldNotInFormat {
+            field: "genome2.mutation.binding_q16",
+            format,
+        });
+    }
+    if state
+        .schema2
+        .as_ref()
+        .is_some_and(|schema2| schema2.counters.binding_applied != 0)
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "schema2.counters.binding_applied",
+            format,
+        });
+    }
+    if state.objects.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_OBJECTS,
+            format,
+        });
+    }
+    Ok(())
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -2530,6 +2919,17 @@ pub fn decode_snapshot_format4(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// that could write a format-5 file actually ran with.
 pub fn decode_snapshot_format5(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_5, SAVE_STATE_VERSION)
+}
+
+/// Full decode of a **format 6** snapshot.
+///
+/// Permanent, for the reason `decode_snapshot_format5` is: it is the reader
+/// the 6-to-7 migration's byte-identity requirement is stated against. What
+/// it produces is the current `SaveState` with no artifact section, no
+/// object table, `binding_q16` zero and `binding_applied` zero - the values
+/// every world that could write a format-6 file actually ran with.
+pub fn decode_snapshot_format6(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_6, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

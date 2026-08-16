@@ -73,6 +73,8 @@ const DIRECTIONS: [(i8, i8); 9] = [
     (1, 1),
 ];
 
+mod artifact_tick;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TickPhase {
     Commands,
@@ -163,10 +165,11 @@ impl DeathCause {
 /// Event payloads. Version 1 covered Birth/Death/CapacityRejected/
 /// Extinction; version 2 added the Phase 2 variants; version 3 adds the
 /// Phase 7 contest variants; version 4 adds the structural-mutation
-/// rejection (C9.6); version 5 adds the plasticity fault (Phase 11). Every
-/// increment is additive: earlier payloads are unchanged. Reading events
-/// never alters simulation state.
-pub const EVENT_SCHEMA_VERSION: u32 = 5;
+/// rejection (C9.6); version 5 adds the plasticity fault (Phase 11); version
+/// 6 adds the nine Phase 12 object variants. Every increment is additive:
+/// earlier payloads are unchanged. Reading events never alters simulation
+/// state.
+pub const EVENT_SCHEMA_VERSION: u32 = 6;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -263,6 +266,74 @@ pub enum EventKind {
     PlasticityFault {
         id: u64,
         faults: u32,
+    },
+    /// An object entered the table (Phase 12). `cause` is an
+    /// `artifact::CAUSE_*` value; `parent_id` is the fractured parent or the
+    /// carcass's source organism, else 0.
+    ObjectCreated {
+        id: u64,
+        material_id: u16,
+        cause: u8,
+        mass_milli: i64,
+        energy_milli: i64,
+        parent_id: u64,
+    },
+    /// An object left the table. `cause` is `artifact::DestroyCause::id`.
+    ObjectDestroyed {
+        id: u64,
+        cause: u8,
+    },
+    /// An organism took a free object into its hold.
+    ObjectPickedUp {
+        id: u64,
+        holder: u64,
+    },
+    /// A held object returned to the world: dropped at the holder's position,
+    /// placed into the faced cell, or dropped by a death.
+    ObjectReleased {
+        id: u64,
+        holder: u64,
+        placed: bool,
+    },
+    /// One strike on an object, with the force it contributed. Every strike
+    /// events; the fracture, if any, events as `ObjectDestroyed` after the
+    /// forces on the target are summed.
+    ObjectStruck {
+        striker: u64,
+        target: u64,
+        force_q16: u32,
+    },
+    /// A strike on the terrain cell underfoot that extracted material; the
+    /// object it created events as `ObjectCreated` at the end of the pass.
+    TerrainStruck {
+        striker: u64,
+        cell: u32,
+        volume_milli: i64,
+        material_id: u16,
+    },
+    /// A held object and a free target became one composite.
+    ObjectCombined {
+        composite: u64,
+        held: u64,
+        target: u64,
+        combiner: u64,
+        depth: u8,
+        joint_q16: u32,
+    },
+    /// An organism assimilated energy from an object.
+    ObjectConsumed {
+        id: u64,
+        consumer: u64,
+        energy_milli: i64,
+    },
+    /// An action was refused. `action` is `artifact::ObjectAction::id`,
+    /// `reason` is `artifact::RefuseReason::id`. Every refusal events, so
+    /// "fired" and "succeeded" are separable in the log and a cap that binds
+    /// is visible (C12.7).
+    ObjectActionRefused {
+        id: u64,
+        action: u8,
+        reason: u8,
     },
 }
 
@@ -739,6 +810,33 @@ pub enum InvariantViolation {
     TerrainModBounds {
         index: usize,
     },
+    /// Phase 12 object table defect, named by `artifact::TableViolation`.
+    ObjectTable {
+        violation: crate::artifact::TableViolation,
+    },
+    /// The per-organism object arrays are not in lockstep with the population.
+    ObjectDesync {
+        organisms: usize,
+        held: usize,
+    },
+    /// The held-list cache disagrees with `holder_id`.
+    ObjectHeldMismatch,
+    /// More objects than `artifact.max_objects`.
+    ObjectCap {
+        objects: usize,
+        cap: u32,
+    },
+    /// An object held by an organism that does not exist.
+    ObjectHolderDead {
+        id: u64,
+        holder: u64,
+    },
+    /// A genome bound to a channel this world's registry version does not
+    /// offer (ADR-0028 section 7).
+    ChannelNotOffered {
+        id: u64,
+        registry_version: u16,
+    },
 }
 
 impl fmt::Display for InvariantViolation {
@@ -889,6 +987,11 @@ pub struct World {
     /// the property the five fixtures assert and the reason this can exist at
     /// all without being an intervention (ADR-0016).
     action_census: Option<ActionCensus>,
+    /// Phase 12 objects; `None` exactly when `config.artifact.enabled` is
+    /// false, so a world without the section offers no object channel, runs
+    /// no object pass, appends nothing to the checksum, and takes the Phase 7
+    /// carcass path (ADR-0028).
+    objects: Option<crate::artifact::ObjectState>,
 }
 
 impl World {
@@ -970,6 +1073,7 @@ impl World {
             morphology: None,
             learn: None,
             action_census: None,
+            objects: None,
             // Built here rather than after the population, because it is
             // empty either way: the relocation schedule first fires at tick
             // `relocate_interval_ticks`, so a freshly generated world's
@@ -1152,6 +1256,16 @@ impl World {
                 census.push_organism();
             }
             world.action_census = Some(census);
+        }
+        // Phase 12 objects: an empty table and one held-list per founder.
+        // Sized from the population like the census; nothing about a founder
+        // decides anything here.
+        if world.config.artifact.enabled {
+            let mut objects = crate::artifact::ObjectState::with_capacity(world.ids.len());
+            for _ in 0..world.ids.len() {
+                objects.push_organism();
+            }
+            world.objects = Some(objects);
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -1694,6 +1808,29 @@ impl World {
         self.action_census.as_ref().map(|census| census.counters)
     }
 
+    /// The object table, when the artifact section is enabled. Read-only.
+    pub fn object_table(&self) -> Option<&crate::artifact::ObjectTable> {
+        self.objects.as_ref().map(|objects| &objects.table)
+    }
+
+    pub(crate) fn object_state(&self) -> Option<&crate::artifact::ObjectState> {
+        self.objects.as_ref()
+    }
+
+    /// The artifact half's counters; `None` when the section is disabled,
+    /// never zeros (D-090's absence-not-zero contract).
+    pub fn object_counters(&self) -> Option<crate::artifact::ObjectCounters> {
+        self.objects.as_ref().map(|objects| objects.table.counters)
+    }
+
+    pub fn object_ledger(&self) -> Option<crate::artifact::ObjectLedger> {
+        self.objects.as_ref().map(|objects| objects.table.ledger)
+    }
+
+    pub fn artifact_enabled(&self) -> bool {
+        self.objects.is_some()
+    }
+
     /// Per-organism neutral marker alleles, in entity-ID order. Empty when no
     /// organism carries a marker locus, which includes every world with the
     /// probe section disabled.
@@ -1883,6 +2020,7 @@ impl World {
         learn: Option<LearnState>,
         worldmod: Option<TerrainModState>,
         action_census: Option<ActionCensus>,
+        objects: Option<crate::artifact::ObjectState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -1936,6 +2074,11 @@ impl World {
         // learned state, nothing downstream would ever notice, because
         // nothing in the tick reads them.
         self.action_census = action_census;
+        // From the save, like everything above: an object's position,
+        // integrity, holder and provenance have no source but the file. The
+        // caller checked the table and rebuilt the held lists; the cell index
+        // is rebuilt on the next tick's `SpatialIndex` phase.
+        self.objects = objects;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -2063,10 +2206,14 @@ impl World {
         observer.phase_started(TickPhase::Environment);
         self.step_climate(next_tick);
         self.grow_food();
+        // Phase 12 artifact half: material yield regenerates on its cadence.
+        // Empty and free when the section is disabled.
+        self.regenerate_yield(next_tick);
         observer.phase_finished(TickPhase::Environment);
 
         observer.phase_started(TickPhase::SpatialIndex);
         self.build_spatial_index();
+        self.rebuild_object_index();
         observer.phase_finished(TickPhase::SpatialIndex);
 
         observer.phase_started(TickPhase::Sense);
@@ -2075,6 +2222,9 @@ impl World {
         } else {
             self.sense(next_tick);
         }
+        // Object cues, read from the index built this tick. Empty when the
+        // section is disabled.
+        self.sense_objects();
         observer.phase_finished(TickPhase::Sense);
 
         observer.phase_started(TickPhase::Controllers);
@@ -2090,6 +2240,10 @@ impl World {
             self.apply_intents(next_tick);
         }
         self.contest_phase(next_tick);
+        // Phase 12 artifact half: the five actions and object consumption,
+        // after contest so a strike lands on the same positions an attack
+        // does. Empty when the section is disabled.
+        self.artifact_phase(next_tick);
         observer.phase_finished(TickPhase::Apply);
 
         // The boundary is emitted whether or not the section is enabled, so
@@ -2966,10 +3120,19 @@ impl World {
         // tick's learn phase. An empty slice in a world with no plasticity
         // section, where no compiled edge carries a slot to index with.
         let learn = self.learn.take();
+        // Phase 12 objects: the cues the gather reads for channels 17..=22
+        // and the request slots 113..=117 become intents. Taken for the loop
+        // and restored after it, like the schema-2 and learned state.
+        let mut objects = self.objects.take();
+        let action_threshold = self.config.artifact.action_threshold_q16 as f32 / 65536.0;
         for index in 0..population {
             let output = match schema2.as_mut() {
                 Some(state) => {
                     let inputs = p2.inputs[index];
+                    let cues: [f32; 6] = objects
+                        .as_ref()
+                        .and_then(|objects| objects.perception.get(index).copied())
+                        .unwrap_or([0.0; 6]);
                     let before = state.activations[index].faults;
                     let mut requests = std::mem::take(&mut state.requests);
                     let learned: &[i32] = match learn.as_ref() {
@@ -2982,18 +3145,49 @@ impl World {
                         learned,
                         &|channel_id| {
                             // Channel IDs 1..=16 are the sixteen sensory
-                            // inputs in `inputs[0..16]`; 17..20 are topology
-                            // 1's memory registers, which schema 2 does not
-                            // expose.
+                            // inputs in `inputs[0..16]`; 17..=22 are the
+                            // Phase 12 object cues, zero in a world without
+                            // the section (and unbindable there).
                             crate::schema2::SENSE_CHANNELS
                                 .iter()
                                 .position(|candidate| *candidate == channel_id)
                                 .map(|slot| inputs[slot])
+                                .or_else(|| {
+                                    (crate::registry::CHANNEL_OBJECT_PRESENT
+                                        ..=crate::registry::CHANNEL_CARRIED_LOAD)
+                                        .contains(&channel_id)
+                                        .then(|| {
+                                            cues[usize::from(
+                                                channel_id - crate::registry::CHANNEL_OBJECT_PRESENT,
+                                            )]
+                                        })
+                                })
                                 .unwrap_or(0.0)
                         },
                         &mut requests,
                     );
                     let outputs = crate::schema2::outputs_from_requests(&requests);
+                    // A bound object channel above the threshold is a
+                    // request; its value in milli is the claim priority. An
+                    // unbound channel is absent from `requests` and is
+                    // therefore never requested.
+                    if let Some(objects) = objects.as_mut()
+                        && let Some(intent) = objects.intents.get_mut(index)
+                    {
+                        let request = |channel: u16| -> Option<i32> {
+                            requests
+                                .binary_search_by_key(&channel, |(id, _)| *id)
+                                .ok()
+                                .map(|slot| requests[slot].1)
+                                .filter(|value| *value > action_threshold)
+                                .map(|value| (value * 1000.0) as i32)
+                        };
+                        intent.pick_up = request(crate::registry::CHANNEL_PICK_UP);
+                        intent.drop = request(crate::registry::CHANNEL_DROP);
+                        intent.place = request(crate::registry::CHANNEL_PLACE);
+                        intent.strike = request(crate::registry::CHANNEL_STRIKE);
+                        intent.combine = request(crate::registry::CHANNEL_COMBINE);
+                    }
                     state.requests = requests;
                     crate::controller::ControllerOutput {
                         outputs,
@@ -3058,6 +3252,7 @@ impl World {
         }
         self.schema2 = schema2;
         self.learn = learn;
+        self.objects = objects;
         self.phase2 = Some(p2);
     }
 
@@ -3134,8 +3329,16 @@ impl World {
                 (i64::from(self.x_fp[index]) + step_x).clamp(0, i64::from(extent_x) - 1) as i32;
             let new_y =
                 (i64::from(self.y_fp[index]) + step_y).clamp(0, i64::from(extent_y) - 1) as i32;
-            // Composed, exactly as the schema-1 movement pass is.
-            if self.effective_traversable(self.cell_of(new_x, new_y)) {
+            // Composed, exactly as the schema-1 movement pass is. Phase 12
+            // adds one entry check beside it: a free object heavy enough to
+            // block refuses entry to its cell and nothing else (ADR-0028
+            // section 12). `cell_blocked_by_object` is `false` without the
+            // section, so the pre-Phase-12 arithmetic is untouched.
+            let target_cell = self.cell_of(new_x, new_y);
+            if self.effective_traversable(target_cell)
+                && (target_cell == self.cell_of(self.x_fp[index], self.y_fp[index])
+                    || !self.cell_blocked_by_object(target_cell))
+            {
                 self.x_fp[index] = new_x;
                 self.y_fp[index] = new_y;
                 p2.speed_milli[index] = speed;
@@ -3180,8 +3383,32 @@ impl World {
                 let speed_frac_q16 =
                     (p2.speed_milli[index] << 16) / phenotype.max_speed_milli.max(1);
                 let speed_squared_q16 = (speed_frac_q16 * speed_frac_q16) >> 16;
-                cost += self.move_cost_tick * phenotype.body_scale_milli * speed_squared_q16
+                let mut move_cost = self.move_cost_tick * phenotype.body_scale_milli * speed_squared_q16
                     / (1000 * 65536);
+                // Phase 12: carried mass multiplies the movement cost by
+                // `1 + carry_move_cost_q16 * carried / capacity`. Exactly
+                // one for an organism holding nothing, and the branch is
+                // not taken at all without the section, so the pre-Phase-12
+                // cost is untouched.
+                if self.objects.is_some() {
+                    let carried = self.held_mass_milli(index);
+                    if carried > 0 {
+                        let capacity = self.carry_capacity_milli(index);
+                        let extra_q16 = i64::from(self.config.artifact.carry_move_cost_q16) * carried / capacity;
+                        move_cost += move_cost * extra_q16 >> 16;
+                    }
+                }
+                cost += move_cost;
+            }
+            // Phase 12: holding costs whether or not the holder moved
+            // (review 15.6, "carrying indefinitely has a cost").
+            if self.objects.is_some() {
+                let carried = self.held_mass_milli(index);
+                if carried > 0 {
+                    let capacity = self.carry_capacity_milli(index);
+                    cost += self.config.artifact.hold_cost_milli_per_s * i64::from(self.config.dt_ms)
+                        * carried / (1000 * capacity);
+                }
             }
             if self.intent_crowded[index] {
                 cost += self.crowding_cost_tick;
@@ -3454,6 +3681,7 @@ impl World {
                                 next_tick,
                                 child_id,
                                 self.config.plasticity_rule_draw_count(),
+                                self.config.channel_registry_version(),
                             );
                         }
                         let hash = crate::checksum::fnv1a64(&child.encode());
@@ -3676,6 +3904,19 @@ impl World {
         };
         let share = self.config.contest.carcass_energy_q16;
         if share == 0 {
+            return;
+        }
+        // Phase 12 artifact half: the carcass is an object with a fresh id
+        // rather than a `ContestState` carcass, and the contest table is
+        // bypassed entirely. Without the section this branch is not taken
+        // and the Phase 7 path below runs byte for byte (ADR-0028 section 9).
+        if self.objects.is_some() {
+            let remaining = self.energy_milli[index].max(0);
+            let energy = (remaining * i64::from(share)) >> 16;
+            if energy <= 0 {
+                return;
+            }
+            self.spawn_carcass_object(next_tick, index, energy);
             return;
         }
         // At the cap the oldest carcass is dropped, and the loss is ledgered
@@ -4235,6 +4476,12 @@ impl World {
             // exact ledger and can never exceed its source.
             self.spawn_carcass(next_tick, index);
         }
+        // Phase 12: a dead organism drops what it holds at its position,
+        // before compaction moves its slot. Runs once, after the death loop,
+        // so the event order within a tick is every death (with its carcass),
+        // then every drop, in ascending id - stated here so it is a documented
+        // order rather than a discovered one. Empty without the section.
+        self.drop_held_on_death(next_tick, &dead);
 
         if dead.iter().any(|&flag| flag) {
             retain_by_flags(&mut self.ids, &dead);
@@ -4273,6 +4520,9 @@ impl World {
             if let Some(state) = self.action_census.as_mut() {
                 state.retain(&dead);
             }
+            if let Some(state) = self.objects.as_mut() {
+                state.retain_organisms(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -4304,6 +4554,9 @@ impl World {
                 state.push_organism(0);
             }
             if let Some(state) = self.action_census.as_mut() {
+                state.push_organism();
+            }
+            if let Some(state) = self.objects.as_mut() {
                 state.push_organism();
             }
             self.counters.births_total += 1;
@@ -4363,6 +4616,9 @@ impl World {
                 if let Some(state) = self.action_census.as_mut() {
                     state.push_organism();
                 }
+                if let Some(state) = self.objects.as_mut() {
+                    state.push_organism();
+                }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;
                 self.ids.push(id);
@@ -4407,6 +4663,10 @@ impl World {
             }
             self.phase2 = Some(p2);
         }
+
+        // Phase 12: passive object decay, after births so a carcass created
+        // this tick decays from the next. Empty without the section.
+        self.decay_objects(next_tick);
 
         // Extinction is a latched, single-event transition. The world stays
         // valid, observable, and pausable.
@@ -4529,6 +4789,15 @@ impl World {
         // and never resets.
         if let Some(census) = self.action_census.as_ref() {
             census.hash_into(&mut hasher);
+        }
+        // Phase 12 objects, **appended last** - after the action census, not
+        // in the position `determinism-extensions.md`'s Rule 8 table lists
+        // `lifesim-object-state-v1` (before terrainmod). Appending never
+        // moves a world that lacks the section; inserting would move every
+        // worldmod world, and the table is amended rather than obeyed
+        // (ADR-0028 section 13).
+        if let Some(objects) = self.objects.as_ref() {
+            objects.table.hash_into(&mut hasher);
         }
         hasher.finish()
     }
@@ -4656,8 +4925,16 @@ impl World {
                 actual: self.ids.len() as i128,
             });
         }
-        let expected_next =
-            u64::from(self.config.initial_organisms) + self.counters.births_total + 1;
+        // Objects draw from the same counter (Rule 2), so the identity gains
+        // a term the day the first object exists and is unchanged before.
+        let objects_allocated = self
+            .objects
+            .as_ref()
+            .map_or(0, |objects| objects.table.objects_allocated_total);
+        let expected_next = u64::from(self.config.initial_organisms)
+            + self.counters.births_total
+            + objects_allocated
+            + 1;
         if expected_next != self.next_entity_id {
             return Err(InvariantViolation::EntityIdAllocation {
                 expected: expected_next,
@@ -4739,6 +5016,55 @@ impl World {
             }
             if let Some(index) = worldmod.bounds_violation(self.terrain.cell_count()) {
                 return Err(InvariantViolation::TerrainModBounds { index });
+            }
+        }
+        // Phase 12 objects. Table structure, ledger identities, and the
+        // derived caches, all checked rather than trusted because a restore
+        // decodes the table from a payload. The genome check is the registry
+        // gate of ADR-0028 section 7 from the world's side: a genome bound to
+        // a channel this world does not offer is a defect whatever wrote it.
+        if let Some(objects) = self.objects.as_ref() {
+            if let Some(violation) = objects
+                .table
+                .violation(self.config.artifact.max_composition_depth.min(255) as u8)
+            {
+                return Err(InvariantViolation::ObjectTable { violation });
+            }
+            if objects.held.len() != self.ids.len() || objects.intents.len() != self.ids.len() {
+                return Err(InvariantViolation::ObjectDesync {
+                    organisms: self.ids.len(),
+                    held: objects.held.len(),
+                });
+            }
+            if !objects.held_is_consistent(&self.ids) {
+                return Err(InvariantViolation::ObjectHeldMismatch);
+            }
+            if objects.table.free_count() > self.config.artifact.max_objects as usize
+                || objects.table.len() > self.config.artifact.max_objects as usize
+            {
+                return Err(InvariantViolation::ObjectCap {
+                    objects: objects.table.len(),
+                    cap: self.config.artifact.max_objects,
+                });
+            }
+            for (index, holder) in objects.table.holder_id.iter().enumerate() {
+                if *holder != 0 && self.ids.binary_search(holder).is_err() {
+                    return Err(InvariantViolation::ObjectHolderDead {
+                        id: objects.table.ids[index],
+                        holder: *holder,
+                    });
+                }
+            }
+        }
+        if let Some(schema2) = self.schema2.as_ref() {
+            let offered = self.config.channel_registry_version();
+            for (index, genome) in schema2.genomes.iter().enumerate() {
+                if !genome.bindings_offered_by(offered) {
+                    return Err(InvariantViolation::ChannelNotOffered {
+                        id: self.ids[index],
+                        registry_version: offered,
+                    });
+                }
             }
         }
         // Phase 10, on the same terms. Bodies are derived rather than stored,
@@ -4845,7 +5171,7 @@ impl World {
     }
 }
 
-fn retain_by_flags<T: Copy>(values: &mut Vec<T>, remove: &[bool]) {
+pub(crate) fn retain_by_flags<T: Copy>(values: &mut Vec<T>, remove: &[bool]) {
     let mut write = 0_usize;
     for read in 0..values.len() {
         if !remove[read] {

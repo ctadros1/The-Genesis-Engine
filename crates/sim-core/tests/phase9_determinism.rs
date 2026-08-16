@@ -216,6 +216,9 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         morphology: _,
         // Per cell and per layer, not per organism.
         worldmod: _,
+        // Per object, not per organism (Phase 12 artifact half). Its own
+        // permutation test lives in `phase12_artifact.rs`.
+        objects: _,
 
         ids,
         x_fp,
@@ -433,6 +436,8 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         // Per cell and per layer, not per organism: the terrain delta is
         // world state that no permutation of the population can touch.
         worldmod: _,
+        // Per object, not per organism (Phase 12 artifact half).
+        objects: _,
         ids,
         x_fp,
         y_fp,

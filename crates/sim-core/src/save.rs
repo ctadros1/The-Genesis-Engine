@@ -251,6 +251,13 @@ pub struct SaveState {
     /// Phase 11 action census. Present exactly when the config's probe
     /// section enables it.
     pub action_census: Option<ActionCensusSaveState>,
+    /// Phase 12 object table. Present exactly when the config's artifact
+    /// section is enabled. The live logical type, on the terms `worldmod` is:
+    /// `ObjectTable` carries nothing derived (the caches live on
+    /// `ObjectState`, outside it), so there is no conversion to leave a
+    /// field out of. Untrusted until `from_state` has run
+    /// `ObjectTable::violation` over it.
+    pub objects: Option<crate::artifact::ObjectTable>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -433,6 +440,7 @@ impl World {
                     counts: census.counts.clone(),
                     counters: census.counters,
                 }),
+            objects: self.object_state().map(|objects| objects.table.clone()),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -909,6 +917,39 @@ impl World {
             }
         };
 
+        // Phase 12 objects. Presence must match the configuration; the table
+        // is checked structurally and against its own ledger *here*, by name,
+        // before it reaches a world, so a reader is told "object 7's
+        // composition names an absent constituent" rather than being sent to
+        // the state checksum. The two caches are rebuilt from the table.
+        let rebuilt_objects = match (world.config().artifact.enabled, state.objects) {
+            (true, Some(table)) => {
+                let max_depth = world.config().artifact.max_composition_depth.min(255) as u8;
+                if let Some(violation) = table.violation(max_depth) {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "object table: {violation:?}"
+                    )));
+                }
+                let mut objects = crate::artifact::ObjectState::from_table(table);
+                for _ in 0..population {
+                    objects.push_organism();
+                }
+                objects.rebuild_held(&state.ids);
+                if !objects.held_is_consistent(&state.ids) {
+                    return Err(RestoreError::StateInvalid(
+                        "an object is held by an organism that is not in the save".to_owned(),
+                    ));
+                }
+                Some(objects)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "object section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -943,6 +984,7 @@ impl World {
             rebuilt_learn,
             rebuilt_worldmod,
             rebuilt_census,
+            rebuilt_objects,
         );
 
         // Step 5 of the restore order in

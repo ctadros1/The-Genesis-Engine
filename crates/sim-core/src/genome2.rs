@@ -37,7 +37,7 @@
 
 use crate::checksum::{Fnv1a64, fnv1a64};
 use crate::registry::{
-    ACTIVATION_REGISTRY_VERSION, Activation, CHANNEL_REGISTRY_VERSION, NodeRole, channel_exists,
+    ACTIVATION_REGISTRY_VERSION, Activation, CHANNEL_REGISTRY_VERSION, NodeRole,
 };
 
 pub const GENOME2_POLICY_VERSION: &str = "lifesim-genome-v2";
@@ -697,6 +697,31 @@ impl Genome2 {
         out
     }
 
+    /// The smallest channel registry version that offers every channel this
+    /// genome binds. 1 unless a binding names a version-2 channel.
+    pub fn required_channel_registry_version(&self) -> u16 {
+        let mut version = CHANNEL_REGISTRY_VERSION;
+        for haplotype in &self.haplotypes {
+            for chromosome in &haplotype.chromosomes {
+                for locus in chromosome {
+                    if let LocusKind::IoBinding { channel_id, .. } = locus.kind
+                        && let Some(needed) = crate::registry::channel_version(channel_id)
+                    {
+                        version = version.max(needed);
+                    }
+                }
+            }
+        }
+        version
+    }
+
+    /// Whether every binding names a channel registry `version` offers. What
+    /// a world checks at construction and restore against the version it
+    /// offers; a genome that fails it is refused, never trimmed.
+    pub fn bindings_offered_by(&self, version: u16) -> bool {
+        self.required_channel_registry_version() <= version
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         let chromosomes = self.chromosome_count() as u8;
         let mut body = Vec::new();
@@ -780,7 +805,11 @@ impl Genome2 {
         let mut out = Vec::with_capacity(total_len as usize);
         out.extend_from_slice(GENOME2_MAGIC);
         put_u16(&mut out, GENOME2_SCHEMA_VERSION);
-        put_u16(&mut out, CHANNEL_REGISTRY_VERSION);
+        // The smallest registry version that offers every channel this
+        // genome binds: 1 for every genome that existed before the artifact
+        // half, so every byte written before it is written unchanged; 2 for
+        // a genome bound to an artifact channel (ADR-0028 section 7).
+        put_u16(&mut out, self.required_channel_registry_version());
         out.push(PLOIDY);
         out.push(chromosomes);
         put_u16(&mut out, 0); // flags
@@ -813,7 +842,13 @@ impl Genome2 {
             return Err(Genome2Error::UnsupportedSchema(schema));
         }
         let registry = reader.u16()?;
-        if registry != CHANNEL_REGISTRY_VERSION {
+        // Versions 1 and 2 are both readable; the declared version is what
+        // each binding is validated against, so a version-1 genome cannot
+        // smuggle a version-2 channel and a genome cannot declare a version
+        // this build does not know.
+        if registry != CHANNEL_REGISTRY_VERSION
+            && registry != crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT
+        {
             return Err(Genome2Error::UnsupportedChannelRegistry(registry));
         }
         let ploidy = reader.u8()?;
@@ -869,7 +904,7 @@ impl Genome2 {
                 }
                 let mut loci = Vec::with_capacity(count as usize);
                 for _ in 0..count {
-                    loci.push(decode_locus(&mut reader)?);
+                    loci.push(decode_locus(&mut reader, registry)?);
                 }
                 for index in 1..loci.len() {
                     if loci[index].homology_id <= loci[index - 1].homology_id {
@@ -1118,7 +1153,7 @@ fn has_cycle(nodes: &[u32], edges: &[(u32, u32)]) -> bool {
     visited != nodes.len()
 }
 
-fn decode_locus(reader: &mut Reader<'_>) -> Result<Locus, Genome2Error> {
+fn decode_locus(reader: &mut Reader<'_>, registry: u16) -> Result<Locus, Genome2Error> {
     let tag = reader.u8()?;
     let payload = LocusKind::payload_len(tag).ok_or(Genome2Error::UnknownLocusType(tag))?;
     let homology_id = reader.u32()?;
@@ -1202,7 +1237,7 @@ fn decode_locus(reader: &mut Reader<'_>) -> Result<Locus, Genome2Error> {
             let node = reader.u32()?;
             let channel_id = reader.u16()?;
             let gain = reader.f32()?;
-            if !channel_exists(channel_id) {
+            if !crate::registry::channel_offered(channel_id, registry) {
                 return Err(Genome2Error::UnknownChannel(channel_id));
             }
             if !gain.is_finite() || !(-VALUE_LIMIT..=VALUE_LIMIT).contains(&gain) {

@@ -528,6 +528,7 @@ fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     state.worldmod = None;
     state.composed_terrain_checksum = state.terrain_checksum;
     state.config.plasticity.live_rule_zero = false;
+    resolve_format7_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -550,7 +551,40 @@ fn migrate_format5_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     // the reader already resolves it this way. Kept, and kept documented as
     // unbacked rather than credited to a test that cannot see it.
     state.config.plasticity.price_moved_edges_only = false;
+    resolve_format7_defaults(&mut state);
     reencode(source, state)
+}
+
+/// Format 6 to current (7). What format 7 adds is the artifact section, the
+/// `bind` operator's rate and counter, and the object table; a format-6
+/// world had none of them - not by default but by construction, since no
+/// build that wrote a format-6 file had an object in it or a `bind` to run.
+/// So this transform invents nothing, and `expected_loss` is empty.
+static FORMAT6_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_6,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format6_to_current,
+};
+
+fn migrate_format6_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format6(bytes)?;
+    resolve_format7_defaults(&mut state);
+    reencode(source, state)
+}
+
+/// The resolution every pre-7 transform states for what format 7 added.
+/// Unobservable in the same sense as the format-5 and format-6 lines above -
+/// the readers already resolve these this way - and kept for the same
+/// reason: the transform states its own resolution rather than borrowing
+/// the reader's.
+fn resolve_format7_defaults(state: &mut sim_core::SaveState) {
+    state.config.artifact = sim_core::ArtifactConfig::artifact_default();
+    state.config.genome2.mutation.binding_q16 = 0;
+    if let Some(schema2) = state.schema2.as_mut() {
+        schema2.counters.binding_applied = 0;
+    }
+    state.objects = None;
 }
 
 fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
@@ -574,6 +608,7 @@ fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     // documented as unbacked rather than credited to a test that cannot see it.
     state.config.plasticity.live_rule_zero = false;
     state.config.plasticity.price_moved_edges_only = false;
+    resolve_format7_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -622,6 +657,7 @@ pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, 
         codec::FORMAT_VERSION_3 => Ok(Some(&FORMAT3_TO_CURRENT)),
         codec::FORMAT_VERSION_4 => Ok(Some(&FORMAT4_TO_CURRENT)),
         codec::FORMAT_VERSION_5 => Ok(Some(&FORMAT5_TO_CURRENT)),
+        codec::FORMAT_VERSION_6 => Ok(Some(&FORMAT6_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \
