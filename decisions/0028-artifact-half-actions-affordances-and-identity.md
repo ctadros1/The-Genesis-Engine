@@ -138,7 +138,7 @@ pay too. Review 7.6: "otherwise agents can probe the world for free."
 |---|---|
 | carryable | `mass_milli <= remaining carry capacity` of the organism asking - relational, evaluated per pick-up (review 3.1: affordances are relational) |
 | strikable | every object; nothing is exempt from force |
-| combinable | every object, subject to depth/breadth/world caps |
+| combinable | every object, subject to depth/breadth/world caps (the breadth cap is degenerate under binary combine - D-116) |
 | consumable | `energy_milli > 0` |
 | placeable | every held object |
 | blocks_movement | `mass_milli >= blocking_mass_milli` - a broad monotone relation on mass, not a tag |

@@ -220,13 +220,24 @@ where marked; the criteria's thresholds are as they were.
       never repeat; storage index order equals ID order; contested
       acquisition is order-independent under storage permutation;
       clean-process fixture replay.
-      **Partial.** The modification set is strictly ascending and unique by
-      `(layer_id, cell_index)`, asserted as a live-world invariant and, since
-      D-097, as a **decode-time** invariant pinned by its own diagnostic.
-      Object IDs, storage-index order and contested acquisition are **not
-      built** - there are no objects. There is also **no Phase 12
-      clean-process fixture or verify script**; the four existing fixtures
-      are preserved (C12.8) but this phase has not minted its own.
+      **Status 2026-08-16: met for the artifact half as built (ADR-0028).**
+      Objects and organisms draw one `next_entity_id`; `check_invariants`
+      proves every tick that object ids are strictly ascending, that no
+      object id is an organism id, and that `objects_allocated_total`
+      equals what the counter handed out; the table is struct-of-arrays in
+      id order and `retain` compacts it in lockstep. Contested acquisition
+      is resolved by (priority, distance², organism id) and
+      `a_contested_pick_up_is_decided_by_distance_before_id_and_never_by_visit_order`
+      shows the nearer, higher-id claimant winning; the "storage
+      permutation" clause is discharged the way Rule 4's is - a permuted
+      table is not restorable (`RestoreError`), so the round trip
+      `a_world_with_held_objects_and_composites_round_trips_and_steps_identically`
+      is the test. **This phase now has its own fixture and script**:
+      `scripts/verify-phase12-determinism.sh` pins the `--artifact` trace at
+      8,000 ticks (config `0xc64259e739b525d4`, state `0x853d257398a2718c`),
+      refuses a vacuous fixture mechanism by mechanism, and shows conditions
+      B and C replaying as distinct lineages. The mutable-world half's
+      modification-set clauses stand as written above.
 - [x] **C12.5 Save format correctness. Met, every clause, each
       mutation-verified.** ALIF **format 4** (not 2; see the version
       correction above), `SAVE_STATE_VERSION` 2, with the format-3 reader
@@ -250,23 +261,39 @@ where marked; the criteria's thresholds are as they were.
       and consumption over a 10^6-tick run. Combining then fracturing
       restores constituent mass and energy exactly. Rounding remainders go
       deterministically to the lowest constituent object ID.
-      **Partial, and the missing part is
-      the horizon.** Lowering a cell's capacity below its standing biomass
-      trims the excess and books it to a ledgered loss sink, exact to the
-      milli - verified by removing the ledger line and watching four tests
-      fail. The biomass identity holds over a long run full of relocations.
-      **Not done: the 10^6-tick run the criterion names**, and mass does not
-      exist as a conserved quantity because objects do not exist. Creation,
-      combination, fracture, carrying and consumption are all unbuilt.
+      **Status 2026-08-16: built and exact per tick; the 10^6-tick horizon
+      is running.** Mass and energy are conserved quantities of the object
+      table under a ten-term ledger (`ObjectLedger`), and
+      `check_invariants` asserts `table = extracted + carcass - decayed -
+      consumed - dust` for both, every tick, in every artifact test and in
+      the trace; `combining_then_fracturing_restores_constituent_ids_mass_and_energy_exactly`
+      is the restoration clause by id. Rounding remainders go where the
+      criterion says: a simple object's fracture puts the division
+      remainder on the first (lowest new id) fragment, a composite comes
+      apart by id without rounding, and consumption's mass share leaves its
+      remainder on the object; only a fragment under
+      `min_fragment_mass_milli` is booked out, to dust, by name. The 10^6-tick single-world soak (`phase12-c126-ledger-soak`, seed
+      12201, the confirmatory base under condition A, invariants checked
+      every 5,000 ticks) was started on 2026-08-16 and its result belongs
+      here when it finishes; until then this criterion is **partial by the
+      horizon alone**.
 - [~] **C12.7 Caps enforced visibly.** Composition depth, composition
       breadth, cell occupancy, carry capacity, and object count all reject
       deterministically, count, and event. A run that is silently pressed
       against a cap must be visible in its report.
-      **Partial.** Terrain-modification writes
-      that fall outside a layer's domain, past the map, or beyond the
-      per-layer cap are refused, typed and counted, and a test drives a cap
-      until it binds. Composition depth, composition breadth, cell occupancy
-      and carry capacity are **not built**.
+      **Status 2026-08-16: met, with one cap named as unbindable.** Every
+      refusal is typed (`RefuseReason`, 13 reasons), counted per reason,
+      hashed, and evented (`ObjectActionRefused`, tag 22), and the manifest
+      carries every count as `artifact_refused_*` so a run pressed against
+      a cap is visible in its report; `every_cap_rejects_counts_and_events_when_driven`
+      drives the world object cap, the held cap, the occupancy cap and the
+      carry capacity until each binds, and
+      `the_depth_cap_refuses_the_composite_that_would_exceed_it` the depth
+      cap. **`max_composition_breadth` cannot bind** (D-116): a combine
+      joins exactly two objects and validation refuses a breadth below two,
+      so the refusal path is reachable by no valid configuration; it is
+      recorded as vestigial rather than counted among the enforced caps.
+      The mutable-world half's clauses stand as written above.
 - [x] **C12.8 Fixtures preserved. Met, and broader than written.** With the
       section disabled, all four world fixtures reproduce exactly - Phase 1
       `0x1e3158a26afd3b39`, Phase 2 `0xff9dfcff5dffbf42`, Phase 9

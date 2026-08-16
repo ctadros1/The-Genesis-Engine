@@ -515,6 +515,48 @@ fn every_cap_rejects_counts_and_events_when_driven() {
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
     assert!(counters.refused_occupancy_cap > 0, "the occupancy cap never bound: {counters:?}");
+
+    // Carry capacity: a capacity below any extracted object's mass refuses
+    // pick-ups as CapacityExceeded. Not *every* pick-up: a carcass eaten
+    // down to a few milli fits a ten-milli capacity, and a first draft that
+    // asserted zero pick-ups was told so (seven, all of them near-empty
+    // carcasses). What holds is that whatever is held fits.
+    let mut config = artifact_config(SEED);
+    config.artifact.carry_capacity_milli = 10;
+    let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP]);
+    run(&mut world, 60);
+    let counters = world.object_counters().unwrap();
+    assert!(counters.refused_capacity > 0, "the carry capacity never bound: {counters:?}");
+    assert!(counters.refused_capacity > counters.picked_up, "{counters:?}");
+    let table = world.object_table().unwrap();
+    for index in 0..table.len() {
+        if table.holder_id[index] != 0 {
+            assert!(
+                table.mass_milli[index] < 100,
+                "held object {} weighs {} milli, more than a ten-milli capacity at any body scale can take",
+                table.ids[index],
+                table.mass_milli[index]
+            );
+        }
+    }
+
+    // Depth cap: `the_depth_cap_refuses_the_composite_that_would_exceed_it`.
+    //
+    // Breadth cap: **cannot bind, and this is stated rather than left to
+    // look tested.** A combine joins exactly two objects, so a composite's
+    // direct constituent count is always 2, and validation refuses
+    // `max_composition_breadth < 2`; the refusal path exists and is
+    // reachable by no valid configuration. The cap is vestigial under the
+    // binary-combine design (D-116). What is asserted here is the
+    // consequence: a busy combining world never records a breadth refusal.
+    let mut config = artifact_config(SEED);
+    config.artifact.max_composition_breadth = 2;
+    config.artifact.joint_floor_q16 = 0;
+    let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP, CHANNEL_COMBINE]);
+    run(&mut world, 60);
+    let counters = world.object_counters().unwrap();
+    assert!(counters.combined > 0, "nobody combined: {counters:?}");
+    assert_eq!(counters.refused_breadth_cap, 0, "a breadth refusal in a valid config would be a new mechanism");
 }
 
 // --- save round trip through the world's own save path -----------------------

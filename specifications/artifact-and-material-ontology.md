@@ -205,8 +205,10 @@ by the extracted volume.
 `combine` joins the lowest-ID held object `H` with the nearest free target
 `T`. It is refused for physical reasons only: `1 + max(depth)` above
 `max_composition_depth`, constituent count above
-`max_composition_breadth`, the world at `max_objects`, or the joint failing.
-There is no compatibility check of any kind.
+`max_composition_breadth` (which, at exactly two constituents per combine
+and a validated floor of 2, never happens - D-116), the world at
+`max_objects`, or the joint failing. There is no compatibility check of any
+kind.
 
 `joint_quality_q16 = min(65,536, draw_q16 * body_scale_milli / 1000)` with
 the draw on the `Artifact` stream keyed on `pair_key(combiner, target)`. If
@@ -328,7 +330,7 @@ are provisional and recorded as such.
 | `max_objects` | 4,096 | World cap on live objects, owned constituents included |
 | `max_objects_per_cell` | 8 | Free objects per cell |
 | `max_composition_depth` | 4 | Depth of a composite |
-| `max_composition_breadth` | 8 | Constituents of a composite |
+| `max_composition_breadth` | 8 | Direct constituents of a composite. **Vestigial (D-116):** a combine always joins exactly two, validation refuses values below 2, so no valid world can press against it; kept for the format and the hash |
 | `max_held_objects` | 1 | Objects one organism holds |
 | `max_candidates` | 8 | Truncation of every sorted candidate set |
 | `carry_capacity_milli` | 4,000 | Capacity at body scale 1,000 |
