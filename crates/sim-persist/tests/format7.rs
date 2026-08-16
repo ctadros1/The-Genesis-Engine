@@ -1077,3 +1077,74 @@ fn a_large_object_table_is_not_refused_by_its_own_count_bound() {
     let restored = World::from_state(decoded).expect("and restores");
     assert_eq!(restored.object_table().unwrap().len(), 200);
 }
+
+/// The plan's restore-from-backup clause for this phase: a Phase 12 world
+/// carrying a **nonempty modification set** (a live relocating patch, so
+/// the worldmod section is populated) **and composite objects** (a held
+/// stone and a depth-one composite) is saved into a store, the whole
+/// recovery set is copied to an isolated directory, opened there, verified,
+/// and the restored world continues bit-identically for 200 ticks against
+/// the original - the Phase 4 test's shape, on the format-7 payload with
+/// sections 12 and 15 both present.
+#[test]
+fn a_backup_set_with_overrides_and_composites_restores_in_isolation_and_continues_identically() {
+    use sim_persist::SnapshotStore;
+    use std::fs;
+    let mut config = artifact_config(SEED);
+    config.worldmod.patch_enabled = true;
+    config.worldmod.relocate_interval_ticks = 20;
+    config.worldmod.patch_radius_cells = 3;
+    config.worldmod.patch_capacity_scale_q16 = 2 * 65_536;
+    let world = advance(config, 60);
+    let mut state = world.export_state();
+    assert!(
+        state.worldmod.as_ref().is_some_and(|w| !w.is_empty()),
+        "the patch wrote nothing, so the modification set is empty and this test proves less than it says"
+    );
+    push_sample_objects(&mut state, 60);
+    let mut world = World::from_state(state).expect("the object world restores");
+    for _ in 0..20 {
+        world.step();
+    }
+    world.check_invariants().expect("invariants");
+    let table = world.object_table().expect("section on");
+    assert!(table.count_with_depth_at_least(1) >= 1, "the composite did not survive twenty ticks");
+    assert!(table.holder_id.iter().any(|&h| h != 0), "nothing is held");
+
+    let root = std::env::temp_dir().join(format!("lifesim-format7-backup-{}", std::process::id()));
+    let _ = fs::remove_dir_all(&root);
+    let source = root.join("source");
+    let target = root.join("target");
+    fs::create_dir_all(&source).unwrap();
+    fs::create_dir_all(&target).unwrap();
+    let (store, _) = SnapshotStore::open(&source).unwrap();
+    let record = store
+        .save(&world.export_state(), world.state_checksum(), 1, 0, "named-backup", "manual", 0, Some(3))
+        .unwrap();
+    for entry in fs::read_dir(&source).unwrap() {
+        let entry = entry.unwrap();
+        fs::copy(entry.path(), target.join(entry.file_name())).unwrap();
+    }
+    let (restored_store, report) = SnapshotStore::open(&target).unwrap();
+    assert_eq!(report.valid_saves, 1);
+    let restored_record = restored_store.list().unwrap().remove(0);
+    assert_eq!(restored_record.state_checksum, record.state_checksum);
+    let verify = restored_store.verify(restored_record.save_id).unwrap();
+    assert_eq!(verify.state_checksum, world.state_checksum());
+    assert_eq!(verify.config_hash, world.config_hash());
+    let (_, mut branched) = SnapshotStore::load_world(&target.join(&restored_record.path)).unwrap();
+    assert_eq!(branched.state_checksum(), world.state_checksum());
+    // Both halves of the phase are in the restored world, not defaulted.
+    assert_eq!(
+        branched.object_table().map(|t| t.len()),
+        world.object_table().map(|t| t.len())
+    );
+    assert!(branched.worldmod_state().is_some_and(|w| !w.is_empty()));
+    for _ in 0..200 {
+        world.step();
+        branched.step();
+    }
+    assert_eq!(branched.state_checksum(), world.state_checksum(), "the restored world diverged");
+    branched.check_invariants().expect("invariants after the branch");
+    let _ = fs::remove_dir_all(&root);
+}
