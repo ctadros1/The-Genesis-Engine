@@ -320,8 +320,10 @@ fn execute_unit(
     let mut positions: Vec<(i32, i32)> = Vec::new();
     let mut action_records: Vec<ActionRecord> = Vec::new();
 
+    let mut organism_ticks: u64 = 0;
     for _ in 0..campaign.ticks {
         world.step();
+        organism_ticks += world.population() as u64;
         if let Some(recorder) = recorder.as_mut() {
             recorder.record(&world).map_err(|error| error.to_string())?;
         }
@@ -441,6 +443,15 @@ fn execute_unit(
     // step with what the world actually built.
     let mutation = world.mutation_counters();
     let develop = world.develop_counters();
+    let artifact = world.object_table().map(|table| crate::manifest::ArtifactSummary {
+        counters: table.counters,
+        ledger: table.ledger,
+        objects_total: table.len() as u64,
+        objects_free: table.free_count() as u64,
+        composites_depth2: table.count_with_depth_at_least(2) as u64,
+        placed_total: table.creator_id.iter().filter(|&&creator| creator != 0).count() as u64,
+        organism_ticks,
+    });
 
     Ok(RunResult {
         index: unit.index,
@@ -484,6 +495,7 @@ fn execute_unit(
         carcasses: metrics.carcasses,
         mutation,
         develop,
+        artifact,
     })
 }
 

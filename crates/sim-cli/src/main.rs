@@ -109,13 +109,17 @@ fn usage() -> String {
         "       lifesim conjunction --manifest FILE   (descriptive census; no threshold, no verdict)\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
-        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity\n",
+        "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity --artifact [--artifact-inert] [--artifact-ephemeral]\n",
         "  --genome2 selects the Phase 9 schema-2 genome and controller; it requires --phase2, and it\n",
         "  pins the structural caps, meiosis mode, and mutation rates literally rather than inheriting\n",
         "  today's defaults, so the Phase 9 fixture cannot move when a default is revised\n",
         "  --plasticity builds the Phase 11 numeric-safety trace: one immortal, sterile organism whose\n",
         "  edges are plastic, for C11.5's 10^6-tick fixed-point trace. It requires --phase2 --genome2,\n",
         "  it pins the entire configuration literally, and it ignores the other config flags on purpose\n",
+        "  --artifact builds the Phase 12 artifact trace: a pinned schema-2 world with the artifact section\n",
+        "  on and founders scripted to strike, pick up, place, drop and combine, so every object mechanism\n",
+        "  runs from tick one. It requires --phase2 --genome2 and pins the whole configuration literally;\n",
+        "  --artifact-inert and --artifact-ephemeral select the plan's conditions C and B on top of it\n",
         "run also accepts: --event-log PATH"
     )
     .to_owned()
@@ -134,6 +138,9 @@ struct Options {
     phase2: bool,
     genome2: bool,
     plasticity: bool,
+    artifact: bool,
+    artifact_inert: bool,
+    artifact_ephemeral: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -183,6 +190,21 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--plasticity" {
             options.plasticity = true;
+            index += 1;
+            continue;
+        }
+        if name == "--artifact" {
+            options.artifact = true;
+            index += 1;
+            continue;
+        }
+        if name == "--artifact-inert" {
+            options.artifact_inert = true;
+            index += 1;
+            continue;
+        }
+        if name == "--artifact-ephemeral" {
+            options.artifact_ephemeral = true;
             index += 1;
             continue;
         }
@@ -340,8 +362,197 @@ fn build_world(options: &Options) -> Result<World, String> {
     if options.plasticity {
         return plasticity_trace_world(options);
     }
+    if options.artifact {
+        return artifact_trace_world(options);
+    }
+    if options.artifact_inert || options.artifact_ephemeral {
+        return Err(format!(
+            "--artifact-inert and --artifact-ephemeral require --artifact\n{}",
+            usage()
+        ));
+    }
     let config = build_config(options)?;
     World::new(config).map_err(|error| error.to_string())
+}
+
+// --- the Phase 12 artifact trace -------------------------------------------
+
+/// The Phase 12 artifact fixture's configuration, pinned literally.
+///
+/// A population, not a single organism, because what the artifact half adds
+/// is interaction: contested pick-ups, objects outliving their makers,
+/// carcasses eaten by others. The Phase 9 fixture's genome-2 policy is
+/// reused so this world is that lineage plus the section; on top of it the
+/// worldmod and contest sections (the yield layer and carcasses live there)
+/// and **every `ArtifactConfig` field written out literally**, on D-078's
+/// terms: `SimConfig::stable_hash` folds the whole section in when it is
+/// enabled, and the section's caps and rates are provisional by the
+/// specification's own account, so a fixture built from
+/// `ArtifactConfig::artifact_default()` would move the day one is restated
+/// from measurement. `binding_q16` is pinned nonzero so the operator D-114
+/// added is exercised, and it is hashed only because it is nonzero.
+fn artifact_trace_config(seed: u64, inert: bool, ephemeral: bool) -> SimConfig {
+    let mut config = SimConfig::phase1_default(seed);
+    config.phase2.enabled = true;
+    config.genome2.enabled = true;
+    apply_pinned_genome2_policy(&mut config);
+    config.cells_x = 64;
+    config.cells_y = 64;
+    config.initial_organisms = 200;
+    config.max_entities = 2_000;
+    config.genome2.mutation.binding_q16 = 32_768; // 0.5 per birth
+
+    // Physiology, pinned literally (D-078), for one reason: an extrinsic
+    // hazard is the only death in an 8,000-tick horizon that leaves energy
+    // behind, and a carcass object needs energy to be made of. Starvation
+    // leaves none, old age is past the horizon, and nobody attacks unless
+    // evolution binds it. Values are today's defaults except the hazard,
+    // which is the Phase 11 confirmatory campaign's 13.
+    let physiology = &mut config.physiology;
+    physiology.enabled = true;
+    physiology.allometry_enabled = true;
+    physiology.basal_exponent_quarters = 3;
+    physiology.thermoregulation_enabled = true;
+    physiology.thermal_pref_low_milli = 0;
+    physiology.thermal_pref_high_milli = 40_000;
+    physiology.thermal_neutral_band_milli = 6_000;
+    physiology.thermal_cost_milli_per_s_per_degree = 4;
+    physiology.senescence_enabled = true;
+    physiology.senescence_onset_ticks = 6_000;
+    physiology.senescence_scale_ticks = 12_000;
+    physiology.senescence_power = 2;
+    physiology.senescence_hazard_q16_per_s = 655;
+    physiology.extrinsic_hazard_q16_per_s = 13;
+    physiology.juvenile_hazard_multiplier_q16 = 131_072;
+
+    config.contest.enabled = true;
+    config.worldmod.enabled = true;
+    config.worldmod.patch_enabled = false;
+    config.worldmod.dense_threshold_q16 = 32_768;
+    config.worldmod.max_traversable_overrides = 4_096;
+    config.worldmod.max_capacity_overrides = 4_096;
+    config.worldmod.max_material_overrides = 4_096;
+
+    let artifact = &mut config.artifact;
+    artifact.enabled = true;
+    artifact.inert = inert;
+    artifact.ephemeral = ephemeral;
+    artifact.max_objects = 4_096;
+    artifact.max_objects_per_cell = 8;
+    artifact.max_composition_depth = 4;
+    artifact.max_composition_breadth = 8;
+    artifact.max_held_objects = 1;
+    artifact.max_candidates = 8;
+    artifact.carry_capacity_milli = 4_000;
+    artifact.carry_move_cost_q16 = 65_536;
+    artifact.hold_cost_milli_per_s = 20;
+    // Costs are a tenth of the shipped defaults, and that is the one place
+    // this trace departs from them: its founders fire an action every tick
+    // by script, and at 60 and 120 milli per attempt against a basal 10 per
+    // tick every one of them starves inside the horizon and the last
+    // three-quarters of the run measures an empty world - a fixture that is
+    // a control (evidence trap 1). The campaign runs the shipped costs; the
+    // fixture pins the arithmetic, and the arithmetic does not care what
+    // the price is.
+    artifact.action_cost_milli = 6;
+    artifact.strike_cost_milli = 12;
+    artifact.action_threshold_q16 = 32_768;
+    artifact.reach_m = 2;
+    artifact.consume_reach_m = 2;
+    artifact.perception_range_m = 8;
+    artifact.strike_force_q16 = 262_144;
+    artifact.strike_mass_reference_milli = 2_000;
+    artifact.fracture_margin_q16 = 65_536;
+    artifact.max_fragments = 4;
+    artifact.min_fragment_mass_milli = 100;
+    artifact.joint_floor_q16 = 16_384;
+    artifact.blocking_mass_milli = 3_000;
+    artifact.terrain_yield_milli = 6_000;
+    artifact.extraction_milli = 800;
+    artifact.yield_regen_milli = 400;
+    artifact.yield_regen_interval_ticks = 600;
+    artifact.stone_relative_q16 = 39_322;
+    artifact.wood_relative_q16 = 16_384;
+    config
+}
+
+/// The founders' networks, scripted through the public save path so every
+/// object mechanism runs from tick one, on the same terms
+/// `plasticity_trace_world` authors the plastic flag: confined to this
+/// harness, reachable from no campaign and no default.
+///
+/// Founder `i` gets one of four scripts by `i % 4` - strike; strike, pick up,
+/// place; strike, pick up, combine; pick up, drop - each an always-on output
+/// node (bias 8) bound to the channel. Movement stays evolved (`turn` from
+/// `energy_fraction`, throttle at its unbound half), so strikers meet their
+/// own extractions, pickers meet strikers' objects, and placement and
+/// combination happen where the traffic is. Births carry the scripts on to
+/// children through the ordinary meiosis, and `bind` adds to them.
+fn artifact_trace_world(options: &Options) -> Result<World, String> {
+    if !options.genome2 || !options.phase2 {
+        return Err(format!("--artifact requires --phase2 --genome2\n{}", usage()));
+    }
+    let config = artifact_trace_config(
+        options.seed.unwrap_or(DEFAULT_SEED),
+        options.artifact_inert,
+        options.artifact_ephemeral,
+    );
+    config.validate().map_err(|error| error.to_string())?;
+    let world = World::new(config).map_err(|error| error.to_string())?;
+    let mut state = world.export_state();
+    let caps = state.config.genome2.caps;
+    let schema2 = state
+        .schema2
+        .as_mut()
+        .ok_or_else(|| "the trace world is not schema 2".to_owned())?;
+    const SCRIPTS: [&[u16]; 4] = [
+        &[sim_core::CHANNEL_STRIKE],
+        &[sim_core::CHANNEL_STRIKE, sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_PLACE],
+        &[sim_core::CHANNEL_STRIKE, sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_COMBINE],
+        &[sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_DROP],
+    ];
+    for (index, encoded) in schema2.genomes.iter_mut().enumerate() {
+        let mut genome = sim_core::Genome2::decode(encoded, &caps)
+            .map_err(|error| format!("founder genome does not decode: {error}"))?;
+        let script = SCRIPTS[index % SCRIPTS.len()];
+        for (salt, &channel) in script.iter().enumerate() {
+            let node_id = sim_core::STRUCTURAL_HOMOLOGY_BASE + 50_000 + salt as u32 * 10;
+            for haplotype in &mut genome.haplotypes {
+                let chromosome = &mut haplotype.chromosomes[0];
+                chromosome.push(sim_core::Locus {
+                    homology_id: node_id,
+                    gene_lineage_id: u64::from(node_id),
+                    mutation_event_id: 0,
+                    kind: LocusKind::Node {
+                        role: sim_core::NodeRole::Output,
+                        activation_id: sim_core::Activation::TanhApprox.id(),
+                        bias: 8.0,
+                        time_constant: 0,
+                    },
+                });
+                chromosome.push(sim_core::Locus {
+                    homology_id: node_id + 1,
+                    gene_lineage_id: u64::from(node_id + 1),
+                    mutation_event_id: 0,
+                    kind: LocusKind::IoBinding {
+                        node: node_id,
+                        channel_id: channel,
+                        gain: 1.0,
+                    },
+                });
+                chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+            }
+        }
+        genome
+            .validate_structure(&caps)
+            .map_err(|error| format!("scripted founder does not validate: {error}"))?;
+        *encoded = genome.encode();
+        for _ in 0..script.len() {
+            schema2.activation_values[index].push(0.0);
+            schema2.activation_prior[index].push(0.0);
+        }
+    }
+    World::from_state(state).map_err(|error| format!("scripted founders do not restore: {error}"))
 }
 
 // --- the Phase 11 numeric-safety trace --------------------------------------
@@ -1912,7 +2123,82 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if metrics.plasticity_enabled {
+    if let Some(objects) = world.object_table() {
+        // Fixture schema 8: the Phase 12 artifact trace. A separate schema,
+        // on the grounds every earlier one was separated: an artifact world
+        // has objects in it, and a reader that parsed it as a Phase 9
+        // fixture would be comparing an ecology with objects to one without.
+        //
+        // The counts beside the checksum are what stop this fixture from
+        // silently becoming a control: extraction, pick-up, placement, drop,
+        // strikes on objects, fracture, combination, consumption, carcass
+        // objects, decay, and the bind operator each have a field, and
+        // `verify-phase12-determinism.sh` refuses every one of them at zero.
+        // `depth2` is reported and not refused, because a depth-two
+        // composite is a chance event of the script, not a mechanism.
+        let counters = objects.counters;
+        let mutation = world
+            .mutation_counters()
+            .expect("an artifact world is a genome2 world");
+        let composites_depth2 = objects.count_with_depth_at_least(2);
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":8,\"phase\":\"phase12\",",
+                "\"behavior_policy\":\"{}\",\"genome2_policy\":\"{}\",",
+                "\"artifact_policy\":\"{}\",\"material_policy\":\"{}\",",
+                "\"material_registry\":{},\"channel_registry\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"births_total\":{},\"binding_applied\":{},",
+                "\"objects_total\":{},\"objects_free\":{},\"objects_depth2\":{},",
+                "\"created_extracted\":{},\"created_fractured\":{},",
+                "\"created_combined\":{},\"created_carcass\":{},",
+                "\"picked_up\":{},\"dropped\":{},\"placed\":{},",
+                "\"struck_objects\":{},\"struck_terrain\":{},",
+                "\"fractured\":{},\"combined\":{},\"consumed_events\":{},",
+                "\"decayed_away\":{},\"refusals\":{},\"cap_refusals\":{},",
+                "\"mass_in_pool_milli\":{},\"energy_in_pool_milli\":{},",
+                "\"controller_faults_total\":{}}}"
+            ),
+            PHASE2_BEHAVIOR_POLICY_VERSION,
+            GENOME2_POLICY_VERSION,
+            sim_core::ARTIFACT_POLICY_VERSION,
+            sim_core::MATERIAL_POLICY_VERSION,
+            sim_core::MATERIAL_REGISTRY_VERSION,
+            world.config().channel_registry_version(),
+            world.config().initial_organisms,
+            ticks,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.births_total,
+            mutation.binding_applied,
+            objects.len(),
+            objects.free_count(),
+            composites_depth2,
+            counters.created_extracted,
+            counters.created_fractured,
+            counters.created_combined,
+            counters.created_carcass,
+            counters.picked_up,
+            counters.dropped,
+            counters.placed,
+            counters.struck_objects,
+            counters.struck_terrain,
+            counters.fractured,
+            counters.combined,
+            counters.consumed_events,
+            counters.decayed_away,
+            counters.refusals(),
+            counters.cap_refusals(),
+            objects.total_mass_milli(),
+            objects.total_energy_milli(),
+            metrics.controller_faults_total
+        );
+    } else if metrics.plasticity_enabled {
         // Fixture schema 5: the Phase 11 numeric-safety trace. A separate
         // schema rather than extra fields on schema 4, on the same grounds
         // schema 4 was separated from 3: this is one immortal sterile

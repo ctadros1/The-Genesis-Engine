@@ -297,6 +297,21 @@ impl ObjectLedger {
 
     pub const FIELD_COUNT: usize = 10;
 
+    /// The terms' names, in the permanent `to_array` order: the manifest's
+    /// column suffixes and the report's labels.
+    pub const FIELD_NAMES: [&'static str; Self::FIELD_COUNT] = [
+        "mass_extracted_milli",
+        "mass_carcass_milli",
+        "mass_decayed_milli",
+        "mass_consumed_milli",
+        "mass_dust_milli",
+        "energy_extracted_milli",
+        "energy_carcass_milli",
+        "energy_decayed_milli",
+        "energy_consumed_milli",
+        "energy_dust_milli",
+    ];
+
     /// The terms in hash order, for the codec.
     pub fn to_array(&self) -> [i128; Self::FIELD_COUNT] {
         let Self {
@@ -401,6 +416,42 @@ impl ObjectCounters {
     pub const DISPOSITION_COUNT: usize = 17;
     pub const REFUSAL_COUNT: usize = 13;
     pub const FIELD_COUNT: usize = Self::DISPOSITION_COUNT + Self::REFUSAL_COUNT;
+
+    /// The counters' names in the permanent `to_array` order: the manifest's
+    /// column suffixes and the report's labels. Checked against the struct
+    /// by a test that round-trips every field with a distinct value.
+    pub const FIELD_NAMES: [&'static str; Self::FIELD_COUNT] = [
+        "created_extracted",
+        "created_fractured",
+        "created_combined",
+        "created_carcass",
+        "picked_up",
+        "dropped",
+        "placed",
+        "struck_objects",
+        "struck_terrain",
+        "fractured",
+        "disassembled",
+        "combined",
+        "consumed_events",
+        "decayed_away",
+        "worn_away",
+        "death_drops",
+        "ephemeral_destroyed",
+        "refused_no_target",
+        "refused_capacity",
+        "refused_held_cap",
+        "refused_contested",
+        "refused_nothing_held",
+        "refused_occupancy_cap",
+        "refused_invalid_cell",
+        "refused_depleted",
+        "refused_no_yield",
+        "refused_object_cap",
+        "refused_depth_cap",
+        "refused_breadth_cap",
+        "refused_joint_failed",
+    ];
 
     /// Destructured with no `..` (D-077). Concatenation order is declaration
     /// order and is permanent: it is the byte order `hash_into` feeds the
@@ -1438,6 +1489,29 @@ mod tests {
         assert_eq!(ObjectLedger::from_array(ledger.to_array()), ledger);
         assert_eq!(ledger.expected_mass_milli(), 1 + 2 - 3 - 4 - 5);
         assert_eq!(ledger.expected_energy_milli(), 6 + 7 - 8 - 9 - 10);
+    }
+
+    #[test]
+    fn field_names_follow_the_permanent_array_order() {
+        // Distinct values, then read them back by name through the array:
+        // a name out of place would pair a value with the wrong field.
+        let mut counters = ObjectCounters::default();
+        counters.picked_up = 5;
+        counters.refused_joint_failed = 30;
+        counters.created_extracted = 1;
+        let array = counters.to_array();
+        let at = |name: &str| array[ObjectCounters::FIELD_NAMES.iter().position(|n| *n == name).unwrap()];
+        assert_eq!(at("picked_up"), 5);
+        assert_eq!(at("refused_joint_failed"), 30);
+        assert_eq!(at("created_extracted"), 1);
+        assert_eq!(ObjectCounters::FIELD_NAMES.len(), ObjectCounters::FIELD_COUNT);
+        let unique: std::collections::BTreeSet<&str> = ObjectCounters::FIELD_NAMES.iter().copied().collect();
+        assert_eq!(unique.len(), ObjectCounters::FIELD_COUNT);
+        let ledger = ObjectLedger { energy_dust_milli: 7, ..Default::default() };
+        let array = ledger.to_array();
+        let at = |name: &str| array[ObjectLedger::FIELD_NAMES.iter().position(|n| *n == name).unwrap()];
+        assert_eq!(at("energy_dust_milli"), 7);
+        assert_eq!(at("mass_extracted_milli"), 0);
     }
 
     #[test]

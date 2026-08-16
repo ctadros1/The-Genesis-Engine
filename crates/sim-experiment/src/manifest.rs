@@ -93,6 +93,35 @@ pub struct RunResult {
     /// and a manifest is a record, not a cache.
     pub mutation: Option<sim_core::MutationCounters>,
     pub develop: Option<sim_core::DevelopCounters>,
+    /// Phase 12 artifact half. `None` when the section is disabled, on the
+    /// same absence-not-zero terms as the two blocks above.
+    pub artifact: Option<ArtifactSummary>,
+}
+
+/// The artifact half's per-run record: the thirty counters and ten ledger
+/// terms as they stand at the end of the run, four table summaries, and the
+/// run's organism-ticks (the denominator C12.1's rate needs, accumulated by
+/// the scheduler as the sum of the population over every tick).
+///
+/// Rendered as one column per counter under `artifact_`, one per ledger term
+/// under `artifact_ledger_`, in the permanent `FIELD_NAMES` order, so the
+/// manifest is `..`-free by construction: a counter added to
+/// `ObjectCounters` grows `FIELD_NAMES` and `to_array` together or fails to
+/// compile in sim-core.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ArtifactSummary {
+    pub counters: sim_core::ObjectCounters,
+    pub ledger: sim_core::ObjectLedger,
+    /// Live objects at the end, owned constituents included.
+    pub objects_total: u64,
+    /// Free objects at the end.
+    pub objects_free: u64,
+    /// Composites of depth at least two at the end: C12.3's numerator.
+    pub composites_depth2: u64,
+    /// Objects at the end with a nonzero `creator_id`.
+    pub placed_total: u64,
+    /// Sum of the population over every tick of the run.
+    pub organism_ticks: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -422,6 +451,7 @@ fn render_run(run: &RunResult) -> String {
         carcasses,
         mutation,
         develop,
+        artifact,
     } = run;
     let Counters {
         births_total,
@@ -552,6 +582,34 @@ fn render_run(run: &RunResult) -> String {
              develop_nonviable_other={nonviable_other}"
         ));
     }
+    if let Some(ArtifactSummary {
+        counters,
+        ledger,
+        objects_total,
+        objects_free,
+        composites_depth2,
+        placed_total,
+        organism_ticks,
+    }) = artifact
+    {
+        for (name, value) in sim_core::ObjectCounters::FIELD_NAMES
+            .iter()
+            .zip(counters.to_array())
+        {
+            line.push_str(&format!(" artifact_{name}={value}"));
+        }
+        for (name, value) in sim_core::ObjectLedger::FIELD_NAMES
+            .iter()
+            .zip(ledger.to_array())
+        {
+            line.push_str(&format!(" artifact_ledger_{name}={value}"));
+        }
+        line.push_str(&format!(
+            " artifact_objects_total={objects_total} artifact_objects_free={objects_free} \
+             artifact_composites_depth2={composites_depth2} artifact_placed_total={placed_total} \
+             artifact_organism_ticks={organism_ticks}"
+        ));
+    }
     line.push('\n');
     line
 }
@@ -658,6 +716,34 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
             nonviable_missing_type: number("develop_nonviable_missing_type").unwrap_or(0),
             nonviable_other: number("develop_nonviable_other").unwrap_or(0),
         });
+    // Gated on its first column, so a manifest written before the artifact
+    // half parses as `None`. Every column is read by the permanent name list
+    // and a missing one reads as zero, matching the two blocks above.
+    let artifact = fields.contains_key("artifact_created_extracted").then(|| {
+        let mut counters = [0_u64; sim_core::ObjectCounters::FIELD_COUNT];
+        for (slot, name) in counters.iter_mut().zip(sim_core::ObjectCounters::FIELD_NAMES) {
+            *slot = fields
+                .get(&format!("artifact_{name}"))
+                .and_then(|value| value.parse::<u64>().ok())
+                .unwrap_or(0);
+        }
+        let mut ledger = [0_i128; sim_core::ObjectLedger::FIELD_COUNT];
+        for (slot, name) in ledger.iter_mut().zip(sim_core::ObjectLedger::FIELD_NAMES) {
+            *slot = fields
+                .get(&format!("artifact_ledger_{name}"))
+                .and_then(|value| value.parse::<i128>().ok())
+                .unwrap_or(0);
+        }
+        ArtifactSummary {
+            counters: sim_core::ObjectCounters::from_array(counters),
+            ledger: sim_core::ObjectLedger::from_array(ledger),
+            objects_total: number("artifact_objects_total").unwrap_or(0),
+            objects_free: number("artifact_objects_free").unwrap_or(0),
+            composites_depth2: number("artifact_composites_depth2").unwrap_or(0),
+            placed_total: number("artifact_placed_total").unwrap_or(0),
+            organism_ticks: number("artifact_organism_ticks").unwrap_or(0),
+        }
+    });
     Ok(RunResult {
         index: number("index")? as usize,
         condition: fields
@@ -712,6 +798,7 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         refused_node_budget: number("refused_node_budget").unwrap_or(0),
         mutation,
         develop,
+        artifact,
     })
 }
 
@@ -871,6 +958,25 @@ output snapshots off
                 nonviable_disconnected: 310,
                 nonviable_missing_type: 311,
                 nonviable_other: 312,
+            }),
+            artifact: Some({
+                let mut counters = [0_u64; sim_core::ObjectCounters::FIELD_COUNT];
+                for (slot, value) in counters.iter_mut().zip(70_001_u64..) {
+                    *slot = value;
+                }
+                let mut ledger = [0_i128; sim_core::ObjectLedger::FIELD_COUNT];
+                for (slot, value) in ledger.iter_mut().zip(-80_010_i128..) {
+                    *slot = value;
+                }
+                ArtifactSummary {
+                    counters: sim_core::ObjectCounters::from_array(counters),
+                    ledger: sim_core::ObjectLedger::from_array(ledger),
+                    objects_total: 90_001,
+                    objects_free: 90_002,
+                    composites_depth2: 90_003,
+                    placed_total: 90_004,
+                    organism_ticks: 90_005,
+                }
             }),
         }
     }

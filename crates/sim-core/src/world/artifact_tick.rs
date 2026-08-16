@@ -769,16 +769,27 @@ impl World {
                 continue;
             }
             // Held consumables first (lowest id), then the nearest free one.
+            // **Simple objects only.** A composite's energy is locked inside
+            // it until it comes apart: consuming from it would move the
+            // composite's stored sums away from its constituents' and break
+            // the derivation `check_invariants` re-derives, and the honest
+            // physical reading is the same - what is jointed is not on the
+            // plate.
+            let edible = |candidate: usize| {
+                objects.table.energy_milli[candidate] > 0
+                    && !destroyed[candidate]
+                    && objects.table.composition[candidate].is_empty()
+            };
             let mut target = objects.held[index]
                 .iter()
                 .filter_map(|&id| objects.table.index_of(id))
-                .find(|&held| objects.table.energy_milli[held] > 0 && !destroyed[held]);
+                .find(|&held| edible(held));
             if target.is_none() {
                 target = self
                     .free_objects_within(&objects, index, consume_fp, max_candidates)
                     .into_iter()
                     .map(|(_, candidate)| candidate)
-                    .find(|&candidate| objects.table.energy_milli[candidate] > 0 && !destroyed[candidate]);
+                    .find(|&candidate| edible(candidate));
             }
             let Some(target) = target else {
                 continue;
@@ -819,7 +830,7 @@ impl World {
         if artifact.ephemeral {
             for (_, table_index) in landed {
                 if !destroyed[table_index] && objects.table.is_free(table_index) {
-                    self.destroy_simple(next_tick, &mut objects, &mut destroyed, table_index, DestroyCause::Ephemeral);
+                    self.destroy_whole(next_tick, &mut objects, &mut destroyed, table_index, DestroyCause::Ephemeral);
                     objects.table.counters.ephemeral_destroyed += 1;
                 }
             }
@@ -952,6 +963,46 @@ impl World {
             Self::cell_index_remove(objects, cell, target);
         }
         self.push_event(next_tick, EventKind::ObjectDestroyed { id, cause: cause.id() });
+    }
+
+    /// Destroy an object and, if it is a composite, everything it owns, to the
+    /// dust sink. Condition B's "decays to nothing": the composite's stored
+    /// mass and energy are the sums the pool counted, so they are booked
+    /// once at the top and the owned constituents - which the pool did not
+    /// count - are simply marked destroyed with nothing booked.
+    fn destroy_whole(&mut self, next_tick: u64, objects: &mut ObjectState, destroyed: &mut [bool], target: usize, cause: DestroyCause) {
+        if destroyed[target] {
+            return;
+        }
+        let composition = objects.table.composition[target].clone();
+        for constituent in composition {
+            if let Some(index) = objects.table.index_of(constituent) {
+                self.mark_owned_destroyed(next_tick, objects, destroyed, index);
+            }
+        }
+        objects.table.composition[target].clear();
+        self.destroy_simple(next_tick, objects, destroyed, target, cause);
+    }
+
+    /// An owned constituent leaving with its composite: nothing booked (its
+    /// mass was inside its composite's), nothing to remove from any index.
+    fn mark_owned_destroyed(&mut self, next_tick: u64, objects: &mut ObjectState, destroyed: &mut [bool], index: usize) {
+        if destroyed[index] {
+            return;
+        }
+        let composition = objects.table.composition[index].clone();
+        for constituent in composition {
+            if let Some(inner) = objects.table.index_of(constituent) {
+                self.mark_owned_destroyed(next_tick, objects, destroyed, inner);
+            }
+        }
+        destroyed[index] = true;
+        objects.table.mass_milli[index] = 0;
+        objects.table.energy_milli[index] = 0;
+        objects.table.owner_id[index] = 0;
+        objects.table.composition[index].clear();
+        let id = objects.table.ids[index];
+        self.push_event(next_tick, EventKind::ObjectDestroyed { id, cause: DestroyCause::Ephemeral.id() });
     }
 
     /// A composite comes apart: its constituents return to the world at its
@@ -1159,7 +1210,12 @@ impl World {
             }
             objects.table.integrity_q16[index] = (objects.table.integrity_q16[index] - rate as i32).max(0);
             let energy = objects.table.energy_milli[index];
-            if energy > 0 {
+            // A composite loses integrity at its fastest constituent's rate
+            // and comes apart at zero; its energy and mass are its
+            // constituents' and are not decayed here, or the stored sums
+            // would drift from their derivation and disassembly would put
+            // back what decay had already booked out.
+            if energy > 0 && objects.table.composition[index].is_empty() {
                 let loss = ((energy * rate) >> 16).max(1).min(energy);
                 objects.table.energy_milli[index] -= loss;
                 objects.table.ledger.energy_decayed_milli += i128::from(loss);

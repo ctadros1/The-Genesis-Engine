@@ -31,7 +31,8 @@ pub use campaign::{
 };
 pub use fields::{FIELD_NAMES, FieldError, FieldValue, differing_fields, read_field, set_field};
 pub use manifest::{
-    FailedRun, MANIFEST_FORMAT, MANIFEST_VERSION, Manifest, ManifestError, RunResult,
+    ArtifactSummary, FailedRun, MANIFEST_FORMAT, MANIFEST_VERSION, Manifest, ManifestError,
+    RunResult,
 };
 pub use report::{
     ComparisonReport, ConditionSummary, MetricFn, PairedComparison, REPORT_POLICY_VERSION,

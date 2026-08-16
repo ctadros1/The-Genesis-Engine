@@ -176,6 +176,39 @@ pub const METRICS: &[(&str, MetricFn)] = &[
     ("deaths_by_damage_total", |run| {
         run.deaths_by_damage_total as i64
     }),
+    // Phase 12 artifact half. Zero when the section is disabled: these are
+    // descriptive summaries, and `lifesim artifact` is where absence is
+    // told apart from zero and the criteria are decided.
+    ("artifact_successes", |run| {
+        run.artifact.map_or(0, |a| a.counters.successes() as i64)
+    }),
+    ("artifact_picked_up", |run| {
+        run.artifact.map_or(0, |a| a.counters.picked_up as i64)
+    }),
+    ("artifact_placed", |run| {
+        run.artifact.map_or(0, |a| a.counters.placed as i64)
+    }),
+    ("artifact_combined", |run| {
+        run.artifact.map_or(0, |a| a.counters.combined as i64)
+    }),
+    ("artifact_struck_terrain", |run| {
+        run.artifact.map_or(0, |a| a.counters.struck_terrain as i64)
+    }),
+    ("artifact_refusals", |run| {
+        run.artifact.map_or(0, |a| a.counters.refusals() as i64)
+    }),
+    ("artifact_cap_refusals", |run| {
+        run.artifact.map_or(0, |a| a.counters.cap_refusals() as i64)
+    }),
+    ("artifact_objects_total", |run| {
+        run.artifact.map_or(0, |a| a.objects_total as i64)
+    }),
+    ("artifact_composites_depth2", |run| {
+        run.artifact.map_or(0, |a| a.composites_depth2 as i64)
+    }),
+    ("artifact_placed_total", |run| {
+        run.artifact.map_or(0, |a| a.placed_total as i64)
+    }),
 ];
 
 #[derive(Clone, Debug)]
