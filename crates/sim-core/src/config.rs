@@ -271,7 +271,17 @@ impl ArtifactConfig {
             strike_mass_reference_milli: 2_000,
             fracture_margin_q16: Q16_ONE,
             max_fragments: 4,
-            min_fragment_mass_milli: 400,
+            // 100, not the 400 first written: a pilot on a disjoint seed
+            // (0x9999, 20,000 ticks) showed extracted wood at ~385 milli-mass
+            // and fiber at ~240, so under 400 no fragment of either could
+            // ever be an object and every strike on them was dust. The rule
+            // that set it: below half the lightest material's smallest
+            // extraction, so fracture can yield fragments for every material
+            // (fiber 800 * 0.5 volume * 300 density / 1000 = 120; half is
+            // 60; 100 leaves three-way fiber splits as dust and two-way as
+            // objects). A rule about the mechanism running, not about any
+            // outcome.
+            min_fragment_mass_milli: 100,
             joint_floor_q16: Q16_ONE / 4,
             blocking_mass_milli: 3_000,
             terrain_yield_milli: 6_000,

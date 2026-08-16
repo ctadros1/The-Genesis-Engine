@@ -344,7 +344,7 @@ are provisional and recorded as such.
 | `strike_mass_reference_milli` | 2,000 | Held mass that adds one full hardness to force |
 | `fracture_margin_q16` | 65,536 | Multiplier on hardness the summed force must reach |
 | `max_fragments` | 4 | Fragment count upper bound (lower bound 2) |
-| `min_fragment_mass_milli` | 400 | Below this a fragment is dust |
+| `min_fragment_mass_milli` | 100 | Below this a fragment is dust (400 first; lowered by a pilot rule that every material's extraction must be fracturable into at least two fragments - see the config comment) |
 | `joint_floor_q16` | 16,384 | Joint draws below this fail the attempt |
 | `blocking_mass_milli` | 3,000 | Free object mass that blocks entry |
 | `terrain_yield_milli` | 6,000 | Baseline extractable volume per land cell |

@@ -652,16 +652,23 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&id.to_le_bytes());
             out.push(cause);
         }
-        EventKind::ObjectPickedUp { id, holder } => {
+        EventKind::ObjectPickedUp { id, holder, cell } => {
             out.push(TAG_OBJECT_PICKED_UP);
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&holder.to_le_bytes());
+            out.extend_from_slice(&cell.to_le_bytes());
         }
-        EventKind::ObjectReleased { id, holder, placed } => {
+        EventKind::ObjectReleased {
+            id,
+            holder,
+            placed,
+            cell,
+        } => {
             out.push(TAG_OBJECT_RELEASED);
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&holder.to_le_bytes());
             out.push(u8::from(placed));
+            out.extend_from_slice(&cell.to_le_bytes());
         }
         EventKind::ObjectStruck {
             striker,
@@ -1006,6 +1013,7 @@ fn decode_events_into(
             TAG_OBJECT_PICKED_UP => EventKind::ObjectPickedUp {
                 id: short!(cursor.u64()),
                 holder: short!(cursor.u64()),
+                cell: short!(cursor.u32()),
             },
             TAG_OBJECT_RELEASED => {
                 let id = short!(cursor.u64());
@@ -1015,7 +1023,13 @@ fn decode_events_into(
                     1 => true,
                     _ => return Err(EventLogError::ValueOutOfRange("object placed flag")),
                 };
-                EventKind::ObjectReleased { id, holder, placed }
+                let cell = short!(cursor.u32());
+                EventKind::ObjectReleased {
+                    id,
+                    holder,
+                    placed,
+                    cell,
+                }
             }
             TAG_OBJECT_STRUCK => EventKind::ObjectStruck {
                 striker: short!(cursor.u64()),

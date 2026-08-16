@@ -368,6 +368,40 @@ impl World {
         // occupancy tally for later releases, and condition B's list.
         let mut landed: Vec<(usize, usize)> = Vec::new();
 
+        // Condition C, in one place: every requested action is charged and
+        // counted as a success and nothing else happens - no refusal, no
+        // object, no hold. That is what "actions fire and pay but confer no
+        // effect" has to mean for the control to measure the baseline
+        // *firing* rate rather than a rate depressed by refusals that only
+        // exist because nothing can ever be held.
+        if inert {
+            for index in 0..population {
+                let intent = objects.intents[index];
+                if intent.drop.is_some() {
+                    self.charge(index, artifact.action_cost_milli);
+                    objects.table.counters.dropped += 1;
+                }
+                if intent.place.is_some() {
+                    self.charge(index, artifact.action_cost_milli);
+                    objects.table.counters.placed += 1;
+                }
+                if intent.pick_up.is_some() {
+                    self.charge(index, artifact.action_cost_milli);
+                    objects.table.counters.picked_up += 1;
+                }
+                if intent.combine.is_some() {
+                    self.charge(index, artifact.action_cost_milli);
+                    objects.table.counters.combined += 1;
+                }
+                if intent.strike.is_some() {
+                    self.charge(index, artifact.strike_cost_milli);
+                    objects.table.counters.struck_terrain += 1;
+                }
+            }
+            self.objects = Some(objects);
+            return;
+        }
+
         // --- 1. Drops, ascending index. ---
         for index in 0..population {
             let Some(priority) = objects.intents[index].drop else {
@@ -384,17 +418,13 @@ impl World {
                 self.refuse(next_tick, &mut objects, index, ObjectAction::Drop, RefuseReason::OccupancyCap);
                 continue;
             }
-            if inert {
-                objects.table.counters.dropped += 1;
-                continue;
-            }
             let (x, y) = (self.x_fp[index], self.y_fp[index]);
             Self::release_into_world(&mut objects, index, table_index, x, y);
             objects.table.counters.dropped += 1;
             landed.push((cell, table_index));
             let id = objects.table.ids[table_index];
             let holder = self.ids[index];
-            self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: false });
+            self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: false, cell: cell as u32 });
         }
 
         // --- 2. Places, ascending index. ---
@@ -431,10 +461,6 @@ impl World {
                 self.refuse(next_tick, &mut objects, index, ObjectAction::Place, RefuseReason::OccupancyCap);
                 continue;
             }
-            if inert {
-                objects.table.counters.placed += 1;
-                continue;
-            }
             // Snap to the cell centre so a placed object's position is a
             // function of the cell alone, never of a float heading.
             let cx = (i64::from(target_x) / step) * step + step / 2;
@@ -445,7 +471,7 @@ impl World {
             landed.push((cell, table_index));
             let id = objects.table.ids[table_index];
             let holder = self.ids[index];
-            self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: true });
+            self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: true, cell: cell as u32 });
         }
 
         // --- 3. Claims: pick_up and combine, resolved jointly per target. ---
@@ -527,10 +553,6 @@ impl World {
             let target = claim.target;
             match claim.action {
                 ObjectAction::PickUp => {
-                    if inert {
-                        objects.table.counters.picked_up += 1;
-                        continue;
-                    }
                     let cell = self.cell_of(objects.table.x_fp[target], objects.table.y_fp[target]);
                     Self::cell_index_remove(&mut objects, cell, target);
                     let holder = self.ids[index];
@@ -539,7 +561,7 @@ impl World {
                     let position = objects.held[index].binary_search(&id).unwrap_or_else(|p| p);
                     objects.held[index].insert(position, id);
                     objects.table.counters.picked_up += 1;
-                    self.push_event(next_tick, EventKind::ObjectPickedUp { id, holder });
+                    self.push_event(next_tick, EventKind::ObjectPickedUp { id, holder, cell: cell as u32 });
                 }
                 ObjectAction::Combine => {
                     let Some(held) = Self::lowest_held(&objects, index) else {
@@ -574,10 +596,6 @@ impl World {
                     let joint_q16 = ((i64::from((draw & 0xffff) as u32) * scale) / 1_000).min(i64::from(Q16_ONE));
                     if joint_q16 < i64::from(artifact.joint_floor_q16) {
                         self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::JointFailed);
-                        continue;
-                    }
-                    if inert {
-                        objects.table.counters.combined += 1;
                         continue;
                     }
                     let held_id = objects.table.ids[held];
@@ -683,9 +701,6 @@ impl World {
         // Fracture test per target, in ascending target index (= id).
         force_on.sort_by_key(|entry| entry.0);
         for (target, force, _) in force_on {
-            if inert {
-                continue;
-            }
             let threshold = i64::from(objects.table.hardness_q16[target]) * i64::from(artifact.fracture_margin_q16) >> 16;
             if force >= threshold {
                 self.fracture(next_tick, &mut objects, &mut pending, &mut destroyed, target, DestroyCause::Fractured);
@@ -724,9 +739,6 @@ impl World {
             let variance_q16 = 32_768 + (draw & 0x7fff) as i64;
             let volume = (artifact.extraction_milli * variance_q16 >> 16).min(remaining).max(1);
             objects.table.counters.struck_terrain += 1;
-            if inert {
-                continue;
-            }
             let cap = self.config.worldmod.max_material_overrides;
             if let Some(worldmod) = self.worldmod.as_mut() {
                 let outcome = worldmod.set(LAYER_MATERIAL_YIELD, cell as u32, remaining - volume, cap);
@@ -780,9 +792,6 @@ impl World {
                 continue;
             }
             let raw = ((gained << 16) / assimilation.max(1)).min(objects.table.energy_milli[target]);
-            if inert {
-                continue;
-            }
             objects.table.energy_milli[target] -= raw;
             // Mass leaves with the energy in proportion, so a carcass eaten
             // to nothing weighs nothing. Exact: the mass share is the raw
@@ -1046,7 +1055,8 @@ impl World {
                 objects.table.x_fp[table_index] = x;
                 objects.table.y_fp[table_index] = y;
                 objects.table.counters.death_drops += 1;
-                self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: false });
+                let cell = self.cell_of(x, y) as u32;
+                self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: false, cell });
             }
         }
         self.objects = Some(objects);

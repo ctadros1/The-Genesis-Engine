@@ -283,17 +283,22 @@ pub enum EventKind {
         id: u64,
         cause: u8,
     },
-    /// An organism took a free object into its hold.
+    /// An organism took a free object into its hold. `cell` is where the
+    /// object was, so a log can say which cells were emptied.
     ObjectPickedUp {
         id: u64,
         holder: u64,
+        cell: u32,
     },
     /// A held object returned to the world: dropped at the holder's position,
-    /// placed into the faced cell, or dropped by a death.
+    /// placed into the faced cell, or dropped by a death. `cell` is where it
+    /// landed, so C12.2's placed-object episodes and their cells can be
+    /// reconstructed from the log without a per-tick object sample.
     ObjectReleased {
         id: u64,
         holder: u64,
         placed: bool,
+        cell: u32,
     },
     /// One strike on an object, with the force it contributed. Every strike
     /// events; the fracture, if any, events as `ObjectDestroyed` after the
