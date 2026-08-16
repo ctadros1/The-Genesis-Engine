@@ -72,6 +72,11 @@ combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 8, and
 
 The tick order gains phases: `learn` after `apply` (Phase 11), and object
 decay plus terrain-modification application inside `lifecycle` (Phase 12).
+*As built (2026-08-16): no new named phase for objects - the artifact half
+runs inside the existing ones (yield regeneration in `environment`, the
+object index in `spatial_index`, cues in `sense`, `artifact_phase` at the
+end of `apply`, death drops, carcass objects and decay in `lifecycle`), so
+`TickPhase::ALL` stays at 9 and benchmark schema 7 is unchanged.*
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

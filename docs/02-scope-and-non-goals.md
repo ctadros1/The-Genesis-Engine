@@ -28,7 +28,7 @@ acceptance criteria and a stated ablation.
 - **Phase 9** A diploid chromosomal genome with meiosis, linkage, dominance, and structural mutation, producing variable network topology.
 - **Phase 10** Modular morphology: typed modules on a lattice grown by a developmental genome, with mass, speed, sensing, and controller node budget all derived from the module set.
 - **Phase 11** Genome-encoded synaptic plasticity with evolved neuromodulation.
-- **Phase 12** Materials, objects, carrying, placing, striking, combining, and persistent world modification, with save format 2.
+- **Phase 12** Materials, objects, carrying, placing, striking, combining, and persistent world modification, with save format 2 (*as built: the mutable-world half landed as ALIF format 4 on 2026-08-10 and the artifact half as format 7 on 2026-08-16, ADR-0028; every verb above exists, combination is a non-guaranteed bond attempt, and construction in the sense of a placed object that blocks entry is live*).
 - **Phase 13** Perception of other organisms' actions and a costly local signal channel with no authored meaning.
 - **Phase 14** Developmental ontogeny, mate choice on perceived phenotype, and optionally disease.
 - **Phase 15** Abiogenesis and a field-regime unicellular phase, coupled to the individual engine.

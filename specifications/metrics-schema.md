@@ -60,7 +60,7 @@ bounded label enumerations, no high-cardinality labels.
 | 9 | `lifesim_genome_bytes`, `lifesim_controller_nodes`, `lifesim_controller_edges`, `lifesim_structural_mutations_total{operator}`, `lifesim_structural_rejected_total{cap}` | gauge, gauge, gauge, counter, counter |
 | 11 | `lifesim_plastic_edges`, `lifesim_plasticity_faults_total`, `lifesim_plasticity_energy_spent_milli_total` | gauge, counter, counter |
 | 13 | `lifesim_signals_emitted_total`, `lifesim_signal_energy_spent_milli_total`, `lifesim_perceived_neighbours` | counter, counter, gauge |
-| 12 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge |
+| 12 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge. *Status 2026-08-16: not exported by `sim-server` yet (it exports the base gauges only, as for every phase since 7); the kernel-side numbers exist and reach the operator through the run manifest - `artifact_<counter>` for all 30 `ObjectCounters`, `artifact_ledger_<term>` for the ten ledger terms, `artifact_objects_total/free`, `artifact_composites_depth2`, `artifact_placed_total`, `artifact_organism_ticks` - and through `lifesim artifact`* |
 | 8 | `lifesim_median_lifespan_ticks`, `lifesim_juvenile_fraction`, `lifesim_deaths_total{cause}` distribution | gauge, gauge, counter |
 | 10 | `lifesim_modules`, `lifesim_nonviable_births_total` | gauge, counter |
 | 14 | `lifesim_disease_load` | gauge |
