@@ -376,15 +376,14 @@ Criteria:
       went extinct with *and* without plasticity, so the debit was not the
       cause - the population guard is what said so, and without it a million
       ticks of an empty world would have reported as a pass (trap 1).
-- [~] **C11.7 Snapshot and checkpoint budget.** Snapshot size and checkpoint
+- [x] **C11.7 Snapshot and checkpoint budget.** Snapshot size and checkpoint
       stall are measured at both tiers with realistic evolved plasticity
       levels, against the Phase 9 record. If sparse learned-state storage
       does not hold the budget, the phase reports that and the plastic-edge
       cap is set from the measurement.
 
-      **Snapshot half met; the checkpoint-stall half is not measured through
-      the mechanism the plan names.** Sparse storage holds the budget
-      comfortably. Framing is exact at **12 bytes per plastic edge + 8 per
+      **Met, both halves.** Sparse storage holds the budget comfortably and
+      the checkpoint stall is measured through `AsyncCheckpointer`. Framing is exact at **12 bytes per plastic edge + 8 per
       organism + 72 per section**:
 
       | tier | condition | bytes/organism | learn share |
@@ -407,10 +406,78 @@ Criteria:
       prior benchmark in this repo computes a p95; the plan asks for one and
       a percentile over timing samples was added for it.
 
-      **Not measured: checkpoint stall through `AsyncCheckpointer`.** What is
-      reported is synchronous encode/decode/restore time on the tick thread.
-      The plan calls asynchronous checkpointing a Phase 5 prerequisite for
-      exactly this measurement, so this is a gap rather than a substitution.
+      **Checkpoint stall through `AsyncCheckpointer`: measured 2026-08-16**,
+      record `phase11-local-20260816T063000Z`, closing the gap this entry
+      recorded. What had been reported was synchronous encode/decode/restore
+      time on the tick thread, which the plan calls a substitution rather than
+      an answer. Methodology is A5.5's - same tiers, same 200-tick checkpoint
+      interval, checkpoint ticks sampled separately from all ticks, because at
+      0.5 percent of the sample a p95 over all ticks cannot see a stall by
+      construction. Tick budget 100 ms, fixed by `dt_ms` rather than chosen.
+
+      | tier | condition | edges/org | sync p50 | sync max | **async p50** | async max | writer max |
+      |---|---|---|---|---|---|---|---|
+      | 500 | off | 0 | 21.22 | 26.45 | **3.41** | 3.50 | 18.64 |
+      | 500 | evolved | 0 | 21.77 | 22.80 | **3.41** | 3.51 | 19.40 |
+      | 500 | seeded | 2.04 | 22.09 | 23.60 | **3.50** | 3.73 | 18.76 |
+      | 2000 | off | 0 | 52.07 | 61.78 | **13.94** | 14.86 | 42.07 |
+      | 2000 | evolved | 0.004 | 50.60 | 52.58 | **13.45** | 14.27 | 40.63 |
+      | 2000 | seeded | 2.07 | 51.92 | 54.22 | **13.61** | 13.98 | 39.39 |
+
+      All milliseconds. `async_refused` is 0 in every arm, so the single-slot
+      queue never had to refuse.
+
+      **The budget holds asynchronously and does not hold comfortably
+      synchronously.** Worst async checkpoint tick is 14.86 ms, 15 percent of
+      budget; worst synchronous is 61.78 ms, 62 percent. That gap is what
+      Phase 5's asynchronous path buys and it is why the criterion names it.
+
+      **Plasticity does not measurably move the stall.** Seeded against off is
+      +2.5 percent at tier 500 and **-2.4 percent** at tier 2000 - a sign
+      change, so the difference is noise rather than a small cost, and it is
+      reported as noise rather than as a number. Sparse learned state is
+      cheap to *checkpoint* as well as to store.
+
+      **`evolved` measures nothing about plasticity and the record says so.**
+      It carries 0 plastic edges at tier 500 and 8 in the whole population at
+      tier 2000. That is the phase's named most-likely failure appearing
+      again, not a benchmark defect, and `plastic_edges_per_organism_milli` is
+      printed beside every timing so a small stall cannot be read as "sparse
+      learned state is cheap" when it means "nothing was plastic". `seeded` is
+      the arm that bounds the answer.
+
+      **Allocation in the learn path: zero, measured.** The Benchmark Impact
+      section requires it and nothing had measured it. It cannot be tested by
+      counting allocations in a tick - a whole `step` legitimately allocates -
+      so it is tested by whether the count *moves* when the learn path is
+      given more work, over the same 0/1/2 plastic-edge sweep the timing half
+      uses, in a sterile immortal world so births and deaths cannot resize the
+      arrays:
+
+      | tier | edges/org | applied updates | allocations | per tick |
+      |---|---|---|---|---|
+      | 500 | 0 | 0 | 12,100 | 6.050 |
+      | 500 | 1 | 694,154 | 12,082 | 6.041 |
+      | 500 | 2 | 1,144,342 | 12,057 | 6.029 |
+      | 2000 | 0 | 0 | 12,149 | 6.074 |
+      | 2000 | 1 | 1,865,500 | 12,105 | 6.053 |
+      | 2000 | 2 | 3,125,484 | 12,078 | 6.039 |
+
+      **3,125,484 applied updates added zero allocations.** The count is flat
+      and in fact drifts slightly *down* with more plastic edges, which is the
+      residual noise of the rest of the tick, not a saving.
+
+      Two harness defects were found producing this record and both are fixed
+      in `scripts/run-phase11-benchmarks.sh`. The script never invoked the
+      kernel-side benchmark and its comment still said that target "is not
+      written yet" long after it existed, so every record it produced had no
+      `learn` lines and nothing said so. And with `--test-threads 1` - which
+      the timed benchmarks require - cargo prints `test <name> ... ` with no
+      trailing newline, so each test's first `println!` lands on that line and
+      a `grep '^PHASE11-BENCH'` drops it: **every benchmark test silently lost
+      its first measurement, which here was the zero-plastic-edge baseline
+      every other arm is compared against.** The extraction is now `grep -o`
+      and the script fails if the record is not exactly 25 measurements.
 - [x] **C11.8 Determinism and fixtures.** Plasticity-disabled configs
       reproduce the Phase 9 fixture exactly; storage-permutation equality
       holds.

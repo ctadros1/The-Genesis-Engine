@@ -24,7 +24,36 @@ use sim_core::{
     Genome2, GenomeCaps, LearnedEdgeSave, LocusKind, PlasticityBudget, PlasticityGenes,
     RULE_HEBBIAN, SimConfig, TickObserver, TickPhase, World, compile_network_with_budget,
 };
+use std::alloc::{GlobalAlloc, Layout, System};
+use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Instant;
+
+/// Counts allocations so the learn path's per-tick behaviour can be measured
+/// rather than asserted from reading `plasticity::step`.
+///
+/// The same shape `lifesim` uses for its Phase 1 allocation counting. It is
+/// declared in this test binary only, so nothing in the kernel or in any
+/// other target is affected.
+struct CountingAllocator;
+
+static ALLOCATIONS: AtomicU64 = AtomicU64::new(0);
+
+unsafe impl GlobalAlloc for CountingAllocator {
+    unsafe fn alloc(&self, layout: Layout) -> *mut u8 {
+        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.alloc(layout) }
+    }
+    unsafe fn dealloc(&self, pointer: *mut u8, layout: Layout) {
+        unsafe { System.dealloc(pointer, layout) }
+    }
+    unsafe fn realloc(&self, pointer: *mut u8, layout: Layout, new_size: usize) -> *mut u8 {
+        ALLOCATIONS.fetch_add(1, Ordering::Relaxed);
+        unsafe { System.realloc(pointer, layout, new_size) }
+    }
+}
+
+#[global_allocator]
+static GLOBAL_ALLOCATOR: CountingAllocator = CountingAllocator;
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
 const TIERS: [u32; 2] = [500, 2_000];
@@ -295,4 +324,99 @@ fn phase11_ledger_exact_over_a_million_ticks_with_plasticity() {
         metrics.total_energy_milli,
         metrics.total_biomass_milli,
     );
+}
+
+/// Allocation behaviour in the `learn` path, which the phase plan's Benchmark
+/// Impact section requires to stay at zero per organism per tick.
+///
+/// # Why this is a difference and not an absolute
+///
+/// A whole `step` is not allocation-free and was never claimed to be - events,
+/// spatial buckets and the reproduction path all allocate legitimately. So
+/// "zero allocations per organism per tick **in the learn path**" cannot be
+/// tested by counting allocations in a tick; it has to be tested by whether
+/// the count *moves* when the learn path gets more work to do.
+///
+/// The sweep is the one the timing benchmark already uses: the same world at
+/// 0, 1 and 2 plastic edges per organism. If the learn path allocated per
+/// plastic edge, the per-tick count would scale with the sweep. If it
+/// allocates nothing, the three arms agree and the residue is the rest of the
+/// tick.
+///
+/// The world is sterile and immortal (`reproduction_enabled = false`,
+/// `max_age_ticks` beyond the horizon) for the reason
+/// `plasticity_trace_config` gives: a birth or a death legitimately resizes
+/// the learned-state arrays, so a world with either in it would report
+/// allocations that are correct and would tell us nothing about the learn
+/// path.
+#[test]
+#[ignore = "benchmark"]
+fn phase11_learn_path_allocates_nothing_per_plastic_edge() {
+    for tier in TIERS {
+        let mut baseline = None;
+        for edges in [0_usize, 1, 2] {
+            let mut config = bench_config(SEED, tier);
+            // Sterile and immortal: births and deaths resize the learn arrays
+            // and would be counted as learn-path allocations.
+            config.reproduction_enabled = false;
+            config.max_age_ticks = 4_000_000;
+            let mut world = world_with_plastic_edges(config, edges);
+            for _ in 0..WARMUP_TICKS {
+                world.step();
+            }
+            let population = world.population();
+            let before = ALLOCATIONS.load(Ordering::Relaxed);
+            for _ in 0..SAMPLE_TICKS {
+                world.step();
+            }
+            let allocations = ALLOCATIONS.load(Ordering::Relaxed) - before;
+            let metrics = world.metrics();
+            // The arm has to actually have the plastic edges it claims, or
+            // the three columns are three copies of one measurement.
+            if edges == 0 {
+                assert_eq!(metrics.plastic_edges_total, 0);
+            } else {
+                assert!(
+                    metrics.plasticity_updates_applied > 0,
+                    "tier {tier} with {edges} plastic edges never applied an \
+                     update, so this arm exercises no learn path at all"
+                );
+            }
+            let per_tick = allocations as f64 / SAMPLE_TICKS as f64;
+            println!(
+                "PHASE11-BENCH learn-alloc tier={tier} plastic_edges_per_organism={edges} \
+                 population={population} plastic_edges_total={} updates_applied={} \
+                 allocations={allocations} allocations_per_tick={per_tick:.3} \
+                 allocations_per_organism_per_tick={:.6}",
+                metrics.plastic_edges_total,
+                metrics.plasticity_updates_applied,
+                per_tick / f64::from(population.max(1) as u32),
+            );
+            match baseline {
+                None => baseline = Some(allocations),
+                Some(zero_edge) => {
+                    // **The assertion, and it is a bound rather than an
+                    // equality.** The rest of the tick is not deterministic in
+                    // its allocation count across arms - the three worlds have
+                    // different learned state and therefore different
+                    // trajectories - so an exact match would be a flake. What
+                    // must not happen is growth proportional to plastic edges:
+                    // at `population` organisms and `SAMPLE_TICKS` ticks, one
+                    // allocation per organism per tick would be
+                    // `population * SAMPLE_TICKS` extra, which is millions.
+                    let per_organism_tick_budget =
+                        u64::from(population as u32) * SAMPLE_TICKS / 100;
+                    assert!(
+                        allocations <= zero_edge + per_organism_tick_budget,
+                        "tier {tier}, {edges} plastic edges per organism: {allocations} \
+                         allocations against {zero_edge} with none, a difference of {} \
+                         against a budget of {per_organism_tick_budget} (one percent of \
+                         one allocation per organism per tick). The learn path is \
+                         allocating per plastic edge",
+                        allocations.saturating_sub(zero_edge)
+                    );
+                }
+            }
+        }
+    }
 }

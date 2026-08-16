@@ -27,7 +27,7 @@ and none has started:
 | 8 | Demography and life history - **implemented; C8.1 met, C8.5/C8.6/C8.7 unmet** | `phase-8-demography-and-life-history.md` |
 | 9 | Evolvable genome: diploid genetics and variable topology | `phase-9-evolvable-genome.md` |
 | 10 | Modular morphology and development | `phase-10-modular-morphology.md` |
-| 11 | Lifetime learning - **kernel done; C11.1/C11.2 measured and unmet, C11.7 partial** | `phase-11-lifetime-learning.md` |
+| 11 | Lifetime learning - **COMPLETE 2026-08-16: every criterion decided; C11.3-C11.8 met, C11.1/C11.2 unmet as measured nulls with controls** | `phase-11-lifetime-learning.md` |
 | 12 | Mutable world and artifacts | `phase-12-mutable-world-and-artifacts.md` |
 | 13 | Social channel | `phase-13-social-channel.md` |
 | 14 | Ontogeny and sexual selection | `phase-14-ontogeny-and-sexual-selection.md` |
@@ -79,13 +79,30 @@ the tamper test accepted *either* error. Two tests now pin the near guard by
 its diagnostic. The general pattern - a guard whose only test accepts a set
 of errors rather than the one it should produce - is worth grepping for.
 
-**Phase 11 is measured on all eight criteria; seven of eight are decided**
-(2026-08-11), benchmark schema 7. Met: C11.3, C11.4, C11.5, C11.6 (10^6
-ticks, 18,971,594 plasticity updates, ledger exact), C11.8. **C11.1 and
-C11.2 are UNMET, as measured nulls with controls** - they stood at NOT
-MEASURED until the four missing pieces were built. C11.7 remains partial:
-snapshot budget and `learn` p50/p95 measured, checkpoint stall not measured
-through `AsyncCheckpointer`.
+**PHASE 11 IS COMPLETE (2026-08-16): all eight criteria decided**, benchmark
+schema 7, record `phase11-local-20260816T063000Z`. Met: C11.3, C11.4, C11.5,
+C11.6 (10^6 ticks, 18,971,594 plasticity updates, ledger exact), **C11.7**,
+C11.8. **C11.1 and C11.2 are UNMET, as measured nulls with controls** - they
+stood at NOT MEASURED until the four missing pieces were built, and a
+measured null is a result rather than a gap.
+
+**C11.7 closed 2026-08-16** (D-113). The checkpoint stall is now measured
+through `AsyncCheckpointer` rather than substituted by synchronous encode
+time: against a 100 ms budget, async checkpoint-tick p50 is 3.41 ms at tier
+500 and 13.94 ms at tier 2000 against synchronous 21.22 and 52.07, worst
+async tick 15 percent of budget against synchronous 62 percent, and
+`async_refused` zero everywhere. **Plasticity does not measurably move the
+stall** - seeded against off is +2.5 percent at one tier and -2.4 percent at
+the other, a sign change, so it is noise. Learn-path allocation is zero:
+3,125,484 applied updates added none.
+
+**Two harness defects were found producing that record**, both fixed. The
+benchmark script never invoked the kernel-side target and said it "is not
+written yet" long after it existed, so every record had no `learn` lines. And
+with `--test-threads 1`, which the timed benchmarks require, cargo prints
+`test <name> ... ` without a newline, so a `grep '^PHASE11-BENCH'` dropped
+each test's **first** measurement - the zero-plastic-edge baseline. The
+script now uses `grep -o` and fails if the record is not exactly 25 lines.
 
 **Both behavioural criteria returned a null, pre-registered in `4b160fe`
 before the run.** 120 worlds, 4 arms x 30 seeds, 60,000 ticks, 0 failed.

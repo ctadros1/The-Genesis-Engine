@@ -40,6 +40,9 @@
 //! produced each.
 
 use sim_core::{SimConfig, World};
+use sim_persist::{AsyncCheckpointer, CheckpointRequest, SnapshotStore, SubmitResult};
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
 
 const TIERS: [u32; 2] = [500, 2_000];
@@ -228,8 +231,13 @@ fn measure(label: &str, tier: u32, mut world: World, ticks: u64) {
     );
 }
 
-/// Snapshot size and checkpoint stall at both tiers, plasticity off, evolved,
-/// and seeded.
+/// Snapshot **size** at both tiers, plasticity off, evolved, and seeded.
+///
+/// The checkpoint-stall half of C11.7 is
+/// `phase11_checkpoint_stall_through_the_async_checkpointer` below. This doc
+/// comment claimed both for the whole time only one was measured, which is
+/// the shape of stale status text the phase plan warns about: a name that
+/// covers a gap reads as coverage.
 #[test]
 #[ignore = "benchmark"]
 fn phase11_snapshot_budget() {
@@ -252,5 +260,213 @@ fn phase11_snapshot_budget() {
             seeded_world(plastic_config(11, tier)),
             EVOLVE_TICKS,
         );
+    }
+}
+
+// --- C11.7's second half: the stall, through the mechanism the plan names ---
+
+fn percentiles(samples: &mut [f64]) -> (f64, f64, f64) {
+    samples.sort_by(f64::total_cmp);
+    let pick =
+        |fraction: f64| -> f64 { samples[((samples.len() - 1) as f64 * fraction).ceil() as usize] };
+    (pick(0.5), pick(0.95), pick(0.99))
+}
+
+fn scratch_dir(name: &str) -> PathBuf {
+    let directory =
+        std::env::temp_dir().join(format!("lifesim-bench11-{name}-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&directory);
+    std::fs::create_dir_all(&directory).expect("scratch dir");
+    directory
+}
+
+/// One condition's stall, synchronous against asynchronous.
+///
+/// Methodology is A5.5's, deliberately, so the two records are comparable:
+/// same tiers, same checkpoint interval, same split between all-tick and
+/// checkpoint-tick samples. What is new is that the world carries evolved or
+/// seeded plastic edges, which is the clause C11.7 asks for and A5.5 could
+/// not have supplied - Phase 5 predates plasticity.
+///
+/// **Checkpoint ticks are sampled separately, and that is not a refinement.**
+/// At one checkpoint every 200 ticks they are 0.5 percent of the sample, so a
+/// p95 over all ticks cannot see them by construction. Reporting only the
+/// all-tick p95 would make any stall invisible and the comparison
+/// meaningless - which is exactly how a benchmark reports "no stall" for a
+/// world that stalls.
+fn measure_stall(label: &str, tier: u32, world: &World, budget_ms: f64) {
+    let directory = scratch_dir(&format!("{label}{tier}"));
+    let measured = 2_000_u64;
+    let interval = 200_u64;
+
+    // --- Synchronous: encode, compress and fsync inline on the tick thread.
+    let sync_store = Arc::new(Mutex::new(
+        SnapshotStore::open(&directory.join("sync"))
+            .expect("store")
+            .0,
+    ));
+    let mut sync_world = World::from_state(world.export_state()).expect("clone world");
+    let mut sync_samples = Vec::with_capacity(measured as usize);
+    let mut sync_checkpoint_ticks = Vec::new();
+    let mut sync_checkpoints = 0_u32;
+    for tick in 0..measured {
+        let started = Instant::now();
+        sync_world.step();
+        let is_checkpoint = tick % interval == 0;
+        if is_checkpoint {
+            let state = sync_world.export_state();
+            let checksum = sync_world.state_checksum();
+            sync_store
+                .lock()
+                .expect("store")
+                .save(&state, checksum, 1, 0, "auto", "checkpoint", 0, Some(3))
+                .expect("save");
+            sync_checkpoints += 1;
+        }
+        let cost = started.elapsed().as_secs_f64() * 1_000.0;
+        sync_samples.push(cost);
+        if is_checkpoint {
+            sync_checkpoint_ticks.push(cost);
+        }
+    }
+    let (sync_p50, sync_p95, sync_p99) = percentiles(&mut sync_samples);
+    let sync_max = sync_samples.last().copied().unwrap_or(0.0);
+    let (sync_cp_p50, _, _) = percentiles(&mut sync_checkpoint_ticks);
+    let sync_cp_max = sync_checkpoint_ticks.last().copied().unwrap_or(0.0);
+
+    // --- Asynchronous: capture inline, everything else on the writer thread.
+    let async_store = Arc::new(Mutex::new(
+        SnapshotStore::open(&directory.join("async"))
+            .expect("store")
+            .0,
+    ));
+    let checkpointer = AsyncCheckpointer::spawn(Arc::clone(&async_store));
+    let mut async_world = World::from_state(world.export_state()).expect("clone world");
+    let mut async_samples = Vec::with_capacity(measured as usize);
+    let mut async_checkpoint_ticks = Vec::new();
+    let mut async_checkpoints = 0_u32;
+    let mut refused = 0_u32;
+    for tick in 0..measured {
+        let started = Instant::now();
+        async_world.step();
+        let is_checkpoint = tick % interval == 0;
+        if is_checkpoint {
+            let state = async_world.export_state();
+            let checksum = async_world.state_checksum();
+            match checkpointer.submit(CheckpointRequest {
+                state,
+                state_checksum: checksum,
+                world_id: 1,
+                parent_world_id: 0,
+                name: "auto".to_owned(),
+                kind: "checkpoint".to_owned(),
+                event_log_offset: 0,
+                compression_level: Some(3),
+                prune_keep: None,
+            }) {
+                SubmitResult::Accepted => async_checkpoints += 1,
+                SubmitResult::Busy => refused += 1,
+                SubmitResult::Stopped => panic!("writer stopped"),
+            }
+        }
+        let cost = started.elapsed().as_secs_f64() * 1_000.0;
+        async_samples.push(cost);
+        if is_checkpoint {
+            async_checkpoint_ticks.push(cost);
+        }
+    }
+    checkpointer.wait_idle();
+    let write_durations: Vec<u64> = checkpointer
+        .drain_outcomes()
+        .iter()
+        .map(|outcome| outcome.duration_us)
+        .collect();
+    let outcomes = checkpointer.shutdown();
+    assert!(
+        outcomes.iter().all(|outcome| outcome.error.is_none()),
+        "{label} tier {tier}: an asynchronous checkpoint failed"
+    );
+    let (async_p50, async_p95, async_p99) = percentiles(&mut async_samples);
+    let async_max = async_samples.last().copied().unwrap_or(0.0);
+    let (async_cp_p50, _, _) = percentiles(&mut async_checkpoint_ticks);
+    let async_cp_max = async_checkpoint_ticks.last().copied().unwrap_or(0.0);
+    let write_max_ms = write_durations.iter().copied().max().unwrap_or(0) as f64 / 1_000.0;
+
+    // **The guard that makes every number above mean something.** A
+    // checkpoint mode that changed the world would make the two columns
+    // measurements of different simulations, and a cheaper one would look
+    // like a faster one. This is A5.5's assertion and it is repeated here
+    // because it is repeated for the same reason.
+    assert_eq!(
+        sync_world.state_checksum(),
+        async_world.state_checksum(),
+        "{label} tier {tier}: checkpoint mode changed the world"
+    );
+
+    let census = async_world.learned_census();
+    let plastic_edges: u64 = census
+        .iter()
+        .map(|sample| u64::from(sample.plastic_edges))
+        .sum();
+    let population = async_world.population();
+    // Printed beside every timing, so a small stall cannot be read as "sparse
+    // learned state is cheap to checkpoint" when it means "nothing was
+    // plastic". This is the same guard the storage half prints its
+    // plastic-edge fraction for.
+    let edges_per_organism_milli = plastic_edges * 1_000 / (population as u64).max(1);
+
+    println!(
+        "PHASE11-BENCH checkpoint-stall tier={tier} label={label} population={population} \
+         plastic_edges_total={plastic_edges} \
+         plastic_edges_per_organism_milli={edges_per_organism_milli} \
+         ticks={measured} checkpoint_interval_ticks={interval} budget_ms={budget_ms:.1} \
+         sync_checkpoints={sync_checkpoints} sync_tick_p50_ms={sync_p50:.4} \
+         sync_tick_p95_ms={sync_p95:.4} sync_tick_p99_ms={sync_p99:.4} \
+         sync_tick_max_ms={sync_max:.4} sync_checkpoint_tick_p50_ms={sync_cp_p50:.4} \
+         sync_checkpoint_tick_max_ms={sync_cp_max:.4} \
+         async_checkpoints={async_checkpoints} async_refused={refused} \
+         async_tick_p50_ms={async_p50:.4} async_tick_p95_ms={async_p95:.4} \
+         async_tick_p99_ms={async_p99:.4} async_tick_max_ms={async_max:.4} \
+         async_checkpoint_tick_p50_ms={async_cp_p50:.4} \
+         async_checkpoint_tick_max_ms={async_cp_max:.4} \
+         writer_thread_max_ms={write_max_ms:.4}"
+    );
+    let _ = std::fs::remove_dir_all(&directory);
+}
+
+/// C11.7's checkpoint-stall clause, through `AsyncCheckpointer`.
+///
+/// **This is the gap the phase plan named and it is closed here.** What was
+/// reported before was synchronous encode/decode/restore time on the tick
+/// thread - a real number, and not the one the criterion asks for. The plan
+/// calls Phase 5's asynchronous checkpointing a prerequisite for exactly this
+/// measurement, so reporting the synchronous cost in its place was a
+/// substitution rather than an answer, and the status text said so.
+///
+/// Three conditions per tier, the same three the storage half uses, because
+/// "with realistic evolved plasticity levels" is a claim about the world and
+/// not about the checkpointer: `evolved` is what a campaign actually carries
+/// and may be near zero, and `seeded` is the upper bound the cap is set
+/// against.
+#[test]
+#[ignore = "benchmark"]
+fn phase11_checkpoint_stall_through_the_async_checkpointer() {
+    // The tick budget is the configured tick interval, not a target chosen
+    // for the benchmark.
+    let budget_ms = f64::from(SimConfig::phase2_default(11).dt_ms);
+    for tier in TIERS {
+        // Evolved to the same horizon the storage half uses, so the two
+        // halves describe the same worlds.
+        let mut off = World::new(base_config(11, tier)).expect("world");
+        let mut evolved = World::new(plastic_config(11, tier)).expect("world");
+        let mut seeded = seeded_world(plastic_config(11, tier));
+        for _ in 0..EVOLVE_TICKS {
+            off.step();
+            evolved.step();
+            seeded.step();
+        }
+        measure_stall("off", tier, &off, budget_ms);
+        measure_stall("evolved", tier, &evolved, budget_ms);
+        measure_stall("seeded", tier, &seeded, budget_ms);
     }
 }

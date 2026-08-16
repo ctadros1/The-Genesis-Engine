@@ -18,12 +18,18 @@
 # `TickPhase::ALL` is 9 rather than 8 as of the `learn` phase, so per-phase
 # records are comparable only within a schema version.
 #
-# One crate, not two. `scripts/run-phase10-benchmarks.sh` invoked a
-# `sim-persist` target that had never been written; under `set -eu` that
-# aborted the script before it wrote its measurements file, which is why the
-# Phase 10 record has no snapshot lines. The kernel-side `learn`-phase timing
-# benchmark (`sim-core --test bench_phase11`) is not written yet, so it is
-# **deliberately absent here** rather than invoked and missing.
+# Two crates. `scripts/run-phase10-benchmarks.sh` invoked a `sim-persist`
+# target that had never been written; under `set -eu` that aborted the script
+# before it wrote its measurements file, which is why the Phase 10 record has
+# no snapshot lines. This script's first revision therefore left the
+# kernel-side benchmark out **deliberately, because it did not exist**.
+#
+# It exists now (`crates/sim-core/tests/bench_phase11.rs`: the `learn`-phase
+# p50/p95 sweep, C11.6's 10^6-tick ledger horizon, and the learn-path
+# allocation sweep), and this comment said "not written yet" for as long as
+# that was false - so the script produced a record with no `learn` lines and
+# nothing said so. Both targets are invoked below, each into its own log, and
+# the measurements file is the concatenation.
 set -eu
 
 phase11_repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -49,8 +55,42 @@ mkdir -p "$phase11_output"
 
 LIFESIM_BENCH_OUTPUT="$phase11_output" \
   cargo test --release -p sim-persist --test bench_phase11_snapshot -- --ignored --nocapture \
-  > "$phase11_output/phase11-bench.log" 2>&1
+  > "$phase11_output/phase11-snapshot.log" 2>&1
 
-grep '^PHASE11-BENCH' "$phase11_output/phase11-bench.log" > "$phase11_output/measurements.txt" || true
+# The kernel-side half: `learn` phase p50/p95, the ledger horizon, and the
+# allocation sweep. `--test-threads 1` because two of these are timed and a
+# second benchmark running beside them is measured noise.
+#
+# **`--test-threads 1` is why the extraction below is `grep -o` and not
+# `grep '^...'`, and the difference silently cost two measurements once.**
+# Serialised, the harness prints `test <name> ... ` *without a trailing
+# newline* and then the test's first `println!` lands on that same line. A
+# line-anchored grep drops it, so every benchmark test loses its **first**
+# measurement - which here was the zero-plastic-edge arm at tier 500, the
+# baseline every other arm is compared against. Parallel runs do not do this,
+# which is why the other phase scripts have never hit it and why this one did
+# the moment it needed serialised timing. `-o` takes the marker to end of
+# line, so the prefix is stripped rather than the line lost.
+LIFESIM_BENCH_OUTPUT="$phase11_output" \
+  cargo test --release -p sim-core --test bench_phase11 -- --ignored --nocapture --test-threads 1 \
+  > "$phase11_output/phase11-kernel.log" 2>&1
+
+grep -ho 'PHASE11-BENCH.*' \
+  "$phase11_output/phase11-snapshot.log" \
+  "$phase11_output/phase11-kernel.log" \
+  > "$phase11_output/measurements.txt" || true
+
+# The record must contain every measurement the two targets emit. A silently
+# short record is the failure this guard exists for: it is what the
+# line-anchored grep produced, and nothing downstream would have noticed.
+# 6 snapshot + 6 checkpoint-stall from sim-persist; 6 learn + 6 learn-alloc
+# + 1 ledger from sim-core.
+phase11_expected=25
+phase11_found=$(grep -c . "$phase11_output/measurements.txt")
+if [ "$phase11_found" -ne "$phase11_expected" ]; then
+  printf 'phase11 benchmark record is short: %s measurements, expected %s\n' \
+    "$phase11_found" "$phase11_expected" >&2
+  exit 1
+fi
 
 printf '%s\n' "$phase11_output"
