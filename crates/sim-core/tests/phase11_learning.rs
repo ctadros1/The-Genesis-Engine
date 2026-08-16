@@ -1147,6 +1147,42 @@ fn the_moat_still_charges_less_than_the_flat_price_when_the_chain_is_on() {
         "the moat charged nothing for edges that actually learned, so it is a \
          cost removal rather than a repricing"
     );
+
+    // **The eligibility trace is half of `LearnedState`, and testing only the
+    // weight leaves it uncovered.** A mutation run found that comparing only
+    // `learned_q16` survives the whole workspace, because every rule this test
+    // used moved the weight. Rule 4 is the case that separates them: `step`
+    // writes `trace_q16` every tick from `decay(trace) + eta * raw`, then
+    // computes the weight delta as `trace * modulator`. An edge with no
+    // modulator gene is handed `0.0`, so its weight never moves while its
+    // trace moves constantly - and under weight-only pricing that edge is
+    // free for life while carrying live machinery, which is the exact thing
+    // the moat exists to stop being free.
+    let moat_trace = cost_after(true, false, sim_core::RULE_ELIGIBILITY_TRACE, 0.5);
+    assert!(
+        moat_trace > 0,
+        "an edge whose eligibility trace moves every tick was charged nothing; \
+         the moat's basis is `LearnedState` in full, not `learned_q16` alone"
+    );
+
+    // **A magnitude bound, not another shape assertion.** The three
+    // assertions above are all `== 0` or `> 0`, and a mutation that hoisted
+    // the per-organism `moved_edges` counter out of its loop - so organism k
+    // pays for every edge that moved in organisms 0..k - survived all of
+    // them and the whole workspace. Nothing pinned how *much* the moat
+    // charges, only that it was zero or nonzero.
+    //
+    // An organism can never be charged for more edges than it carries, so the
+    // moat can never exceed the flat price for the same world. Under the
+    // hoisted counter, later organisms are charged multiples of their edge
+    // count and the total runs away past it.
+    let flat_live = cost_after(false, false, sim_core::RULE_HEBBIAN, 0.5);
+    assert!(
+        moat_live <= flat_live,
+        "the moat charged {moat_live} against a flat {flat_live}. Charging more \
+         than the price for every edge means an organism was billed for edges \
+         it does not carry - check that the moved-edge counter is per organism"
+    );
 }
 
 /// The moat does not move a world that has it off.

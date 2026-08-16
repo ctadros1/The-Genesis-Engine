@@ -1877,9 +1877,9 @@ impl SimConfig {
             // reason every section before it was: this function's order is
             // the definition of every hash already issued. Repricing plastic
             // edges changes what selection sees and is a new replay lineage.
-        }
-        if self.plasticity.price_moved_edges_only {
-            hasher.update(b"lifesim-plasticity-moat");
+            if self.plasticity.price_moved_edges_only {
+                hasher.update(b"lifesim-plasticity-moat");
+            }
         }
         // Phase 12 section, **appended after Phase 11's and hashed only when
         // enabled**. Appended for the reason every section before it was:
@@ -2193,15 +2193,41 @@ mod tests {
         let mut moved = base;
         moved.plasticity.plastic_edge_cost_milli_per_s = 999;
         moved.plasticity.max_plastic_edges = 7;
-        assert_eq!(base.stable_hash(), moved.stable_hash());
+        // **Both flags, and their absence here was a real defect.** This list
+        // held only the two numeric fields, so hoisting either flag's hash
+        // block out of the `enabled` gate passed the whole workspace. A
+        // mutation run found it, and the failure it hides is the one this
+        // test exists for: `validate` gates every plasticity check on
+        // `enabled`, so `enabled: false` with a flag set is an *accepted*
+        // config that `fields.rs` exposes to campaign sweeps - and under the
+        // defect it hashes differently from the same world before the flag
+        // existed, which is a fixture moving for a setting nobody switched on.
+        //
+        // A field added to `PlasticityConfig` belongs on this list.
+        moved.plasticity.live_rule_zero = true;
+        moved.plasticity.price_moved_edges_only = true;
+        assert_eq!(
+            base.stable_hash(),
+            moved.stable_hash(),
+            "a disabled plasticity section reached the config hash through one \
+             of its fields; check that every hashed block is inside the \
+             `plasticity.enabled` gate"
+        );
 
         let enabled = SimConfig::phase11_default(42);
         enabled.validate().expect("phase11 defaults are valid");
         let reference = enabled.stable_hash();
         assert_ne!(reference, base.stable_hash());
-        let mutators: [fn(&mut SimConfig); 2] = [
+        let mutators: [fn(&mut SimConfig); 4] = [
             |config| config.plasticity.plastic_edge_cost_milli_per_s += 1,
             |config| config.plasticity.max_plastic_edges += 1,
+            // The other half of the same claim: enabled, every field must
+            // reach the hash, or two behaviourally different worlds share a
+            // replay lineage. These two are arms of D-107's 2x2, so a shared
+            // lineage between them would be the 2x2 comparing a world to
+            // itself.
+            |config| config.plasticity.live_rule_zero = true,
+            |config| config.plasticity.price_moved_edges_only = true,
         ];
         for (index, mutate) in mutators.into_iter().enumerate() {
             let mut changed = enabled;
