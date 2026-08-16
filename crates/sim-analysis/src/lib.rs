@@ -22,9 +22,9 @@ mod spatial;
 mod structure;
 
 pub use artifact::{
-    ARTIFACT_ANALYSIS_VERSION, ArtifactPlan, ArtifactReport, LivingOrganism, WorldArtifact,
-    WorldInputs, Verdict as ArtifactVerdict, decide as decide_artifact,
-    render as render_artifact, world_artifact,
+    ARTIFACT_ANALYSIS_VERSION, ArtifactPlan, ArtifactReport, BindingCensus, LivingOrganism,
+    Verdict as ArtifactVerdict, WorldArtifact, WorldInputs, binding_census,
+    decide as decide_artifact, render as render_artifact, world_artifact,
 };
 pub use conjunction::{
     AlleleConjunctionCensus, ArmConjunction, CONJUNCTION_CENSUS_VERSION, Conjunction,

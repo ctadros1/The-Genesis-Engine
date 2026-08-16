@@ -46,7 +46,10 @@
 
 use std::collections::BTreeMap;
 
-use sim_core::{Event, EventKind, ObjectAction};
+use sim_core::{
+    CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_STRIKE, Event,
+    EventKind, Genome2, LocusKind, ObjectAction,
+};
 
 use crate::paired::{Direction, Pair, PairedResult, compare, median_milli};
 
@@ -105,6 +108,64 @@ pub struct LivingOrganism {
     pub birth_band: u8,
 }
 
+/// The reachability census owed beside every null (pre-registration
+/// section 6): which object *action* channels the living population's
+/// genomes bind at the horizon, so "the world did not use objects" and "no
+/// lineage could reach the action" are told apart. Descriptive, never
+/// decisive: nothing in `decide` reads it. Counted over living organisms
+/// (one per genome, any haplotype); `pick_up_and_place` and
+/// `pick_up_and_combine` are the two conjunctions a placement or a
+/// combination needs in one line of descent.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub struct BindingCensus {
+    pub population: usize,
+    pub binds_pick_up: usize,
+    pub binds_drop: usize,
+    pub binds_place: usize,
+    pub binds_strike: usize,
+    pub binds_combine: usize,
+    pub binds_any_action: usize,
+    pub pick_up_and_place: usize,
+    pub pick_up_and_combine: usize,
+    /// Bind operations the world applied over the run (from the manifest's
+    /// `structmut_binding_applied`), the mutational supply the census is
+    /// read against.
+    pub binding_applied: u64,
+}
+
+/// Census the object-action bindings of a population's genomes.
+pub fn binding_census(genomes: &[Genome2], binding_applied: u64) -> BindingCensus {
+    let mut census = BindingCensus { population: genomes.len(), binding_applied, ..Default::default() };
+    for genome in genomes {
+        let mut bound = [false; 5];
+        for haplotype in &genome.haplotypes {
+            for chromosome in &haplotype.chromosomes {
+                for locus in chromosome {
+                    if let LocusKind::IoBinding { channel_id, .. } = locus.kind {
+                        match channel_id {
+                            CHANNEL_PICK_UP => bound[0] = true,
+                            CHANNEL_DROP => bound[1] = true,
+                            CHANNEL_PLACE => bound[2] = true,
+                            CHANNEL_STRIKE => bound[3] = true,
+                            CHANNEL_COMBINE => bound[4] = true,
+                            _ => {}
+                        }
+                    }
+                }
+            }
+        }
+        census.binds_pick_up += usize::from(bound[0]);
+        census.binds_drop += usize::from(bound[1]);
+        census.binds_place += usize::from(bound[2]);
+        census.binds_strike += usize::from(bound[3]);
+        census.binds_combine += usize::from(bound[4]);
+        census.binds_any_action += usize::from(bound.iter().any(|&b| b));
+        census.pick_up_and_place += usize::from(bound[0] && bound[2]);
+        census.pick_up_and_combine += usize::from(bound[0] && bound[4]);
+    }
+    census
+}
+
 /// The per-run inputs the CLI hands over: manifest scalars, the whole event
 /// log, and the living organisms' histories from the final snapshot.
 pub struct WorldInputs<'a> {
@@ -120,6 +181,9 @@ pub struct WorldInputs<'a> {
     pub composites_depth2_final: u64,
     pub events: &'a [Event],
     pub living: &'a [LivingOrganism],
+    /// The reachability census of the final population; carried through to
+    /// the report unchanged.
+    pub census: BindingCensus,
 }
 
 /// One world's reduced statistics.
@@ -150,6 +214,7 @@ pub struct WorldArtifact {
     pub depth2_first_third_milli: i64,
     pub depth2_last_third_milli: i64,
     pub depth2_samples: usize,
+    pub census: BindingCensus,
 }
 
 fn rate_ppm(count: u64, organism_ticks: u64) -> i64 {
@@ -385,6 +450,7 @@ pub fn world_artifact(input: &WorldInputs<'_>, plan: &ArtifactPlan) -> WorldArti
         depth2_first_third_milli,
         depth2_last_third_milli,
         depth2_samples: samples.len(),
+        census: input.census,
     }
 }
 
@@ -551,7 +617,9 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
              median_placed_lifetime={} organism_lifespans={} organisms_censored={} \
              median_organism_lifespan={} exposed={} unexposed={} strata_used={} \
              exposure_effect_milli={} depth2_ever={} depth2_first_third_milli={} \
-             depth2_last_third_milli={} depth2_samples={}",
+             depth2_last_third_milli={} depth2_samples={} census_population={} binds_pick_up={} \
+             binds_drop={} binds_place={} binds_strike={} binds_combine={} binds_any_action={} \
+             pick_up_and_place={} pick_up_and_combine={} binding_applied={}",
             world.condition,
             world.seed,
             world.extinct,
@@ -575,6 +643,16 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
             world.depth2_first_third_milli,
             world.depth2_last_third_milli,
             world.depth2_samples,
+            world.census.population,
+            world.census.binds_pick_up,
+            world.census.binds_drop,
+            world.census.binds_place,
+            world.census.binds_strike,
+            world.census.binds_combine,
+            world.census.binds_any_action,
+            world.census.pick_up_and_place,
+            world.census.pick_up_and_combine,
+            world.census.binding_applied,
         );
     }
     let verdict = |v: &Verdict| {
@@ -624,12 +702,88 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
         median_of(|w| w.depth2_ever as i64),
         median_of(|w| w.exposed as i64),
     );
+    // Reachability, per condition: how many worlds end with at least one
+    // living genome bound to each action, and to each conjunction. Read
+    // beside a null, never in place of one.
+    let mut conditions: Vec<&str> = report.worlds.iter().map(|world| world.condition.as_str()).collect();
+    conditions.sort_unstable();
+    conditions.dedup();
+    for condition in conditions {
+        let worlds: Vec<&WorldArtifact> = report.worlds.iter().filter(|w| w.condition == condition).collect();
+        let count = |pick: fn(&BindingCensus) -> usize| worlds.iter().filter(|w| pick(&w.census) > 0).count();
+        let sum = |pick: fn(&BindingCensus) -> u64| worlds.iter().map(|w| pick(&w.census)).sum::<u64>();
+        let _ = writeln!(
+            out,
+            "reachability condition={condition} worlds={} with_pick_up={} with_drop={} with_place={} \
+             with_strike={} with_combine={} with_pick_up_and_place={} with_pick_up_and_combine={} \
+             binding_applied_total={} living_binders_total={} living_total={}",
+            worlds.len(),
+            count(|c| c.binds_pick_up),
+            count(|c| c.binds_drop),
+            count(|c| c.binds_place),
+            count(|c| c.binds_strike),
+            count(|c| c.binds_combine),
+            count(|c| c.pick_up_and_place),
+            count(|c| c.pick_up_and_combine),
+            sum(|c| c.binding_applied),
+            sum(|c| c.binds_any_action as u64),
+            sum(|c| c.population as u64),
+        );
+    }
     out
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use sim_core::{Haplotype, Locus};
+
+    /// A bare diploid genome carrying only the bindings named, both
+    /// haplotypes alike; the census reads bindings, not validity.
+    fn genome_bound_to(channels: &[u16]) -> Genome2 {
+        let bindings: Vec<Locus> = channels
+            .iter()
+            .enumerate()
+            .map(|(salt, &channel)| Locus {
+                homology_id: 1_000 + salt as u32,
+                gene_lineage_id: 1_000 + salt as u64,
+                mutation_event_id: 0,
+                kind: LocusKind::IoBinding { node: 1, channel_id: channel, gain: 1.0 },
+            })
+            .collect();
+        Genome2 {
+            haplotypes: [
+                Haplotype { chromosomes: vec![bindings.clone()] },
+                Haplotype { chromosomes: vec![bindings] },
+            ],
+        }
+    }
+
+    #[test]
+    fn the_binding_census_counts_genomes_not_loci_and_the_two_conjunctions() {
+        let genomes = vec![
+            genome_bound_to(&[]),
+            genome_bound_to(&[CHANNEL_STRIKE]),
+            genome_bound_to(&[CHANNEL_PICK_UP, CHANNEL_PLACE]),
+            genome_bound_to(&[CHANNEL_PICK_UP, CHANNEL_COMBINE, CHANNEL_DROP]),
+            // Bound twice to the same channel (both haplotypes carry every
+            // binding above already; this one adds a second pick_up locus):
+            // still one genome.
+            genome_bound_to(&[CHANNEL_PICK_UP, CHANNEL_PICK_UP]),
+        ];
+        let census = binding_census(&genomes, 42);
+        assert_eq!(census.population, 5);
+        assert_eq!(census.binds_pick_up, 3);
+        assert_eq!(census.binds_drop, 1);
+        assert_eq!(census.binds_place, 1);
+        assert_eq!(census.binds_strike, 1);
+        assert_eq!(census.binds_combine, 1);
+        assert_eq!(census.binds_any_action, 4);
+        assert_eq!(census.pick_up_and_place, 1);
+        assert_eq!(census.pick_up_and_combine, 1);
+        assert_eq!(census.binding_applied, 42);
+        assert_eq!(binding_census(&[], 0), BindingCensus::default());
+    }
 
     fn event(tick: u64, kind: EventKind) -> Event {
         Event { tick, kind }
@@ -649,6 +803,7 @@ mod tests {
             composites_depth2_final: 0,
             events,
             living,
+            census: BindingCensus::default(),
         }
     }
 
@@ -746,6 +901,7 @@ mod tests {
             depth2_first_third_milli: first,
             depth2_last_third_milli: last,
             depth2_samples: 0,
+            census: BindingCensus::default(),
         };
         let worlds = vec![
             mk("A", 1, 100, Some(5_000), Some(4_000), Some(10), 5, 0, 1_000, 3),

@@ -1720,6 +1720,24 @@ fn command_artifact(options: Options) -> Result<(), String> {
                     birth_band: table.birth_band[index],
                 })
                 .collect();
+            // The reachability census: which object actions the living
+            // genomes bind at the horizon (pre-registration section 6).
+            let caps = state.config.genome2.caps;
+            let genomes: Vec<sim_core::Genome2> = match state.schema2.as_ref() {
+                Some(schema2) => schema2
+                    .genomes
+                    .iter()
+                    .map(|encoded| {
+                        sim_core::Genome2::decode(encoded, &caps)
+                            .map_err(|error| format!("{stem}: decode genome: {error}"))
+                    })
+                    .collect::<Result<_, _>>()?,
+                None => Vec::new(),
+            };
+            let census = sim_analysis::binding_census(
+                &genomes,
+                run.mutation.map_or(0, |mutation| mutation.binding_applied),
+            );
             let inputs = sim_analysis::WorldInputs {
                 condition: &run.condition,
                 seed: run.seed,
@@ -1733,6 +1751,7 @@ fn command_artifact(options: Options) -> Result<(), String> {
                 composites_depth2_final: artifact.composites_depth2,
                 events: &events,
                 living: &living,
+                census,
             };
             worlds.push(sim_analysis::world_artifact(&inputs, &plan));
         }
