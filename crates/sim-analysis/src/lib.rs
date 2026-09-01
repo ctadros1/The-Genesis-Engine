@@ -15,6 +15,7 @@ mod arrival;
 mod artifact;
 mod conjunction;
 mod demography;
+mod fidelity;
 mod morph;
 mod paired;
 mod plasticity;
@@ -22,11 +23,20 @@ mod power;
 pub mod social;
 mod spatial;
 mod structure;
+mod tradition;
 
 pub use arrival::{
     ARRIVAL_DETECTOR_VERSION, ArrivalCensus, ArrivalError, IndividualArrival, PatchSpec,
     arrival_census,
 };
+pub use fidelity::{
+    FIDELITY_VERSION, FidelityBin, FidelityPlan, KINSHIP_ONE_Q32, Pedigree, RELATEDNESS_BIN_COUNT,
+    RELATEDNESS_BIN_EDGES_Q32, WorldFidelity, world_fidelity,
+};
+pub use tradition::{
+    TRADITION_VERSION, TraditionFinding, TraditionPlan, WorldTraditions, world_traditions,
+};
+
 pub use artifact::{
     ARTIFACT_ANALYSIS_VERSION, ArtifactPlan, ArtifactReport, BindingCensus, LivingOrganism,
     Verdict as ArtifactVerdict, WorldArtifact, WorldInputs, binding_census,
