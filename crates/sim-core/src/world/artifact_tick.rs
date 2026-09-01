@@ -128,9 +128,9 @@ impl World {
 
     /// Whether movement into `cell` is refused by an object standing in it.
     pub(super) fn cell_blocked_by_object(&self, cell: usize) -> bool {
-        self.objects
-            .as_ref()
-            .is_some_and(|objects| objects.cell_is_blocked(cell, self.config.artifact.blocking_mass_milli))
+        self.objects.as_ref().is_some_and(|objects| {
+            objects.cell_is_blocked(cell, self.config.artifact.blocking_mass_milli)
+        })
     }
 
     /// Mass held by one organism, or zero without the section.
@@ -149,7 +149,9 @@ impl World {
             return;
         }
         let artifact = self.config.artifact;
-        if artifact.yield_regen_milli <= 0 || !next_tick.is_multiple_of(artifact.yield_regen_interval_ticks) {
+        if artifact.yield_regen_milli <= 0
+            || !next_tick.is_multiple_of(artifact.yield_regen_interval_ticks)
+        {
             return;
         }
         let Some(worldmod) = self.worldmod.as_ref() else {
@@ -186,7 +188,8 @@ impl World {
             self.objects = Some(objects);
             return;
         };
-        let range_fp = i64::from(self.config.artifact.perception_range_m) * i64::from(crate::FP_PER_METER);
+        let range_fp =
+            i64::from(self.config.artifact.perception_range_m) * i64::from(crate::FP_PER_METER);
         let max_hardness = max_hardness_q16() as f32;
         for index in 0..population {
             let capacity = self.carry_capacity_milli(index);
@@ -208,8 +211,10 @@ impl World {
                 let cross = heading_x * delta_y - heading_y * delta_x;
                 let norm = (delta_x.abs() + delta_y.abs()).max(1);
                 cues[2] = (cross as f32 / (32768.0 * norm as f32)).clamp(-1.0, 1.0);
-                cues[3] = (objects.table.mass_milli[target] as f32 / capacity as f32).clamp(0.0, 1.0);
-                cues[4] = (objects.table.hardness_q16[target] as f32 / max_hardness).clamp(0.0, 1.0);
+                cues[3] =
+                    (objects.table.mass_milli[target] as f32 / capacity as f32).clamp(0.0, 1.0);
+                cues[4] =
+                    (objects.table.hardness_q16[target] as f32 / max_hardness).clamp(0.0, 1.0);
             }
             objects.perception[index] = cues;
         }
@@ -284,7 +289,14 @@ impl World {
         self.ledger.spent_milli += i128::from(paid);
     }
 
-    fn refuse(&mut self, next_tick: u64, objects: &mut ObjectState, index: usize, action: ObjectAction, reason: RefuseReason) {
+    fn refuse(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        index: usize,
+        action: ObjectAction,
+        reason: RefuseReason,
+    ) {
         objects.table.counters.refuse(reason);
         let id = self.ids[index];
         self.push_event(
@@ -371,12 +383,18 @@ impl World {
         // occupancy tally for later releases, and condition B's list.
         let mut landed: Vec<(usize, usize)> = Vec::new();
 
-        // Condition C, in one place: every requested action is charged and
-        // counted as a success and nothing else happens - no refusal, no
-        // object, no hold. That is what "actions fire and pay but confer no
-        // effect" has to mean for the control to measure the baseline
-        // *firing* rate rather than a rate depressed by refusals that only
-        // exist because nothing can ever be held.
+        // Condition C (`artifact.inert`, `lifesim-artifact-v2`): every
+        // requested action is charged and counted as a success and the five
+        // verbs confer nothing - no refusal, no object, no hold. That is
+        // what "actions fire and pay but confer no effect" has to mean for
+        // the control to measure the baseline *firing* rate rather than a
+        // rate depressed by refusals that only exist because nothing can
+        // ever be held. The verbs are ALL the inert arm skips: consumption
+        // (section 5), exposure and carry accounting (6b) and the commit
+        // pass (7) run below in both arms, and decay runs in its own phase,
+        // because v1's early return here skipped carcass consumption too
+        // and made the control differ from condition A in more than its
+        // named variable (D-118: starvation +6%, damage deaths -42%).
         if inert {
             for index in 0..population {
                 let intent = objects.intents[index];
@@ -401,368 +419,587 @@ impl World {
                     objects.table.counters.struck_terrain += 1;
                 }
             }
-            self.objects = Some(objects);
-            return;
-        }
-
-        // --- 1. Drops, ascending index. ---
-        for index in 0..population {
-            let Some(priority) = objects.intents[index].drop else {
-                continue;
-            };
-            let _ = priority;
-            self.charge(index, artifact.action_cost_milli);
-            let Some(table_index) = Self::lowest_held(&objects, index) else {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Drop, RefuseReason::NothingHeld);
-                continue;
-            };
-            let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
-            if Self::occupancy(&objects, &landed, cell) >= artifact.max_objects_per_cell as usize {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Drop, RefuseReason::OccupancyCap);
-                continue;
-            }
-            let (x, y) = (self.x_fp[index], self.y_fp[index]);
-            Self::release_into_world(&mut objects, index, table_index, x, y);
-            objects.table.counters.dropped += 1;
-            landed.push((cell, table_index));
-            let id = objects.table.ids[table_index];
-            let holder = self.ids[index];
-            self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: false, cell: cell as u32 });
-        }
-
-        // --- 2. Places, ascending index. ---
-        let extent_x = i64::from(self.config.world_extent_x_fp());
-        let extent_y = i64::from(self.config.world_extent_y_fp());
-        for index in 0..population {
-            let Some(_priority) = objects.intents[index].place else {
-                continue;
-            };
-            self.charge(index, artifact.action_cost_milli);
-            let Some(table_index) = Self::lowest_held(&objects, index) else {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Place, RefuseReason::NothingHeld);
-                continue;
-            };
-            // The centre of the adjacent cell the organism faces.
-            let heading = self
-                .phase2
-                .as_ref()
-                .map_or(0, |p2| p2.heading_bam[index]);
-            let step = i64::from(cell_fp);
-            let target_x = i64::from(self.x_fp[index]) + step * i64::from(cos_bam_q15(heading)) / 32_768;
-            let target_y = i64::from(self.y_fp[index]) + step * i64::from(sin_bam_q15(heading)) / 32_768;
-            if target_x < 0 || target_y < 0 || target_x >= extent_x || target_y >= extent_y {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Place, RefuseReason::InvalidCell);
-                continue;
-            }
-            let (target_x, target_y) = (target_x as i32, target_y as i32);
-            let cell = self.cell_of(target_x, target_y);
-            if !self.effective_traversable(cell) {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Place, RefuseReason::InvalidCell);
-                continue;
-            }
-            if Self::occupancy(&objects, &landed, cell) >= artifact.max_objects_per_cell as usize {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Place, RefuseReason::OccupancyCap);
-                continue;
-            }
-            // Snap to the cell centre so a placed object's position is a
-            // function of the cell alone, never of a float heading.
-            let cx = (i64::from(target_x) / step) * step + step / 2;
-            let cy = (i64::from(target_y) / step) * step + step / 2;
-            Self::release_into_world(&mut objects, index, table_index, cx as i32, cy as i32);
-            objects.table.creator_id[table_index] = self.ids[index];
-            objects.table.counters.placed += 1;
-            landed.push((cell, table_index));
-            let id = objects.table.ids[table_index];
-            let holder = self.ids[index];
-            self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: true, cell: cell as u32 });
-        }
-
-        // --- 3. Claims: pick_up and combine, resolved jointly per target. ---
-        let mut claims: Vec<Claim> = Vec::new();
-        for index in 0..population {
-            let intent = objects.intents[index];
-            if let Some(priority) = intent.pick_up {
+        } else {
+            // --- 1. Drops, ascending index. ---
+            for index in 0..population {
+                let Some(priority) = objects.intents[index].drop else {
+                    continue;
+                };
+                let _ = priority;
                 self.charge(index, artifact.action_cost_milli);
-                if objects.held[index].len() >= artifact.max_held_objects as usize {
-                    self.refuse(next_tick, &mut objects, index, ObjectAction::PickUp, RefuseReason::HeldCap);
-                } else {
-                    let capacity = self.carry_capacity_milli(index) - objects.held_mass_milli(index);
-                    let candidates = self.free_objects_within(&objects, index, reach_fp, max_candidates);
-                    if candidates.is_empty() {
-                        self.refuse(next_tick, &mut objects, index, ObjectAction::PickUp, RefuseReason::NoTarget);
-                    } else if let Some(&(distance_squared, target)) = candidates
-                        .iter()
-                        .find(|(_, candidate)| objects.table.mass_milli[*candidate] <= capacity)
-                    {
-                        claims.push(Claim {
-                            target,
-                            organism: index,
-                            priority,
-                            distance_squared,
-                            action: ObjectAction::PickUp,
-                        });
-                    } else {
-                        self.refuse(next_tick, &mut objects, index, ObjectAction::PickUp, RefuseReason::CapacityExceeded);
-                    }
-                }
-            }
-            if let Some(priority) = intent.combine {
-                self.charge(index, artifact.action_cost_milli);
-                if Self::lowest_held(&objects, index).is_none() {
-                    self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::NothingHeld);
-                } else {
-                    let candidates = self.free_objects_within(&objects, index, reach_fp, max_candidates);
-                    match candidates.first() {
-                        None => {
-                            self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::NoTarget);
-                        }
-                        Some(&(distance_squared, target)) => claims.push(Claim {
-                            target,
-                            organism: index,
-                            priority,
-                            distance_squared,
-                            action: ObjectAction::Combine,
-                        }),
-                    }
-                }
-            }
-        }
-        // Resolution: sort by target, then by (priority desc, d2 asc, id asc);
-        // the first claim on each target wins and every other is refused.
-        claims.sort_by_key(|claim| {
-            (
-                claim.target,
-                std::cmp::Reverse(claim.priority),
-                claim.distance_squared,
-                self.ids[claim.organism],
-                claim.action,
-            )
-        });
-        let mut winners: Vec<Claim> = Vec::new();
-        let mut last_target: Option<usize> = None;
-        for claim in claims {
-            if last_target == Some(claim.target) {
-                self.refuse(next_tick, &mut objects, claim.organism, claim.action, RefuseReason::Contested);
-                continue;
-            }
-            last_target = Some(claim.target);
-            winners.push(claim);
-        }
-        // Winners apply in ascending organism id: the sort above grouped by
-        // target, so re-sort by organism for the application order.
-        winners.sort_by_key(|claim| (self.ids[claim.organism], claim.action));
-        for claim in winners {
-            let index = claim.organism;
-            let target = claim.target;
-            match claim.action {
-                ObjectAction::PickUp => {
-                    let cell = self.cell_of(objects.table.x_fp[target], objects.table.y_fp[target]);
-                    Self::cell_index_remove(&mut objects, cell, target);
-                    let holder = self.ids[index];
-                    objects.table.holder_id[target] = holder;
-                    let id = objects.table.ids[target];
-                    let position = objects.held[index].binary_search(&id).unwrap_or_else(|p| p);
-                    objects.held[index].insert(position, id);
-                    objects.table.counters.picked_up += 1;
-                    self.push_event(next_tick, EventKind::ObjectPickedUp { id, holder, cell: cell as u32 });
-                }
-                ObjectAction::Combine => {
-                    let Some(held) = Self::lowest_held(&objects, index) else {
-                        continue;
-                    };
-                    let depth = 1 + objects.table.depth[held].max(objects.table.depth[target]);
-                    if u32::from(depth) > artifact.max_composition_depth {
-                        self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::DepthCap);
-                        continue;
-                    }
-                    if 2 > artifact.max_composition_breadth {
-                        self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::BreadthCap);
-                        continue;
-                    }
-                    if objects.table.len() + pending.len() >= artifact.max_objects as usize {
-                        self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::ObjectCap);
-                        continue;
-                    }
-                    let combiner = self.ids[index];
-                    let target_id = objects.table.ids[target];
-                    let draw = named_random(
-                        self.config.world_seed,
+                let Some(table_index) = Self::lowest_held(&objects, index) else {
+                    self.refuse(
                         next_tick,
-                        RngSystem::Artifact,
-                        crate::contest::pair_key(combiner, target_id),
-                        0,
+                        &mut objects,
+                        index,
+                        ObjectAction::Drop,
+                        RefuseReason::NothingHeld,
                     );
-                    let scale = self
-                        .phase2
-                        .as_ref()
-                        .map_or(1_000, |p2| p2.phenotypes[index].body_scale_milli);
-                    let joint_q16 = ((i64::from((draw & 0xffff) as u32) * scale) / 1_000).min(i64::from(Q16_ONE));
-                    if joint_q16 < i64::from(artifact.joint_floor_q16) {
-                        self.refuse(next_tick, &mut objects, index, ObjectAction::Combine, RefuseReason::JointFailed);
-                        continue;
-                    }
-                    let held_id = objects.table.ids[held];
-                    let (x, y) = (objects.table.x_fp[target], objects.table.y_fp[target]);
-                    let cell = self.cell_of(x, y);
-                    // Both constituents leave the world: the target from its
-                    // cell, the held one from the holder.
-                    Self::cell_index_remove(&mut objects, cell, target);
-                    if let Ok(position) = objects.held[index].binary_search(&held_id) {
-                        objects.held[index].remove(position);
-                    }
-                    let composite_id = self.next_entity_id;
-                    self.next_entity_id += 1;
-                    objects.table.objects_allocated_total += 1;
-                    for constituent in [held, target] {
-                        objects.table.holder_id[constituent] = 0;
-                        objects.table.owner_id[constituent] = composite_id;
-                    }
-                    let mut composition = vec![held_id, target_id];
-                    composition.sort_unstable();
-                    let integrity = i64::from(objects.table.integrity_q16[held].min(objects.table.integrity_q16[target]))
-                        * joint_q16
-                        >> 16;
-                    let heavier = if objects.table.mass_milli[held] >= objects.table.mass_milli[target] { held } else { target };
-                    let record = ObjectRecord {
-                        id: composite_id,
-                        material_id: objects.table.material_id[heavier],
-                        x_fp: x,
-                        y_fp: y,
-                        integrity_q16: integrity as i32,
-                        mass_milli: objects.table.mass_milli[held] + objects.table.mass_milli[target],
-                        energy_milli: objects.table.energy_milli[held] + objects.table.energy_milli[target],
-                        hardness_q16: objects.table.hardness_q16[held].max(objects.table.hardness_q16[target]),
-                        durability_q16: objects.table.durability_q16[held].min(objects.table.durability_q16[target]),
-                        decay_q16: objects.table.decay_q16[held].max(objects.table.decay_q16[target]),
-                        holder_id: 0,
-                        owner_id: 0,
-                        depth,
-                        created_tick: next_tick,
-                        creator_id: combiner,
-                        cause: CAUSE_COMBINED,
-                        parent_id: 0,
-                        composition,
-                    };
-                    let table_index = objects.table.push(record);
-                    Self::cell_index_insert(&mut objects, cell, table_index);
-                    destroyed.push(false);
-                    objects.table.counters.combined += 1;
-                    objects.table.counters.created_combined += 1;
-                    self.push_event(
+                    continue;
+                };
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                if Self::occupancy(&objects, &landed, cell)
+                    >= artifact.max_objects_per_cell as usize
+                {
+                    self.refuse(
                         next_tick,
-                        EventKind::ObjectCombined {
-                            composite: composite_id,
-                            held: held_id,
-                            target: target_id,
-                            combiner,
-                            depth,
-                            joint_q16: joint_q16 as u32,
-                        },
+                        &mut objects,
+                        index,
+                        ObjectAction::Drop,
+                        RefuseReason::OccupancyCap,
                     );
-                }
-                _ => {}
-            }
-        }
-
-        // --- 4. Strikes: aggregated per target, then terrain. ---
-        let mut force_on: Vec<(usize, i64, u64)> = Vec::new(); // (target, force, lowest striker id)
-        let mut terrain_strikes: Vec<usize> = Vec::new();
-        for index in 0..population {
-            let Some(_priority) = objects.intents[index].strike else {
-                continue;
-            };
-            self.charge(index, artifact.strike_cost_milli);
-            let mut force = self.bare_strike_force_q16(index);
-            for &held_id in &objects.held[index] {
-                if let Some(held) = objects.table.index_of(held_id) {
-                    force += i64::from(objects.table.hardness_q16[held]) * objects.table.mass_milli[held]
-                        / artifact.strike_mass_reference_milli.max(1);
-                }
-            }
-            let candidates = self.free_objects_within(&objects, index, reach_fp, max_candidates);
-            match candidates.first() {
-                Some(&(_, target)) => {
-                    // Wear on what was used to strike, whether or not the
-                    // target gives.
-                    for &held_id in &objects.held[index].clone() {
-                        if let Some(held) = objects.table.index_of(held_id) {
-                            let worn = objects.table.integrity_q16[held] - objects.table.durability_q16[held] as i32;
-                            objects.table.integrity_q16[held] = worn.max(0);
-                        }
-                    }
-                    match force_on.iter_mut().find(|entry| entry.0 == target) {
-                        Some(entry) => entry.1 += force,
-                        None => force_on.push((target, force, self.ids[index])),
-                    }
-                    objects.table.counters.struck_objects += 1;
-                    let (striker, target_id) = (self.ids[index], objects.table.ids[target]);
-                    self.push_event(next_tick, EventKind::ObjectStruck { striker, target: target_id, force_q16: force.min(i64::from(u32::MAX)) as u32 });
-                }
-                None => terrain_strikes.push(index),
-            }
-        }
-        // Fracture test per target, in ascending target index (= id).
-        force_on.sort_by_key(|entry| entry.0);
-        for (target, force, _) in force_on {
-            let threshold = i64::from(objects.table.hardness_q16[target]) * i64::from(artifact.fracture_margin_q16) >> 16;
-            if force >= threshold {
-                self.fracture(next_tick, &mut objects, &mut pending, &mut destroyed, target, DestroyCause::Fractured);
-            } else {
-                let worn = objects.table.integrity_q16[target] - objects.table.durability_q16[target] as i32;
-                objects.table.integrity_q16[target] = worn.max(0);
-                if objects.table.integrity_q16[target] == 0 {
-                    // Worn to nothing: a composite comes apart, a simple
-                    // object is dust.
-                    if objects.table.composition[target].is_empty() {
-                        self.destroy_simple(next_tick, &mut objects, &mut destroyed, target, DestroyCause::Fractured);
-                        objects.table.counters.worn_away += 1;
-                    } else {
-                        self.disassemble(next_tick, &mut objects, &mut destroyed, target);
-                    }
-                }
-            }
-        }
-        // Terrain strikes, ascending organism.
-        for index in terrain_strikes {
-            let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
-            let Some(material_id) = self.cell_material(cell) else {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Strike, RefuseReason::NoYield);
-                continue;
-            };
-            let remaining = self.cell_yield_milli(cell);
-            if remaining <= 0 {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Strike, RefuseReason::Depleted);
-                continue;
-            }
-            if objects.table.len() + pending.len() >= artifact.max_objects as usize {
-                self.refuse(next_tick, &mut objects, index, ObjectAction::Strike, RefuseReason::ObjectCap);
-                continue;
-            }
-            let draw = named_random(self.config.world_seed, next_tick, RngSystem::MaterialYield, cell as u64, 0);
-            let variance_q16 = 32_768 + (draw & 0x7fff) as i64;
-            let volume = (artifact.extraction_milli * variance_q16 >> 16).min(remaining).max(1);
-            objects.table.counters.struck_terrain += 1;
-            let cap = self.config.worldmod.max_material_overrides;
-            if let Some(worldmod) = self.worldmod.as_mut() {
-                let outcome = worldmod.set(LAYER_MATERIAL_YIELD, cell as u32, remaining - volume, cap);
-                if outcome.is_refused() {
-                    // The override cap bound: no extraction happens, and it
-                    // is counted where the cap lives (the worldmod counters).
-                    self.refuse(next_tick, &mut objects, index, ObjectAction::Strike, RefuseReason::Depleted);
                     continue;
                 }
+                let (x, y) = (self.x_fp[index], self.y_fp[index]);
+                Self::release_into_world(&mut objects, index, table_index, x, y);
+                objects.table.counters.dropped += 1;
+                landed.push((cell, table_index));
+                let id = objects.table.ids[table_index];
+                let holder = self.ids[index];
+                self.push_event(
+                    next_tick,
+                    EventKind::ObjectReleased {
+                        id,
+                        holder,
+                        placed: false,
+                        cell: cell as u32,
+                    },
+                );
             }
-            let def = material(material_id).expect("cell materials are registry entries");
-            let record = ObjectRecord::simple(0, def, volume, self.x_fp[index], self.y_fp[index], next_tick, CAUSE_EXTRACTED, 0);
-            pending.push(PendingObject { record, cause: CAUSE_EXTRACTED });
-            let striker = self.ids[index];
-            self.push_event(next_tick, EventKind::TerrainStruck { striker, cell: cell as u32, volume_milli: volume, material_id });
+
+            // --- 2. Places, ascending index. ---
+            let extent_x = i64::from(self.config.world_extent_x_fp());
+            let extent_y = i64::from(self.config.world_extent_y_fp());
+            for index in 0..population {
+                let Some(_priority) = objects.intents[index].place else {
+                    continue;
+                };
+                self.charge(index, artifact.action_cost_milli);
+                let Some(table_index) = Self::lowest_held(&objects, index) else {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Place,
+                        RefuseReason::NothingHeld,
+                    );
+                    continue;
+                };
+                // The centre of the adjacent cell the organism faces.
+                let heading = self.phase2.as_ref().map_or(0, |p2| p2.heading_bam[index]);
+                let step = i64::from(cell_fp);
+                let target_x =
+                    i64::from(self.x_fp[index]) + step * i64::from(cos_bam_q15(heading)) / 32_768;
+                let target_y =
+                    i64::from(self.y_fp[index]) + step * i64::from(sin_bam_q15(heading)) / 32_768;
+                if target_x < 0 || target_y < 0 || target_x >= extent_x || target_y >= extent_y {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Place,
+                        RefuseReason::InvalidCell,
+                    );
+                    continue;
+                }
+                let (target_x, target_y) = (target_x as i32, target_y as i32);
+                let cell = self.cell_of(target_x, target_y);
+                if !self.effective_traversable(cell) {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Place,
+                        RefuseReason::InvalidCell,
+                    );
+                    continue;
+                }
+                if Self::occupancy(&objects, &landed, cell)
+                    >= artifact.max_objects_per_cell as usize
+                {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Place,
+                        RefuseReason::OccupancyCap,
+                    );
+                    continue;
+                }
+                // Snap to the cell centre so a placed object's position is a
+                // function of the cell alone, never of a float heading.
+                let cx = (i64::from(target_x) / step) * step + step / 2;
+                let cy = (i64::from(target_y) / step) * step + step / 2;
+                Self::release_into_world(&mut objects, index, table_index, cx as i32, cy as i32);
+                objects.table.creator_id[table_index] = self.ids[index];
+                objects.table.counters.placed += 1;
+                landed.push((cell, table_index));
+                let id = objects.table.ids[table_index];
+                let holder = self.ids[index];
+                self.push_event(
+                    next_tick,
+                    EventKind::ObjectReleased {
+                        id,
+                        holder,
+                        placed: true,
+                        cell: cell as u32,
+                    },
+                );
+            }
+
+            // --- 3. Claims: pick_up and combine, resolved jointly per target. ---
+            let mut claims: Vec<Claim> = Vec::new();
+            for index in 0..population {
+                let intent = objects.intents[index];
+                if let Some(priority) = intent.pick_up {
+                    self.charge(index, artifact.action_cost_milli);
+                    if objects.held[index].len() >= artifact.max_held_objects as usize {
+                        self.refuse(
+                            next_tick,
+                            &mut objects,
+                            index,
+                            ObjectAction::PickUp,
+                            RefuseReason::HeldCap,
+                        );
+                    } else {
+                        let capacity =
+                            self.carry_capacity_milli(index) - objects.held_mass_milli(index);
+                        let candidates =
+                            self.free_objects_within(&objects, index, reach_fp, max_candidates);
+                        if candidates.is_empty() {
+                            self.refuse(
+                                next_tick,
+                                &mut objects,
+                                index,
+                                ObjectAction::PickUp,
+                                RefuseReason::NoTarget,
+                            );
+                        } else if let Some(&(distance_squared, target)) = candidates
+                            .iter()
+                            .find(|(_, candidate)| objects.table.mass_milli[*candidate] <= capacity)
+                        {
+                            claims.push(Claim {
+                                target,
+                                organism: index,
+                                priority,
+                                distance_squared,
+                                action: ObjectAction::PickUp,
+                            });
+                        } else {
+                            self.refuse(
+                                next_tick,
+                                &mut objects,
+                                index,
+                                ObjectAction::PickUp,
+                                RefuseReason::CapacityExceeded,
+                            );
+                        }
+                    }
+                }
+                if let Some(priority) = intent.combine {
+                    self.charge(index, artifact.action_cost_milli);
+                    if Self::lowest_held(&objects, index).is_none() {
+                        self.refuse(
+                            next_tick,
+                            &mut objects,
+                            index,
+                            ObjectAction::Combine,
+                            RefuseReason::NothingHeld,
+                        );
+                    } else {
+                        let candidates =
+                            self.free_objects_within(&objects, index, reach_fp, max_candidates);
+                        match candidates.first() {
+                            None => {
+                                self.refuse(
+                                    next_tick,
+                                    &mut objects,
+                                    index,
+                                    ObjectAction::Combine,
+                                    RefuseReason::NoTarget,
+                                );
+                            }
+                            Some(&(distance_squared, target)) => claims.push(Claim {
+                                target,
+                                organism: index,
+                                priority,
+                                distance_squared,
+                                action: ObjectAction::Combine,
+                            }),
+                        }
+                    }
+                }
+            }
+            // Resolution: sort by target, then by (priority desc, d2 asc, id asc);
+            // the first claim on each target wins and every other is refused.
+            claims.sort_by_key(|claim| {
+                (
+                    claim.target,
+                    std::cmp::Reverse(claim.priority),
+                    claim.distance_squared,
+                    self.ids[claim.organism],
+                    claim.action,
+                )
+            });
+            let mut winners: Vec<Claim> = Vec::new();
+            let mut last_target: Option<usize> = None;
+            for claim in claims {
+                if last_target == Some(claim.target) {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        claim.organism,
+                        claim.action,
+                        RefuseReason::Contested,
+                    );
+                    continue;
+                }
+                last_target = Some(claim.target);
+                winners.push(claim);
+            }
+            // Winners apply in ascending organism id: the sort above grouped by
+            // target, so re-sort by organism for the application order.
+            winners.sort_by_key(|claim| (self.ids[claim.organism], claim.action));
+            for claim in winners {
+                let index = claim.organism;
+                let target = claim.target;
+                match claim.action {
+                    ObjectAction::PickUp => {
+                        let cell =
+                            self.cell_of(objects.table.x_fp[target], objects.table.y_fp[target]);
+                        Self::cell_index_remove(&mut objects, cell, target);
+                        let holder = self.ids[index];
+                        objects.table.holder_id[target] = holder;
+                        let id = objects.table.ids[target];
+                        let position = objects.held[index].binary_search(&id).unwrap_or_else(|p| p);
+                        objects.held[index].insert(position, id);
+                        objects.table.counters.picked_up += 1;
+                        self.push_event(
+                            next_tick,
+                            EventKind::ObjectPickedUp {
+                                id,
+                                holder,
+                                cell: cell as u32,
+                            },
+                        );
+                    }
+                    ObjectAction::Combine => {
+                        let Some(held) = Self::lowest_held(&objects, index) else {
+                            continue;
+                        };
+                        let depth = 1 + objects.table.depth[held].max(objects.table.depth[target]);
+                        if u32::from(depth) > artifact.max_composition_depth {
+                            self.refuse(
+                                next_tick,
+                                &mut objects,
+                                index,
+                                ObjectAction::Combine,
+                                RefuseReason::DepthCap,
+                            );
+                            continue;
+                        }
+                        if 2 > artifact.max_composition_breadth {
+                            self.refuse(
+                                next_tick,
+                                &mut objects,
+                                index,
+                                ObjectAction::Combine,
+                                RefuseReason::BreadthCap,
+                            );
+                            continue;
+                        }
+                        if objects.table.len() + pending.len() >= artifact.max_objects as usize {
+                            self.refuse(
+                                next_tick,
+                                &mut objects,
+                                index,
+                                ObjectAction::Combine,
+                                RefuseReason::ObjectCap,
+                            );
+                            continue;
+                        }
+                        let combiner = self.ids[index];
+                        let target_id = objects.table.ids[target];
+                        let draw = named_random(
+                            self.config.world_seed,
+                            next_tick,
+                            RngSystem::Artifact,
+                            crate::contest::pair_key(combiner, target_id),
+                            0,
+                        );
+                        let scale = self
+                            .phase2
+                            .as_ref()
+                            .map_or(1_000, |p2| p2.phenotypes[index].body_scale_milli);
+                        let joint_q16 = ((i64::from((draw & 0xffff) as u32) * scale) / 1_000)
+                            .min(i64::from(Q16_ONE));
+                        if joint_q16 < i64::from(artifact.joint_floor_q16) {
+                            self.refuse(
+                                next_tick,
+                                &mut objects,
+                                index,
+                                ObjectAction::Combine,
+                                RefuseReason::JointFailed,
+                            );
+                            continue;
+                        }
+                        let held_id = objects.table.ids[held];
+                        let (x, y) = (objects.table.x_fp[target], objects.table.y_fp[target]);
+                        let cell = self.cell_of(x, y);
+                        // Both constituents leave the world: the target from its
+                        // cell, the held one from the holder.
+                        Self::cell_index_remove(&mut objects, cell, target);
+                        if let Ok(position) = objects.held[index].binary_search(&held_id) {
+                            objects.held[index].remove(position);
+                        }
+                        let composite_id = self.next_entity_id;
+                        self.next_entity_id += 1;
+                        objects.table.objects_allocated_total += 1;
+                        for constituent in [held, target] {
+                            objects.table.holder_id[constituent] = 0;
+                            objects.table.owner_id[constituent] = composite_id;
+                        }
+                        let mut composition = vec![held_id, target_id];
+                        composition.sort_unstable();
+                        let integrity = i64::from(
+                            objects.table.integrity_q16[held]
+                                .min(objects.table.integrity_q16[target]),
+                        ) * joint_q16
+                            >> 16;
+                        let heavier =
+                            if objects.table.mass_milli[held] >= objects.table.mass_milli[target] {
+                                held
+                            } else {
+                                target
+                            };
+                        let record = ObjectRecord {
+                            id: composite_id,
+                            material_id: objects.table.material_id[heavier],
+                            x_fp: x,
+                            y_fp: y,
+                            integrity_q16: integrity as i32,
+                            mass_milli: objects.table.mass_milli[held]
+                                + objects.table.mass_milli[target],
+                            energy_milli: objects.table.energy_milli[held]
+                                + objects.table.energy_milli[target],
+                            hardness_q16: objects.table.hardness_q16[held]
+                                .max(objects.table.hardness_q16[target]),
+                            durability_q16: objects.table.durability_q16[held]
+                                .min(objects.table.durability_q16[target]),
+                            decay_q16: objects.table.decay_q16[held]
+                                .max(objects.table.decay_q16[target]),
+                            holder_id: 0,
+                            owner_id: 0,
+                            depth,
+                            created_tick: next_tick,
+                            creator_id: combiner,
+                            cause: CAUSE_COMBINED,
+                            parent_id: 0,
+                            composition,
+                        };
+                        let table_index = objects.table.push(record);
+                        Self::cell_index_insert(&mut objects, cell, table_index);
+                        destroyed.push(false);
+                        objects.table.counters.combined += 1;
+                        objects.table.counters.created_combined += 1;
+                        self.push_event(
+                            next_tick,
+                            EventKind::ObjectCombined {
+                                composite: composite_id,
+                                held: held_id,
+                                target: target_id,
+                                combiner,
+                                depth,
+                                joint_q16: joint_q16 as u32,
+                            },
+                        );
+                    }
+                    _ => {}
+                }
+            }
+
+            // --- 4. Strikes: aggregated per target, then terrain. ---
+            let mut force_on: Vec<(usize, i64, u64)> = Vec::new(); // (target, force, lowest striker id)
+            let mut terrain_strikes: Vec<usize> = Vec::new();
+            for index in 0..population {
+                let Some(_priority) = objects.intents[index].strike else {
+                    continue;
+                };
+                self.charge(index, artifact.strike_cost_milli);
+                let mut force = self.bare_strike_force_q16(index);
+                for &held_id in &objects.held[index] {
+                    if let Some(held) = objects.table.index_of(held_id) {
+                        force += i64::from(objects.table.hardness_q16[held])
+                            * objects.table.mass_milli[held]
+                            / artifact.strike_mass_reference_milli.max(1);
+                    }
+                }
+                let candidates =
+                    self.free_objects_within(&objects, index, reach_fp, max_candidates);
+                match candidates.first() {
+                    Some(&(_, target)) => {
+                        // Wear on what was used to strike, whether or not the
+                        // target gives.
+                        for &held_id in &objects.held[index].clone() {
+                            if let Some(held) = objects.table.index_of(held_id) {
+                                let worn = objects.table.integrity_q16[held]
+                                    - objects.table.durability_q16[held] as i32;
+                                objects.table.integrity_q16[held] = worn.max(0);
+                            }
+                        }
+                        match force_on.iter_mut().find(|entry| entry.0 == target) {
+                            Some(entry) => entry.1 += force,
+                            None => force_on.push((target, force, self.ids[index])),
+                        }
+                        objects.table.counters.struck_objects += 1;
+                        let (striker, target_id) = (self.ids[index], objects.table.ids[target]);
+                        self.push_event(
+                            next_tick,
+                            EventKind::ObjectStruck {
+                                striker,
+                                target: target_id,
+                                force_q16: force.min(i64::from(u32::MAX)) as u32,
+                            },
+                        );
+                    }
+                    None => terrain_strikes.push(index),
+                }
+            }
+            // Fracture test per target, in ascending target index (= id).
+            force_on.sort_by_key(|entry| entry.0);
+            for (target, force, _) in force_on {
+                let threshold = i64::from(objects.table.hardness_q16[target])
+                    * i64::from(artifact.fracture_margin_q16)
+                    >> 16;
+                if force >= threshold {
+                    self.fracture(
+                        next_tick,
+                        &mut objects,
+                        &mut pending,
+                        &mut destroyed,
+                        target,
+                        DestroyCause::Fractured,
+                    );
+                } else {
+                    let worn = objects.table.integrity_q16[target]
+                        - objects.table.durability_q16[target] as i32;
+                    objects.table.integrity_q16[target] = worn.max(0);
+                    if objects.table.integrity_q16[target] == 0 {
+                        // Worn to nothing: a composite comes apart, a simple
+                        // object is dust.
+                        if objects.table.composition[target].is_empty() {
+                            self.destroy_simple(
+                                next_tick,
+                                &mut objects,
+                                &mut destroyed,
+                                target,
+                                DestroyCause::Fractured,
+                            );
+                            objects.table.counters.worn_away += 1;
+                        } else {
+                            self.disassemble(next_tick, &mut objects, &mut destroyed, target);
+                        }
+                    }
+                }
+            }
+            // Terrain strikes, ascending organism.
+            for index in terrain_strikes {
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                let Some(material_id) = self.cell_material(cell) else {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Strike,
+                        RefuseReason::NoYield,
+                    );
+                    continue;
+                };
+                let remaining = self.cell_yield_milli(cell);
+                if remaining <= 0 {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Strike,
+                        RefuseReason::Depleted,
+                    );
+                    continue;
+                }
+                if objects.table.len() + pending.len() >= artifact.max_objects as usize {
+                    self.refuse(
+                        next_tick,
+                        &mut objects,
+                        index,
+                        ObjectAction::Strike,
+                        RefuseReason::ObjectCap,
+                    );
+                    continue;
+                }
+                let draw = named_random(
+                    self.config.world_seed,
+                    next_tick,
+                    RngSystem::MaterialYield,
+                    cell as u64,
+                    0,
+                );
+                let variance_q16 = 32_768 + (draw & 0x7fff) as i64;
+                let volume = (artifact.extraction_milli * variance_q16 >> 16)
+                    .min(remaining)
+                    .max(1);
+                objects.table.counters.struck_terrain += 1;
+                let cap = self.config.worldmod.max_material_overrides;
+                if let Some(worldmod) = self.worldmod.as_mut() {
+                    let outcome =
+                        worldmod.set(LAYER_MATERIAL_YIELD, cell as u32, remaining - volume, cap);
+                    if outcome.is_refused() {
+                        // The override cap bound: no extraction happens, and it
+                        // is counted where the cap lives (the worldmod counters).
+                        self.refuse(
+                            next_tick,
+                            &mut objects,
+                            index,
+                            ObjectAction::Strike,
+                            RefuseReason::Depleted,
+                        );
+                        continue;
+                    }
+                }
+                let def = material(material_id).expect("cell materials are registry entries");
+                let record = ObjectRecord::simple(
+                    0,
+                    def,
+                    volume,
+                    self.x_fp[index],
+                    self.y_fp[index],
+                    next_tick,
+                    CAUSE_EXTRACTED,
+                    0,
+                );
+                pending.push(PendingObject {
+                    record,
+                    cause: CAUSE_EXTRACTED,
+                });
+                let striker = self.ids[index];
+                self.push_event(
+                    next_tick,
+                    EventKind::TerrainStruck {
+                        striker,
+                        cell: cell as u32,
+                        volume_milli: volume,
+                        material_id,
+                    },
+                );
+            }
         }
 
         // --- 5. Consumption of object energy, ascending organism. ---
         let consume_fp = i64::from(artifact.consume_reach_m) * i64::from(crate::FP_PER_METER);
         let assimilation = i64::from(self.config.assimilation_q16);
-        let intent_eat: Vec<bool> = self.phase2.as_ref().map_or_else(Vec::new, |p2| p2.intent_eat.clone());
+        let intent_eat: Vec<bool> = self
+            .phase2
+            .as_ref()
+            .map_or_else(Vec::new, |p2| p2.intent_eat.clone());
         for index in 0..population {
             if !intent_eat.get(index).copied().unwrap_or(false) {
                 continue;
@@ -797,7 +1034,9 @@ impl World {
             let Some(target) = target else {
                 continue;
             };
-            let take = objects.table.energy_milli[target].min(self.intake_tick).max(0);
+            let take = objects.table.energy_milli[target]
+                .min(self.intake_tick)
+                .max(0);
             if take <= 0 {
                 continue;
             }
@@ -805,7 +1044,8 @@ impl World {
             if gained <= 0 {
                 continue;
             }
-            let raw = ((gained << 16) / assimilation.max(1)).min(objects.table.energy_milli[target]);
+            let raw =
+                ((gained << 16) / assimilation.max(1)).min(objects.table.energy_milli[target]);
             objects.table.energy_milli[target] -= raw;
             // Mass leaves with the energy in proportion, so a carcass eaten
             // to nothing weighs nothing. Exact: the mass share is the raw
@@ -823,9 +1063,26 @@ impl World {
             self.ledger.assimilated_milli += i128::from(gained);
             objects.table.counters.consumed_events += 1;
             let (id, consumer) = (objects.table.ids[target], self.ids[index]);
-            self.push_event(next_tick, EventKind::ObjectConsumed { id, consumer, energy_milli: gained });
-            if objects.table.energy_milli[target] == 0 && material(objects.table.material_id[target]).is_some_and(|def| def.energy_content_milli > 0) && objects.table.composition[target].is_empty() {
-                self.destroy_simple(next_tick, &mut objects, &mut destroyed, target, DestroyCause::Consumed);
+            self.push_event(
+                next_tick,
+                EventKind::ObjectConsumed {
+                    id,
+                    consumer,
+                    energy_milli: gained,
+                },
+            );
+            if objects.table.energy_milli[target] == 0
+                && material(objects.table.material_id[target])
+                    .is_some_and(|def| def.energy_content_milli > 0)
+                && objects.table.composition[target].is_empty()
+            {
+                self.destroy_simple(
+                    next_tick,
+                    &mut objects,
+                    &mut destroyed,
+                    target,
+                    DestroyCause::Consumed,
+                );
             }
         }
 
@@ -833,7 +1090,13 @@ impl World {
         if artifact.ephemeral {
             for (_, table_index) in landed {
                 if !destroyed[table_index] && objects.table.is_free(table_index) {
-                    self.destroy_whole(next_tick, &mut objects, &mut destroyed, table_index, DestroyCause::Ephemeral);
+                    self.destroy_whole(
+                        next_tick,
+                        &mut objects,
+                        &mut destroyed,
+                        table_index,
+                        DestroyCause::Ephemeral,
+                    );
                     objects.table.counters.ephemeral_destroyed += 1;
                 }
             }
@@ -869,7 +1132,13 @@ impl World {
 
     /// Queue-then-allocate: every creation queued during the pass takes its
     /// ID here, in queue order, which is a function of ID order.
-    fn commit_pending(&mut self, next_tick: u64, objects: &mut ObjectState, pending: Vec<PendingObject>, destroyed: &mut Vec<bool>) {
+    fn commit_pending(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        pending: Vec<PendingObject>,
+        destroyed: &mut Vec<bool>,
+    ) {
         let artifact = self.config.artifact;
         for PendingObject { mut record, cause } in pending {
             if objects.table.len() >= artifact.max_objects as usize {
@@ -882,7 +1151,8 @@ impl World {
                 match cause {
                     CAUSE_EXTRACTED => {
                         objects.table.ledger.mass_extracted_milli += i128::from(record.mass_milli);
-                        objects.table.ledger.energy_extracted_milli += i128::from(record.energy_milli);
+                        objects.table.ledger.energy_extracted_milli +=
+                            i128::from(record.energy_milli);
                     }
                     CAUSE_FRACTURED => {}
                     _ => {}
@@ -906,15 +1176,30 @@ impl World {
                 }
                 _ => {}
             }
-            let (id, material_id, mass_milli, energy_milli, parent_id) =
-                (record.id, record.material_id, record.mass_milli, record.energy_milli, record.parent_id);
+            let (id, material_id, mass_milli, energy_milli, parent_id) = (
+                record.id,
+                record.material_id,
+                record.mass_milli,
+                record.energy_milli,
+                record.parent_id,
+            );
             let cell = self.cell_of(record.x_fp, record.y_fp);
             let table_index = objects.table.push(record);
             destroyed.push(false);
             if objects.cell_index_valid {
                 Self::cell_index_insert(objects, cell, table_index);
             }
-            self.push_event(next_tick, EventKind::ObjectCreated { id, material_id, cause, mass_milli, energy_milli, parent_id });
+            self.push_event(
+                next_tick,
+                EventKind::ObjectCreated {
+                    id,
+                    material_id,
+                    cause,
+                    mass_milli,
+                    energy_milli,
+                    parent_id,
+                },
+            );
         }
     }
 
@@ -934,7 +1219,14 @@ impl World {
 
     /// Destroy a simple object: its remaining mass and energy go to the sink
     /// the cause names.
-    fn destroy_simple(&mut self, next_tick: u64, objects: &mut ObjectState, destroyed: &mut [bool], target: usize, cause: DestroyCause) {
+    fn destroy_simple(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        destroyed: &mut [bool],
+        target: usize,
+        cause: DestroyCause,
+    ) {
         if destroyed[target] {
             return;
         }
@@ -967,7 +1259,13 @@ impl World {
             let cell = self.cell_of(objects.table.x_fp[target], objects.table.y_fp[target]);
             Self::cell_index_remove(objects, cell, target);
         }
-        self.push_event(next_tick, EventKind::ObjectDestroyed { id, cause: cause.id() });
+        self.push_event(
+            next_tick,
+            EventKind::ObjectDestroyed {
+                id,
+                cause: cause.id(),
+            },
+        );
     }
 
     /// Destroy an object and, if it is a composite, everything it owns, to the
@@ -975,7 +1273,14 @@ impl World {
     /// mass and energy are the sums the pool counted, so they are booked
     /// once at the top and the owned constituents - which the pool did not
     /// count - are simply marked destroyed with nothing booked.
-    fn destroy_whole(&mut self, next_tick: u64, objects: &mut ObjectState, destroyed: &mut [bool], target: usize, cause: DestroyCause) {
+    fn destroy_whole(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        destroyed: &mut [bool],
+        target: usize,
+        cause: DestroyCause,
+    ) {
         if destroyed[target] {
             return;
         }
@@ -991,7 +1296,13 @@ impl World {
 
     /// An owned constituent leaving with its composite: nothing booked (its
     /// mass was inside its composite's), nothing to remove from any index.
-    fn mark_owned_destroyed(&mut self, next_tick: u64, objects: &mut ObjectState, destroyed: &mut [bool], index: usize) {
+    fn mark_owned_destroyed(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        destroyed: &mut [bool],
+        index: usize,
+    ) {
         if destroyed[index] {
             return;
         }
@@ -1007,14 +1318,26 @@ impl World {
         objects.table.owner_id[index] = 0;
         objects.table.composition[index].clear();
         let id = objects.table.ids[index];
-        self.push_event(next_tick, EventKind::ObjectDestroyed { id, cause: DestroyCause::Ephemeral.id() });
+        self.push_event(
+            next_tick,
+            EventKind::ObjectDestroyed {
+                id,
+                cause: DestroyCause::Ephemeral.id(),
+            },
+        );
     }
 
     /// A composite comes apart: its constituents return to the world at its
     /// position, unchanged, and it is destroyed. Mass- and energy-neutral by
     /// construction, since the composite's stored sums leave the pool as the
     /// constituents' stored values re-enter it.
-    fn disassemble(&mut self, next_tick: u64, objects: &mut ObjectState, destroyed: &mut [bool], target: usize) {
+    fn disassemble(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        destroyed: &mut [bool],
+        target: usize,
+    ) {
         if destroyed[target] {
             return;
         }
@@ -1050,11 +1373,25 @@ impl World {
         objects.table.energy_milli[target] = 0;
         objects.table.composition[target].clear();
         objects.table.counters.disassembled += 1;
-        self.push_event(next_tick, EventKind::ObjectDestroyed { id, cause: DestroyCause::Disassembled.id() });
+        self.push_event(
+            next_tick,
+            EventKind::ObjectDestroyed {
+                id,
+                cause: DestroyCause::Disassembled.id(),
+            },
+        );
     }
 
     /// Fracture: a composite comes apart; a simple object becomes fragments.
-    fn fracture(&mut self, next_tick: u64, objects: &mut ObjectState, pending: &mut Vec<PendingObject>, destroyed: &mut Vec<bool>, target: usize, cause: DestroyCause) {
+    fn fracture(
+        &mut self,
+        next_tick: u64,
+        objects: &mut ObjectState,
+        pending: &mut Vec<PendingObject>,
+        destroyed: &mut Vec<bool>,
+        target: usize,
+        cause: DestroyCause,
+    ) {
         if destroyed[target] {
             return;
         }
@@ -1065,7 +1402,13 @@ impl World {
             return;
         }
         let id = objects.table.ids[target];
-        let draw = named_random(self.config.world_seed, next_tick, RngSystem::Artifact, id, 0);
+        let draw = named_random(
+            self.config.world_seed,
+            next_tick,
+            RngSystem::Artifact,
+            id,
+            0,
+        );
         let span = u64::from(artifact.max_fragments.max(2) - 1);
         let k = 2 + (draw % span) as i64;
         let mass = objects.table.mass_milli[target];
@@ -1106,10 +1449,19 @@ impl World {
             // A struck-off piece is whole in its own right; the parent's
             // wear was the parent's.
             record.integrity_q16 = INTEGRITY_WHOLE_Q16;
-            pending.push(PendingObject { record, cause: CAUSE_FRACTURED });
+            pending.push(PendingObject {
+                record,
+                cause: CAUSE_FRACTURED,
+            });
         }
         objects.table.counters.fractured += 1;
-        self.push_event(next_tick, EventKind::ObjectDestroyed { id, cause: cause.id() });
+        self.push_event(
+            next_tick,
+            EventKind::ObjectDestroyed {
+                id,
+                cause: cause.id(),
+            },
+        );
     }
 
     /// The `Lifecycle` phase, before compaction: a dead organism drops what it
@@ -1149,7 +1501,15 @@ impl World {
                 objects.table.y_fp[table_index] = y;
                 objects.table.counters.death_drops += 1;
                 let cell = self.cell_of(x, y) as u32;
-                self.push_event(next_tick, EventKind::ObjectReleased { id, holder, placed: false, cell });
+                self.push_event(
+                    next_tick,
+                    EventKind::ObjectReleased {
+                        id,
+                        holder,
+                        placed: false,
+                        cell,
+                    },
+                );
             }
         }
         self.objects = Some(objects);
@@ -1159,7 +1519,12 @@ impl World {
     /// fresh id, instead of a `ContestState` carcass. Called from
     /// `spawn_carcass` after its energy share is computed; returns whether it
     /// took the death.
-    pub(super) fn spawn_carcass_object(&mut self, next_tick: u64, index: usize, energy: i64) -> bool {
+    pub(super) fn spawn_carcass_object(
+        &mut self,
+        next_tick: u64,
+        index: usize,
+        energy: i64,
+    ) -> bool {
         let Some(mut objects) = self.objects.take() else {
             return false;
         };
@@ -1178,7 +1543,16 @@ impl World {
             return true;
         }
         let def = material(MATERIAL_CARCASS).expect("carcass is a registry material");
-        let mut record = ObjectRecord::simple(self.next_entity_id, def, 0, x, y, next_tick, CAUSE_CARCASS, source);
+        let mut record = ObjectRecord::simple(
+            self.next_entity_id,
+            def,
+            0,
+            x,
+            y,
+            next_tick,
+            CAUSE_CARCASS,
+            source,
+        );
         record.mass_milli = energy;
         record.energy_milli = energy;
         self.next_entity_id += 1;
@@ -1188,8 +1562,25 @@ impl World {
         objects.table.counters.created_carcass += 1;
         let id = record.id;
         objects.table.push(record);
-        self.push_event(next_tick, EventKind::ObjectCreated { id, material_id: MATERIAL_CARCASS, cause: CAUSE_CARCASS, mass_milli: energy, energy_milli: energy, parent_id: source });
-        self.push_event(next_tick, EventKind::CarcassCreated { id, source, energy_milli: energy });
+        self.push_event(
+            next_tick,
+            EventKind::ObjectCreated {
+                id,
+                material_id: MATERIAL_CARCASS,
+                cause: CAUSE_CARCASS,
+                mass_milli: energy,
+                energy_milli: energy,
+                parent_id: source,
+            },
+        );
+        self.push_event(
+            next_tick,
+            EventKind::CarcassCreated {
+                id,
+                source,
+                energy_milli: energy,
+            },
+        );
         self.objects = Some(objects);
         true
     }
@@ -1213,7 +1604,8 @@ impl World {
             if rate == 0 {
                 continue;
             }
-            objects.table.integrity_q16[index] = (objects.table.integrity_q16[index] - rate as i32).max(0);
+            objects.table.integrity_q16[index] =
+                (objects.table.integrity_q16[index] - rate as i32).max(0);
             let energy = objects.table.energy_milli[index];
             // A composite loses integrity at its fastest constituent's rate
             // and comes apart at zero; its energy and mass are its
@@ -1229,12 +1621,21 @@ impl World {
                 objects.table.mass_milli[index] -= mass_loss;
                 objects.table.ledger.mass_decayed_milli += i128::from(mass_loss);
             }
-            let has_energy_content = material(objects.table.material_id[index]).is_some_and(|def| def.energy_content_milli > 0);
+            let has_energy_content = material(objects.table.material_id[index])
+                .is_some_and(|def| def.energy_content_milli > 0);
             let spent = objects.table.integrity_q16[index] == 0
-                || (has_energy_content && objects.table.energy_milli[index] == 0 && objects.table.composition[index].is_empty());
+                || (has_energy_content
+                    && objects.table.energy_milli[index] == 0
+                    && objects.table.composition[index].is_empty());
             if spent {
                 if objects.table.composition[index].is_empty() {
-                    self.destroy_simple(next_tick, &mut objects, &mut destroyed, index, DestroyCause::Decayed);
+                    self.destroy_simple(
+                        next_tick,
+                        &mut objects,
+                        &mut destroyed,
+                        index,
+                        DestroyCause::Decayed,
+                    );
                     objects.table.counters.decayed_away += 1;
                 } else {
                     self.disassemble(next_tick, &mut objects, &mut destroyed, index);

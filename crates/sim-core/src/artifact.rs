@@ -1,5 +1,5 @@
 //! Objects as first-class entities (Phase 12 artifact half,
-//! `lifesim-artifact-v1`).
+//! `lifesim-artifact-v2`).
 //!
 //! An object is a body in the shared object-ID space
 //! (`specifications/determinism-extensions.md` Rule 2): it takes its ID from
@@ -37,7 +37,17 @@ use crate::checksum::Fnv1a64;
 use crate::material::{MaterialDef, material};
 
 /// Recorded in the config hash and in the state checksum tag.
-pub const ARTIFACT_POLICY_VERSION: &str = "lifesim-artifact-v1";
+///
+/// v1 -> v2 (D-118 fix): under `artifact.inert` the early return skipped
+/// carcass consumption, exposure and carry accounting as well as the five
+/// verbs, so the condition-C control differed from condition A in more than
+/// its named variable (starvation +6%, damage deaths -42% in the Phase 12
+/// confirmatory campaign). v2's inert arm skips exactly the five verbs and
+/// lets consumption, decay, exposure and carry accounting run. Behaviour
+/// change for inert worlds only, but the version string is hashed for every
+/// artifact world, so the Phase 12 trace fixture moved; old and new hashes
+/// are recorded in docs/22-decision-log.md (D-119).
+pub const ARTIFACT_POLICY_VERSION: &str = "lifesim-artifact-v2";
 
 /// One whole, in integrity Q16.
 pub const INTEGRITY_WHOLE_Q16: i32 = 65_536;
@@ -456,12 +466,7 @@ impl ObjectCounters {
     /// Destructured with no `..` (D-077). Concatenation order is declaration
     /// order and is permanent: it is the byte order `hash_into` feeds the
     /// hasher and the codec writes. Append, never reorder.
-    fn partitioned(
-        &self,
-    ) -> (
-        [u64; Self::DISPOSITION_COUNT],
-        [u64; Self::REFUSAL_COUNT],
-    ) {
+    fn partitioned(&self) -> ([u64; Self::DISPOSITION_COUNT], [u64; Self::REFUSAL_COUNT]) {
         let Self {
             created_extracted,
             created_fractured,
@@ -656,7 +661,12 @@ impl ObjectCounters {
 
     /// Successful actions of every kind: the numerator C12.1 reads.
     pub fn successes(&self) -> u64 {
-        self.picked_up + self.dropped + self.placed + self.struck_objects + self.struck_terrain + self.combined
+        self.picked_up
+            + self.dropped
+            + self.placed
+            + self.struck_objects
+            + self.struck_terrain
+            + self.combined
     }
 
     pub fn hash_into(&self, hasher: &mut Fnv1a64) {
@@ -1031,7 +1041,8 @@ impl ObjectTable {
                     return Some(TableViolation::Composition(index));
                 }
                 let (mut mass, mut energy) = (0_i128, 0_i128);
-                let (mut hardness, mut durability, mut decay, mut depth) = (0_u32, u32::MAX, 0_u32, 0_u8);
+                let (mut hardness, mut durability, mut decay, mut depth) =
+                    (0_u32, u32::MAX, 0_u32, 0_u8);
                 for (position, &constituent) in composition.iter().enumerate() {
                     if position > 0 && composition[position - 1] >= constituent {
                         return Some(TableViolation::Composition(index));
@@ -1315,7 +1326,11 @@ impl ObjectState {
             // 16,384 cells and a handful of objects should not pay for
             // 16,384 clears a tick (the quiet-arm seam cost, Phase 12
             // benchmark record).
-            for bucket in self.cell_index.iter_mut().filter(|bucket| !bucket.is_empty()) {
+            for bucket in self
+                .cell_index
+                .iter_mut()
+                .filter(|bucket| !bucket.is_empty())
+            {
                 bucket.clear();
             }
         }
@@ -1376,7 +1391,16 @@ mod tests {
     use crate::material::{MATERIAL_STONE, MATERIAL_WOOD, material};
 
     fn stone(id: u64) -> ObjectRecord {
-        ObjectRecord::simple(id, material(MATERIAL_STONE).unwrap(), 800, 100, 100, 1, CAUSE_EXTRACTED, 0)
+        ObjectRecord::simple(
+            id,
+            material(MATERIAL_STONE).unwrap(),
+            800,
+            100,
+            100,
+            1,
+            CAUSE_EXTRACTED,
+            0,
+        )
     }
 
     fn table_with(records: Vec<ObjectRecord>) -> ObjectTable {
@@ -1394,7 +1418,16 @@ mod tests {
         let record = stone(7);
         assert_eq!(record.mass_milli, 800 * 2_500 / 1_000);
         assert_eq!(record.energy_milli, 0);
-        let fiber = ObjectRecord::simple(8, material(crate::material::MATERIAL_FIBER).unwrap(), 800, 0, 0, 1, CAUSE_EXTRACTED, 0);
+        let fiber = ObjectRecord::simple(
+            8,
+            material(crate::material::MATERIAL_FIBER).unwrap(),
+            800,
+            0,
+            0,
+            1,
+            CAUSE_EXTRACTED,
+            0,
+        );
         assert_eq!(fiber.mass_milli, 240);
         assert_eq!(fiber.energy_milli, 120);
     }
@@ -1424,7 +1457,10 @@ mod tests {
         // Ledger.
         let mut table = table_with(vec![stone(3)]);
         table.mass_milli[0] += 1;
-        assert!(matches!(table.violation(4), Some(TableViolation::MassLedger { .. })));
+        assert!(matches!(
+            table.violation(4),
+            Some(TableViolation::MassLedger { .. })
+        ));
         // Composition: stored hardness disagrees with the material.
         let mut table = table_with(vec![stone(3)]);
         table.hardness_q16[0] += 1;
@@ -1523,16 +1559,33 @@ mod tests {
         counters.refused_joint_failed = 30;
         counters.created_extracted = 1;
         let array = counters.to_array();
-        let at = |name: &str| array[ObjectCounters::FIELD_NAMES.iter().position(|n| *n == name).unwrap()];
+        let at = |name: &str| {
+            array[ObjectCounters::FIELD_NAMES
+                .iter()
+                .position(|n| *n == name)
+                .unwrap()]
+        };
         assert_eq!(at("picked_up"), 5);
         assert_eq!(at("refused_joint_failed"), 30);
         assert_eq!(at("created_extracted"), 1);
-        assert_eq!(ObjectCounters::FIELD_NAMES.len(), ObjectCounters::FIELD_COUNT);
-        let unique: std::collections::BTreeSet<&str> = ObjectCounters::FIELD_NAMES.iter().copied().collect();
+        assert_eq!(
+            ObjectCounters::FIELD_NAMES.len(),
+            ObjectCounters::FIELD_COUNT
+        );
+        let unique: std::collections::BTreeSet<&str> =
+            ObjectCounters::FIELD_NAMES.iter().copied().collect();
         assert_eq!(unique.len(), ObjectCounters::FIELD_COUNT);
-        let ledger = ObjectLedger { energy_dust_milli: 7, ..Default::default() };
+        let ledger = ObjectLedger {
+            energy_dust_milli: 7,
+            ..Default::default()
+        };
         let array = ledger.to_array();
-        let at = |name: &str| array[ObjectLedger::FIELD_NAMES.iter().position(|n| *n == name).unwrap()];
+        let at = |name: &str| {
+            array[ObjectLedger::FIELD_NAMES
+                .iter()
+                .position(|n| *n == name)
+                .unwrap()]
+        };
         assert_eq!(at("energy_dust_milli"), 7);
         assert_eq!(at("mass_extracted_milli"), 0);
     }
@@ -1549,7 +1602,14 @@ mod tests {
         }
         assert_eq!(RefuseReason::from_id(0), None);
         assert_eq!(RefuseReason::from_id(14), None);
-        for cause in [DestroyCause::Decayed, DestroyCause::Fractured, DestroyCause::Disassembled, DestroyCause::Consumed, DestroyCause::Dust, DestroyCause::Ephemeral] {
+        for cause in [
+            DestroyCause::Decayed,
+            DestroyCause::Fractured,
+            DestroyCause::Disassembled,
+            DestroyCause::Consumed,
+            DestroyCause::Dust,
+            DestroyCause::Ephemeral,
+        ] {
             assert_eq!(DestroyCause::from_id(cause.id()), Some(cause));
         }
         assert_eq!(DestroyCause::from_id(0), None);

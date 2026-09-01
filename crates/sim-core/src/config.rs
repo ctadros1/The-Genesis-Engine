@@ -148,7 +148,8 @@ pub struct SimConfig {
     pub artifact: ArtifactConfig,
 }
 
-/// Versioned Phase 12 artifact policy (`lifesim-artifact-v1`, ADR-0028).
+/// Versioned Phase 12 artifact policy (`lifesim-artifact-v2`, ADR-0028;
+/// v1 -> v2 is the D-118 inert-arm fix, D-119).
 ///
 /// Enabling this adds objects to the world, eleven channels to the registry
 /// the organisms of this world may bind, one pass to `Apply` and one to
@@ -167,9 +168,11 @@ pub struct SimConfig {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct ArtifactConfig {
     pub enabled: bool,
-    /// Condition C: every action resolves, costs, counts and events, and
-    /// changes nothing in the world. Separates "actions fire" from "actions
-    /// pay" (the plan's four-condition design).
+    /// Condition C: the five verbs resolve, cost, count and event, and
+    /// confer nothing. Separates "actions fire" from "actions pay" (the
+    /// plan's four-condition design). Consumption, decay, exposure and
+    /// carry accounting still run (`lifesim-artifact-v2`, D-118): the
+    /// control removes exactly the verbs, not the object ecology.
     pub inert: bool,
     /// Condition B: an object dropped or placed this tick is destroyed at the
     /// end of it, ledgered to dust. Persistence removed, nothing else.
@@ -1507,25 +1510,61 @@ impl SimConfig {
             }
             for (name, value) in [
                 ("artifact.max_objects", u64::from(artifact.max_objects)),
-                ("artifact.max_objects_per_cell", u64::from(artifact.max_objects_per_cell)),
-                ("artifact.max_composition_breadth", u64::from(artifact.max_composition_breadth)),
-                ("artifact.max_held_objects", u64::from(artifact.max_held_objects)),
-                ("artifact.max_candidates", u64::from(artifact.max_candidates)),
+                (
+                    "artifact.max_objects_per_cell",
+                    u64::from(artifact.max_objects_per_cell),
+                ),
+                (
+                    "artifact.max_composition_breadth",
+                    u64::from(artifact.max_composition_breadth),
+                ),
+                (
+                    "artifact.max_held_objects",
+                    u64::from(artifact.max_held_objects),
+                ),
+                (
+                    "artifact.max_candidates",
+                    u64::from(artifact.max_candidates),
+                ),
                 ("artifact.reach_m", u64::from(artifact.reach_m)),
-                ("artifact.consume_reach_m", u64::from(artifact.consume_reach_m)),
-                ("artifact.perception_range_m", u64::from(artifact.perception_range_m)),
-                ("artifact.strike_force_q16", u64::from(artifact.strike_force_q16)),
-                ("artifact.fracture_margin_q16", u64::from(artifact.fracture_margin_q16)),
-                ("artifact.yield_regen_interval_ticks", artifact.yield_regen_interval_ticks),
+                (
+                    "artifact.consume_reach_m",
+                    u64::from(artifact.consume_reach_m),
+                ),
+                (
+                    "artifact.perception_range_m",
+                    u64::from(artifact.perception_range_m),
+                ),
+                (
+                    "artifact.strike_force_q16",
+                    u64::from(artifact.strike_force_q16),
+                ),
+                (
+                    "artifact.fracture_margin_q16",
+                    u64::from(artifact.fracture_margin_q16),
+                ),
+                (
+                    "artifact.yield_regen_interval_ticks",
+                    artifact.yield_regen_interval_ticks,
+                ),
             ] {
                 if value == 0 {
                     return Err(ConfigError::PhysiologyRange(name, 0));
                 }
             }
             for (name, value) in [
-                ("artifact.carry_capacity_milli", artifact.carry_capacity_milli),
-                ("artifact.strike_mass_reference_milli", artifact.strike_mass_reference_milli),
-                ("artifact.min_fragment_mass_milli", artifact.min_fragment_mass_milli),
+                (
+                    "artifact.carry_capacity_milli",
+                    artifact.carry_capacity_milli,
+                ),
+                (
+                    "artifact.strike_mass_reference_milli",
+                    artifact.strike_mass_reference_milli,
+                ),
+                (
+                    "artifact.min_fragment_mass_milli",
+                    artifact.min_fragment_mass_milli,
+                ),
                 ("artifact.blocking_mass_milli", artifact.blocking_mass_milli),
                 ("artifact.extraction_milli", artifact.extraction_milli),
             ] {
@@ -1534,7 +1573,10 @@ impl SimConfig {
                 }
             }
             for (name, value) in [
-                ("artifact.hold_cost_milli_per_s", artifact.hold_cost_milli_per_s),
+                (
+                    "artifact.hold_cost_milli_per_s",
+                    artifact.hold_cost_milli_per_s,
+                ),
                 ("artifact.action_cost_milli", artifact.action_cost_milli),
                 ("artifact.strike_cost_milli", artifact.strike_cost_milli),
                 ("artifact.terrain_yield_milli", artifact.terrain_yield_milli),
@@ -2235,7 +2277,9 @@ impl SimConfig {
             hasher.update(b"lifesim-artifact-config");
             hasher.update(crate::artifact::ARTIFACT_POLICY_VERSION.as_bytes());
             crate::material::hash_registry_into(&mut hasher);
-            hasher.update_u32(u32::from(crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT));
+            hasher.update_u32(u32::from(
+                crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT,
+            ));
             hasher.update_u32(u32::from(artifact.inert));
             hasher.update_u32(u32::from(artifact.ephemeral));
             hasher.update_u32(artifact.max_objects);

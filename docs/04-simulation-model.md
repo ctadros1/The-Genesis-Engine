@@ -63,7 +63,7 @@ precedence over anything in this document that contradicts it.
 | Modular morphology and development | `lifesim-morphology-v1` | 10 | `specifications/morphology-and-development.md` |
 | Synaptic plasticity | `lifesim-plasticity-v2` | 11 | `specifications/plasticity-and-learning.md` |
 | Perception and signalling | `lifesim-social-v1` | 13 | `specifications/social-signal-channel.md` |
-| Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v1`, `lifesim-worldmod-v1` | 12 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
+| Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v2`, `lifesim-worldmod-v1` | 12 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
 | Allometry, thermoregulation, senescence, extrinsic mortality | `lifesim-demography-v1` | 8 (executes after 7) | `planning/phase-8-demography-and-life-history.md` |
 | Developmental ontogeny, sexual selection, disease | `lifesim-physiology-v2` | 14 (executes after 13) | `planning/phase-14-ontogeny-and-sexual-selection.md` |
 

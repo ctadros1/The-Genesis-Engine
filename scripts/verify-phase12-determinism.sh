@@ -29,10 +29,13 @@ trap 'rm -rf "$phase12_tmp"' EXIT HUP INT TERM
 
 phase12_seed=0x5eedcafef00dbeef
 phase12_ticks=8000
-# Pinned on 2026-08-16 from the first run of this script. If either moves,
-# record the old and new values in docs/22-decision-log.md and the reason.
-phase12_config=0xc64259e739b525d4
-phase12_state=0x853d257398a2718c
+# Pinned on 2026-08-16 from the first run of this script; re-pinned
+# 2026-09-01 for `lifesim-artifact-v2` (the D-118 inert-arm fix, D-119 -
+# the old values were config 0xc64259e739b525d4 / state 0x853d257398a2718c).
+# If either moves, record the old and new values in docs/22-decision-log.md
+# and the reason.
+phase12_config=0x21405a5c0591ceeb
+phase12_state=0x24defb6052eb9d42
 phase9_config=0x9abc0cd47914127f
 phase9_state=0x5f0c4e95e4f5170f
 phase1_state=0x1e3158a26afd3b39
@@ -49,7 +52,7 @@ cmp "$phase12_tmp/first.json" "$phase12_tmp/second.json"
 for expected in \
   '"fixture_schema_version":8' \
   '"phase":"phase12"' \
-  '"artifact_policy":"lifesim-artifact-v1"' \
+  '"artifact_policy":"lifesim-artifact-v2"' \
   '"material_policy":"lifesim-material-v1"' \
   '"channel_registry":2' \
   "\"config_hash\":\"$phase12_config\"" \

@@ -264,7 +264,10 @@ where marked; the criteria's thresholds are as they were.
       `a_world_with_held_objects_and_composites_round_trips_and_steps_identically`
       is the test. **This phase now has its own fixture and script**:
       `scripts/verify-phase12-determinism.sh` pins the `--artifact` trace at
-      8,000 ticks (config `0xc64259e739b525d4`, state `0x853d257398a2718c`),
+      8,000 ticks (config `0xc64259e739b525d4`, state `0x853d257398a2718c`
+      under `lifesim-artifact-v1`; re-pinned 2026-09-01 to config
+      `0x21405a5c0591ceeb`, state `0x24defb6052eb9d42` under
+      `lifesim-artifact-v2`, the D-118 inert-arm fix, D-119),
       refuses a vacuous fixture mechanism by mechanism, and shows conditions
       B and C replaying as distinct lineages. **Cross-platform on
       2026-08-16**: the same script passed on `genesis-engine` (Ubuntu

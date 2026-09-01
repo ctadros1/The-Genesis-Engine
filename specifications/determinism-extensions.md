@@ -358,7 +358,7 @@ canonical config hash only when their section is enabled:
 | - | `lifesim-action-census-v1` | Action-class set and classification policy (Phase 11). A histogram recorded under one version is not comparable with one recorded under another, so the version is folded into the config hash and into the `.alac` header's `policy_hash` |
 | - | `lifesim-social-v1` | Perception and signalling (Phase 13) |
 | - | `lifesim-material-v1` | Material registry and properties (Phase 12, `MATERIAL_REGISTRY_VERSION = 1`: stone, wood, fiber, carcass; the registry hash is folded into the artifact config block) |
-| - | `lifesim-artifact-v1` | Object actions, affordances by physics, combination and fracture (Phase 12, ADR-0028); hashed only when `artifact.enabled`, after the probe block; the block also carries `CHANNEL_REGISTRY_VERSION_ARTIFACT = 2` |
+| `lifesim-artifact-v1` | `lifesim-artifact-v2` | Object actions, affordances by physics, combination and fracture (Phase 12, ADR-0028); hashed only when `artifact.enabled`, after the probe block; the block also carries `CHANNEL_REGISTRY_VERSION_ARTIFACT = 2`. v1 -> v2 is the D-118 inert-arm fix (D-119): the inert control skips exactly the five verbs and lets consumption, decay, exposure and carry accounting run |
 | - | `lifesim-worldmod-v1` | Terrain modification rules (Phase 12) |
 | - | `lifesim-physiology-v1` | Allometry, ontogeny, senescence (Phase 13) |
 | `lifesim-worldgen-v1` | `lifesim-worldgen-v2` | Adds moisture, temperature, and biome fields (Phase 6). v1 worlds keep v1 forever, so their terrain checksums and both fixtures are unaffected |

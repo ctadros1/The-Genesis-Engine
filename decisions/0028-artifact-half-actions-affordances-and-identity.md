@@ -411,3 +411,23 @@ runs the pre-existing code paths byte for byte.
 - The registry-gating test: a genome that binds a v2 channel is refused in a
   v1 world; every schema-2 artifact on disk decodes.
 - Mutation testing by an agent that did not write the tests.
+
+## Amendment, 2026-09-01: `lifesim-artifact-v2` (the D-118 inert-arm fix)
+
+The condition-C gate (`artifact.inert`) shipped as an early return before
+the consumption step, so the "actions fire, no effect" control also removed
+carcass consumption, exposure and carry accounting from the world: carcass
+energy was unrecoverable under C (1,953 of 1,960 million milli decayed
+against 923 million milli consumed under A) and the arm's demography
+diverged from A's for a reason unrelated to the verbs (starvation +6%,
+damage deaths -42%). Recorded as D-118, verdict-neutral for the 2026-08-16
+campaign; fixed before any next artifact campaign as Rule 9 requires: the
+inert arm now skips exactly the five verbs and consumption, decay, exposure
+and carry accounting run in both arms. `ARTIFACT_POLICY_VERSION` moves to
+`lifesim-artifact-v2` (the string is hashed in the config hash and the
+object-state checksum, so every artifact world starts a new replay
+lineage), and the Phase 12 trace fixture is re-pinned: config
+`0xc64259e739b525d4` -> `0x21405a5c0591ceeb`, state `0x853d257398a2718c` ->
+`0x24defb6052eb9d42` (D-119). The v1 early return was re-injected as a
+mutation and caught by
+`an_inert_world_still_eats_its_carcasses_and_records_exposure`.

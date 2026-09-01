@@ -23,8 +23,8 @@
 //! does with the request is what is under test.
 
 use sim_core::{
-    Activation, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_STRIKE, EventKind,
-    Genome2, GenomeCaps, InheritanceMode, Locus, LocusKind, MATERIAL_STONE, NodeRole,
+    Activation, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_STRIKE,
+    EventKind, Genome2, GenomeCaps, InheritanceMode, Locus, LocusKind, MATERIAL_STONE, NodeRole,
     ObjectAction, RefuseReason, RestoreError, STRUCTURAL_HOMOLOGY_BASE, SimConfig, World,
 };
 
@@ -74,7 +74,9 @@ fn advance(config: SimConfig, ticks: u64) -> World {
 fn run(world: &mut World, ticks: u64) {
     for _ in 0..ticks {
         world.step();
-        world.check_invariants().expect("invariants hold every tick");
+        world
+            .check_invariants()
+            .expect("invariants hold every tick");
     }
 }
 
@@ -142,7 +144,9 @@ fn scripted_world(config: SimConfig, channels: &[u16]) -> World {
         for (salt, &channel) in channels.iter().enumerate() {
             bind_always_on(&mut genome, channel, 1.0, salt as u32);
         }
-        genome.validate_structure(&caps).expect("the rewritten genome validates");
+        genome
+            .validate_structure(&caps)
+            .expect("the rewritten genome validates");
         schema2.genomes[index] = genome.encode();
         for _ in 0..channels.len() {
             schema2.activation_values[index].push(0.0);
@@ -178,10 +182,17 @@ fn a_disabled_artifact_section_reproduces_every_reachable_fixture_exactly() {
     ];
     for (config, ticks, config_hash, state_checksum) in cases {
         assert!(!config.artifact.enabled, "the section defaults to off");
-        assert_eq!(config.genome2.mutation.binding_q16, 0, "the operator defaults to off");
+        assert_eq!(
+            config.genome2.mutation.binding_q16, 0,
+            "the operator defaults to off"
+        );
         assert_eq!(config.stable_hash(), config_hash, "config hash moved");
         let world = advance(config, ticks);
-        assert_eq!(world.state_checksum(), state_checksum, "state checksum moved");
+        assert_eq!(
+            world.state_checksum(),
+            state_checksum,
+            "state checksum moved"
+        );
         assert!(world.object_table().is_none());
         assert!(world.object_counters().is_none());
     }
@@ -195,8 +206,14 @@ fn strikers_extract_material_from_terrain_and_the_ledger_stays_exact() {
     run(&mut world, 60);
     let counters = world.object_counters().expect("section on");
     let table = world.object_table().expect("section on");
-    assert!(counters.struck_terrain > 0, "nobody struck the ground: {counters:?}");
-    assert!(counters.created_extracted > 0, "nothing was extracted: {counters:?}");
+    assert!(
+        counters.struck_terrain > 0,
+        "nobody struck the ground: {counters:?}"
+    );
+    assert!(
+        counters.created_extracted > 0,
+        "nothing was extracted: {counters:?}"
+    );
     assert!(!table.is_empty());
     // Every object came from terrain, and the pool holds exactly what the
     // ledger says it should - `check_invariants` asserted that each tick;
@@ -231,7 +248,10 @@ fn a_depleted_cell_refuses_by_name_and_regenerates_on_its_cadence() {
     let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_REST]);
     run(&mut world, 40);
     let before = world.object_counters().unwrap();
-    assert!(before.refused_depleted > 0, "no cell ever ran dry: {before:?}");
+    assert!(
+        before.refused_depleted > 0,
+        "no cell ever ran dry: {before:?}"
+    );
     assert!(before.struck_terrain > 0);
     run(&mut world, 60);
     let after = world.object_counters().unwrap();
@@ -256,7 +276,11 @@ fn pickers_carry_what_they_extract_pay_to_hold_it_and_drop_it_at_death() {
     let counters = world.object_counters().unwrap();
     assert!(counters.picked_up > 0, "nothing picked up: {counters:?}");
     let table = world.object_table().unwrap();
-    let held = table.holder_id.iter().filter(|&&holder| holder != 0).count();
+    let held = table
+        .holder_id
+        .iter()
+        .filter(|&&holder| holder != 0)
+        .count();
     assert!(held > 0, "nothing is held at tick 80");
     // Holding costs: a strike-and-hold world is poorer than a strike-only
     // one at the same tick, and pick-ups cost too.
@@ -274,9 +298,14 @@ fn pickers_carry_what_they_extract_pay_to_hold_it_and_drop_it_at_death() {
     state.config.basal_cost_milli_per_s = 10_000_000;
     let mut world = World::from_state(state).expect("restores");
     world.step();
-    world.check_invariants().expect("invariants after the mass death");
+    world
+        .check_invariants()
+        .expect("invariants after the mass death");
     let counters = world.object_counters().unwrap();
-    assert!(counters.death_drops > 0, "no death dropped anything: {counters:?}");
+    assert!(
+        counters.death_drops > 0,
+        "no death dropped anything: {counters:?}"
+    );
     let table = world.object_table().unwrap();
     assert!(table.holder_id.iter().all(|&holder| holder == 0));
     assert_eq!(world.population(), 0);
@@ -328,10 +357,16 @@ fn a_contested_pick_up_is_decided_by_distance_before_id_and_never_by_visit_order
     world.step();
     world.check_invariants().expect("invariants");
     let table = world.object_table().unwrap();
-    assert_eq!(table.holder_id[0], high, "the nearer organism wins whatever its id");
+    assert_eq!(
+        table.holder_id[0], high,
+        "the nearer organism wins whatever its id"
+    );
     let counters = world.object_counters().unwrap();
     assert_eq!(counters.picked_up, 1);
-    assert_eq!(counters.refused_contested, 1, "the loser is refused Contested and pays");
+    assert_eq!(
+        counters.refused_contested, 1,
+        "the loser is refused Contested and pays"
+    );
     let refused = world.events().iter().any(|event| {
         matches!(
             event.kind,
@@ -363,9 +398,19 @@ fn combining_then_fracturing_restores_constituent_ids_mass_and_energy_exactly() 
     let table = state.objects.as_mut().unwrap();
     let base = state.next_entity_id;
     let stone = sim_core::material(MATERIAL_STONE).unwrap();
-    let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let mut held =
+        sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
     held.holder_id = organism;
-    let target = sim_core::ObjectRecord::simple(base + 1, stone, 600, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let target = sim_core::ObjectRecord::simple(
+        base + 1,
+        stone,
+        600,
+        x + 1024,
+        y,
+        0,
+        sim_core::CAUSE_EXTRACTED,
+        0,
+    );
     let (held_mass, target_mass) = (held.mass_milli, target.mass_milli);
     table.ledger.mass_extracted_milli += i128::from(held_mass + target_mass);
     table.push(held);
@@ -376,13 +421,23 @@ fn combining_then_fracturing_restores_constituent_ids_mass_and_energy_exactly() 
     world.step();
     world.check_invariants().expect("invariants after combine");
     let table = world.object_table().unwrap();
-    assert_eq!(world.object_counters().unwrap().combined, 1, "the combine happened");
-    let composite = table.index_of(base + 2).expect("the composite took the next id");
+    assert_eq!(
+        world.object_counters().unwrap().combined,
+        1,
+        "the combine happened"
+    );
+    let composite = table
+        .index_of(base + 2)
+        .expect("the composite took the next id");
     assert_eq!(table.mass_milli[composite], held_mass + target_mass);
     assert_eq!(table.depth[composite], 1);
     assert_eq!(table.composition[composite], vec![base, base + 1]);
     assert_eq!(table.owner_id[table.index_of(base).unwrap()], base + 2);
-    assert_eq!(table.total_mass_milli(), i128::from(held_mass + target_mass), "combine is mass-neutral");
+    assert_eq!(
+        table.total_mass_milli(),
+        i128::from(held_mass + target_mass),
+        "combine is mass-neutral"
+    );
     // Now strike it apart: rewrite the founder to strike instead.
     let mut state = world.export_state();
     let caps = state.config.genome2.caps;
@@ -407,8 +462,15 @@ fn combining_then_fracturing_restores_constituent_ids_mass_and_energy_exactly() 
     let b = table.index_of(base + 1).expect("constituent b is back");
     assert_eq!(table.owner_id[a], 0);
     assert_eq!(table.owner_id[b], 0);
-    assert_eq!(table.mass_milli[a] + table.mass_milli[b], held_mass + target_mass);
-    assert_eq!(table.total_mass_milli(), i128::from(held_mass + target_mass), "fracture is mass-neutral");
+    assert_eq!(
+        table.mass_milli[a] + table.mass_milli[b],
+        held_mass + target_mass
+    );
+    assert_eq!(
+        table.total_mass_milli(),
+        i128::from(held_mass + target_mass),
+        "fracture is mass-neutral"
+    );
     let counters = world.object_counters().unwrap();
     assert_eq!(counters.disassembled, 1);
     assert_eq!(counters.fractured, 1);
@@ -445,16 +507,179 @@ fn a_genome_bound_to_an_object_channel_is_refused_in_a_world_that_does_not_offer
 // --- the two control conditions -------------------------------------------
 
 #[test]
-fn an_inert_world_fires_and_pays_and_changes_nothing() {
+fn an_inert_world_fires_and_pays_and_the_verbs_confer_nothing() {
     let mut config = artifact_config(SEED);
     config.artifact.inert = true;
     let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP]);
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
-    assert!(counters.struck_terrain > 0, "actions still resolve and count: {counters:?}");
-    assert!(world.object_table().unwrap().is_empty(), "and create nothing");
+    assert!(
+        counters.struck_terrain > 0,
+        "actions still resolve and count: {counters:?}"
+    );
+    assert!(
+        world.object_table().unwrap().is_empty(),
+        "and create nothing (nobody died, so no carcass exists either)"
+    );
     let control = advance(artifact_config(SEED), 60);
-    assert!(world.total_energy_milli() < control.total_energy_milli(), "and still cost");
+    assert!(
+        world.total_energy_milli() < control.total_energy_milli(),
+        "and still cost"
+    );
+}
+
+/// The D-118 fix (`lifesim-artifact-v2`): the inert arm skips exactly the
+/// five verbs, so a carcass in an inert world is eaten exactly as it is
+/// under condition A and the control arm no longer differs from its
+/// treatment in its food supply. v1 returned from `artifact_phase` at the
+/// end of the inert charge block, which skipped consumption and the
+/// exposure/carry accounting too; that early return is the mutation this
+/// test exists to catch.
+#[test]
+fn an_inert_world_still_eats_its_carcasses_and_records_exposure() {
+    let mut config = artifact_config(SEED);
+    config.initial_organisms = 1;
+    config.artifact.inert = true;
+    let world = scripted_world(config, &[CHANNEL_PICK_UP, CHANNEL_REST]);
+    let mut state = world.export_state();
+    let organism = state.ids[0];
+    let (x, y) = (state.x_fp[0], state.y_fp[0]);
+    // A carcass with energy on the organism's own cell, booked through the
+    // carcass ledger exactly as `spawn_carcass_object` books one. The
+    // creator is the organism so the exposure pass has something to see.
+    let energy = 3_000_i64;
+    let table = state.objects.as_mut().unwrap();
+    let base = state.next_entity_id;
+    let def = sim_core::material(sim_core::MATERIAL_CARCASS).unwrap();
+    let mut record =
+        sim_core::ObjectRecord::simple(base, def, 0, x, y, 0, sim_core::CAUSE_CARCASS, organism);
+    record.mass_milli = energy;
+    record.energy_milli = energy;
+    table.ledger.mass_carcass_milli += i128::from(energy);
+    table.ledger.energy_carcass_milli += i128::from(energy);
+    table.push(record);
+    // And a stone beside it: inedible (energy 0), so it outlives the
+    // carcass and is what the exposure assertion below watches - a carcass
+    // small enough to be eaten is destroyed in the very tick it is eaten,
+    // before the observation pass reads the destroyed flags.
+    let stone = sim_core::material(MATERIAL_STONE).unwrap();
+    let mut stone_record =
+        sim_core::ObjectRecord::simple(base + 1, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    // `simple` never sets a creator; the exposure pass only counts
+    // organism-created objects, so name one.
+    stone_record.creator_id = organism;
+    table.ledger.mass_extracted_milli += i128::from(stone_record.mass_milli);
+    table.push(stone_record);
+    table.objects_allocated_total += 2;
+    state.next_entity_id += 2;
+    let mut world = World::from_state(state).expect("restores");
+    let energy_before = world.total_energy_milli();
+    run(&mut world, 30);
+    let counters = world.object_counters().unwrap();
+    // The verb fires, is charged and counted, and confers nothing.
+    assert!(
+        counters.picked_up > 0,
+        "the verb still fires under inert: {counters:?}"
+    );
+    let table = world.object_table().unwrap();
+    assert!(
+        table.holder_id.iter().all(|&holder| holder == 0),
+        "and confers no hold"
+    );
+    // Consumption ran: the carcass was eaten rather than left to decay.
+    assert!(
+        counters.consumed_events > 0,
+        "nobody ate the carcass under inert (the D-118 defect): {counters:?}"
+    );
+    let ledger = world.object_ledger().unwrap();
+    assert!(
+        ledger.energy_consumed_milli > 0,
+        "consumption is ledgered: {ledger:?}"
+    );
+    assert!(
+        world.total_energy_milli() > energy_before,
+        "the eater kept what assimilation passed through"
+    );
+    assert_eq!(table.total_energy_milli(), ledger.expected_energy_milli());
+    // The observation pass ran: standing on a cell with a free
+    // organism-created object counts as exposure under inert as under A.
+    assert!(
+        table.exposure_ticks[0] > 0,
+        "exposure accounting ran under inert"
+    );
+}
+
+/// The inert charge block, pinned by arithmetic rather than by inequality.
+/// An independent mutation pass on the D-118 fix (D-119) found that the
+/// routing was defended and the *pricing* was not: a verb could be counted
+/// without its charge, mispriced against another verb's cost, or counted
+/// without its intent, and every test stayed green - because the only cost
+/// assertion was one-sided against a different arm and three of the five
+/// verbs' inert arms were never executed by any test at all. Two
+/// seed-matched inert worlds, differing only in which verbs the founders
+/// request, close all of that: the all-verbs world pins each counter to
+/// exactly one fire per tick, the no-verbs world pins every counter to
+/// zero (a verb counted without its intent shows up here), and the
+/// difference of the two worlds' `spent_milli` ledgers is exactly the
+/// per-tick verb bill - basal cost is common-mode, `rest` freezes
+/// movement in both, and feeding credits assimilation, not spending.
+#[test]
+fn the_inert_charge_block_counts_each_verb_once_and_bills_it_at_its_own_price() {
+    let ticks = 40_u64;
+    let mut config = artifact_config(SEED);
+    config.initial_organisms = 1;
+    config.artifact.inert = true;
+    // Small distinct primes: cheap enough that one organism can pay five
+    // verbs a tick for forty ticks, distinct enough that a verb billed at
+    // the other verb's price moves the total.
+    config.artifact.action_cost_milli = 7;
+    config.artifact.strike_cost_milli = 11;
+    config.validate().expect("the priced config validates");
+    let all_verbs = [
+        CHANNEL_PICK_UP,
+        CHANNEL_DROP,
+        CHANNEL_PLACE,
+        CHANNEL_STRIKE,
+        CHANNEL_COMBINE,
+        CHANNEL_REST,
+    ];
+    let mut with_verbs = scripted_world(config.clone(), &all_verbs);
+    let mut without_verbs = scripted_world(config.clone(), &[CHANNEL_REST]);
+    run(&mut with_verbs, ticks);
+    run(&mut without_verbs, ticks);
+    assert_eq!(with_verbs.metrics().population, 1, "the payer survived");
+    assert_eq!(without_verbs.metrics().population, 1);
+
+    // Each verb fires exactly once per tick, and only when requested.
+    let fired = with_verbs.object_counters().unwrap();
+    assert_eq!(fired.picked_up, ticks, "{fired:?}");
+    assert_eq!(fired.dropped, ticks, "{fired:?}");
+    assert_eq!(fired.placed, ticks, "{fired:?}");
+    assert_eq!(fired.combined, ticks, "{fired:?}");
+    assert_eq!(fired.struck_terrain, ticks, "{fired:?}");
+    assert!(
+        with_verbs.object_table().unwrap().is_empty(),
+        "and confer nothing"
+    );
+    let idle = without_verbs.object_counters().unwrap();
+    assert_eq!(
+        (
+            idle.picked_up,
+            idle.dropped,
+            idle.placed,
+            idle.combined,
+            idle.struck_terrain
+        ),
+        (0, 0, 0, 0, 0),
+        "a verb counted without its intent: {idle:?}"
+    );
+
+    // And the bill is exact: four verbs at the action price, one at the
+    // strike price, per tick.
+    let expected = i128::from(ticks)
+        * i128::from(4 * config.artifact.action_cost_milli + config.artifact.strike_cost_milli);
+    let billed = with_verbs.ledger().spent_milli - without_verbs.ledger().spent_milli;
+    assert_eq!(billed, expected, "the inert verb bill is mispriced");
 }
 
 #[test]
@@ -466,7 +691,10 @@ fn an_ephemeral_world_destroys_what_lands_at_the_end_of_its_tick() {
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
     assert!(counters.dropped > 0, "something was dropped: {counters:?}");
-    assert!(counters.ephemeral_destroyed > 0, "and destroyed at tick end: {counters:?}");
+    assert!(
+        counters.ephemeral_destroyed > 0,
+        "and destroyed at tick end: {counters:?}"
+    );
     let table = world.object_table().unwrap();
     // Nothing free that was dropped survives; what exists is either freshly
     // extracted this tick or held.
@@ -475,7 +703,8 @@ fn an_ephemeral_world_destroys_what_lands_at_the_end_of_its_tick() {
             .ids
             .iter()
             .enumerate()
-            .all(|(index, _)| table.holder_id[index] != 0 || table.created_tick[index] == world.tick_number()),
+            .all(|(index, _)| table.holder_id[index] != 0
+                || table.created_tick[index] == world.tick_number()),
         "a dropped object survived the tick it landed in"
     );
     let ledger = world.object_ledger().unwrap();
@@ -493,7 +722,10 @@ fn every_cap_rejects_counts_and_events_when_driven() {
     let mut world = scripted_world(config, &[CHANNEL_STRIKE]);
     run(&mut world, 30);
     let counters = world.object_counters().unwrap();
-    assert!(counters.refused_object_cap > 0, "the object cap never bound: {counters:?}");
+    assert!(
+        counters.refused_object_cap > 0,
+        "the object cap never bound: {counters:?}"
+    );
     assert!(world.object_table().unwrap().len() <= 5);
     let evented = world.events().iter().any(|event| {
         matches!(event.kind, EventKind::ObjectActionRefused { reason, .. } if reason == RefuseReason::ObjectCap.id())
@@ -506,15 +738,24 @@ fn every_cap_rejects_counts_and_events_when_driven() {
     let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP]);
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
-    assert!(counters.refused_held_cap > 0, "the held cap never bound: {counters:?}");
+    assert!(
+        counters.refused_held_cap > 0,
+        "the held cap never bound: {counters:?}"
+    );
 
     // Occupancy cap: dropping into a full cell.
     let mut config = artifact_config(SEED);
     config.artifact.max_objects_per_cell = 1;
-    let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP, CHANNEL_DROP, CHANNEL_REST]);
+    let mut world = scripted_world(
+        config,
+        &[CHANNEL_STRIKE, CHANNEL_PICK_UP, CHANNEL_DROP, CHANNEL_REST],
+    );
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
-    assert!(counters.refused_occupancy_cap > 0, "the occupancy cap never bound: {counters:?}");
+    assert!(
+        counters.refused_occupancy_cap > 0,
+        "the occupancy cap never bound: {counters:?}"
+    );
 
     // Carry capacity: a capacity below any extracted object's mass refuses
     // pick-ups as CapacityExceeded. Not *every* pick-up: a carcass eaten
@@ -526,8 +767,14 @@ fn every_cap_rejects_counts_and_events_when_driven() {
     let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP]);
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
-    assert!(counters.refused_capacity > 0, "the carry capacity never bound: {counters:?}");
-    assert!(counters.refused_capacity > counters.picked_up, "{counters:?}");
+    assert!(
+        counters.refused_capacity > 0,
+        "the carry capacity never bound: {counters:?}"
+    );
+    assert!(
+        counters.refused_capacity > counters.picked_up,
+        "{counters:?}"
+    );
     let table = world.object_table().unwrap();
     for index in 0..table.len() {
         if table.holder_id[index] != 0 {
@@ -556,7 +803,10 @@ fn every_cap_rejects_counts_and_events_when_driven() {
     run(&mut world, 60);
     let counters = world.object_counters().unwrap();
     assert!(counters.combined > 0, "nobody combined: {counters:?}");
-    assert_eq!(counters.refused_breadth_cap, 0, "a breadth refusal in a valid config would be a new mechanism");
+    assert_eq!(
+        counters.refused_breadth_cap, 0,
+        "a breadth refusal in a valid config would be a new mechanism"
+    );
 }
 
 // --- save round trip through the world's own save path -----------------------
@@ -569,7 +819,10 @@ fn a_world_with_held_objects_and_composites_round_trips_and_steps_identically() 
     let mut world = scripted_world(config, &[CHANNEL_STRIKE, CHANNEL_PICK_UP, CHANNEL_COMBINE]);
     run(&mut world, 120);
     let counters = world.object_counters().unwrap();
-    assert!(counters.combined > 0, "the scenario must produce a composite: {counters:?}");
+    assert!(
+        counters.combined > 0,
+        "the scenario must produce a composite: {counters:?}"
+    );
     assert!(counters.picked_up > 0);
     let state = world.export_state();
     let mut restored = World::from_state(state.clone()).expect("restores");
@@ -579,7 +832,11 @@ fn a_world_with_held_objects_and_composites_round_trips_and_steps_identically() 
         world.step();
         restored.step();
     }
-    assert_eq!(restored.state_checksum(), world.state_checksum(), "the two worlds diverged after restore");
+    assert_eq!(
+        restored.state_checksum(),
+        world.state_checksum(),
+        "the two worlds diverged after restore"
+    );
     world.check_invariants().unwrap();
     restored.check_invariants().unwrap();
 }
@@ -602,9 +859,11 @@ fn exposure_and_carry_ticks_are_recorded_saved_and_emitted_at_death() {
     let base = state.next_entity_id;
     let stone = sim_core::material(MATERIAL_STONE).unwrap();
     // A placed object in a's cell (creator set), and an object held by b.
-    let mut placed = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let mut placed =
+        sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
     placed.creator_id = b;
-    let mut held = sim_core::ObjectRecord::simple(base + 1, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let mut held =
+        sim_core::ObjectRecord::simple(base + 1, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
     held.holder_id = b;
     table.ledger.mass_extracted_milli += i128::from(placed.mass_milli + held.mass_milli);
     table.push(placed);
@@ -615,13 +874,26 @@ fn exposure_and_carry_ticks_are_recorded_saved_and_emitted_at_death() {
     let mut world = World::from_state(state).expect("restores");
     run(&mut world, 10);
     let table = world.object_table().unwrap();
-    assert_eq!(table.exposure_ticks[0], 10, "a stood on a placed object for ten ticks");
+    assert_eq!(
+        table.exposure_ticks[0], 10,
+        "a stood on a placed object for ten ticks"
+    );
     assert_eq!(table.carry_ticks[1], 10, "b held something for ten ticks");
-    assert_eq!(table.exposure_ticks[1], if world.organism_detail(b).map(|d| (d.x_fp, d.y_fp)) == Some((x, y)) { 10 } else { table.exposure_ticks[1] });
+    assert_eq!(
+        table.exposure_ticks[1],
+        if world.organism_detail(b).map(|d| (d.x_fp, d.y_fp)) == Some((x, y)) {
+            10
+        } else {
+            table.exposure_ticks[1]
+        }
+    );
     // Save round trip keeps the histories.
     let saved = world.export_state();
     let restored = World::from_state(saved.clone()).expect("restores");
-    assert_eq!(restored.object_table().unwrap().exposure_ticks, table.exposure_ticks);
+    assert_eq!(
+        restored.object_table().unwrap().exposure_ticks,
+        table.exposure_ticks
+    );
     assert_eq!(restored.object_table().unwrap().birth_band, bands);
     assert_eq!(restored.state_checksum(), world.state_checksum());
     // Death emits the record.
@@ -631,7 +903,14 @@ fn exposure_and_carry_ticks_are_recorded_saved_and_emitted_at_death() {
     world.step();
     let mut seen = 0;
     for event in world.events() {
-        if let EventKind::ObjectExposure { id, exposure_ticks, carry_ticks, age_ticks, birth_band } = event.kind {
+        if let EventKind::ObjectExposure {
+            id,
+            exposure_ticks,
+            carry_ticks,
+            age_ticks,
+            birth_band,
+        } = event.kind
+        {
             seen += 1;
             if id == a {
                 assert!(exposure_ticks >= 10, "{exposure_ticks}");
@@ -679,7 +958,16 @@ fn object_cues_report_presence_distance_bearing_heft_hardness_and_load() {
     let base = state.next_entity_id;
     let stone = sim_core::material(MATERIAL_STONE).unwrap();
     let fp = sim_core::FP_PER_METER;
-    let ahead = sim_core::ObjectRecord::simple(base, stone, 1_000, x + 2 * fp, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let ahead = sim_core::ObjectRecord::simple(
+        base,
+        stone,
+        1_000,
+        x + 2 * fp,
+        y,
+        0,
+        sim_core::CAUSE_EXTRACTED,
+        0,
+    );
     table.ledger.mass_extracted_milli += i128::from(ahead.mass_milli);
     table.push(ahead);
     table.objects_allocated_total += 1;
@@ -687,13 +975,29 @@ fn object_cues_report_presence_distance_bearing_heft_hardness_and_load() {
     let mut world = World::from_state(state).unwrap();
     world.step();
     let cues = world.object_perception(0).unwrap();
-    let scale = world.organism_detail(organism).unwrap().phase2.map_or(1_000, |_| 1_000);
+    let scale = world
+        .organism_detail(organism)
+        .unwrap()
+        .phase2
+        .map_or(1_000, |_| 1_000);
     let _ = scale;
     assert_eq!(cues[0], 1.0, "present");
-    assert!((cues[1] - 0.75).abs() < 0.02, "distance 1 - 2/8, got {}", cues[1]);
+    assert!(
+        (cues[1] - 0.75).abs() < 0.02,
+        "distance 1 - 2/8, got {}",
+        cues[1]
+    );
     assert!(cues[2].abs() < 0.02, "dead ahead, got bearing {}", cues[2]);
-    assert!(cues[3] > 0.0 && cues[3] <= 1.0, "heft is a share of capacity, got {}", cues[3]);
-    assert!((cues[4] - 1.0).abs() < 1e-6, "stone is the hardest material, got {}", cues[4]);
+    assert!(
+        cues[3] > 0.0 && cues[3] <= 1.0,
+        "heft is a share of capacity, got {}",
+        cues[3]
+    );
+    assert!(
+        (cues[4] - 1.0).abs() < 1e-6,
+        "stone is the hardest material, got {}",
+        cues[4]
+    );
     assert_eq!(cues[5], 0.0, "holding nothing");
     // The same stone to the left (+y at heading 0 is a positive cross
     // product) reads a positive bearing; and a held object reads as load.
@@ -701,7 +1005,16 @@ fn object_cues_report_presence_distance_bearing_heft_hardness_and_load() {
     let table = state.objects.as_mut().unwrap();
     table.x_fp[0] = x;
     table.y_fp[0] = y + 2 * fp;
-    let mut held = sim_core::ObjectRecord::simple(base + 1, stone, 2_000, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let mut held = sim_core::ObjectRecord::simple(
+        base + 1,
+        stone,
+        2_000,
+        x,
+        y,
+        0,
+        sim_core::CAUSE_EXTRACTED,
+        0,
+    );
     held.holder_id = organism;
     table.ledger.mass_extracted_milli += i128::from(held.mass_milli);
     table.push(held);
@@ -710,8 +1023,16 @@ fn object_cues_report_presence_distance_bearing_heft_hardness_and_load() {
     let mut world = World::from_state(state).unwrap();
     world.step();
     let cues = world.object_perception(0).unwrap();
-    assert!(cues[2] > 0.5, "to the left reads a positive bearing, got {}", cues[2]);
-    assert!(cues[5] > 0.0, "a held object reads as carried load, got {}", cues[5]);
+    assert!(
+        cues[2] > 0.5,
+        "to the left reads a positive bearing, got {}",
+        cues[2]
+    );
+    assert!(
+        cues[5] > 0.0,
+        "a held object reads as carried load, got {}",
+        cues[5]
+    );
     // Held objects are not "present" targets: only free ones are sensed, so
     // taking the free stone away leaves presence at zero while load stays.
     let mut state = world.export_state();
@@ -745,7 +1066,12 @@ fn a_heavy_free_object_blocks_entry_and_a_light_one_does_not() {
     // the horizon, so the blocked assertion is about a mover.
     let horizon = 120;
     let mut control = World::from_state(state.clone()).unwrap();
-    let start: Vec<usize> = state.ids.iter().enumerate().map(|(i, _)| control.cell_index_of(state.x_fp[i], state.y_fp[i])).collect();
+    let start: Vec<usize> = state
+        .ids
+        .iter()
+        .enumerate()
+        .map(|(i, _)| control.cell_index_of(state.x_fp[i], state.y_fp[i]))
+        .collect();
     let mut first_mover: Option<(usize, u64)> = None;
     for _ in 0..horizon {
         control.step();
@@ -805,7 +1131,11 @@ fn a_heavy_free_object_blocks_entry_and_a_light_one_does_not() {
     for _ in 0..horizon {
         world.step();
         world.check_invariants().unwrap();
-        assert_eq!(cell_of_mover(&world), home, "the mover left a cell ringed by blocking stones");
+        assert_eq!(
+            cell_of_mover(&world),
+            home,
+            "the mover left a cell ringed by blocking stones"
+        );
     }
     // Light ring, same layout: the mover leaves as it did in the control.
     let mut light = state.clone();
@@ -842,13 +1172,19 @@ fn a_death_with_energy_left_makes_a_carcass_object_and_no_phase7_carcass() {
         world.check_invariants().unwrap();
         let events = world.events();
         for event in events {
-            if let EventKind::CarcassCreated { id, energy_milli, .. } = event.kind {
+            if let EventKind::CarcassCreated {
+                id, energy_milli, ..
+            } = event.kind
+            {
                 let created = events.iter().find(|other| {
                     matches!(other.kind, EventKind::ObjectCreated { id: object, material_id, cause, mass_milli, energy_milli: e, .. }
                         if object == id && material_id == sim_core::MATERIAL_CARCASS && cause == sim_core::CAUSE_CARCASS
                             && mass_milli == energy_milli && e == energy_milli)
                 });
-                assert!(created.is_some(), "a carcass without its object record: {event:?}");
+                assert!(
+                    created.is_some(),
+                    "a carcass without its object record: {event:?}"
+                );
                 paired += 1;
                 assert!(energy_milli > 0);
             }
@@ -857,13 +1193,25 @@ fn a_death_with_energy_left_makes_a_carcass_object_and_no_phase7_carcass() {
     let counters = world.object_counters().unwrap();
     assert!(paired > 0, "no carcass was made in 200 ticks: {counters:?}");
     assert_eq!(counters.created_carcass, paired);
-    assert_eq!(world.metrics().carcasses, 0, "the Phase 7 carcass table stays empty with the section on");
+    assert_eq!(
+        world.metrics().carcasses,
+        0,
+        "the Phase 7 carcass table stays empty with the section on"
+    );
     let table = world.object_table().unwrap();
-    assert!(table.material_id.iter().any(|&m| m == sim_core::MATERIAL_CARCASS));
+    assert!(
+        table
+            .material_id
+            .iter()
+            .any(|&m| m == sim_core::MATERIAL_CARCASS)
+    );
     // A carcass object decays: its energy falls tick over tick and the loss
     // is ledgered, so what the ledger says the table holds is what it holds.
     let ledger = world.object_ledger().unwrap();
-    assert!(ledger.energy_decayed_milli > 0, "carcasses decay: {ledger:?}");
+    assert!(
+        ledger.energy_decayed_milli > 0,
+        "carcasses decay: {ledger:?}"
+    );
     assert_eq!(table.total_energy_milli(), ledger.expected_energy_milli());
 }
 
@@ -887,9 +1235,19 @@ fn a_joint_floor_the_draw_cannot_reach_refuses_every_combine_by_name() {
     let table = state.objects.as_mut().unwrap();
     let base = state.next_entity_id;
     let stone = sim_core::material(MATERIAL_STONE).unwrap();
-    let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let mut held =
+        sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
     held.holder_id = organism;
-    let target = sim_core::ObjectRecord::simple(base + 1, stone, 600, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+    let target = sim_core::ObjectRecord::simple(
+        base + 1,
+        stone,
+        600,
+        x + 1024,
+        y,
+        0,
+        sim_core::CAUSE_EXTRACTED,
+        0,
+    );
     table.ledger.mass_extracted_milli += i128::from(held.mass_milli + target.mass_milli);
     table.push(held);
     table.push(target);
@@ -912,7 +1270,10 @@ fn a_joint_floor_the_draw_cannot_reach_refuses_every_combine_by_name() {
     run(&mut world, 5);
     let counters = world.object_counters().unwrap();
     assert_eq!(counters.combined, 0);
-    assert_eq!(counters.refused_joint_failed, 5, "one refusal per attempt: {counters:?}");
+    assert_eq!(
+        counters.refused_joint_failed, 5,
+        "one refusal per attempt: {counters:?}"
+    );
     let table = world.object_table().unwrap();
     assert_eq!(table.len(), 2, "both constituents untouched");
     assert_eq!(table.holder_id[0], organism);
@@ -942,9 +1303,19 @@ fn the_depth_cap_refuses_the_composite_that_would_exceed_it() {
         let table = state.objects.as_mut().unwrap();
         let base = state.next_entity_id;
         let stone = sim_core::material(MATERIAL_STONE).unwrap();
-        let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        let mut held =
+            sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
         held.holder_id = organism;
-        let target = sim_core::ObjectRecord::simple(base + 1, stone, 600, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        let target = sim_core::ObjectRecord::simple(
+            base + 1,
+            stone,
+            600,
+            x + 1024,
+            y,
+            0,
+            sim_core::CAUSE_EXTRACTED,
+            0,
+        );
         table.ledger.mass_extracted_milli += i128::from(held.mass_milli + target.mass_milli);
         table.push(held);
         table.push(target);
@@ -958,7 +1329,16 @@ fn the_depth_cap_refuses_the_composite_that_would_exceed_it() {
         let table = state.objects.as_mut().unwrap();
         let composite = table.index_of(base + 2).unwrap();
         table.holder_id[composite] = organism;
-        let extra = sim_core::ObjectRecord::simple(base + 3, stone, 500, x + 1024, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        let extra = sim_core::ObjectRecord::simple(
+            base + 3,
+            stone,
+            500,
+            x + 1024,
+            y,
+            0,
+            sim_core::CAUSE_EXTRACTED,
+            0,
+        );
         table.ledger.mass_extracted_milli += i128::from(extra.mass_milli);
         table.push(extra);
         table.objects_allocated_total += 1;
@@ -970,17 +1350,26 @@ fn the_depth_cap_refuses_the_composite_that_would_exceed_it() {
     };
     let capped = scene(1);
     let counters = capped.object_counters().unwrap();
-    assert_eq!(counters.combined, 1, "the second combine was refused: {counters:?}");
+    assert_eq!(
+        counters.combined, 1,
+        "the second combine was refused: {counters:?}"
+    );
     assert_eq!(counters.refused_depth_cap, 1);
     let open = scene(4);
     let counters = open.object_counters().unwrap();
-    assert_eq!(counters.combined, 2, "the second combine was made: {counters:?}");
+    assert_eq!(
+        counters.combined, 2,
+        "the second combine was made: {counters:?}"
+    );
     assert_eq!(counters.refused_depth_cap, 0);
     let table = open.object_table().unwrap();
     assert_eq!(table.count_with_depth_at_least(2), 1);
     let deep = (0..table.len()).find(|&i| table.depth[i] == 2).unwrap();
     let stone = sim_core::material(MATERIAL_STONE).unwrap();
-    let mass_of = |volume: i64| sim_core::ObjectRecord::simple(0, stone, volume, 0, 0, 0, sim_core::CAUSE_EXTRACTED, 0).mass_milli;
+    let mass_of = |volume: i64| {
+        sim_core::ObjectRecord::simple(0, stone, volume, 0, 0, 0, sim_core::CAUSE_EXTRACTED, 0)
+            .mass_milli
+    };
     assert_eq!(
         table.mass_milli[deep],
         mass_of(400) + mass_of(600) + mass_of(500),
@@ -1010,7 +1399,8 @@ fn a_placed_object_lands_at_the_faced_cells_centre_and_off_map_is_invalid() {
         state.phase2.as_mut().unwrap().heading_bam[0] = heading;
         let table = state.objects.as_mut().unwrap();
         let base = state.next_entity_id;
-        let mut held = sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
+        let mut held =
+            sim_core::ObjectRecord::simple(base, stone, 400, x, y, 0, sim_core::CAUSE_EXTRACTED, 0);
         held.holder_id = organism;
         table.ledger.mass_extracted_milli += i128::from(held.mass_milli);
         table.push(held);
@@ -1081,11 +1471,19 @@ fn a_placed_object_lands_at_the_faced_cells_centre_and_off_map_is_invalid() {
     // the same refusal is exercised on the coast below, which this map
     // always has.
     if let Some((ex, ey, heading)) = edge_cell {
-        let edge = scene(ex * cell_fp + cell_fp / 2, ey * cell_fp + cell_fp / 2, heading);
+        let edge = scene(
+            ex * cell_fp + cell_fp / 2,
+            ey * cell_fp + cell_fp / 2,
+            heading,
+        );
         let counters = edge.object_counters().unwrap();
         assert_eq!(counters.placed, 0, "{counters:?}");
         assert_eq!(counters.refused_invalid_cell, 1, "{counters:?}");
-        assert_eq!(edge.object_table().unwrap().holder_id[0], organism, "still held");
+        assert_eq!(
+            edge.object_table().unwrap().holder_id[0],
+            organism,
+            "still held"
+        );
     }
     // A non-traversable faced cell (the coast) is refused the same way.
     let mut water = None;
@@ -1101,7 +1499,14 @@ fn a_placed_object_lands_at_the_faced_cells_centre_and_off_map_is_invalid() {
     let (cx, cy) = water.expect("a land cell with water to its +x");
     let shore = scene(cx * cell_fp + cell_fp / 2, cy * cell_fp + cell_fp / 2, 0);
     let counters = shore.object_counters().unwrap();
-    assert_eq!(counters.refused_invalid_cell, 1, "facing water: {counters:?}");
+    assert_eq!(
+        counters.refused_invalid_cell, 1,
+        "facing water: {counters:?}"
+    );
     assert_eq!(counters.placed, 0);
-    assert_eq!(shore.object_table().unwrap().holder_id[0], organism, "still held");
+    assert_eq!(
+        shore.object_table().unwrap().holder_id[0],
+        organism,
+        "still held"
+    );
 }

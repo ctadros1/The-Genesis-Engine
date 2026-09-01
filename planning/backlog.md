@@ -87,8 +87,10 @@ reachability null: the bind operator (D-114) put every object action into
 every world's living population; firing them did not pay at this reach,
 cost and horizon. Follow-ups recorded, each needing its own
 pre-registration: the D-118 inert-arm fix under `lifesim-artifact-v2`
-first, then reach / hold cap / costs / bind rate as the knobs, and ALSP
-1.1 if objects should reach the observer.
+first (**landed 2026-09-01, D-119**: inert skips exactly the five verbs,
+fixture re-pinned `0x21405a5c0591ceeb` / `0x24defb6052eb9d42`), then
+reach / hold cap / costs / bind rate as the knobs, and ALSP 1.1 if
+objects should reach the observer.
 
 ## The Ladder To Learning And Culture (from the Phase 11 and 12 nulls)
 
@@ -96,7 +98,8 @@ Recorded 2026-08-16, consolidating what D-099, D-105, D-117 and D-118
 measured into the four levers a follow-up moves. None of these is a new
 criterion or a change to any decided one; each is a candidate campaign
 that must carry its own pre-registration before it runs, and the D-118
-inert-arm fix under `lifesim-artifact-v2` lands before any of them.
+inert-arm fix under `lifesim-artifact-v2` lands before any of them
+(**landed 2026-09-01, D-119**).
 
 1. **Make the payoff bigger and closer.** Both nulls have the same shape:
    the mechanism was reachable and firing, and it did not pay. The

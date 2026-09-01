@@ -1,7 +1,8 @@
 # Artifact And Material Ontology Specification
 
 Status: implementing, Phase 12 artifact half (2026-08-16). Policy versions
-`lifesim-material-v1`, `lifesim-artifact-v1`. Governing decision: ADR-0028,
+`lifesim-material-v1`, `lifesim-artifact-v2` (v1 -> v2 is the D-118
+inert-arm fix, D-119, 2026-09-01). Governing decision: ADR-0028,
 which records every place this specification departs from the commissioned
 review and why. The design specification this replaces (2026-08-04) is
 recoverable from git history; the changes are listed at the end.
@@ -357,9 +358,16 @@ are provisional and recorded as such.
 | `wood_relative_q16` | 16,384 | ... wood (0.25); fiber below |
 
 `condition C` of the plan ("actions permitted but physically inert") is
-`artifact.inert = true`: every action resolves, costs, counts and events as
-usual, but no object is created, moved, held, struck or combined - a
-world-visible no-op with the same energy cost. Condition B ("ephemeral") is
+`artifact.inert = true`: each of the five verbs resolves, costs, counts and
+events as usual, but no object is created, moved, held, struck or combined
+- a world-visible no-op with the same energy cost. The verbs are all the
+inert arm removes: consumption of object energy, decay, and the exposure
+and carry accounting run exactly as under condition A, so the control
+differs from its treatment only in its named variable. Under
+`lifesim-artifact-v1` the inert gate returned before the consumption step,
+so carcass energy was unrecoverable under C and its demography diverged
+from A's (starvation +6%, damage deaths -42%); recorded as D-118, fixed as
+`lifesim-artifact-v2` (D-119). Condition B ("ephemeral") is
 `artifact.ephemeral = true`: a placed or dropped object is destroyed at the
 end of the tick it lands in, ledgered to dust. Condition D is
 `max_composition_depth = 0`. All three are settable fields in the section,
