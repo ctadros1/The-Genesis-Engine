@@ -77,6 +77,18 @@ runs inside the existing ones (yield regeneration in `environment`, the
 object index in `spatial_index`, cues in `sense`, `artifact_phase` at the
 end of `apply`, death drops, carcass objects and decay in `lifecycle`), so
 `TickPhase::ALL` stays at 9 and benchmark schema 7 is unchanged.*
+
+*As built (2026-09-01): no new named phase for perception/signalling either
+- conspecific cue gathering runs inside `sense`, after the object cues
+(`sense_objects` then `sense_social`); signal emission is its own pass
+inside `apply`, after the artifact pass (`artifact_phase` then
+`social_emit_phase`), so an object consumed this tick is already reflected
+when emission is charged; and the field commit - decay-then-add of the
+signal field, alongside the one-tick cue records - runs in `finalize`
+(`commit_social`). `sense` always reads the committed field from the prior
+tick (Rule 4's one-tick lag), never this tick's own emission. With
+`social.enabled` false, `sense_social`, `social_emit_phase`, and
+`commit_social` each return immediately and no fixture moves.*
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

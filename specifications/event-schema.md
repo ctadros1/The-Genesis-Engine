@@ -80,7 +80,8 @@ events carry tick and typed payload only.
 
 `EVENT_SCHEMA_VERSION` reached 3 with Phase 7, **4 with Phase 9's
 `StructuralMutationRejected`**, 5 with Phase 11's `PlasticityFault` (tag
-13), and **6 with Phase 12's artifact half** (tags 14-23, below). Earlier payloads are unchanged at every
+13), **6 with Phase 12's artifact half** (tags 14-23), and **7 with
+Phase 13's social channel** (tags 24-25, below). Earlier payloads are unchanged at every
 step; each increment is additive. A reader that encounters an unknown
 event type fails closed rather than skipping it, because a silently skipped
 event would corrupt any analysis that counts rates.
@@ -103,8 +104,8 @@ New bounded payloads, grouped by the phase that adds them:
 | 9 | `StructuralMutation` | child, operator class, locus count affected, new homology-ID range |
 | 9 | `StructuralMutationRejected` **(shipped, tag 12, version 4)** | child, operator code, typed reject reason |
 | 11 | `PlasticityFault` | organism, neutralized non-finite count |
-| 13 | `SignalEmitted` | emitter, channel mask, amplitude summary, energy cost |
-| 13 | `PerceptionFault` | organism, neutralized count |
+| 13 | `SignalEmitted` **(shipped, tag 24, version 7)** | emitter, channel mask (4 channels), peak amplitude (Q16, capped at 65,536 - one whole), whole-milli cost charged (non-negative) |
+| 13 | `PerceptionFault` **(shipped, tag 25, version 7)** | organism, neutralized non-finite count |
 | 12 | `ObjectCreated` **(shipped, tag 14, version 6)** | object id, material, `DestroyCause`-style create cause (extracted, fractured, combined, carcass), mass, energy, parent id |
 | 12 | `ObjectDestroyed` **(tag 15)** | object id, `DestroyCause` id (consumed, fractured, combined-into, decayed, disassembled, ephemeral) |
 | 12 | `ObjectPickedUp` **(tag 16)** | object id, holder, cell it was taken from |
