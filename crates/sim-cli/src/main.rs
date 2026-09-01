@@ -122,6 +122,10 @@ fn usage() -> String {
         "  on and founders scripted to strike, pick up, place, drop and combine, so every object mechanism\n",
         "  runs from tick one. It requires --phase2 --genome2 and pins the whole configuration literally;\n",
         "  --artifact-inert and --artifact-ephemeral select the plan's conditions C and B on top of it\n",
+        "  --social builds the Phase 13 social trace on top of the artifact trace: perception, the\n",
+        "  signal field, and a scripted rule-5 plastic edge under condition P; --social-scramble is\n",
+        "  condition D, --social-strict is condition S (rule 5 withheld), --social-corrupt turns on\n",
+        "  the pinned reception corruption\n",
         "run also accepts: --event-log PATH"
     )
     .to_owned()
@@ -143,6 +147,10 @@ struct Options {
     artifact: bool,
     artifact_inert: bool,
     artifact_ephemeral: bool,
+    social: bool,
+    social_scramble: bool,
+    social_strict: bool,
+    social_corrupt: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -208,6 +216,26 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--artifact-ephemeral" {
             options.artifact_ephemeral = true;
+            index += 1;
+            continue;
+        }
+        if name == "--social" {
+            options.social = true;
+            index += 1;
+            continue;
+        }
+        if name == "--social-scramble" {
+            options.social_scramble = true;
+            index += 1;
+            continue;
+        }
+        if name == "--social-strict" {
+            options.social_strict = true;
+            index += 1;
+            continue;
+        }
+        if name == "--social-corrupt" {
+            options.social_corrupt = true;
             index += 1;
             continue;
         }
@@ -366,6 +394,15 @@ fn build_world(options: &Options) -> Result<World, String> {
     if options.plasticity {
         return plasticity_trace_world(options);
     }
+    if options.social {
+        return social_trace_world(options);
+    }
+    if options.social_scramble || options.social_strict || options.social_corrupt {
+        return Err(format!(
+            "--social-scramble, --social-strict and --social-corrupt require --social\n{}",
+            usage()
+        ));
+    }
     if options.artifact {
         return artifact_trace_world(options);
     }
@@ -494,7 +531,10 @@ fn artifact_trace_config(seed: u64, inert: bool, ephemeral: bool) -> SimConfig {
 /// children through the ordinary meiosis, and `bind` adds to them.
 fn artifact_trace_world(options: &Options) -> Result<World, String> {
     if !options.genome2 || !options.phase2 {
-        return Err(format!("--artifact requires --phase2 --genome2\n{}", usage()));
+        return Err(format!(
+            "--artifact requires --phase2 --genome2\n{}",
+            usage()
+        ));
     }
     let config = artifact_trace_config(
         options.seed.unwrap_or(DEFAULT_SEED),
@@ -511,8 +551,16 @@ fn artifact_trace_world(options: &Options) -> Result<World, String> {
         .ok_or_else(|| "the trace world is not schema 2".to_owned())?;
     const SCRIPTS: [&[u16]; 4] = [
         &[sim_core::CHANNEL_STRIKE],
-        &[sim_core::CHANNEL_STRIKE, sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_PLACE],
-        &[sim_core::CHANNEL_STRIKE, sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_COMBINE],
+        &[
+            sim_core::CHANNEL_STRIKE,
+            sim_core::CHANNEL_PICK_UP,
+            sim_core::CHANNEL_PLACE,
+        ],
+        &[
+            sim_core::CHANNEL_STRIKE,
+            sim_core::CHANNEL_PICK_UP,
+            sim_core::CHANNEL_COMBINE,
+        ],
         &[sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_DROP],
     ];
     for (index, encoded) in schema2.genomes.iter_mut().enumerate() {
@@ -555,6 +603,181 @@ fn artifact_trace_world(options: &Options) -> Result<World, String> {
             schema2.activation_values[index].push(0.0);
             schema2.activation_prior[index].push(0.0);
         }
+    }
+    World::from_state(state).map_err(|error| format!("scripted founders do not restore: {error}"))
+}
+
+// --- the Phase 13 social trace ----------------------------------------------
+
+/// The Phase 13 social fixture's configuration, pinned literally: the Phase
+/// 12 artifact trace's world (so every object mechanism keeps running) plus
+/// the social section and a plasticity section for the scripted rule-5 edge.
+///
+/// The chain (`live_rule_zero`) is deliberately **off**: under chain-and-
+/// observational the live rule space renumbers (a stored 4 names rule 5),
+/// and a fixture should pin the arithmetic in the base id space where the
+/// scripted allele's stored value and its expressed rule coincide. The
+/// campaign pairs the chain with the phase's arms; the fixture pins the
+/// mechanism.
+fn social_trace_config(seed: u64, scramble: bool, strict: bool, corrupt: bool) -> SimConfig {
+    let mut config = artifact_trace_config(seed, false, false);
+    let social = &mut config.social;
+    social.enabled = true;
+    social.perception_enabled = true;
+    social.signal_enabled = true;
+    social.scramble_delivery = scramble;
+    social.observational_enabled = !strict;
+    social.perception_k = 4;
+    social.perception_radius_m = 8;
+    social.signal_channels = 4;
+    social.signal_base_range_m = 4;
+    // A tenth-scale cost for the same reason the artifact trace's action
+    // costs are: scripted founders emit every tick, and a fixture whose
+    // population starves into an empty world is a control (trap 1).
+    social.signal_cost_milli = 2;
+    social.signal_retain_q16 = 49_152;
+    social.signal_corruption_q16 = if corrupt { 8_192 } else { 0 };
+    let plasticity = &mut config.plasticity;
+    plasticity.enabled = true;
+    plasticity.max_plastic_edges = 8;
+    plasticity.plastic_edge_cost_milli_per_s = 0;
+    config
+}
+
+/// The artifact trace's scripted founders, plus one always-on signal
+/// emission per founder and one plastic rule-5 edge feeding a hidden node
+/// nothing reads - so emission, reception, the field, and the observational
+/// rule all run from tick one, and the artifact scripts keep running
+/// underneath.
+fn social_trace_world(options: &Options) -> Result<World, String> {
+    if !options.genome2 || !options.phase2 {
+        return Err(format!("--social requires --phase2 --genome2\n{}", usage()));
+    }
+    let config = social_trace_config(
+        options.seed.unwrap_or(DEFAULT_SEED),
+        options.social_scramble,
+        options.social_strict,
+        options.social_corrupt,
+    );
+    config.validate().map_err(|error| error.to_string())?;
+    let world = World::new(config).map_err(|error| error.to_string())?;
+    let mut state = world.export_state();
+    let caps = state.config.genome2.caps;
+    let schema2 = state
+        .schema2
+        .as_mut()
+        .ok_or_else(|| "the trace world is not schema 2".to_owned())?;
+    const SCRIPTS: [&[u16]; 4] = [
+        &[sim_core::CHANNEL_STRIKE],
+        &[
+            sim_core::CHANNEL_STRIKE,
+            sim_core::CHANNEL_PICK_UP,
+            sim_core::CHANNEL_PLACE,
+        ],
+        &[
+            sim_core::CHANNEL_STRIKE,
+            sim_core::CHANNEL_PICK_UP,
+            sim_core::CHANNEL_COMBINE,
+        ],
+        &[sim_core::CHANNEL_PICK_UP, sim_core::CHANNEL_DROP],
+    ];
+    const RULE5_NODE: u32 = sim_core::STRUCTURAL_HOMOLOGY_BASE + 8_000;
+    const RULE5_EDGE: u32 = sim_core::STRUCTURAL_HOMOLOGY_BASE + 9_000;
+    const FOUNDER_INPUT: u32 = sim_core::STRUCTURAL_HOMOLOGY_BASE + 1_000;
+    let mut learn_rows = Vec::new();
+    for (index, encoded) in schema2.genomes.iter_mut().enumerate() {
+        let mut genome = sim_core::Genome2::decode(encoded, &caps)
+            .map_err(|error| format!("founder genome does not decode: {error}"))?;
+        let script = SCRIPTS[index % SCRIPTS.len()];
+        let mut extra_nodes = 0_usize;
+        for (salt, &channel) in script
+            .iter()
+            .chain(std::iter::once(&sim_core::CHANNEL_SIGNAL_EMIT_BASE))
+            .enumerate()
+        {
+            let node_id = sim_core::STRUCTURAL_HOMOLOGY_BASE + 50_000 + salt as u32 * 10;
+            for haplotype in &mut genome.haplotypes {
+                let chromosome = &mut haplotype.chromosomes[0];
+                chromosome.push(sim_core::Locus {
+                    homology_id: node_id,
+                    gene_lineage_id: u64::from(node_id),
+                    mutation_event_id: 0,
+                    kind: LocusKind::Node {
+                        role: sim_core::NodeRole::Output,
+                        activation_id: sim_core::Activation::TanhApprox.id(),
+                        bias: 8.0,
+                        time_constant: 0,
+                    },
+                });
+                chromosome.push(sim_core::Locus {
+                    homology_id: node_id + 1,
+                    gene_lineage_id: u64::from(node_id + 1),
+                    mutation_event_id: 0,
+                    kind: LocusKind::IoBinding {
+                        node: node_id,
+                        channel_id: channel,
+                        gain: 1.0,
+                    },
+                });
+                chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+            }
+            extra_nodes += 1;
+        }
+        // The rule-5 edge: plastic, observational, feeding a hidden node
+        // nothing reads, so the rule runs without touching behaviour.
+        for haplotype in &mut genome.haplotypes {
+            let chromosome = &mut haplotype.chromosomes[0];
+            chromosome.push(sim_core::Locus {
+                homology_id: RULE5_NODE,
+                gene_lineage_id: u64::from(RULE5_NODE),
+                mutation_event_id: 0,
+                kind: LocusKind::Node {
+                    role: sim_core::NodeRole::Hidden,
+                    activation_id: sim_core::Activation::TanhApprox.id(),
+                    bias: 0.0,
+                    time_constant: 0,
+                },
+            });
+            chromosome.push(sim_core::Locus {
+                homology_id: RULE5_EDGE,
+                gene_lineage_id: u64::from(RULE5_EDGE),
+                mutation_event_id: 0,
+                kind: LocusKind::Edge {
+                    source: FOUNDER_INPUT,
+                    target: RULE5_NODE,
+                    weight: 1.0,
+                    flags: sim_core::EDGE_FLAG_PLASTIC,
+                    plasticity: sim_core::PlasticityGenes {
+                        rule_id: sim_core::RULE_OBSERVATIONAL,
+                        eta: 0.5,
+                        // c*y + d beside the social terms, so the edge
+                        // learns whenever the rule runs and the P-versus-S
+                        // difference is the gate itself.
+                        coefficients: [1.0, 1.0, 1.0, 0.1],
+                        decay: 0.0,
+                        modulator_node: 0,
+                    },
+                },
+            });
+            chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+        }
+        extra_nodes += 1;
+        genome
+            .validate_structure(&caps)
+            .map_err(|error| format!("scripted founder does not validate: {error}"))?;
+        *encoded = genome.encode();
+        learn_rows.push(vec![sim_core::LearnedEdgeSave {
+            edge_homology_id: RULE5_EDGE,
+            learned_q16: 0,
+            trace_q16: 0,
+        }]);
+        for _ in 0..extra_nodes {
+            schema2.activation_values[index].push(0.0);
+            schema2.activation_prior[index].push(0.0);
+        }
+    }
+    if let Some(learn) = state.learn.as_mut() {
+        learn.edges = learn_rows;
     }
     World::from_state(state).map_err(|error| format!("scripted founders do not restore: {error}"))
 }
@@ -1659,10 +1882,12 @@ fn command_artifact(options: Options) -> Result<(), String> {
         .treatment
         .clone()
         .ok_or_else(|| format!("artifact requires --treatment\n{}", usage()))?;
-    let control = options
-        .baseline
-        .clone()
-        .ok_or_else(|| format!("artifact requires --control (given as --baseline)\n{}", usage()))?;
+    let control = options.baseline.clone().ok_or_else(|| {
+        format!(
+            "artifact requires --control (given as --baseline)\n{}",
+            usage()
+        )
+    })?;
     let disabled = options
         .disabled
         .clone()
@@ -1671,7 +1896,12 @@ fn command_artifact(options: Options) -> Result<(), String> {
     let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
     let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
     for name in [&treatment, &control, &disabled] {
-        if !manifest.campaign.conditions.iter().any(|condition| condition.name == *name) {
+        if !manifest
+            .campaign
+            .conditions
+            .iter()
+            .any(|condition| condition.name == *name)
+        {
             return Err(format!("no condition named '{name}' in this campaign"));
         }
     }
@@ -1707,7 +1937,9 @@ fn command_artifact(options: Options) -> Result<(), String> {
                 .as_ref()
                 .ok_or_else(|| format!("{stem}: the snapshot carries no object table"))?;
             if table.exposure_ticks.len() != state.ids.len() {
-                return Err(format!("{stem}: object observation rows do not match the population"));
+                return Err(format!(
+                    "{stem}: object observation rows do not match the population"
+                ));
             }
             let living: Vec<sim_analysis::LivingOrganism> = state
                 .ids
@@ -1757,7 +1989,10 @@ fn command_artifact(options: Options) -> Result<(), String> {
         }
     }
     let report = sim_analysis::decide_artifact(&plan, worlds, &treatment, &control, &disabled);
-    print!("{}", sim_analysis::render_artifact(&manifest.campaign.id, &report));
+    print!(
+        "{}",
+        sim_analysis::render_artifact(&manifest.campaign.id, &report)
+    );
     Ok(())
 }
 
@@ -2245,7 +2480,81 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if let Some(objects) = world.object_table() {
+    if let Some(social) = world.social_counters() {
+        // Fixture schema 9: the Phase 13 social trace. A separate schema on
+        // the grounds every earlier one was separated: a social world
+        // perceives and signals, and a reader that parsed it as a Phase 12
+        // fixture would be comparing an ecology with a channel to one
+        // without. Every mechanism the phase added has a field, so the
+        // fixture cannot silently become a control (trap 1):
+        // `verify-phase13-determinism.sh` refuses the load-bearing ones at
+        // zero. The artifact trace keeps running underneath, and its own
+        // non-vacuity fields ride along so the composed trace cannot lose
+        // its substrate unnoticed.
+        let table = world.social_table().expect("a social world has a table");
+        let field_nonzero_cells = table
+            .committed_field_q16
+            .iter()
+            .filter(|&&value| value > 0)
+            .count();
+        let contact_committed = table.prior_contact.iter().filter(|&&flag| flag).count();
+        let objects = world
+            .object_table()
+            .expect("a social world is an artifact world");
+        let counters = objects.counters;
+        let mutation = world
+            .mutation_counters()
+            .expect("a social world is a genome2 world");
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":9,\"phase\":\"phase13\",",
+                "\"behavior_policy\":\"{}\",\"genome2_policy\":\"{}\",",
+                "\"social_policy\":\"{}\",\"artifact_policy\":\"{}\",",
+                "\"plasticity_policy\":\"{}\",\"channel_registry\":{},",
+                "\"rule_registry\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"births_total\":{},\"binding_applied\":{},",
+                "\"signals_emitted\":{},\"signal_cost_milli\":{},",
+                "\"corruption_draws\":{},\"scrambled_deliveries\":{},",
+                "\"rule5_updates\":{},\"perception_faults\":{},",
+                "\"field_nonzero_cells\":{},\"contact_committed\":{},",
+                "\"struck_terrain\":{},\"picked_up\":{},",
+                "\"consumed_events\":{},\"created_carcass\":{},",
+                "\"controller_faults_total\":{}}}"
+            ),
+            PHASE2_BEHAVIOR_POLICY_VERSION,
+            GENOME2_POLICY_VERSION,
+            sim_core::SOCIAL_POLICY_VERSION,
+            sim_core::ARTIFACT_POLICY_VERSION,
+            sim_core::PLASTICITY_POLICY_VERSION,
+            world.config().channel_registry_version(),
+            world.config().plasticity_rule_registry_version(),
+            world.config().initial_organisms,
+            ticks,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.births_total,
+            mutation.binding_applied,
+            social.signals_emitted_total,
+            social.signal_cost_milli_total,
+            social.corruption_draws_total,
+            social.scrambled_deliveries_total,
+            social.rule5_updates_total,
+            social.perception_faults_total,
+            field_nonzero_cells,
+            contact_committed,
+            counters.struck_terrain,
+            counters.picked_up,
+            counters.consumed_events,
+            counters.created_carcass,
+            metrics.controller_faults_total
+        );
+    } else if let Some(objects) = world.object_table() {
         // Fixture schema 8: the Phase 12 artifact trace. A separate schema,
         // on the grounds every earlier one was separated: an artifact world
         // has objects in it, and a reader that parsed it as a Phase 9
