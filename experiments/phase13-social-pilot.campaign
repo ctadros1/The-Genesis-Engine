@@ -1,0 +1,136 @@
+# Phase 13 Stage B pilot. NOT the confirmatory campaign, and decides no
+# criterion: its seeds (13901..13908) are disjoint from every confirmatory
+# range used or planned, and nothing measured here may be read against a
+# C13 bar (ADR-0022 A7; the staged discipline is methodology review 6.1 as
+# recorded in ADR-0029's campaign notes).
+#
+# What this pilot exists to lock, before the confirmatory document is
+# written:
+#
+#   1. Wall-clock per world at the Phase 12 population tier with the
+#      social section on. The Phase 13 benchmark measured the sense scan
+#      at +41-45% of tick at 750 organisms with nothing bound
+#      (experiments/results/phase13-benchmark-measurements.txt); these
+#      worlds reach ~2,000 organisms, and whether 30 seeds x 7 arms x
+#      60,000 ticks is affordable is a measurement, not an estimate
+#      (D-121: campaign worlds are single-threaded by rule).
+#   2. Naive-cohort sizes per relocation window, from `lifesim social
+#      --epoch N` over the pilot manifest: C13.1's power depends on how
+#      many naive individuals a 2,000-tick window actually produces, and
+#      D-106's lesson is that a pre-registered N without a measured
+#      per-world cohort size is a guess wearing a number.
+#   3. Reachability drift: whether binding mutation at the Phase 12 rate
+#      (binding_q16 16384) puts any hearers/speakers/rule-5 carriers in
+#      the population within 60,000 ticks. A confirmatory C13.1 null with
+#      zero social bindings everywhere is a reachability null, and if the
+#      pilot already shows empty censuses the confirmatory must either
+#      raise the horizon or say up front what its null can and cannot
+#      mean (D-117 against D-099).
+#   4. Which relocation epochs are analyzable: cohort and census both, so
+#      the confirmatory can name its epochs in advance instead of
+#      choosing them after seeing data.
+#
+# Environment: the Phase 12 confirmatory base carried unchanged, plus the
+# Phase 11 relocating patch (interval 2,000, radius 32, capacity scale
+# 4x - the variable environment C11.1 used, which is what gives C13.1 its
+# patch P and its arrival clock), plus the Phase 11 plasticity block with
+# the chain gate ON (`plasticity.live_rule_zero true`, citing D-120: the
+# chain meets its reachability bar 10/12 and the moat fails 4/12), plus
+# the social section. Arms A and C only - the primary C13.1 contrast; the
+# full B/D/S ladder belongs to the confirmatory. C differs from A in
+# exactly its named variables (perception_enabled, signal_enabled), the
+# D-118 lesson applied in advance: both arms carry observational_enabled
+# so the gate itself is common-mode, and with perception off rule 5's cue
+# reads zero through the mechanism's own path rather than through a
+# second flag.
+#
+# Outputs mirror what the confirmatory will write (events, snapshots,
+# spatial 50 for the arrival series, actions 500 for the fidelity work),
+# so the pilot's wall-clock includes the instrumentation it is sizing.
+
+campaign phase13-social-pilot
+ticks 60000
+workers 8
+seeds 13901..13908
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.mutation.binding_q16 16384
+base genome2.mutation.plasticity_enabled true
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base contest.enabled true
+base probe.enabled true
+base probe.action_census_enabled true
+base probe.marker_locus_enabled true
+base plasticity.enabled true
+base plasticity.max_plastic_edges 32
+base plasticity.plastic_edge_cost_milli_per_s 2
+base plasticity.lamarckian_fraction_q16 0
+base plasticity.live_rule_zero true
+base worldmod.enabled true
+base worldmod.patch_enabled true
+base worldmod.relocate_interval_ticks 2000
+base worldmod.patch_radius_cells 32
+base worldmod.patch_capacity_scale_q16 262144
+base worldmod.max_capacity_overrides 8192
+base worldmod.max_material_overrides 8192
+base artifact.enabled true
+base artifact.max_objects 4096
+base artifact.max_objects_per_cell 8
+base artifact.max_composition_depth 4
+base artifact.max_composition_breadth 8
+base artifact.max_held_objects 1
+base artifact.max_candidates 8
+base artifact.carry_capacity_milli 4000
+base artifact.carry_move_cost_q16 65536
+base artifact.hold_cost_milli_per_s 20
+base artifact.action_cost_milli 60
+base artifact.strike_cost_milli 120
+base artifact.action_threshold_q16 32768
+base artifact.reach_m 2
+base artifact.consume_reach_m 2
+base artifact.perception_range_m 8
+base artifact.strike_force_q16 262144
+base artifact.strike_mass_reference_milli 2000
+base artifact.fracture_margin_q16 65536
+base artifact.max_fragments 4
+base artifact.min_fragment_mass_milli 100
+base artifact.joint_floor_q16 16384
+base artifact.blocking_mass_milli 3000
+base artifact.terrain_yield_milli 6000
+base artifact.extraction_milli 800
+base artifact.yield_regen_milli 400
+base artifact.yield_regen_interval_ticks 600
+base artifact.stone_relative_q16 39322
+base artifact.wood_relative_q16 16384
+base social.enabled true
+base social.observational_enabled true
+condition A
+condition C
+set A social.perception_enabled true
+set A social.signal_enabled true
+set C social.perception_enabled false
+set C social.signal_enabled false
+vary social.perception_enabled
+vary social.signal_enabled
+output events on
+output snapshots on
+output actions 500
+output spatial 50
