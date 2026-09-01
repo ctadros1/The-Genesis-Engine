@@ -264,6 +264,11 @@ const SECTION_ACTION_CENSUS: u16 = 14;
 /// the counters' thirty `u64` words. Every declared count is bounded by
 /// `allocation_fits` before its allocation (D-075).
 const SECTION_OBJECTS: u16 = 15;
+/// Phase 13 social state (ADR-0029 section 6): the committed signal field,
+/// the per-organism one-tick cue records, the emission cost remainders, and
+/// the social counters. Guarded on `FORMAT_VERSION_8` by name, permanently
+/// (D-108).
+const SECTION_SOCIAL: u16 = 16;
 /// Bytes one object's fixed fields occupy: the bound a declared object count
 /// implies before any composition list is read.
 const OBJECT_FIXED_BYTES: u64 =
@@ -1601,7 +1606,102 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
     if let Some(objects) = state.objects.as_ref() {
         write_section(&mut payload, SECTION_OBJECTS, 0, encode_objects(objects));
     }
+    if let Some(social) = state.social.as_ref() {
+        write_section(&mut payload, SECTION_SOCIAL, 0, encode_social(social));
+    }
     payload
+}
+
+/// Encode the social table. Exhaustive destructuring with no `..` (D-077):
+/// every field here is hashed into the state checksum, so a field dropped on
+/// save makes a restored world's checksum differ with nothing to point at.
+fn encode_social(table: &sim_core::SocialTable) -> Vec<u8> {
+    let mut section = Writer(Vec::new());
+    let sim_core::SocialTable {
+        committed_field_q16,
+        prior_contact,
+        prior_object_delta_q16,
+        emission_remainder_milli,
+        counters,
+    } = table;
+    section.u64(committed_field_q16.len() as u64);
+    for &value in committed_field_q16 {
+        section.i32(value);
+    }
+    section.u64(prior_contact.len() as u64);
+    for &value in prior_contact {
+        section.u8(u8::from(value));
+    }
+    for &value in prior_object_delta_q16 {
+        section.i32(value);
+    }
+    for &value in emission_remainder_milli {
+        section.i64(value);
+    }
+    let sim_core::SocialCounters {
+        signals_emitted_total,
+        signal_cost_milli_total,
+        perception_faults_total,
+        corruption_draws_total,
+        scrambled_deliveries_total,
+        rule5_updates_total,
+    } = *counters;
+    section.u64(signals_emitted_total);
+    section.u64(signal_cost_milli_total);
+    section.u64(perception_faults_total);
+    section.u64(corruption_draws_total);
+    section.u64(scrambled_deliveries_total);
+    section.u64(rule5_updates_total);
+    section.0
+}
+
+fn decode_social(reader: &mut Reader) -> Result<sim_core::SocialTable, CodecError> {
+    let field_len = reader.u64()?;
+    // Four bytes per field value; the bound is a floor on what the body must
+    // hold, never a guess at what it does hold (D-075, D-091).
+    if !allocation_fits(field_len, 4, 0, reader.remaining()) {
+        return Err(CodecError::ValueOutOfRange("social field count"));
+    }
+    let mut committed_field_q16 = Vec::with_capacity(field_len as usize);
+    for _ in 0..field_len {
+        committed_field_q16.push(reader.i32()?);
+    }
+    let population = reader.u64()?;
+    // One contact byte, one delta word, one remainder word per organism.
+    if !allocation_fits(population, 1 + 4 + 8, 0, reader.remaining()) {
+        return Err(CodecError::ValueOutOfRange("social organism count"));
+    }
+    let mut prior_contact = Vec::with_capacity(population as usize);
+    for _ in 0..population {
+        let value = reader.u8()?;
+        if value > 1 {
+            return Err(CodecError::ValueOutOfRange("social contact flag"));
+        }
+        prior_contact.push(value != 0);
+    }
+    let mut prior_object_delta_q16 = Vec::with_capacity(population as usize);
+    for _ in 0..population {
+        prior_object_delta_q16.push(reader.i32()?);
+    }
+    let mut emission_remainder_milli = Vec::with_capacity(population as usize);
+    for _ in 0..population {
+        emission_remainder_milli.push(reader.i64()?);
+    }
+    let counters = sim_core::SocialCounters {
+        signals_emitted_total: reader.u64()?,
+        signal_cost_milli_total: reader.u64()?,
+        perception_faults_total: reader.u64()?,
+        corruption_draws_total: reader.u64()?,
+        scrambled_deliveries_total: reader.u64()?,
+        rule5_updates_total: reader.u64()?,
+    };
+    Ok(sim_core::SocialTable {
+        committed_field_q16,
+        prior_contact,
+        prior_object_delta_q16,
+        emission_remainder_milli,
+        counters,
+    })
 }
 
 /// Encode the object table. Reads every field through `ObjectTable::record`,
@@ -1956,6 +2056,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut worldmod: Option<TerrainModState> = None;
     let mut action_census: Option<sim_core::ActionCensusSaveState> = None;
     let mut objects: Option<sim_core::ObjectTable> = None;
+    let mut social: Option<sim_core::SocialTable> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -2518,6 +2619,17 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 }
                 objects = Some(decode_objects(&mut reader)?);
             }
+            SECTION_SOCIAL => {
+                // `FORMAT_VERSION_8` by name: the format that introduced the
+                // section, permanently (D-108).
+                if format < FORMAT_VERSION_8 {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if social.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                social = Some(decode_social(&mut reader)?);
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -2545,6 +2657,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         worldmod,
         action_census,
         objects,
+        social,
         ids,
         x_fp,
         y_fp,
@@ -2805,6 +2918,12 @@ fn refuse_format8_state(state: &SaveState, format: u16) -> Result<(), CodecError
     if state.config.social != sim_core::SocialConfig::social_default() {
         return Err(CodecError::FieldNotInFormat {
             field: "social",
+            format,
+        });
+    }
+    if state.social.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_SOCIAL,
             format,
         });
     }

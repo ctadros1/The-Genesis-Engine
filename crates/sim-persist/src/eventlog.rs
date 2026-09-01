@@ -93,6 +93,10 @@ const TAG_OBJECT_COMBINED: u8 = 20;
 const TAG_OBJECT_CONSUMED: u8 = 21;
 const TAG_OBJECT_ACTION_REFUSED: u8 = 22;
 const TAG_OBJECT_EXPOSURE: u8 = 23;
+// Phase 13 social channel (event schema 7, ADR-0029). Appended, never
+// renumbered.
+const TAG_SIGNAL_EMITTED: u8 = 24;
+const TAG_PERCEPTION_FAULT: u8 = 25;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -212,6 +216,11 @@ pub struct ReconstructedCounters {
     pub object_refusals_total: u64,
     /// `ObjectExposure` records seen: one per death in an artifact world.
     pub object_exposure_records: u64,
+    /// `SignalEmitted` events seen (Phase 13): one per emitting organism
+    /// per tick, reconciled against `SocialCounters::signals_emitted_total`.
+    pub signals_emitted_total: u64,
+    /// `PerceptionFault` faults seen (Phase 13), summed over events.
+    pub perception_faults_total: u64,
 }
 
 impl ReconstructedCounters {
@@ -275,12 +284,18 @@ impl ReconstructedCounters {
                 self.plasticity_faults_total += u64::from(faults);
             }
             EventKind::ObjectCreated { cause, .. } => {
-                if let Some(slot) = self.objects_created_by_cause.get_mut(usize::from(cause.saturating_sub(1))) {
+                if let Some(slot) = self
+                    .objects_created_by_cause
+                    .get_mut(usize::from(cause.saturating_sub(1)))
+                {
                     *slot += 1;
                 }
             }
             EventKind::ObjectDestroyed { cause, .. } => {
-                if let Some(slot) = self.objects_destroyed_by_cause.get_mut(usize::from(cause.saturating_sub(1))) {
+                if let Some(slot) = self
+                    .objects_destroyed_by_cause
+                    .get_mut(usize::from(cause.saturating_sub(1)))
+                {
                     *slot += 1;
                 }
             }
@@ -307,11 +322,18 @@ impl ReconstructedCounters {
             EventKind::ObjectConsumed { .. } => self.objects_consumed_total += 1,
             EventKind::ObjectActionRefused { reason, .. } => {
                 self.object_refusals_total += 1;
-                if let Some(slot) = self.object_refusals_by_reason.get_mut(usize::from(reason.saturating_sub(1))) {
+                if let Some(slot) = self
+                    .object_refusals_by_reason
+                    .get_mut(usize::from(reason.saturating_sub(1)))
+                {
                     *slot += 1;
                 }
             }
             EventKind::ObjectExposure { .. } => self.object_exposure_records += 1,
+            EventKind::SignalEmitted { .. } => self.signals_emitted_total += 1,
+            EventKind::PerceptionFault { faults, .. } => {
+                self.perception_faults_total += u64::from(faults);
+            }
         }
     }
 }
@@ -751,6 +773,23 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&age_ticks.to_le_bytes());
             out.push(birth_band);
         }
+        EventKind::SignalEmitted {
+            id,
+            channel_mask,
+            peak_amplitude_q16,
+            cost_milli,
+        } => {
+            out.push(TAG_SIGNAL_EMITTED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.push(channel_mask);
+            out.extend_from_slice(&peak_amplitude_q16.to_le_bytes());
+            out.extend_from_slice(&cost_milli.to_le_bytes());
+        }
+        EventKind::PerceptionFault { id, faults } => {
+            out.push(TAG_PERCEPTION_FAULT);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&faults.to_le_bytes());
+        }
     }
 }
 
@@ -1123,6 +1162,34 @@ fn decode_events_into(
                     age_ticks,
                     birth_band,
                 }
+            }
+            TAG_SIGNAL_EMITTED => {
+                let id = short!(cursor.u64());
+                let channel_mask = short!(cursor.u8());
+                let peak_amplitude_q16 = short!(cursor.u32());
+                let cost_milli = short!(cursor.i64());
+                // Four channels exist; a mask naming a fifth is corruption,
+                // and an amplitude above one whole is not an amplitude.
+                if channel_mask >= 1 << 4 {
+                    return Err(EventLogError::ValueOutOfRange("signal channel mask"));
+                }
+                if peak_amplitude_q16 > 65_536 {
+                    return Err(EventLogError::ValueOutOfRange("signal amplitude"));
+                }
+                if cost_milli < 0 {
+                    return Err(EventLogError::ValueOutOfRange("signal cost"));
+                }
+                EventKind::SignalEmitted {
+                    id,
+                    channel_mask,
+                    peak_amplitude_q16,
+                    cost_milli,
+                }
+            }
+            TAG_PERCEPTION_FAULT => {
+                let id = short!(cursor.u64());
+                let faults = short!(cursor.u32());
+                EventKind::PerceptionFault { id, faults }
             }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.
@@ -1504,6 +1571,22 @@ mod tests {
                     reason: RejectReason::HomologyCollision,
                 },
             },
+            // Phase 13 (event schema 7): the two social tags, with the mask
+            // at its legal maximum so the decoder's bound is exercised from
+            // inside rather than only refused from outside.
+            Event {
+                tick,
+                kind: EventKind::SignalEmitted {
+                    id: 24,
+                    channel_mask: 0b1111,
+                    peak_amplitude_q16: 65_536,
+                    cost_milli: 7,
+                },
+            },
+            Event {
+                tick,
+                kind: EventKind::PerceptionFault { id: 25, faults: 2 },
+            },
         ]
     }
 
@@ -1520,7 +1603,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 30);
+        assert_eq!(scan.events, 36);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());
@@ -1555,6 +1638,10 @@ mod tests {
                 [usize::from(RejectReason::Inapplicable.code() - 1)],
             3
         );
+        // Phase 13 (event schema 7): one emission and one two-fault record
+        // per tick.
+        assert_eq!(scan.counters.signals_emitted_total, 3);
+        assert_eq!(scan.counters.perception_faults_total, 6);
         assert_eq!(
             scan.counters.structural_rejections_by_reason
                 [usize::from(RejectReason::Invalid.code() - 1)],

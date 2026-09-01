@@ -51,15 +51,26 @@ pub enum RngSystem {
     /// Extraction yield variance on a terrain strike (Phase 12 artifact
     /// half): subject the cell index, draw 0.
     MaterialYield = 14,
+    /// Signal-channel draws (Phase 13, ADR-0029): reception corruption,
+    /// keyed on the receiver with draw index = channel (0..=3); and the
+    /// condition-D scrambled-delivery receiver, keyed on the emitter with
+    /// draw index 16, disjoint from the corruption indices because one
+    /// organism can be both subject kinds in one tick.
+    Signal = 11,
+    /// Perception draws (Phase 13). Allocated and **unused** under the
+    /// shipped policy: neighbour slots are deterministic (distance, id)
+    /// truncations and rule 5 reads slot 0. The stream exists so a later
+    /// preference gene or salience lottery cannot renumber (ADR-0029
+    /// section 6).
+    Perception = 12,
     /// Terrain modification schedules (Phase 12): today, the relocating
     /// resource patch's centre.
     ///
-    /// **11 and 12 are skipped.** 13 and 14 were reserved for the artifact
-    /// half before this stream was allocated, so it took 15 rather than the
-    /// next free value; the artifact half has since taken them. Stream
-    /// numbers are permanent - renumbering one silently changes every world
-    /// that draws on it. 11 and 12 are left free deliberately, as spare
-    /// capacity between the organism streams and the world streams.
+    /// 13 and 14 were reserved for the artifact half before this stream was
+    /// allocated, so it took 15 rather than the next free value; the
+    /// artifact half has since taken them, and Phase 13 took the 11 and 12
+    /// that were held as spare capacity. Stream numbers are permanent -
+    /// renumbering one silently changes every world that draws on it.
     ///
     /// Keyed on the *epoch* (`tick / relocate_interval_ticks`) as the
     /// subject, not on a cell or an organism, which is what makes the patch a

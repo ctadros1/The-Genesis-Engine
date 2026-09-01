@@ -258,6 +258,13 @@ pub struct SaveState {
     /// field out of. Untrusted until `from_state` has run
     /// `ObjectTable::violation` over it.
     pub objects: Option<crate::artifact::ObjectTable>,
+    /// Phase 13 social table. Present exactly when the config's social
+    /// section is enabled. The live logical type, on the terms `objects`
+    /// is: `SocialTable` carries nothing derived (the caches live on
+    /// `SocialState`, outside it), so there is no conversion to leave a
+    /// field out of. Untrusted until `from_state` has run
+    /// `SocialTable::violation` over it.
+    pub social: Option<crate::social::SocialTable>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -441,6 +448,7 @@ impl World {
                     counters: census.counters,
                 }),
             objects: self.object_state().map(|objects| objects.table.clone()),
+            social: self.social_state().map(|social| social.table.clone()),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -954,6 +962,32 @@ impl World {
             }
         };
 
+        // Phase 13 social state. Presence must match the configuration; the
+        // table is checked structurally *here*, by name, before it reaches a
+        // world, so a reader is told "the field length is wrong" rather than
+        // being sent to the state checksum. The caches are rebuilt from it.
+        let rebuilt_social = match (world.config().social.enabled, state.social) {
+            (true, Some(table)) => {
+                let config = world.config();
+                if let Some(violation) = table.violation(
+                    (config.cells_x as usize) * (config.cells_y as usize),
+                    config.social.signal_channels,
+                    population,
+                ) {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "social table: {violation}"
+                    )));
+                }
+                Some(crate::social::SocialState::from_table(table))
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "social section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -989,6 +1023,7 @@ impl World {
             rebuilt_worldmod,
             rebuilt_census,
             rebuilt_objects,
+            rebuilt_social,
         );
 
         // Step 5 of the restore order in

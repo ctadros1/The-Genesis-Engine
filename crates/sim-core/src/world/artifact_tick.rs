@@ -802,6 +802,11 @@ impl World {
                         destroyed.push(false);
                         objects.table.counters.combined += 1;
                         objects.table.counters.created_combined += 1;
+                        // Phase 13 cues: a successful combination is contact
+                        // and an object-state change the combiner caused,
+                        // sized by the composite's mass.
+                        self.note_contact(index);
+                        self.note_object_delta(index, objects.table.mass_milli[table_index]);
                         self.push_event(
                             next_tick,
                             EventKind::ObjectCombined {
@@ -852,6 +857,8 @@ impl World {
                             None => force_on.push((target, force, self.ids[index])),
                         }
                         objects.table.counters.struck_objects += 1;
+                        // Phase 13 cue: striking an object is contact.
+                        self.note_contact(index);
                         let (striker, target_id) = (self.ids[index], objects.table.ids[target]);
                         self.push_event(
                             next_tick,
@@ -981,6 +988,10 @@ impl World {
                     cause: CAUSE_EXTRACTED,
                 });
                 let striker = self.ids[index];
+                // Phase 13 cues: extraction is contact and an object-state
+                // change the striker caused, sized by the extracted volume.
+                self.note_contact(index);
+                self.note_object_delta(index, volume);
                 self.push_event(
                     next_tick,
                     EventKind::TerrainStruck {
@@ -1061,6 +1072,10 @@ impl World {
             objects.table.ledger.mass_consumed_milli += i128::from(mass_share);
             self.energy_milli[index] += gained;
             self.ledger.assimilated_milli += i128::from(gained);
+            // Phase 13 cues: consuming an object is contact, and the energy
+            // taken is an object-state change the consumer caused.
+            self.note_contact(index);
+            self.note_object_delta(index, raw);
             objects.table.counters.consumed_events += 1;
             let (id, consumer) = (objects.table.ids[target], self.ids[index]);
             self.push_event(

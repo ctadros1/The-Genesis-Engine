@@ -232,6 +232,7 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         schema2,
         learn,
         action_census,
+        social,
     } = state;
 
     per_organism!("ids", ids);
@@ -298,6 +299,22 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         } = physiology;
         per_organism!("physiology.cumulative_hazard_q16", cumulative_hazard_q16);
     }
+    // Phase 13 social state: three per-organism arrays. `None` in this
+    // fixture's world (the section is disabled there); swept anyway so a
+    // future social world cannot skip the inventory, exactly as the empty
+    // phase2 trait arrays are.
+    if let Some(social) = social {
+        let sim_core::SocialTable {
+            committed_field_q16: _, // per cell and channel, not per organism
+            prior_contact,
+            prior_object_delta_q16,
+            emission_remainder_milli,
+            counters: _,
+        } = social;
+        per_organism!("social.prior_contact", prior_contact);
+        per_organism!("social.prior_object_delta_q16", prior_object_delta_q16);
+        per_organism!("social.emission_remainder_milli", emission_remainder_milli);
+    }
     if let Some(schema2) = schema2 {
         let sim_core::Schema2SaveState {
             genomes,
@@ -332,6 +349,23 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
             counters: _,
         } = census;
         per_organism!("action_census.counts", counts);
+    }
+    // Phase 13 social state: three per-organism arrays. `None` in this
+    // fixture's world (the section is disabled there); named and swept
+    // anyway so a future social world cannot skip the inventory, exactly as
+    // the empty phase2 trait arrays are.
+    if let Some(social) = social {
+        let sim_core::SocialTable {
+            // Per cell and channel, not per organism.
+            committed_field_q16: _,
+            prior_contact,
+            prior_object_delta_q16,
+            emission_remainder_milli,
+            counters: _,
+        } = social;
+        per_organism!("social.prior_contact", prior_contact);
+        per_organism!("social.prior_object_delta_q16", prior_object_delta_q16);
+        per_organism!("social.emission_remainder_milli", emission_remainder_milli);
     }
     // `permutation_config` is a **Phase 9** world and leaves plasticity off,
     // so the branch above does not run here and these two arrays contribute
@@ -450,6 +484,7 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         schema2,
         learn,
         action_census,
+        social,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);
@@ -548,6 +583,11 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
             counters: _,
         } = census;
         reorder(counts, order);
+    }
+    if let Some(social) = social.as_mut() {
+        reorder(&mut social.prior_contact, order);
+        reorder(&mut social.prior_object_delta_q16, order);
+        reorder(&mut social.emission_remainder_milli, order);
     }
 }
 

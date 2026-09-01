@@ -161,7 +161,10 @@ pub use schema2::{
     founder_from_traits, founder_with_morphology, outputs_from_requests, with_marker_locus,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
-pub use social::{PERCEPTION_K_MAX, SIGNAL_CHANNELS_MAX, SOCIAL_POLICY_VERSION};
+pub use social::{
+    PERCEPTION_K_MAX, SIGNAL_CHANNELS_MAX, SOCIAL_CUE_COUNT, SOCIAL_DELTA_REFERENCE_MILLI,
+    SOCIAL_POLICY_VERSION, SocialCounters, SocialState, SocialTable,
+};
 pub use structmut::{
     DUPLICATE_SPAN, MutationConfig, MutationCounters, MutationReport, OP_BINDING, OP_DELETION,
     OP_DUPLICATION, OP_INSERTION, OP_POINT, OP_TRANSPOSITION, RejectReason,

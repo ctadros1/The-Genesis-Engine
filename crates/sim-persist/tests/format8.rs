@@ -196,3 +196,49 @@ fn the_format_7_migration_is_byte_identical_to_a_format_7_load() {
         "a migrated world diverged from the world a format 7 load produces"
     );
 }
+
+/// A social world with a live nonzero field, committed cue records, and a
+/// nonzero remainder round-trips through the real format-8 codec: every
+/// section byte, not the logical path `phase13_social.rs` already covers
+/// (D-076: the logical path and the encoded path are different paths).
+#[test]
+fn a_social_world_with_a_live_field_round_trips_through_the_codec() {
+    let mut config = artifact_config(SEED);
+    config.social.enabled = true;
+    config.validate().expect("valid");
+    let mut world = World::new(config).expect("world");
+    for _ in 0..50 {
+        world.step();
+    }
+    let mut state = world.export_state();
+    // The founders bind nothing social, so make the section carry every
+    // field class by hand: a live field value, a contact flag, a delta, a
+    // remainder, and counters - injected through the same save path the
+    // sim-core scenarios use, then validated by the restore.
+    {
+        let social = state.social.as_mut().expect("section on");
+        social.committed_field_q16[7] = 12_345;
+        if let Some(flag) = social.prior_contact.get_mut(0) {
+            *flag = true;
+        }
+        if let Some(delta) = social.prior_object_delta_q16.get_mut(0) {
+            *delta = 4_096;
+        }
+        if let Some(remainder) = social.emission_remainder_milli.get_mut(0) {
+            *remainder = 65_535;
+        }
+        social.counters.signals_emitted_total = 3;
+        social.counters.corruption_draws_total = 9;
+    }
+    let checksum = {
+        let world = World::from_state(state.clone()).expect("the doctored state restores");
+        world.state_checksum()
+    };
+    let bytes =
+        sim_persist::encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+            .expect("encode format 8");
+    let (_, decoded) = decode_snapshot(&bytes).expect("decode format 8");
+    assert_eq!(decoded, state, "the social section did not round-trip");
+    let restored = World::from_state(decoded).expect("restores");
+    assert_eq!(restored.state_checksum(), checksum);
+}

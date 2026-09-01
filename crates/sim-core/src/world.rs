@@ -74,6 +74,7 @@ const DIRECTIONS: [(i8, i8); 9] = [
 ];
 
 mod artifact_tick;
+mod social_tick;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum TickPhase {
@@ -169,7 +170,7 @@ impl DeathCause {
 /// 6 adds the nine Phase 12 object variants. Every increment is additive:
 /// earlier payloads are unchanged. Reading events never alters simulation
 /// state.
-pub const EVENT_SCHEMA_VERSION: u32 = 6;
+pub const EVENT_SCHEMA_VERSION: u32 = 7;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -351,6 +352,24 @@ pub enum EventKind {
         carry_ticks: u64,
         age_ticks: u64,
         birth_band: u8,
+    },
+    /// An organism emitted on at least one signal channel this tick (Phase
+    /// 13, ADR-0029): which channels as a bitmask, the largest amplitude,
+    /// and the whole-milli cost charged. Reception is deliberately not
+    /// evented - per organism per tick it would be unbounded - and signal
+    /// *content* appears nowhere: a mask and a peak are production facts,
+    /// not meaning.
+    SignalEmitted {
+        id: u64,
+        channel_mask: u8,
+        peak_amplitude_q16: u32,
+        cost_milli: i64,
+    },
+    /// A non-finite social emission request was neutralized to zero (Phase
+    /// 13). Counted in the social counters and evented, never a panic.
+    PerceptionFault {
+        id: u64,
+        faults: u32,
     },
 }
 
@@ -838,6 +857,15 @@ pub enum InvariantViolation {
     },
     /// The held-list cache disagrees with `holder_id`.
     ObjectHeldMismatch,
+    /// The Phase 13 social table failed its structural check.
+    SocialTable {
+        violation: &'static str,
+    },
+    /// The Phase 13 social per-organism arrays fell out of lockstep.
+    SocialDesync {
+        organisms: usize,
+        rows: usize,
+    },
     /// More objects than `artifact.max_objects`.
     ObjectCap {
         objects: usize,
@@ -1009,6 +1037,10 @@ pub struct World {
     /// no object pass, appends nothing to the checksum, and takes the Phase 7
     /// carcass path (ADR-0028).
     objects: Option<crate::artifact::ObjectState>,
+    /// Phase 13 social state; `None` exactly when `config.social.enabled`
+    /// is false, so a world without the section gathers no cue, carries no
+    /// field, and appends nothing to the checksum (ADR-0029).
+    social: Option<crate::social::SocialState>,
 }
 
 impl World {
@@ -1091,6 +1123,7 @@ impl World {
             learn: None,
             action_census: None,
             objects: None,
+            social: None,
             // Built here rather than after the population, because it is
             // empty either way: the relocation schedule first fires at tick
             // `relocate_interval_ticks`, so a freshly generated world's
@@ -1286,6 +1319,15 @@ impl World {
                 objects.push_organism(band);
             }
             world.objects = Some(objects);
+        }
+        // Phase 13 social state: a zero field and per-founder rows.
+        if world.config.social.enabled {
+            let table = crate::social::SocialTable::new(
+                world.terrain.cell_count(),
+                world.config.social.signal_channels,
+                world.ids.len(),
+            );
+            world.social = Some(crate::social::SocialState::from_table(table));
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -1833,6 +1875,34 @@ impl World {
         self.objects.as_ref().map(|objects| &objects.table)
     }
 
+    /// Read-only view of the Phase 13 social table (the committed signal
+    /// field, one-tick cue records, remainders and counters). `None`
+    /// without the section.
+    pub fn social_table(&self) -> Option<&crate::social::SocialTable> {
+        self.social.as_ref().map(|social| &social.table)
+    }
+
+    pub fn social_counters(&self) -> Option<crate::social::SocialCounters> {
+        self.social.as_ref().map(|social| social.table.counters)
+    }
+
+    /// Read-only view of one organism's perception scratch as built by this
+    /// tick's sense phase: the 36 neighbour cues then the four received
+    /// signal values. Observation only; the tick itself reads it through
+    /// the controller gather.
+    pub fn social_perception_of(
+        &self,
+        index: usize,
+    ) -> Option<[f32; crate::social::SOCIAL_CUE_COUNT]> {
+        self.social
+            .as_ref()
+            .and_then(|social| social.perception.get(index).copied())
+    }
+
+    pub(crate) fn social_state(&self) -> Option<&crate::social::SocialState> {
+        self.social.as_ref()
+    }
+
     pub(crate) fn object_state(&self) -> Option<&crate::artifact::ObjectState> {
         self.objects.as_ref()
     }
@@ -2065,6 +2135,7 @@ impl World {
         worldmod: Option<TerrainModState>,
         action_census: Option<ActionCensus>,
         objects: Option<crate::artifact::ObjectState>,
+        social: Option<crate::social::SocialState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -2123,6 +2194,7 @@ impl World {
         // caller checked the table and rebuilt the held lists; the cell index
         // is rebuilt on the next tick's `SpatialIndex` phase.
         self.objects = objects;
+        self.social = social;
         self.events.clear();
         for bucket in &mut self.buckets {
             bucket.clear();
@@ -2269,6 +2341,9 @@ impl World {
         // Object cues, read from the index built this tick. Empty when the
         // section is disabled.
         self.sense_objects();
+        // Social cues and the committed signal field, read from tick-start
+        // committed state. Empty when the section is disabled.
+        self.sense_social();
         observer.phase_finished(TickPhase::Sense);
 
         observer.phase_started(TickPhase::Controllers);
@@ -2288,6 +2363,10 @@ impl World {
         // after contest so a strike lands on the same positions an attack
         // does. Empty when the section is disabled.
         self.artifact_phase(next_tick);
+        // Phase 13 social channel: emission charges and stamps the staging
+        // field, after the artifact pass so an object consumed this tick is
+        // an object-delta this tick. Empty when the section is disabled.
+        self.social_emit_phase(next_tick);
         observer.phase_finished(TickPhase::Apply);
 
         // The boundary is emitted whether or not the section is enabled, so
@@ -2303,6 +2382,10 @@ impl World {
         observer.phase_finished(TickPhase::Lifecycle);
 
         observer.phase_started(TickPhase::Finalize);
+        // Phase 13 social channel: decay-then-add commit of the signal
+        // field and the one-tick cue records (ADR-0029). A signal emitted
+        // this tick is observable next tick and never earlier.
+        self.commit_social();
         self.tick = next_tick;
         observer.phase_finished(TickPhase::Finalize);
     }
@@ -2878,6 +2961,8 @@ impl World {
             self.energy_milli[index] += gain;
             self.ledger.consumed_biomass_milli += i128::from(intake);
             self.ledger.assimilated_milli += i128::from(gain);
+            // Phase 13 cue: feeding is contact.
+            self.note_contact(index);
         }
 
         // Reproduction pass: energy is debited only after a valid placement
@@ -3168,6 +3253,9 @@ impl World {
         // and the request slots 113..=117 become intents. Taken for the loop
         // and restored after it, like the schema-2 and learned state.
         let mut objects = self.objects.take();
+        // Phase 13 social cues and emission capture, taken and restored on
+        // the same terms as the object state.
+        let mut social = self.social.take();
         let action_threshold = self.config.artifact.action_threshold_q16 as f32 / 65536.0;
         for index in 0..population {
             let output = match schema2.as_mut() {
@@ -3177,6 +3265,10 @@ impl World {
                         .as_ref()
                         .and_then(|objects| objects.perception.get(index).copied())
                         .unwrap_or([0.0; 6]);
+                    let social_cues: [f32; crate::social::SOCIAL_CUE_COUNT] = social
+                        .as_ref()
+                        .and_then(|social| social.perception.get(index).copied())
+                        .unwrap_or([0.0; crate::social::SOCIAL_CUE_COUNT]);
                     let before = state.activations[index].faults;
                     let mut requests = std::mem::take(&mut state.requests);
                     let learned: &[i32] = match learn.as_ref() {
@@ -3207,6 +3299,23 @@ impl World {
                                             )]
                                         })
                                 })
+                                .or_else(|| {
+                                    // 23..=62 are the Phase 13 social cues:
+                                    // the 36 neighbour cues then the four
+                                    // committed signal values, zero in a
+                                    // world without the section (and
+                                    // unbindable there).
+                                    (crate::registry::CHANNEL_NEIGHBOUR_BASE
+                                        ..crate::registry::CHANNEL_SIGNAL_IN_BASE
+                                            + crate::social::SIGNAL_CHANNELS_MAX as u16)
+                                        .contains(&channel_id)
+                                        .then(|| {
+                                            social_cues[usize::from(
+                                                channel_id
+                                                    - crate::registry::CHANNEL_NEIGHBOUR_BASE,
+                                            )]
+                                        })
+                                })
                                 .unwrap_or(0.0)
                         },
                         &mut requests,
@@ -3232,6 +3341,36 @@ impl World {
                         intent.place = request(crate::registry::CHANNEL_PLACE);
                         intent.strike = request(crate::registry::CHANNEL_STRIKE);
                         intent.combine = request(crate::registry::CHANNEL_COMBINE);
+                    }
+                    // Phase 13 emission capture: the clamped request value
+                    // in [0, 1] is the amplitude - no threshold, per the
+                    // specification. A non-finite request is neutralized to
+                    // zero, counted and evented, never a panic.
+                    if let Some(social) = social.as_mut()
+                        && let Some(emission) = social.emission_q16.get_mut(index)
+                    {
+                        let mut faults = 0_u32;
+                        for (channel, slot) in emission.iter_mut().enumerate() {
+                            let channel_id =
+                                crate::registry::CHANNEL_SIGNAL_EMIT_BASE + channel as u16;
+                            let value = requests
+                                .binary_search_by_key(&channel_id, |(id, _)| *id)
+                                .ok()
+                                .map(|found| requests[found].1)
+                                .unwrap_or(0.0);
+                            let amplitude = if value.is_finite() {
+                                value.clamp(0.0, 1.0)
+                            } else {
+                                faults += 1;
+                                0.0
+                            };
+                            *slot = (amplitude * crate::config::Q16_ONE as f32) as i32;
+                        }
+                        if faults > 0 {
+                            social.table.counters.perception_faults_total += u64::from(faults);
+                            let id = self.ids[index];
+                            self.push_event(next_tick, EventKind::PerceptionFault { id, faults });
+                        }
                     }
                     state.requests = requests;
                     crate::controller::ControllerOutput {
@@ -3298,6 +3437,7 @@ impl World {
         self.schema2 = schema2;
         self.learn = learn;
         self.objects = objects;
+        self.social = social;
         self.phase2 = Some(p2);
     }
 
@@ -3499,6 +3639,8 @@ impl World {
             self.energy_milli[index] += gain;
             self.ledger.consumed_biomass_milli += i128::from(intake);
             self.ledger.assimilated_milli += i128::from(gain);
+            // Phase 13 cue: feeding is contact.
+            self.note_contact(index);
         }
 
         // Pairing pass: deterministic greedy selection in stable ID order.
@@ -4084,6 +4226,9 @@ impl World {
             if let Some(contest) = self.contest.as_mut() {
                 contest.attacks_total += 1;
             }
+            // Phase 13 cue: dealing or taking damage is contact.
+            self.note_contact(attacker);
+            self.note_contact(target);
             let health_after = self.contest.as_ref().map_or(0, |contest| {
                 contest.health_milli[target] - damage_to[target]
             });
@@ -4573,6 +4718,9 @@ impl World {
             if let Some(state) = self.objects.as_mut() {
                 state.retain_organisms(&dead);
             }
+            if let Some(state) = self.social.as_mut() {
+                state.retain(&dead);
+            }
         }
 
         // Births append after removal; IDs stay strictly increasing.
@@ -4610,6 +4758,9 @@ impl World {
             if let Some(state) = self.objects.as_mut() {
                 let band = state.band_of(birth_capacity);
                 state.push_organism(band);
+            }
+            if let Some(state) = self.social.as_mut() {
+                state.push_organism();
             }
             self.counters.births_total += 1;
             self.push_event(next_tick, EventKind::Birth { id, parent_id });
@@ -4673,6 +4824,9 @@ impl World {
                 if let Some(state) = self.objects.as_mut() {
                     let band = state.band_of(birth_capacity);
                     state.push_organism(band);
+                }
+                if let Some(state) = self.social.as_mut() {
+                    state.push_organism();
                 }
                 let id = self.next_entity_id;
                 self.next_entity_id += 1;
@@ -4853,6 +5007,11 @@ impl World {
         // (ADR-0028 section 13).
         if let Some(objects) = self.objects.as_ref() {
             objects.table.hash_into(&mut hasher);
+        }
+        // Phase 13 social state, appended last (Rule 8 as amended by
+        // ADR-0028), so every earlier fixture is unmoved by its absence.
+        if let Some(social) = self.social.as_ref() {
+            social.table.hash_into(&mut hasher);
         }
         hasher.finish()
     }
@@ -5109,6 +5268,27 @@ impl World {
                         holder: *holder,
                     });
                 }
+            }
+        }
+        // Phase 13 social state: structure and lockstep, checked rather than
+        // trusted for the reason the object table is.
+        if let Some(social) = self.social.as_ref() {
+            if let Some(violation) = social.table.violation(
+                self.terrain.cell_count(),
+                self.config.social.signal_channels,
+                self.ids.len(),
+            ) {
+                return Err(InvariantViolation::SocialTable { violation });
+            }
+            if social.perception.len() != self.ids.len()
+                || social.emission_q16.len() != self.ids.len()
+                || social.contact_now.len() != self.ids.len()
+                || social.object_delta_now_milli.len() != self.ids.len()
+            {
+                return Err(InvariantViolation::SocialDesync {
+                    organisms: self.ids.len(),
+                    rows: social.perception.len(),
+                });
             }
         }
         if let Some(schema2) = self.schema2.as_ref() {
