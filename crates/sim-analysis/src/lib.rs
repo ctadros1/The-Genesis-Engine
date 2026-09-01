@@ -18,6 +18,7 @@ mod morph;
 mod paired;
 mod plasticity;
 mod power;
+pub mod social;
 mod spatial;
 mod structure;
 
