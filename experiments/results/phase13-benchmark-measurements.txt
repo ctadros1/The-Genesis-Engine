@@ -1,0 +1,9 @@
+# phase13-local-20260901T143046Z
+# benchmark schema 10: PHASE13-BENCH markers, medians over 500 ticks after 100 warmup
+PHASE13-BENCH sense-scaling founders=200 k=off disabled_us=121.0 population=173
+PHASE13-BENCH sense-scaling founders=200 k=1 quiet_us=134.8 population=173
+PHASE13-BENCH sense-scaling founders=200 k=4 quiet_us=134.2 population=173
+PHASE13-BENCH sense-scaling founders=1000 k=off disabled_us=440.0 population=750
+PHASE13-BENCH sense-scaling founders=1000 k=1 quiet_us=619.4 population=750
+PHASE13-BENCH sense-scaling founders=1000 k=4 quiet_us=638.0 population=750
+PHASE13-BENCH social-tick cells=16384 founders=200 k=4 disabled_us=109.9 disabled_population=173 quiet_us=139.5 quiet_population=173 perceiving_us=140.0 emitting_us=147.8 emitting_signals=115085 full_us=150.1 full_signals=115085 full_population=166

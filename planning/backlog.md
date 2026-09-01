@@ -104,6 +104,21 @@ sim-analysis reachability census and C13.3/C13.7-C13.10 classifiers (Gate E
 synthetic validation first), benchmarks (schema pending), and the docs
 listed in the plan.
 
+**Benchmark record `phase13-local-20260901T143046Z`** (schema 10,
+`experiments/results/phase13-benchmark-measurements.txt`): the plan asked
+whether "unbound channels are not gathered" holds in practice, and the
+answer is measured and split. For the controller gather it holds - an
+unbound channel is never requested. For the sense-phase cue scan it does
+NOT: with `perception_enabled` the K-nearest scan runs for every organism
+whatever its bindings, and at 750 organisms the quiet section costs
++41-45% of tick (440 us disabled against 619-638 quiet) with nothing
+bound anywhere. At 173 organisms it is +11-27%; emission adds ~8 us; K=1
+against K=4 is noise at these densities (the scan, not the fill,
+dominates). **Backlog item**: a census-gated skip - organisms with no
+social input binding skip the cue fill - taken only if the quiet delta
+matters at campaign scale, and benchmarked before and after like every
+optimization here.
+
 ## The Ladder To Learning And Culture (from the Phase 11 and 12 nulls)
 
 Recorded 2026-08-16, consolidating what D-099, D-105, D-117 and D-118
