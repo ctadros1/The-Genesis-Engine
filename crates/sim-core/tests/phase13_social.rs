@@ -1048,3 +1048,90 @@ fn the_metrics_snapshot_mirrors_the_social_counters_and_only_when_enabled() {
     assert_eq!(metrics.signal_cost_milli_total, 0);
     assert_eq!(metrics.perceived_neighbours, 0);
 }
+
+/// Every birth in a social world carries its C13.7 phenotype record with
+/// the values the phenotype table actually holds, and a social-off world
+/// - births and all - emits none: the event exists for the recognition
+/// classifier alone, and earlier phases' event streams stay
+/// byte-identical (event schema 8).
+#[test]
+fn births_carry_their_phenotype_record_only_when_social_is_on() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 24;
+    config.reproduction_enabled = true;
+    config.physiology.enabled = true;
+    config.physiology.extrinsic_hazard_q16_per_s = 300;
+    config.validate().expect("valid");
+    let mut world = scripted_world(config.clone(), &[CHANNEL_SIGNAL_EMIT_BASE]);
+    let mut births = 0_u64;
+    let mut records = 0_u64;
+    for _ in 0..2_000 {
+        world.step();
+        let mut born_this_tick: Vec<u64> = Vec::new();
+        let mut recorded: Vec<(u64, i64, i64)> = Vec::new();
+        for event in world.events() {
+            match event.kind {
+                sim_core::EventKind::PairedBirth { id, .. } => {
+                    births += 1;
+                    born_this_tick.push(id);
+                }
+                sim_core::EventKind::PhenotypeAtBirth {
+                    id,
+                    body_scale_milli,
+                    max_speed_milli,
+                } => {
+                    records += 1;
+                    recorded.push((id, body_scale_milli, max_speed_milli));
+                }
+                _ => {}
+            }
+        }
+        // One record per birth, same tick, and the values are the live
+        // phenotype table's for that organism.
+        assert_eq!(born_this_tick.len(), recorded.len());
+        for &(id, scale, speed) in &recorded {
+            assert!(born_this_tick.contains(&id));
+            let detail = world.organism_detail(id).expect("newborn is alive");
+            let phase2 = detail.phase2.expect("schema-2 world");
+            assert_eq!(scale, phase2.phenotype.body_scale_milli, "id {id}");
+            assert_eq!(speed, phase2.phenotype.max_speed_milli, "id {id}");
+        }
+    }
+    assert!(births > 0, "non-vacuity: the window must breed");
+    assert_eq!(records, births);
+
+    // The social-off arm: same recipe, breeding made certain (mature,
+    // co-located, hazard-free founders), and no records.
+    let mut config = config;
+    config.social.enabled = false;
+    config.social.observational_enabled = false;
+    config.physiology.extrinsic_hazard_q16_per_s = 0;
+    config.validate().expect("valid");
+    let world = scripted_world(config, &[]);
+    let mut state = world.export_state();
+    for index in 0..state.ids.len() {
+        state.age_ticks[index] = 700;
+        state.energy_milli[index] = state.energy_milli[0].max(state.energy_milli[index]);
+        state.x_fp[index] = state.x_fp[0] + index as i32 * 200;
+        state.y_fp[index] = state.y_fp[0];
+    }
+    let mut world = World::from_state(state).expect("restores");
+    let mut births = 0_u64;
+    let mut records = 0_u64;
+    for _ in 0..2_000 {
+        world.step();
+        for event in world.events() {
+            match event.kind {
+                sim_core::EventKind::PairedBirth { .. } => births += 1,
+                sim_core::EventKind::PhenotypeAtBirth { .. } => records += 1,
+                _ => {}
+            }
+        }
+    }
+    assert!(
+        births > 0,
+        "non-vacuity: the social-off window must breed (population {})",
+        world.population()
+    );
+    assert_eq!(records, 0, "a social-off world emits no phenotype records");
+}

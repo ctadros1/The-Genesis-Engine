@@ -170,7 +170,7 @@ impl DeathCause {
 /// 6 adds the nine Phase 12 object variants. Every increment is additive:
 /// earlier payloads are unchanged. Reading events never alters simulation
 /// state.
-pub const EVENT_SCHEMA_VERSION: u32 = 7;
+pub const EVENT_SCHEMA_VERSION: u32 = 8;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -359,6 +359,19 @@ pub enum EventKind {
     /// evented - per organism per tick it would be unbounded - and signal
     /// *content* appears nowhere: a mask and a peak are production facts,
     /// not meaning.
+    /// A newborn's externally visible phenotype (Phase 13, C13.7): the
+    /// two cue-visible values, recorded once at birth so the recognition
+    /// classifier can measure phenotype-similarity discrimination for
+    /// organisms that die before any snapshot. Emitted only when the
+    /// social section is enabled - it exists for that classifier alone,
+    /// and a social-off world's event stream stays byte-identical.
+    /// Founders carry no such event; the classifier excludes them by
+    /// construction and says so.
+    PhenotypeAtBirth {
+        id: u64,
+        body_scale_milli: i64,
+        max_speed_milli: i64,
+    },
     SignalEmitted {
         id: u64,
         channel_mask: u8,
@@ -4952,6 +4965,16 @@ impl World {
                         mutated_neural_genes: child.variation.mutated_neural_genes,
                     },
                 );
+                if self.config.social.enabled {
+                    self.push_event(
+                        next_tick,
+                        EventKind::PhenotypeAtBirth {
+                            id,
+                            body_scale_milli: child.phenotype.body_scale_milli,
+                            max_speed_milli: child.phenotype.max_speed_milli,
+                        },
+                    );
+                }
             }
             self.phase2 = Some(p2);
         }

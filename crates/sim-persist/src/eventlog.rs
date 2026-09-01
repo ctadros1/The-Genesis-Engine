@@ -97,6 +97,9 @@ const TAG_OBJECT_EXPOSURE: u8 = 23;
 // renumbered.
 const TAG_SIGNAL_EMITTED: u8 = 24;
 const TAG_PERCEPTION_FAULT: u8 = 25;
+// Event schema 8: the C13.7 phenotype record, one per birth in a
+// social-enabled world.
+const TAG_PHENOTYPE_AT_BIRTH: u8 = 26;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -334,6 +337,10 @@ impl ReconstructedCounters {
             EventKind::PerceptionFault { faults, .. } => {
                 self.perception_faults_total += u64::from(faults);
             }
+            // A pure record for the recognition classifier; the kernel
+            // keeps no counter for it, so reconstruction has nothing to
+            // reproduce.
+            EventKind::PhenotypeAtBirth { .. } => {}
         }
     }
 }
@@ -790,6 +797,16 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&faults.to_le_bytes());
         }
+        EventKind::PhenotypeAtBirth {
+            id,
+            body_scale_milli,
+            max_speed_milli,
+        } => {
+            out.push(TAG_PHENOTYPE_AT_BIRTH);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&body_scale_milli.to_le_bytes());
+            out.extend_from_slice(&max_speed_milli.to_le_bytes());
+        }
     }
 }
 
@@ -884,7 +901,14 @@ pub fn read_log_info(bytes: &[u8]) -> Result<(EventLogInfo, usize), EventLogErro
     let seed = read(cursor.u64())?;
     let config_hash = read(cursor.u64())?;
     let event_schema_version = read(cursor.u32())?;
-    if event_schema_version != EVENT_SCHEMA_VERSION {
+    // Older schemas decode: every increment is additive (tags append,
+    // payloads never change - the spec's own rule), so a log written at
+    // schema N contains only tags a schema-M >= N decoder knows. A NEWER
+    // schema still refuses - it may carry tags this build cannot decode,
+    // and skipping unknown events corrupts every rate (the fail-closed
+    // rule below). Without the older-accept, bumping the schema would
+    // orphan every log a running campaign is writing.
+    if event_schema_version > EVENT_SCHEMA_VERSION || event_schema_version == 0 {
         return Err(EventLogError::UnsupportedEventSchema(event_schema_version));
     }
     let max_events_per_tick = read(cursor.u32())?;
@@ -1190,6 +1214,21 @@ fn decode_events_into(
                 let id = short!(cursor.u64());
                 let faults = short!(cursor.u32());
                 EventKind::PerceptionFault { id, faults }
+            }
+            TAG_PHENOTYPE_AT_BIRTH => {
+                let id = short!(cursor.u64());
+                let body_scale_milli = short!(cursor.i64());
+                let max_speed_milli = short!(cursor.i64());
+                // Phenotype values are non-negative by construction; a
+                // negative one is a torn or foreign record.
+                if body_scale_milli < 0 || max_speed_milli < 0 {
+                    return Err(EventLogError::ValueOutOfRange("phenotype at birth"));
+                }
+                EventKind::PhenotypeAtBirth {
+                    id,
+                    body_scale_milli,
+                    max_speed_milli,
+                }
             }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.
@@ -1587,6 +1626,14 @@ mod tests {
                 tick,
                 kind: EventKind::PerceptionFault { id: 25, faults: 2 },
             },
+            Event {
+                tick,
+                kind: EventKind::PhenotypeAtBirth {
+                    id: 26,
+                    body_scale_milli: 1_450,
+                    max_speed_milli: 2_100,
+                },
+            },
         ]
     }
 
@@ -1603,7 +1650,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 36);
+        assert_eq!(scan.events, 39);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());
@@ -1893,5 +1940,38 @@ mod tests {
             scan.reconcile(&counters, None),
             Err(ReconcileError::Phase2SectionMismatch)
         );
+    }
+
+    /// Version skew: a log written at an OLDER schema decodes (tags
+    /// append, payloads never change, so a newer decoder knows every old
+    /// tag), while a NEWER-than-build schema refuses - it may carry tags
+    /// this build cannot decode, and skipping is corruption. Without the
+    /// older-accept, a schema bump would orphan every log a running
+    /// campaign is writing.
+    #[test]
+    fn older_schema_logs_decode_and_newer_ones_refuse() {
+        let mut older = info();
+        older.event_schema_version = EVENT_SCHEMA_VERSION - 1;
+        let mut bytes = encode_header(&older).unwrap();
+        // Old-schema events only (Birth predates every increment).
+        let events = vec![Event {
+            tick: 1,
+            kind: EventKind::Birth {
+                id: 1,
+                parent_id: 0,
+            },
+        }];
+        bytes.extend(encode_segment(1, &events, 0).unwrap());
+        let (scan, decoded) = decode_log_events(&bytes).unwrap();
+        assert_eq!(scan.info.event_schema_version, EVENT_SCHEMA_VERSION - 1);
+        assert_eq!(decoded.len(), 1);
+
+        let mut newer = info();
+        newer.event_schema_version = EVENT_SCHEMA_VERSION + 1;
+        let bytes = encode_header(&newer).unwrap();
+        assert!(matches!(
+            read_log_info(&bytes),
+            Err(EventLogError::UnsupportedEventSchema(version)) if version == EVENT_SCHEMA_VERSION + 1
+        ));
     }
 }
