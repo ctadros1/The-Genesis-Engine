@@ -2629,6 +2629,18 @@ impl World {
         None
     }
 
+    /// Where the resource patch sits during `epoch`, as a baseline cell
+    /// index, for observers. The C13.1 arrival analysis recomputes the
+    /// schedule through this rather than duplicating the draw, so the two
+    /// can never drift. Read-only (ADR-0016); `None` when the patch is
+    /// disabled, during epoch 0, or when nothing is habitable.
+    pub fn patch_centre_for_epoch(&self, epoch: u64) -> Option<u32> {
+        if !self.config.worldmod.enabled || !self.config.worldmod.patch_enabled {
+            return None;
+        }
+        self.patch_centre_cell(epoch).map(|cell| cell as u32)
+    }
+
     /// The habitable cells covered by a patch centred on `centre`, ascending.
     ///
     /// Water and zero-capacity cells are excluded rather than written with an

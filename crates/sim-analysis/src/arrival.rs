@@ -54,22 +54,64 @@ use std::collections::BTreeMap;
 
 pub const ARRIVAL_DETECTOR_VERSION: &str = "lifesim-arrival-detector-v1";
 
-/// The analyst's circle, in the samples' fixed-point frame. Membership is
-/// inclusive: a point at exactly `radius_fp` is inside, so the boundary
-/// cannot be one short (the trap every decoder range here has hit once).
+/// The analyst's region, in the samples' fixed-point frame. Membership is
+/// inclusive at every boundary: a point at exactly the radius is inside,
+/// so the boundary cannot be one short (the trap every decoder range here
+/// has hit once).
+///
+/// `CellSquare` exists because the kernel's relocating resource patch
+/// (the worldmod schedule that gives C13.1 its patch P) is a square of
+/// cells, not a circle: `(2r+1)^2` cells around a centre cell. An arrival
+/// region that matched it only approximately would make "reached P" mean
+/// something other than "reached the place the food is". Its
+/// position-to-cell rule is the kernel's own `cell_of` (floor division,
+/// clamped to the last cell), pinned against the kernel by a test below.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
-pub struct PatchSpec {
-    pub x_fp: i32,
-    pub y_fp: i32,
-    pub radius_fp: i32,
+pub enum PatchSpec {
+    /// Euclidean disc: inside means `dx^2 + dy^2 <= radius_fp^2`.
+    Circle {
+        x_fp: i32,
+        y_fp: i32,
+        radius_fp: i32,
+    },
+    /// The kernel patch's own footprint: Chebyshev distance in cells from
+    /// the centre cell is at most `radius_cells`.
+    CellSquare {
+        centre_cell: u32,
+        cells_x: u32,
+        cells_y: u32,
+        cell_size_fp: i32,
+        radius_cells: u32,
+    },
 }
 
 impl PatchSpec {
     fn contains(&self, x_fp: i32, y_fp: i32) -> bool {
-        let dx = i64::from(x_fp) - i64::from(self.x_fp);
-        let dy = i64::from(y_fp) - i64::from(self.y_fp);
-        let radius = i64::from(self.radius_fp);
-        dx * dx + dy * dy <= radius * radius
+        match *self {
+            PatchSpec::Circle {
+                x_fp: cx,
+                y_fp: cy,
+                radius_fp,
+            } => {
+                let dx = i64::from(x_fp) - i64::from(cx);
+                let dy = i64::from(y_fp) - i64::from(cy);
+                let radius = i64::from(radius_fp);
+                dx * dx + dy * dy <= radius * radius
+            }
+            PatchSpec::CellSquare {
+                centre_cell,
+                cells_x,
+                cells_y,
+                cell_size_fp,
+                radius_cells,
+            } => {
+                let centre_x = i64::from(centre_cell) % i64::from(cells_x);
+                let centre_y = i64::from(centre_cell) / i64::from(cells_x);
+                let cell_x = i64::from(x_fp / cell_size_fp).min(i64::from(cells_x) - 1);
+                let cell_y = i64::from(y_fp / cell_size_fp).min(i64::from(cells_y) - 1);
+                (cell_x - centre_x).abs().max((cell_y - centre_y).abs()) <= i64::from(radius_cells)
+            }
+        }
     }
 }
 
@@ -322,10 +364,12 @@ mod tests {
         SpatialSample { tick, positions }
     }
 
-    const PATCH: PatchSpec = PatchSpec {
-        x_fp: 1_000,
-        y_fp: 1_000,
-        radius_fp: 100,
+    const PATCH_X: i32 = 1_000;
+    const PATCH_R: i32 = 100;
+    const PATCH: PatchSpec = PatchSpec::Circle {
+        x_fp: PATCH_X,
+        y_fp: PATCH_X,
+        radius_fp: PATCH_R,
     };
     const FAR: (i32, i32) = (0, 0);
     const IN: (i32, i32) = (1_000, 1_000);
@@ -376,8 +420,8 @@ mod tests {
     /// always one short.
     #[test]
     fn the_patch_boundary_is_inclusive_and_one_unit_past_it_is_not() {
-        let on_edge = (PATCH.x_fp + PATCH.radius_fp, PATCH.y_fp);
-        let past_edge = (PATCH.x_fp + PATCH.radius_fp + 1, PATCH.y_fp);
+        let on_edge = (PATCH_X + PATCH_R, PATCH_X);
+        let past_edge = (PATCH_X + PATCH_R + 1, PATCH_X);
         for (position, arrives) in [(on_edge, true), (past_edge, false)] {
             let events = vec![birth(15, 2)];
             let samples = vec![sample(20, vec![FAR, FAR]), sample(30, vec![FAR, position])];
@@ -433,6 +477,110 @@ mod tests {
         let samples = vec![sample(20, vec![FAR]), sample(30, vec![FAR])];
         let census = arrival_census(&events, &samples, 1, 10, PATCH, 0).expect("join holds");
         assert_eq!((census.never_observed, census.naive_total), (1, 0));
+    }
+
+    /// The cell-square form is inclusive at exactly the Chebyshev radius
+    /// and excludes the next cell out - the same one-short trap, in cells.
+    #[test]
+    fn the_cell_square_boundary_is_inclusive_in_cells() {
+        // A 10x10 grid of 4096-fp cells, patch centred on cell (5,5),
+        // radius 2: cells 3..=7 in each axis are inside.
+        let square = PatchSpec::CellSquare {
+            centre_cell: 5 * 10 + 5,
+            cells_x: 10,
+            cells_y: 10,
+            cell_size_fp: 4_096,
+            radius_cells: 2,
+        };
+        // The far corner of the boundary cell (7,7) is inside; the first
+        // fp unit of cell (8,7) is not.
+        for ((x, y), arrives) in [
+            ((7 * 4_096 + 4_095, 7 * 4_096 + 4_095), true),
+            ((8 * 4_096, 7 * 4_096), false),
+        ] {
+            let events = vec![birth(15, 2)];
+            let samples = vec![sample(20, vec![FAR, FAR]), sample(30, vec![FAR, (x, y)])];
+            let census = arrival_census(&events, &samples, 1, 10, square, 10).expect("join holds");
+            assert_eq!(census.naive_arrived, u64::from(arrives), "at ({x},{y})");
+        }
+    }
+
+    /// The cell-square position-to-cell rule is the kernel's own `cell_of`,
+    /// pinned: for a sweep of positions including the far-edge clamp, the
+    /// membership computed here equals membership computed from
+    /// `World::cell_index_of`. If the kernel's mapping ever changes, this
+    /// fails and names the arrival region as the dependent.
+    #[test]
+    fn the_cell_square_maps_positions_exactly_as_the_kernel_does() {
+        let config = SimConfig::phase1_default(0x1373_0002);
+        let world = World::new(config.clone()).expect("world");
+        let cells_x = config.cells_x;
+        let cells_y = config.cells_y;
+        let cell_fp = config.cell_size_fp();
+        let centre_cell = (cells_y / 2) * cells_x + cells_x / 2;
+        let radius_cells = 3_u32;
+        let square = PatchSpec::CellSquare {
+            centre_cell,
+            cells_x,
+            cells_y,
+            cell_size_fp: cell_fp,
+            radius_cells,
+        };
+        let centre_x = centre_cell % cells_x;
+        let centre_y = centre_cell / cells_x;
+        // Cell corners, centres, and the world's far edge (where the
+        // kernel clamps to the last cell rather than indexing past it).
+        let max_x = cells_x as i32 * cell_fp - 1;
+        let max_y = cells_y as i32 * cell_fp - 1;
+        let probes = [
+            (0, 0),
+            (cell_fp / 2, cell_fp / 2),
+            ((centre_x as i32) * cell_fp, (centre_y as i32) * cell_fp),
+            (
+                (centre_x + radius_cells) as i32 * cell_fp + cell_fp - 1,
+                (centre_y + radius_cells) as i32 * cell_fp + cell_fp - 1,
+            ),
+            (
+                (centre_x + radius_cells + 1) as i32 * cell_fp,
+                (centre_y as i32) * cell_fp,
+            ),
+            (max_x, max_y),
+            (max_x, 0),
+        ];
+        for (x_fp, y_fp) in probes {
+            let kernel_cell = world.cell_index_of(x_fp, y_fp) as u32;
+            let kernel_x = kernel_cell % cells_x;
+            let kernel_y = kernel_cell / cells_x;
+            let kernel_inside = kernel_x.abs_diff(centre_x) <= radius_cells
+                && kernel_y.abs_diff(centre_y) <= radius_cells;
+            assert_eq!(
+                square.contains(x_fp, y_fp),
+                kernel_inside,
+                "at ({x_fp},{y_fp}): the analysis cell rule diverged from the kernel"
+            );
+        }
+        // The clamp made decisive: a radius-0 patch on the far corner cell,
+        // probed at exactly the world extent, where the kernel clamps the
+        // division's out-of-range cell back to the last one. Without the
+        // clamp the analysis computes a cell one past the edge and calls
+        // this outside; the kernel calls it inside.
+        let corner = PatchSpec::CellSquare {
+            centre_cell: cells_y * cells_x - 1,
+            cells_x,
+            cells_y,
+            cell_size_fp: cell_fp,
+            radius_cells: 0,
+        };
+        let extent = (cells_x as i32 * cell_fp, cells_y as i32 * cell_fp);
+        assert_eq!(
+            world.cell_index_of(extent.0, extent.1) as u32,
+            cells_y * cells_x - 1,
+            "the kernel stopped clamping the far edge"
+        );
+        assert!(
+            corner.contains(extent.0, extent.1),
+            "the analysis dropped the kernel's far-edge clamp"
+        );
     }
 
     /// The ascending-entity-ID order the join depends on, pinned against
