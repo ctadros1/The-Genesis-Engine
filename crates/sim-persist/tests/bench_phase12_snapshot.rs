@@ -113,8 +113,16 @@ fn objects_section_bytes(world: &World) -> u64 {
     // Encode with and without the table and take the difference: the
     // section framing is included, which is what a file pays.
     let state = world.export_state();
-    let full = encode_snapshot(&state, 1, 0, world.state_checksum(), sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode");
+    let full = encode_snapshot(
+        &state,
+        1,
+        0,
+        world.state_checksum(),
+        sim_persist::BUILD_VERSION,
+        0,
+        None,
+    )
+    .expect("encode");
     let mut bare = state.clone();
     let table = bare.objects.as_mut().expect("section on");
     let empty = sim_core::ObjectTable::default();
@@ -124,7 +132,8 @@ fn objects_section_bytes(world: &World) -> u64 {
     table.exposure_ticks = saved.exposure_ticks.clone();
     table.carry_ticks = saved.carry_ticks.clone();
     table.birth_band = saved.birth_band.clone();
-    let bare_bytes = encode_snapshot(&bare, 1, 0, 0, sim_persist::BUILD_VERSION, 0, None).expect("encode bare");
+    let bare_bytes =
+        encode_snapshot(&bare, 1, 0, 0, sim_persist::BUILD_VERSION, 0, None).expect("encode bare");
     (full.len() as u64).saturating_sub(bare_bytes.len() as u64)
 }
 
@@ -137,7 +146,8 @@ fn measure(label: &str, world: World) {
     let checksum = world.state_checksum();
 
     let started = Instant::now();
-    let encoded = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None).expect("encode");
+    let encoded = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+        .expect("encode");
     let encode_us = started.elapsed().as_secs_f64() * 1_000_000.0;
     let started = Instant::now();
     let (_, decoded) = decode_snapshot(&encoded).expect("decode");

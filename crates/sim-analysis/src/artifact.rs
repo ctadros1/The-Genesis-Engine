@@ -135,7 +135,11 @@ pub struct BindingCensus {
 
 /// Census the object-action bindings of a population's genomes.
 pub fn binding_census(genomes: &[Genome2], binding_applied: u64) -> BindingCensus {
-    let mut census = BindingCensus { population: genomes.len(), binding_applied, ..Default::default() };
+    let mut census = BindingCensus {
+        population: genomes.len(),
+        binding_applied,
+        ..Default::default()
+    };
     for genome in genomes {
         let mut bound = [false; 5];
         for haplotype in &genome.haplotypes {
@@ -264,7 +268,9 @@ pub fn world_artifact(input: &WorldInputs<'_>, plan: &ArtifactPlan) -> WorldArti
     let mut placed_censored = 0_usize;
     for event in events {
         match event.kind {
-            EventKind::ObjectReleased { id, placed: true, .. } => {
+            EventKind::ObjectReleased {
+                id, placed: true, ..
+            } => {
                 open_placed.entry(id).or_insert(event.tick);
             }
             EventKind::ObjectPickedUp { id, .. } | EventKind::ObjectDestroyed { id, .. } => {
@@ -323,7 +329,12 @@ pub fn world_artifact(input: &WorldInputs<'_>, plan: &ArtifactPlan) -> WorldArti
     let organism_lifespans = lifespans.len();
     let median_organism_lifespan = median_u64(&mut lifespans);
     for living in input.living {
-        histories.push((living.id, living.age_ticks, living.exposure_ticks, living.birth_band));
+        histories.push((
+            living.id,
+            living.age_ticks,
+            living.exposure_ticks,
+            living.birth_band,
+        ));
     }
 
     // --- C12.2 (b): stratified exposure effect ---------------------------------
@@ -379,7 +390,9 @@ pub fn world_artifact(input: &WorldInputs<'_>, plan: &ArtifactPlan) -> WorldArti
             match events[cursor].kind {
                 EventKind::Birth { .. } | EventKind::PairedBirth { .. } => population += 1,
                 EventKind::Death { .. } => population -= 1,
-                EventKind::ObjectCombined { composite, depth, .. } => {
+                EventKind::ObjectCombined {
+                    composite, depth, ..
+                } => {
                     depth_of.insert(composite, depth);
                     if depth >= 2 {
                         live_depth2 += 1;
@@ -419,11 +432,19 @@ pub fn world_artifact(input: &WorldInputs<'_>, plan: &ArtifactPlan) -> WorldArti
         if slice.is_empty() {
             0
         } else {
-            slice.iter().map(|(_, value)| i128::from(*value)).sum::<i128>() as i64 / slice.len() as i64
+            slice
+                .iter()
+                .map(|(_, value)| i128::from(*value))
+                .sum::<i128>() as i64
+                / slice.len() as i64
         }
     };
     let depth2_first_third_milli = mean(&samples[..third]);
-    let depth2_last_third_milli = if third > 0 { mean(&samples[samples.len() - third..]) } else { 0 };
+    let depth2_last_third_milli = if third > 0 {
+        mean(&samples[samples.len() - third..])
+    } else {
+        0
+    };
     let _ = input.composites_depth2_final;
 
     WorldArtifact {
@@ -483,11 +504,20 @@ pub struct ArtifactReport {
 }
 
 fn worlds_of<'a>(worlds: &'a [WorldArtifact], condition: &str) -> Vec<&'a WorldArtifact> {
-    worlds.iter().filter(|world| world.condition == condition).collect()
+    worlds
+        .iter()
+        .filter(|world| world.condition == condition)
+        .collect()
 }
 
 /// Decide the three criteria. `a`, `c`, `d` name the conditions.
-pub fn decide(plan: &ArtifactPlan, worlds: Vec<WorldArtifact>, a: &str, c: &str, d: &str) -> ArtifactReport {
+pub fn decide(
+    plan: &ArtifactPlan,
+    worlds: Vec<WorldArtifact>,
+    a: &str,
+    c: &str,
+    d: &str,
+) -> ArtifactReport {
     let a_worlds = worlds_of(&worlds, a);
     let c_worlds = worlds_of(&worlds, c);
     let d_worlds = worlds_of(&worlds, d);
@@ -514,8 +544,20 @@ pub fn decide(plan: &ArtifactPlan, worlds: Vec<WorldArtifact>, a: &str, c: &str,
             }
         }
     }
-    let c121_paired = compare(&pairs, plan.sesoi_c121_ppm, 500, Direction::Increase, plan.analysis_seed);
-    let c121_fire_paired = compare(&fire_pairs, plan.sesoi_c121_ppm, 500, Direction::Increase, plan.analysis_seed);
+    let c121_paired = compare(
+        &pairs,
+        plan.sesoi_c121_ppm,
+        500,
+        Direction::Increase,
+        plan.analysis_seed,
+    );
+    let c121_fire_paired = compare(
+        &fire_pairs,
+        plan.sesoi_c121_ppm,
+        500,
+        Direction::Increase,
+        plan.analysis_seed,
+    );
     let c121 = Verdict {
         criterion: "C12.1".to_owned(),
         count: c121_count,
@@ -560,7 +602,9 @@ pub fn decide(plan: &ArtifactPlan, worlds: Vec<WorldArtifact>, a: &str, c: &str,
     // C12.3 under A; D asserted zero.
     let c123_count = a_worlds
         .iter()
-        .filter(|world| world.depth2_last_third_milli - world.depth2_first_third_milli >= plan.sesoi_c123_milli)
+        .filter(|world| {
+            world.depth2_last_third_milli - world.depth2_first_third_milli >= plan.sesoi_c123_milli
+        })
         .count();
     let c123 = Verdict {
         criterion: "C12.3".to_owned(),
@@ -592,7 +636,10 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
     use std::fmt::Write as _;
     let mut out = String::new();
     let plan = &report.plan;
-    let _ = writeln!(out, "artifact analysis {ARTIFACT_ANALYSIS_VERSION} campaign {campaign_id}");
+    let _ = writeln!(
+        out,
+        "artifact analysis {ARTIFACT_ANALYSIS_VERSION} campaign {campaign_id}"
+    );
     let _ = writeln!(
         out,
         "plan sesoi_c121_ppm={} bar_c121={} bar_c122_lifetime={} bar_c122_fitness={} \
@@ -631,14 +678,20 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
             world.fire_rate_ppm,
             world.placed_episodes,
             world.placed_censored,
-            world.median_placed_lifetime.map_or("none".to_owned(), |v| v.to_string()),
+            world
+                .median_placed_lifetime
+                .map_or("none".to_owned(), |v| v.to_string()),
             world.organism_lifespans,
             world.organisms_censored,
-            world.median_organism_lifespan.map_or("none".to_owned(), |v| v.to_string()),
+            world
+                .median_organism_lifespan
+                .map_or("none".to_owned(), |v| v.to_string()),
             world.exposed,
             world.unexposed,
             world.strata_used,
-            world.exposure_effect_milli.map_or("undefined".to_owned(), |v| v.to_string()),
+            world
+                .exposure_effect_milli
+                .map_or("undefined".to_owned(), |v| v.to_string()),
             world.depth2_ever,
             world.depth2_first_third_milli,
             world.depth2_last_third_milli,
@@ -676,13 +729,28 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
             p.sesoi_p_value_milli
         )
     };
-    let _ = writeln!(out, "{}", paired("C12.1 success-rate A-C", &report.c121_paired));
-    let _ = writeln!(out, "{}", paired("C12.1 fire-rate A-C (supplementary)", &report.c121_fire_paired));
+    let _ = writeln!(
+        out,
+        "{}",
+        paired("C12.1 success-rate A-C", &report.c121_paired)
+    );
+    let _ = writeln!(
+        out,
+        "{}",
+        paired(
+            "C12.1 fire-rate A-C (supplementary)",
+            &report.c121_fire_paired
+        )
+    );
     let _ = writeln!(out, "{}", verdict(&report.c122_lifetime));
     let _ = writeln!(out, "{}", verdict(&report.c122_fitness));
     let _ = writeln!(out, "C12.2 met={} (both halves required)", report.c122_met);
     let _ = writeln!(out, "{}", verdict(&report.c123));
-    let _ = writeln!(out, "C12.3 condition D zero by construction: {}", report.c123_d_zero);
+    let _ = writeln!(
+        out,
+        "C12.3 condition D zero by construction: {}",
+        report.c123_d_zero
+    );
     let a_worlds: Vec<&WorldArtifact> = report
         .worlds
         .iter()
@@ -705,13 +773,24 @@ pub fn render(campaign_id: &str, report: &ArtifactReport) -> String {
     // Reachability, per condition: how many worlds end with at least one
     // living genome bound to each action, and to each conjunction. Read
     // beside a null, never in place of one.
-    let mut conditions: Vec<&str> = report.worlds.iter().map(|world| world.condition.as_str()).collect();
+    let mut conditions: Vec<&str> = report
+        .worlds
+        .iter()
+        .map(|world| world.condition.as_str())
+        .collect();
     conditions.sort_unstable();
     conditions.dedup();
     for condition in conditions {
-        let worlds: Vec<&WorldArtifact> = report.worlds.iter().filter(|w| w.condition == condition).collect();
-        let count = |pick: fn(&BindingCensus) -> usize| worlds.iter().filter(|w| pick(&w.census) > 0).count();
-        let sum = |pick: fn(&BindingCensus) -> u64| worlds.iter().map(|w| pick(&w.census)).sum::<u64>();
+        let worlds: Vec<&WorldArtifact> = report
+            .worlds
+            .iter()
+            .filter(|w| w.condition == condition)
+            .collect();
+        let count = |pick: fn(&BindingCensus) -> usize| {
+            worlds.iter().filter(|w| pick(&w.census) > 0).count()
+        };
+        let sum =
+            |pick: fn(&BindingCensus) -> u64| worlds.iter().map(|w| pick(&w.census)).sum::<u64>();
         let _ = writeln!(
             out,
             "reachability condition={condition} worlds={} with_pick_up={} with_drop={} with_place={} \
@@ -748,13 +827,21 @@ mod tests {
                 homology_id: 1_000 + salt as u32,
                 gene_lineage_id: 1_000 + salt as u64,
                 mutation_event_id: 0,
-                kind: LocusKind::IoBinding { node: 1, channel_id: channel, gain: 1.0 },
+                kind: LocusKind::IoBinding {
+                    node: 1,
+                    channel_id: channel,
+                    gain: 1.0,
+                },
             })
             .collect();
         Genome2 {
             haplotypes: [
-                Haplotype { chromosomes: vec![bindings.clone()] },
-                Haplotype { chromosomes: vec![bindings] },
+                Haplotype {
+                    chromosomes: vec![bindings.clone()],
+                },
+                Haplotype {
+                    chromosomes: vec![bindings],
+                },
             ],
         }
     }
@@ -789,7 +876,11 @@ mod tests {
         Event { tick, kind }
     }
 
-    fn inputs<'a>(condition: &'a str, events: &'a [Event], living: &'a [LivingOrganism]) -> WorldInputs<'a> {
+    fn inputs<'a>(
+        condition: &'a str,
+        events: &'a [Event],
+        living: &'a [LivingOrganism],
+    ) -> WorldInputs<'a> {
         WorldInputs {
             condition,
             seed: 7,
@@ -810,19 +901,99 @@ mod tests {
     #[test]
     fn rates_episodes_lifespans_and_exposure_reduce_as_stated() {
         let events = vec![
-            event(10, EventKind::ObjectActionRefused { id: 1, action: ObjectAction::PickUp.id(), reason: 1 }),
-            event(10, EventKind::ObjectActionRefused { id: 1, action: ObjectAction::Strike.id(), reason: 1 }),
-            event(100, EventKind::ObjectReleased { id: 50, holder: 1, placed: true, cell: 3 }),
+            event(
+                10,
+                EventKind::ObjectActionRefused {
+                    id: 1,
+                    action: ObjectAction::PickUp.id(),
+                    reason: 1,
+                },
+            ),
+            event(
+                10,
+                EventKind::ObjectActionRefused {
+                    id: 1,
+                    action: ObjectAction::Strike.id(),
+                    reason: 1,
+                },
+            ),
+            event(
+                100,
+                EventKind::ObjectReleased {
+                    id: 50,
+                    holder: 1,
+                    placed: true,
+                    cell: 3,
+                },
+            ),
             event(600, EventKind::ObjectDestroyed { id: 50, cause: 1 }),
-            event(200, EventKind::ObjectReleased { id: 51, holder: 1, placed: true, cell: 3 }),
-            event(300, EventKind::PairedBirth { id: 3, parent_a: 1, parent_b: 2, genome_hash: 0, invest_a_milli: 0, invest_b_milli: 0, mutated_trait_genes: 0, mutated_neural_genes: 0 }),
-            event(4_000, EventKind::Death { id: 1, cause: sim_core::DeathCause::Starvation }),
-            event(4_000, EventKind::ObjectExposure { id: 1, exposure_ticks: 2_000, carry_ticks: 0, age_ticks: 4_000, birth_band: 2 }),
-            event(4_100, EventKind::Death { id: 2, cause: sim_core::DeathCause::Starvation }),
-            event(4_100, EventKind::ObjectExposure { id: 2, exposure_ticks: 0, carry_ticks: 0, age_ticks: 4_100, birth_band: 2 }),
+            event(
+                200,
+                EventKind::ObjectReleased {
+                    id: 51,
+                    holder: 1,
+                    placed: true,
+                    cell: 3,
+                },
+            ),
+            event(
+                300,
+                EventKind::PairedBirth {
+                    id: 3,
+                    parent_a: 1,
+                    parent_b: 2,
+                    genome_hash: 0,
+                    invest_a_milli: 0,
+                    invest_b_milli: 0,
+                    mutated_trait_genes: 0,
+                    mutated_neural_genes: 0,
+                },
+            ),
+            event(
+                4_000,
+                EventKind::Death {
+                    id: 1,
+                    cause: sim_core::DeathCause::Starvation,
+                },
+            ),
+            event(
+                4_000,
+                EventKind::ObjectExposure {
+                    id: 1,
+                    exposure_ticks: 2_000,
+                    carry_ticks: 0,
+                    age_ticks: 4_000,
+                    birth_band: 2,
+                },
+            ),
+            event(
+                4_100,
+                EventKind::Death {
+                    id: 2,
+                    cause: sim_core::DeathCause::Starvation,
+                },
+            ),
+            event(
+                4_100,
+                EventKind::ObjectExposure {
+                    id: 2,
+                    exposure_ticks: 0,
+                    carry_ticks: 0,
+                    age_ticks: 4_100,
+                    birth_band: 2,
+                },
+            ),
         ];
-        let living = [LivingOrganism { id: 3, age_ticks: 8_700, exposure_ticks: 0, birth_band: 2 }];
-        let world = world_artifact(&inputs("A", &events, &living), &ArtifactPlan::preregistered());
+        let living = [LivingOrganism {
+            id: 3,
+            age_ticks: 8_700,
+            exposure_ticks: 0,
+            birth_band: 2,
+        }];
+        let world = world_artifact(
+            &inputs("A", &events, &living),
+            &ArtifactPlan::preregistered(),
+        );
         // Successes 4 (3 pick-ups + 1 place); fires add the one pick-up
         // refusal and not the strike refusal.
         assert_eq!(world.successes, 4);
@@ -851,8 +1022,28 @@ mod tests {
     #[test]
     fn depth_two_frequency_is_sampled_per_thousand_ticks_and_closed_by_destruction() {
         let events = vec![
-            event(500, EventKind::ObjectCombined { composite: 9, held: 1, target: 2, combiner: 1, depth: 1, joint_q16: 0 }),
-            event(2_500, EventKind::ObjectCombined { composite: 10, held: 9, target: 3, combiner: 1, depth: 2, joint_q16: 0 }),
+            event(
+                500,
+                EventKind::ObjectCombined {
+                    composite: 9,
+                    held: 1,
+                    target: 2,
+                    combiner: 1,
+                    depth: 1,
+                    joint_q16: 0,
+                },
+            ),
+            event(
+                2_500,
+                EventKind::ObjectCombined {
+                    composite: 10,
+                    held: 9,
+                    target: 3,
+                    combiner: 1,
+                    depth: 2,
+                    joint_q16: 0,
+                },
+            ),
             event(7_500, EventKind::ObjectDestroyed { id: 10, cause: 3 }),
         ];
         let world = world_artifact(&inputs("A", &events, &[]), &ArtifactPlan::preregistered());
@@ -877,7 +1068,16 @@ mod tests {
             exposure_min_organisms: 1,
             ..ArtifactPlan::preregistered()
         };
-        let mk = |condition: &str, seed: u64, success_ppm: i64, placed: Option<u64>, lifespan: Option<u64>, effect: Option<i64>, exposed: usize, first: i64, last: i64, ever: u64| WorldArtifact {
+        let mk = |condition: &str,
+                  seed: u64,
+                  success_ppm: i64,
+                  placed: Option<u64>,
+                  lifespan: Option<u64>,
+                  effect: Option<i64>,
+                  exposed: usize,
+                  first: i64,
+                  last: i64,
+                  ever: u64| WorldArtifact {
             condition: condition.to_owned(),
             seed,
             extinct: false,
@@ -904,7 +1104,18 @@ mod tests {
             census: BindingCensus::default(),
         };
         let worlds = vec![
-            mk("A", 1, 100, Some(5_000), Some(4_000), Some(10), 5, 0, 1_000, 3),
+            mk(
+                "A",
+                1,
+                100,
+                Some(5_000),
+                Some(4_000),
+                Some(10),
+                5,
+                0,
+                1_000,
+                3,
+            ),
             mk("A", 2, 0, Some(1_000), Some(4_000), Some(-5), 5, 0, 0, 0),
             mk("C", 1, 50, None, None, None, 0, 0, 0, 0),
             mk("C", 2, 50, None, None, None, 0, 0, 0, 0),
@@ -918,7 +1129,10 @@ mod tests {
         assert_eq!(report.c122_fitness.count, 1);
         assert!(report.c122_met);
         assert_eq!(report.c123.count, 1);
-        assert!(!report.c123_d_zero, "a D world with a depth-two composite is caught");
+        assert!(
+            !report.c123_d_zero,
+            "a D world with a depth-two composite is caught"
+        );
         let text = render("test", &report);
         assert!(text.contains("C12.1 count=1 of 2 bar=1 met=true"));
         assert!(text.contains("condition D zero by construction: false"));

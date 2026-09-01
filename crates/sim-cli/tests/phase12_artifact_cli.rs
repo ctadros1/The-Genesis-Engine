@@ -75,8 +75,10 @@ struct Campaign {
 
 impl Campaign {
     fn run(name: &str) -> Self {
-        let directory =
-            std::env::temp_dir().join(format!("lifesim-artifact-cli-{name}-{}", std::process::id()));
+        let directory = std::env::temp_dir().join(format!(
+            "lifesim-artifact-cli-{name}-{}",
+            std::process::id()
+        ));
         let _ = std::fs::remove_dir_all(&directory);
         std::fs::create_dir_all(&directory).expect("temp dir");
         let source = directory.join("campaign.txt");
@@ -121,10 +123,15 @@ impl Drop for Campaign {
 
 fn field(line: &str, key: &str) -> u64 {
     let needle = format!(" {key}=");
-    let start = line.find(&needle).unwrap_or_else(|| panic!("no {key} in: {line}")) + needle.len();
+    let start = line
+        .find(&needle)
+        .unwrap_or_else(|| panic!("no {key} in: {line}"))
+        + needle.len();
     let rest = &line[start..];
     let end = rest.find(' ').unwrap_or(rest.len());
-    rest[..end].parse().unwrap_or_else(|_| panic!("{key} is not a number in: {line}"))
+    rest[..end]
+        .parse()
+        .unwrap_or_else(|_| panic!("{key} is not a number in: {line}"))
 }
 
 #[test]
@@ -134,38 +141,95 @@ fn the_report_echoes_the_plan_reduces_every_world_and_prints_the_census() {
     assert!(output.status.success(), "stderr: {}", stderr(&output));
     let text = stdout(&output);
 
-    assert!(text.starts_with("artifact analysis lifesim-artifact-analysis-v1 campaign artifact-cli"), "{text}");
+    assert!(
+        text.starts_with("artifact analysis lifesim-artifact-analysis-v1 campaign artifact-cli"),
+        "{text}"
+    );
     // The pre-registered constants are echoed, so a reader checks the bars
     // against the document rather than trusting the arithmetic.
-    assert!(text.contains("plan sesoi_c121_ppm=10 bar_c121=20 bar_c122_lifetime=15 bar_c122_fitness=20"), "{text}");
-    assert!(text.contains("exposure_floor_milli=50 exposure_min_organisms=20 sesoi_c123_milli=500 bar_c123=20"), "{text}");
-    assert!(text.contains("seeds=2 analysis_seed=0xa11fac750b1ec751"), "{text}");
+    assert!(
+        text.contains(
+            "plan sesoi_c121_ppm=10 bar_c121=20 bar_c122_lifetime=15 bar_c122_fitness=20"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains(
+            "exposure_floor_milli=50 exposure_min_organisms=20 sesoi_c123_milli=500 bar_c123=20"
+        ),
+        "{text}"
+    );
+    assert!(
+        text.contains("seeds=2 analysis_seed=0xa11fac750b1ec751"),
+        "{text}"
+    );
 
     // Eight world lines, each with the census fields; four reachability
     // lines, one per condition; the six verdict/paired lines.
-    assert_eq!(text.matches("\nworld condition=").count() + usize::from(text.starts_with("world condition=")), 8, "{text}");
+    assert_eq!(
+        text.matches("\nworld condition=").count()
+            + usize::from(text.starts_with("world condition=")),
+        8,
+        "{text}"
+    );
     for condition in ["A", "B", "C", "D"] {
-        assert_eq!(text.matches(&format!("world condition={condition} ")).count(), 2, "{text}");
-        assert_eq!(text.matches(&format!("reachability condition={condition} worlds=2 ")).count(), 1, "{text}");
+        assert_eq!(
+            text.matches(&format!("world condition={condition} "))
+                .count(),
+            2,
+            "{text}"
+        );
+        assert_eq!(
+            text.matches(&format!("reachability condition={condition} worlds=2 "))
+                .count(),
+            1,
+            "{text}"
+        );
     }
-    for line in text.lines().filter(|line| line.starts_with("world condition=")) {
+    for line in text
+        .lines()
+        .filter(|line| line.starts_with("world condition="))
+    {
         for key in [
-            "organism_ticks", "successes", "fires", "success_rate_ppm", "fire_rate_ppm",
-            "placed_episodes", "organism_lifespans", "depth2_ever", "census_population",
-            "binds_pick_up", "binds_place", "binds_combine", "pick_up_and_place",
-            "pick_up_and_combine", "binding_applied",
+            "organism_ticks",
+            "successes",
+            "fires",
+            "success_rate_ppm",
+            "fire_rate_ppm",
+            "placed_episodes",
+            "organism_lifespans",
+            "depth2_ever",
+            "census_population",
+            "binds_pick_up",
+            "binds_place",
+            "binds_combine",
+            "pick_up_and_place",
+            "pick_up_and_combine",
+            "binding_applied",
         ] {
             let _ = field(line, key);
         }
-        assert!(field(line, "organism_ticks") > 0, "a world ran no organism-ticks: {line}");
-        assert!(field(line, "organism_lifespans") > 0, "no lifespan was observed: {line}");
+        assert!(
+            field(line, "organism_ticks") > 0,
+            "a world ran no organism-ticks: {line}"
+        );
+        assert!(
+            field(line, "organism_lifespans") > 0,
+            "no lifespan was observed: {line}"
+        );
     }
     assert!(text.contains("C12.1 count="), "{text}");
     assert!(text.contains("C12.1 success-rate A-C pairs=2 "), "{text}");
-    assert!(text.contains("C12.1 fire-rate A-C (supplementary) pairs=2 "), "{text}");
+    assert!(
+        text.contains("C12.1 fire-rate A-C (supplementary) pairs=2 "),
+        "{text}"
+    );
     assert!(text.contains("C12.2 met="), "{text}");
     assert!(text.contains("C12.3 count="), "{text}");
-    assert!(text.contains("C12.3 condition D zero by construction: true"), "{text}");
+    assert!(
+        text.contains("C12.3 condition D zero by construction: true"),
+        "{text}"
+    );
     assert!(text.contains("medians over A worlds:"), "{text}");
 
     // The census is read from genomes the bind operator actually reached:
@@ -178,7 +242,10 @@ fn the_report_echoes_the_plan_reduces_every_world_and_prints_the_census() {
         .filter(|line| line.starts_with("reachability condition="))
         .map(|line| field(line, "binding_applied_total"))
         .sum();
-    assert!(applied > 0, "no bind operation was applied in any arm, so the census read unbound genomes:\n{text}");
+    assert!(
+        applied > 0,
+        "no bind operation was applied in any arm, so the census read unbound genomes:\n{text}"
+    );
 }
 
 #[test]
@@ -218,7 +285,11 @@ fn the_command_refuses_an_arm_it_cannot_find_and_a_missing_manifest() {
     let campaign = Campaign::run("arms");
     let output = campaign.analyse("A", "C", "Z");
     assert!(!output.status.success());
-    assert!(stderr(&output).contains("no condition named 'Z'"), "{}", stderr(&output));
+    assert!(
+        stderr(&output).contains("no condition named 'Z'"),
+        "{}",
+        stderr(&output)
+    );
     let output = lifesim(&[
         "artifact",
         "--manifest",
@@ -231,5 +302,8 @@ fn the_command_refuses_an_arm_it_cannot_find_and_a_missing_manifest() {
         "D",
     ]);
     assert!(!output.status.success());
-    assert!(stdout(&output).is_empty(), "printed a report for a manifest that does not exist");
+    assert!(
+        stdout(&output).is_empty(),
+        "printed a report for a manifest that does not exist"
+    );
 }

@@ -16,8 +16,8 @@
 
 use sim_core::{
     Activation, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_STRIKE,
-    EventKind, Genome2, GenomeCaps, Locus, LocusKind, NodeRole, ObjectCounters, SimConfig,
-    STRUCTURAL_HOMOLOGY_BASE, World,
+    EventKind, Genome2, GenomeCaps, Locus, LocusKind, NodeRole, ObjectCounters,
+    STRUCTURAL_HOMOLOGY_BASE, SimConfig, World,
 };
 use sim_persist::{EventLogInfo, EventLogRecorder, EventLogWriter, decode_log, decode_log_events};
 use std::fs;
@@ -27,8 +27,10 @@ const SEED: u64 = 0x5eed_cafe_f00d_beef;
 const CHANNEL_REST: u16 = 105;
 
 fn scratch_dir(name: &str) -> PathBuf {
-    let directory = std::env::temp_dir()
-        .join(format!("lifesim-object-events-{name}-{}", std::process::id()));
+    let directory = std::env::temp_dir().join(format!(
+        "lifesim-object-events-{name}-{}",
+        std::process::id()
+    ));
     let _ = fs::remove_dir_all(&directory);
     fs::create_dir_all(&directory).expect("scratch dir");
     directory
@@ -130,7 +132,9 @@ fn scripted_trace_world(config: SimConfig) -> World {
             bind_always_on(&mut genome, CHANNEL_REST, 1.0, salt);
             salt += 1;
         }
-        genome.validate_structure(&caps).expect("the rewritten genome validates");
+        genome
+            .validate_structure(&caps)
+            .expect("the rewritten genome validates");
         schema2.genomes[index] = genome.encode();
         for _ in 0..salt {
             schema2.activation_values[index].push(0.0);
@@ -151,7 +155,9 @@ fn every_object_event_round_trips_and_the_log_reconstructs_the_object_counters()
     // and death drops appear) and for carcasses to decay.
     for _ in 0..6_000 {
         world.step();
-        world.check_invariants().expect("invariants hold every tick");
+        world
+            .check_invariants()
+            .expect("invariants hold every tick");
         recorder.record(&world).expect("record tick");
     }
     recorder.writer_mut().sync().expect("sync");
@@ -159,8 +165,14 @@ fn every_object_event_round_trips_and_the_log_reconstructs_the_object_counters()
 
     let (scan, events) = decode_log_events(&bytes).expect("log decodes");
     assert_eq!(scan.bytes_consumed, bytes.len(), "trailing bytes");
-    assert_eq!(scan.dropped, 0, "a dropped event would make every equality below approximate");
-    assert_eq!(scan.counters, decode_log(&bytes).expect("streaming decode").counters);
+    assert_eq!(
+        scan.dropped, 0,
+        "a dropped event would make every equality below approximate"
+    );
+    assert_eq!(
+        scan.counters,
+        decode_log(&bytes).expect("streaming decode").counters
+    );
 
     let table = world.object_table().expect("an artifact world");
     let counters: ObjectCounters = world.object_counters().expect("counters");
@@ -185,7 +197,10 @@ fn every_object_event_round_trips_and_the_log_reconstructs_the_object_counters()
         ("refusals", counters.refusals()),
         ("cap_refusals", counters.cap_refusals()),
     ] {
-        assert!(value > 0, "the scenario never exercised `{name}`, so this test proves nothing about it");
+        assert!(
+            value > 0,
+            "the scenario never exercised `{name}`, so this test proves nothing about it"
+        );
     }
     let metrics = world.metrics();
     let deaths = metrics.deaths_starvation_total
@@ -193,22 +208,50 @@ fn every_object_event_round_trips_and_the_log_reconstructs_the_object_counters()
         + metrics.deaths_by_damage_total
         + metrics.deaths_senescence_total
         + metrics.deaths_extrinsic_total;
-    assert!(deaths > 0, "nobody died, so exposure records and death drops were never exercised");
+    assert!(
+        deaths > 0,
+        "nobody died, so exposure records and death drops were never exercised"
+    );
 
     // Creation, per cause (wire codes 1..=4).
-    assert_eq!(recon.objects_created_by_cause[0], counters.created_extracted, "extracted");
-    assert_eq!(recon.objects_created_by_cause[1], counters.created_fractured, "fractured");
-    assert_eq!(recon.objects_created_by_cause[2], counters.created_combined, "combined");
-    assert_eq!(recon.objects_created_by_cause[3], counters.created_carcass, "carcass");
+    assert_eq!(
+        recon.objects_created_by_cause[0], counters.created_extracted,
+        "extracted"
+    );
+    assert_eq!(
+        recon.objects_created_by_cause[1], counters.created_fractured,
+        "fractured"
+    );
+    assert_eq!(
+        recon.objects_created_by_cause[2], counters.created_combined,
+        "combined"
+    );
+    assert_eq!(
+        recon.objects_created_by_cause[3], counters.created_carcass,
+        "carcass"
+    );
     let created: u64 = recon.objects_created_by_cause.iter().sum();
-    assert_eq!(created, table.objects_allocated_total, "every allocated object has one ObjectCreated");
+    assert_eq!(
+        created, table.objects_allocated_total,
+        "every allocated object has one ObjectCreated"
+    );
 
     // Destruction: every object that was created and is not in the table
     // was destroyed by exactly one event, and per cause the counters agree.
     let destroyed: u64 = recon.objects_destroyed_by_cause.iter().sum();
-    assert_eq!(destroyed + table.len() as u64, created, "created = destroyed + live");
-    assert_eq!(recon.objects_destroyed_by_cause[0], counters.decayed_away, "Decayed");
-    assert_eq!(recon.objects_destroyed_by_cause[2], counters.disassembled, "Disassembled");
+    assert_eq!(
+        destroyed + table.len() as u64,
+        created,
+        "created = destroyed + live"
+    );
+    assert_eq!(
+        recon.objects_destroyed_by_cause[0], counters.decayed_away,
+        "Decayed"
+    );
+    assert_eq!(
+        recon.objects_destroyed_by_cause[2], counters.disassembled,
+        "Disassembled"
+    );
     // `Fractured` is the simple-object end of the fracture path: a struck
     // simple object over threshold (`fractured`) or worn to nothing
     // (`worn_away`). A struck composite over threshold counts as `fractured`
@@ -220,22 +263,38 @@ fn every_object_event_round_trips_and_the_log_reconstructs_the_object_counters()
     // rather than reconstructed.
     let fractured_events = recon.objects_destroyed_by_cause[1];
     let disassembled_events = recon.objects_destroyed_by_cause[2];
-    assert!(fractured_events <= counters.fractured + counters.worn_away, "Fractured events exceed the counters");
+    assert!(
+        fractured_events <= counters.fractured + counters.worn_away,
+        "Fractured events exceed the counters"
+    );
     assert!(
         fractured_events + disassembled_events >= counters.fractured + counters.worn_away,
         "a fracture or a wear-out left no destruction event"
     );
     let composite_fractures = counters.fractured + counters.worn_away - fractured_events;
-    assert!(composite_fractures <= counters.disassembled, "more composite fractures than disassemblies");
+    assert!(
+        composite_fractures <= counters.disassembled,
+        "more composite fractures than disassemblies"
+    );
     // `consumed_events` counts bites; `Consumed` is the bite that empties
     // an object, so it is bounded by the bites and pinned by the sum above.
-    assert!(recon.objects_destroyed_by_cause[3] <= counters.consumed_events, "Consumed");
-    assert_eq!(recon.objects_destroyed_by_cause[5], counters.ephemeral_destroyed, "Ephemeral (none under A)");
+    assert!(
+        recon.objects_destroyed_by_cause[3] <= counters.consumed_events,
+        "Consumed"
+    );
+    assert_eq!(
+        recon.objects_destroyed_by_cause[5], counters.ephemeral_destroyed,
+        "Ephemeral (none under A)"
+    );
 
     // Actions.
     assert_eq!(recon.objects_picked_up_total, counters.picked_up);
     assert_eq!(recon.objects_placed_total, counters.placed);
-    assert_eq!(recon.objects_dropped_total, counters.dropped + counters.death_drops, "released unplaced = drops + death drops");
+    assert_eq!(
+        recon.objects_dropped_total,
+        counters.dropped + counters.death_drops,
+        "released unplaced = drops + death drops"
+    );
     assert_eq!(recon.objects_struck_total, counters.struck_objects);
     assert_eq!(recon.terrain_struck_total, counters.struck_terrain);
     assert_eq!(recon.objects_combined_total, counters.combined);
@@ -261,15 +320,28 @@ fn every_object_event_round_trips_and_the_log_reconstructs_the_object_counters()
     assert_eq!(recon.object_refusals_by_reason, by_reason);
 
     // One exposure record per death, and each is a well-formed record.
-    assert_eq!(recon.object_exposure_records, deaths, "one ObjectExposure per death");
+    assert_eq!(
+        recon.object_exposure_records, deaths,
+        "one ObjectExposure per death"
+    );
     let exposure_records = events
         .iter()
         .filter(|event| matches!(event.kind, EventKind::ObjectExposure { .. }))
         .count() as u64;
     assert_eq!(exposure_records, deaths);
     for event in &events {
-        if let EventKind::ObjectExposure { exposure_ticks, carry_ticks, age_ticks, birth_band, .. } = event.kind {
-            assert!(exposure_ticks <= age_ticks && carry_ticks <= age_ticks, "ticks of a life bound its history");
+        if let EventKind::ObjectExposure {
+            exposure_ticks,
+            carry_ticks,
+            age_ticks,
+            birth_band,
+            ..
+        } = event.kind
+        {
+            assert!(
+                exposure_ticks <= age_ticks && carry_ticks <= age_ticks,
+                "ticks of a life bound its history"
+            );
             assert!(birth_band < 5, "a capacity quintile");
         }
     }
