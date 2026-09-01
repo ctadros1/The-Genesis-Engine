@@ -254,7 +254,11 @@ impl PlasticityGenes {
             modulator_node,
         } = self;
         Self {
-            rule_id: rule_id % PLASTICITY_RULE_COUNT,
+            // The space is one wider than the base registry: rule 5 exists
+            // behind the social gate (ADR-0029), and every value a pre-13
+            // world can store is below the base count, so the wider modulus
+            // is the identity on every allele in circulation.
+            rule_id: rule_id % crate::plasticity::RULE_SPACE,
             eta: clamp_finite(eta, 0.0, 1.0),
             coefficients: [
                 clamp_finite(coefficients[0], -1.0, 1.0),
@@ -1840,7 +1844,9 @@ mod tests {
         );
         assert_eq!(
             expressed_edge(&decoded, FOUNDER_EDGE_A).plasticity.rule_id,
-            stored % PLASTICITY_RULE_COUNT
+            stored % crate::plasticity::RULE_SPACE,
+            "the reduction is over the rule SPACE (six values, ADR-0029), \
+             not the base registry count"
         );
     }
 

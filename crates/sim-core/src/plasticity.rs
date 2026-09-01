@@ -69,20 +69,52 @@ pub const PLASTICITY_POLICY_VERSION: &str = "lifesim-plasticity-v2";
 
 /// Registry version, folded into the config hash alongside the policy
 /// string. Adding rule 5 later increments this rather than redefining it.
+/// **This constant did not move when Phase 13 added rule 5, and the reason
+/// is recorded rather than left to look like an oversight** - it is
+/// `CHANNEL_REGISTRY_VERSION`'s reason exactly: the constant is hashed into
+/// every plasticity world's config block, so bumping it would have moved
+/// the Phase 11 fixture and every Phase 11 lineage for a rule none of them
+/// could reach. Rule 5 is **version 2**
+/// ([`RULE_REGISTRY_VERSION_OBSERVATIONAL`]), a world's version is 2 only
+/// when `social.observational_enabled` offers the rule
+/// (`SimConfig::plasticity_rule_registry_version`), and the fixture-moving
+/// bump this doc's original sentence anticipated is thereby avoided - the
+/// first attempt at this change bumped the constant and the Phase 11
+/// clean-process trace failed within the hour, which is that fixture doing
+/// its job.
 pub const RULE_REGISTRY_VERSION: u16 = 1;
+/// Version 2: version 1 plus the gated observational rule (Phase 13).
+pub const RULE_REGISTRY_VERSION_OBSERVATIONAL: u16 = 2;
 
-/// Rule ids `0..RULE_COUNT` are in the registry.
+/// Rule ids `0..RULE_COUNT` are the always-offered registry.
 ///
-/// **Rule 5 "Observational" is deliberately absent.** Its form is rule 1
-/// with `x` replaced by the perceived-action input of a selected neighbour,
-/// which requires the Phase 13 social channel to exist. Admitting it now
-/// would mean either an input that is always zero - a rule that silently
-/// equals rule 1 with `b` disabled, which evolution would learn to use for
-/// something else entirely before Phase 13 could reinterpret it - or an
-/// authored stand-in for perception. Both are worse than a smaller
-/// registry. Phase 13 raises `RULE_COUNT` and `RULE_REGISTRY_VERSION`
-/// together.
+/// **Rule 5 "Observational" sits outside this count, behind the social
+/// gate** ([`RULE_OBSERVATIONAL`], [`RULE_SPACE`]): its presynaptic term is
+/// the perceived body-motion cue of the nearest conspecific, which only a
+/// social world computes. In any other world an allele naming it reduces
+/// into this base space at expression (`PlasticityBudget::effective_rule_id`),
+/// where 5 lands on the id it would have named before the space widened -
+/// so no pre-Phase-13 genotype-to-phenotype map moves, and the "rule that
+/// silently equals rule 1 with `b` disabled" this doc refused to admit
+/// still cannot exist: where the cue is not computed, the rule is not
+/// offered.
 pub const RULE_COUNT: u8 = 5;
+
+/// Rule 5 (Phase 13, ADR-0029 section 5): rule 1's generalized-Hebbian
+/// arithmetic with the presynaptic term replaced by the observer's own
+/// perceived `neighbour_motion[slot 0]` value - the committed prior-tick
+/// body motion of the nearest conspecific, an ordinary declared input,
+/// never an action label or a privileged imitation pathway. Ungated (no
+/// modulator, no trace), same clamps, same eta, same pricing as every
+/// other rule. Offered only when `social.observational_enabled` (condition
+/// P); condition S removes it and verifies the removal by counter.
+pub const RULE_OBSERVATIONAL: u8 = 5;
+/// The width of the rule id space including the gated rule: what
+/// `PlasticityGenes::normalized` reduces a stored allele into. Every value
+/// a pre-Phase-13 world can store is below [`RULE_COUNT`] (the fresh-rule
+/// draw is the only place an id is born), so widening the reduction from 5
+/// to 6 is the identity on every allele in circulation.
+pub const RULE_SPACE: u8 = RULE_COUNT + 1;
 
 /// Not plastic even when the edge carries `EDGE_FLAG_PLASTIC`.
 pub const RULE_STATIC: u8 = 0;
@@ -145,7 +177,9 @@ const WEIGHT_LIMIT: f32 = 8.0;
 
 /// Whether a rule id is in the registry this build implements.
 pub fn rule_in_registry(rule_id: u8) -> bool {
-    rule_id < RULE_COUNT
+    // Rule 5 is in the space; a compiled 5 exists only where the budget
+    // offered it (ADR-0029), so admitting it here cannot leak it elsewhere.
+    rule_id < RULE_SPACE
 }
 
 /// Whether a rule's update is gated by a modulator activation.
@@ -185,6 +219,11 @@ pub struct PlasticityRule {
 pub struct EdgeSignals {
     /// Presynaptic activation `x`.
     pub pre: f32,
+    /// The perceived `neighbour_motion[slot 0]` cue of the nearest
+    /// conspecific, rule 5's presynaptic term (Phase 13, ADR-0029). The
+    /// caller passes 0.0 in a world without the social section; rule 5
+    /// cannot compile there, so the zero is never read by a live rule.
+    pub social_pre: f32,
     /// Postsynaptic activation `y`.
     pub post: f32,
     /// The gating activation, clamped to [-1, 1] inside the update.
@@ -387,6 +426,7 @@ pub fn step(rule: PlasticityRule, signals: EdgeSignals, state: LearnedState) -> 
     } = rule;
     let EdgeSignals {
         pre,
+        social_pre,
         post,
         modulator,
         w_eff,
@@ -412,6 +452,9 @@ pub fn step(rule: PlasticityRule, signals: EdgeSignals, state: LearnedState) -> 
     // Steps 1 and 2, f32. `raw` is the rule form before any scaling.
     let raw = match rule_id {
         RULE_OJA => post * (pre - post * w_eff),
+        // Rule 5 (Phase 13): rule 1's form driven by the perceived
+        // neighbour-motion cue instead of the presynaptic activation.
+        RULE_OBSERVATIONAL => hebbian(coefficients, social_pre, post),
         // Rules 1, 3, and 4 all start from the same generalized Hebbian
         // form and differ only in what happens to it afterwards.
         _ => hebbian(coefficients, pre, post),
@@ -624,6 +667,7 @@ mod tests {
 
     fn signals(pre: f32, post: f32) -> EdgeSignals {
         EdgeSignals {
+            social_pre: 0.0,
             pre,
             post,
             modulator: 0.0,
@@ -657,16 +701,18 @@ mod tests {
     ];
 
     #[test]
-    fn registry_is_bounded_and_observational_is_absent() {
+    fn registry_is_bounded_and_observational_is_gated_not_absent() {
         assert_eq!(RULE_COUNT, 5);
+        assert_eq!(RULE_SPACE, 6);
+        assert_eq!(RULE_OBSERVATIONAL, 5);
         assert_eq!(RULE_REGISTRY_VERSION, 1);
+        assert_eq!(RULE_REGISTRY_VERSION_OBSERVATIONAL, 2);
         assert_eq!(PLASTICITY_POLICY_VERSION, "lifesim-plasticity-v2");
-        for rule_id in 0..RULE_COUNT {
+        for rule_id in 0..RULE_SPACE {
             assert!(rule_in_registry(rule_id));
         }
-        // Rule 5 is Observational and needs the Phase 13 social channel.
-        // Admitting it early is the failure this asserts against.
-        assert!(!rule_in_registry(5));
+        // The space ends at rule 5; anything beyond it is refused.
+        assert!(!rule_in_registry(6));
         assert!(!rule_in_registry(255));
 
         assert!(!rule_is_modulated(RULE_STATIC));
@@ -674,17 +720,62 @@ mod tests {
         assert!(!rule_is_modulated(RULE_OJA));
         assert!(rule_is_modulated(RULE_MODULATED_HEBBIAN));
         assert!(rule_is_modulated(RULE_ELIGIBILITY_TRACE));
+        assert!(!rule_is_modulated(RULE_OBSERVATIONAL));
 
-        // An out-of-registry rule id is refused, not silently treated as
+        // An out-of-space rule id is refused, not silently treated as
         // static and not panicked on.
         let outcome = step(
-            rule(5, [1.0; 4]),
+            rule(6, [1.0; 4]),
             signals(1.0, 1.0),
             LearnedState::default(),
         );
         assert_eq!(outcome.kind, StepKind::Refused);
         assert!(outcome.fault);
         assert_eq!(learned(outcome), 0);
+    }
+
+    /// Rule 5 reads the perceived neighbour cue, never the presynaptic
+    /// activation: with a live presynaptic value and a zero social term,
+    /// the x-driven coefficients contribute nothing - which is exactly the
+    /// discrimination that stops rule 5 silently being rule 1 (the trap
+    /// the registry doc refuses).
+    #[test]
+    fn the_observational_rule_reads_the_social_term_and_not_the_presynaptic_one() {
+        // Coefficients with only x-terms live: a*x*y + b*x.
+        let x_only = [1.0, 1.0, 0.0, 0.0];
+        let mut live_pre = signals(1.0, 1.0);
+        live_pre.social_pre = 0.0;
+        let outcome = step(
+            rule(RULE_OBSERVATIONAL, x_only),
+            live_pre,
+            LearnedState::default(),
+        );
+        assert_eq!(outcome.kind, StepKind::Applied);
+        assert_eq!(
+            learned(outcome),
+            0,
+            "a live presynaptic activation must not drive rule 5"
+        );
+        // The same signals drive rule 1 hard, which is the control that
+        // proves the zero above is the social term and not the arithmetic.
+        let hebbian_outcome = step(
+            rule(RULE_HEBBIAN, x_only),
+            live_pre,
+            LearnedState::default(),
+        );
+        assert!(learned(hebbian_outcome) != 0);
+        // And a live social term drives rule 5.
+        let mut live_social = signals(0.0, 1.0);
+        live_social.social_pre = 1.0;
+        let outcome = step(
+            rule(RULE_OBSERVATIONAL, x_only),
+            live_social,
+            LearnedState::default(),
+        );
+        assert!(
+            learned(outcome) != 0,
+            "the perceived cue is rule 5's presynaptic term"
+        );
     }
 
     #[test]
@@ -842,6 +933,7 @@ mod tests {
             for rule_id in [RULE_MODULATED_HEBBIAN, RULE_ELIGIBILITY_TRACE] {
                 for (modulator, sign) in [(1.0_f32, 1), (-1.0_f32, -1)] {
                     let input = EdgeSignals {
+                        social_pre: 0.0,
                         pre,
                         post,
                         modulator,
@@ -1318,6 +1410,7 @@ mod tests {
                                                 decay_q16,
                                             };
                                             let input = EdgeSignals {
+                                                social_pre: 0.0,
                                                 pre,
                                                 post,
                                                 modulator,
@@ -1567,6 +1660,7 @@ mod eta_zero_probe {
                     let out = step(
                         rule,
                         EdgeSignals {
+                            social_pre: 0.0,
                             pre,
                             post,
                             modulator,

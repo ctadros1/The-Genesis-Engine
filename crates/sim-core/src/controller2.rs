@@ -86,6 +86,11 @@ pub struct PlasticityBudget {
     /// world-level setting on the hottest path in the kernel and make the
     /// rule's meaning depend on something the rule cannot see.
     pub live_rule_zero: bool,
+    /// Whether rule 5 (Observational) is offered (Phase 13, ADR-0029:
+    /// `social.observational_enabled`, condition P). Where it is not, an
+    /// allele naming it reduces into the base space before any remap, so a
+    /// pre-13 world's genotype-to-phenotype map is untouched.
+    pub observational: bool,
 }
 
 impl PlasticityBudget {
@@ -94,6 +99,7 @@ impl PlasticityBudget {
         Self {
             max_plastic_edges: None,
             live_rule_zero: false,
+            observational: false,
         }
     }
 
@@ -102,10 +108,18 @@ impl PlasticityBudget {
         Self {
             max_plastic_edges: Some(limit),
             live_rule_zero: false,
+            observational: false,
         }
     }
 
     /// The same budget with ADR-0027's remap live.
+    pub const fn with_observational(self) -> Self {
+        Self {
+            observational: true,
+            ..self
+        }
+    }
+
     pub const fn with_live_rule_zero(self) -> Self {
         Self {
             live_rule_zero: true,
@@ -131,7 +145,20 @@ impl PlasticityBudget {
     /// also the case where the distribution stops being uniform, so a
     /// campaign that reloads across the flag has to report it.
     pub const fn effective_rule_id(self, rule_id: u8) -> u8 {
+        // Rule 5 exists only where the social section offers it (ADR-0029):
+        // anywhere else an allele naming it reduces into the base space
+        // first, where 5 lands on the id it named before the space widened
+        // (5 % 5 = 0), so no pre-13 map moves. With the rule offered, the
+        // chain's live run widens by one to 1..=5.
+        let rule_id = if self.observational {
+            rule_id
+        } else {
+            rule_id % plasticity::RULE_COUNT
+        };
         if self.live_rule_zero {
+            if self.observational {
+                return plasticity::LIVE_RULE_BASE + (rule_id % (plasticity::LIVE_RULE_COUNT + 1));
+            }
             plasticity::LIVE_RULE_BASE + (rule_id % plasticity::LIVE_RULE_COUNT)
         } else {
             rule_id
@@ -1528,20 +1555,48 @@ mod tests {
     /// the stored-but-unreduced values `PlasticityGenes::normalized` exists
     /// to tolerate.
     #[test]
-    fn with_the_flag_clear_the_rule_id_is_untouched() {
+    fn with_the_flags_clear_the_base_space_is_untouched_and_rule_5_reduces() {
         let budget = PlasticityBudget::edges(8);
         assert!(!budget.live_rule_zero);
-        for rule_id in 0..=u8::MAX {
+        assert!(!budget.observational);
+        // `normalized` hands this function values inside the rule space
+        // (0..6); the base five are the identity, and the gated rule
+        // reduces to where it pointed before the space widened - the
+        // static value - so a rule-5 allele in a world that does not offer
+        // the rule is inert rather than covertly Hebbian (ADR-0029).
+        for rule_id in 0..plasticity::RULE_COUNT {
             assert_eq!(
                 budget.effective_rule_id(rule_id),
                 rule_id,
-                "rule {rule_id} moved with the flag clear"
+                "rule {rule_id} moved with the flags clear"
             );
         }
+        assert_eq!(
+            budget.effective_rule_id(plasticity::RULE_OBSERVATIONAL),
+            plasticity::RULE_STATIC
+        );
         assert_eq!(
             PlasticityBudget::disabled().effective_rule_id(plasticity::RULE_STATIC),
             plasticity::RULE_STATIC
         );
+        // With the rule offered, the whole space is the identity.
+        let offered = PlasticityBudget::edges(8).with_observational();
+        for rule_id in 0..plasticity::RULE_SPACE {
+            assert_eq!(offered.effective_rule_id(rule_id), rule_id);
+        }
+        // Chain and observational together: uniform over the five live
+        // rules, none of them the dead value.
+        let both = PlasticityBudget::edges(8)
+            .with_live_rule_zero()
+            .with_observational();
+        let mut hits = [0_u32; plasticity::RULE_SPACE as usize];
+        for drawn in 0..plasticity::RULE_SPACE - 1 {
+            hits[both.effective_rule_id(drawn) as usize] += 1;
+        }
+        assert_eq!(hits[plasticity::RULE_STATIC as usize], 0);
+        for rule_id in plasticity::LIVE_RULE_BASE..plasticity::RULE_SPACE {
+            assert_eq!(hits[rule_id as usize], 1, "rule {rule_id} not uniform");
+        }
     }
 
     /// With the flag set, **every** id names a live rule and none names the
@@ -1641,6 +1696,7 @@ mod tests {
         // zero under either rule.
         for (left, right) in off.plastic_edges.iter().zip(on.plastic_edges.iter()) {
             let signals = plasticity::EdgeSignals {
+                social_pre: 0.0,
                 pre: 0.9,
                 post: 0.8,
                 modulator: 0.0,

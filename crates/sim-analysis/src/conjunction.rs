@@ -64,7 +64,7 @@
 
 use sim_core::{
     EDGE_FLAG_PLASTIC, ExpressedEdge, Genome2, LearnSaveState, LocusKind, NO_MODULATOR,
-    PlasticityBudget, PlasticityGenes, RULE_COUNT, RULE_OJA, RULE_STATIC,
+    PlasticityBudget, PlasticityGenes, RULE_OJA, RULE_SPACE, RULE_STATIC,
     compile_network_with_budget, rule_is_modulated,
 };
 use std::fmt::Write as _;
@@ -202,12 +202,15 @@ pub struct AlleleConjunctionCensus {
     pub full_conjunction_gated: u64,
     /// How many alleles satisfy 0, 1, 2, 3 or 4 of the conditions.
     pub depth: [u64; 5],
-    /// Normalized `rule_id`, `0..RULE_COUNT`.
-    pub rules: [u64; RULE_COUNT as usize],
-    /// Stored `rule_id` outside the registry, which
-    /// `PlasticityGenes::normalized` reduces modulo `RULE_COUNT` on the way
-    /// to the phenotype. Expected to be zero: point mutation draws
-    /// `% PLASTICITY_RULE_COUNT`.
+    /// Normalized `rule_id`, `0..RULE_SPACE` (the space is one wider than
+    /// the base registry since Phase 13's gated rule 5, ADR-0029; slot 5 is
+    /// structurally zero for any pre-13 campaign, whose draws never bore an
+    /// id above 4).
+    pub rules: [u64; RULE_SPACE as usize],
+    /// Stored `rule_id` outside the id space, which
+    /// `PlasticityGenes::normalized` reduces modulo `RULE_SPACE` on the way
+    /// to the phenotype. Expected to be zero: point mutation draws inside
+    /// the space.
     pub stored_rule_out_of_registry: u64,
     /// Every locus of every kind, both haplotypes. **Not a conjunction
     /// quantity.** It is the denominator of the waiting-time question:
@@ -237,7 +240,7 @@ pub fn allele_conjunction_census(genomes: &[Genome2]) -> AlleleConjunctionCensus
             else {
                 continue;
             };
-            if plasticity.rule_id >= RULE_COUNT {
+            if plasticity.rule_id >= RULE_SPACE {
                 census.stored_rule_out_of_registry += 1;
             }
             // The phenotype's values, not the stored ones: `normalized` is
@@ -320,7 +323,7 @@ pub struct ExpressedConjunctionCensus {
     pub full_conjunction: u64,
     pub full_conjunction_gated: u64,
     pub depth: [u64; 5],
-    pub rules: [u64; RULE_COUNT as usize],
+    pub rules: [u64; RULE_SPACE as usize],
 }
 
 /// Re-express and re-compile every genome, and count the plastic edges the
@@ -350,10 +353,10 @@ pub fn expressed_conjunction_census(
         for edge in &compiled.plastic_edges {
             census.plastic_edges += 1;
             let rule = edge.rule;
-            if rule.rule_id >= RULE_COUNT {
+            if rule.rule_id >= RULE_SPACE {
                 return Err(format!(
                     "organism {index}: compiled plastic edge {} carries rule {} outside the \
-                     registry of {RULE_COUNT}, which expression normalizes away - the census is \
+                     id space of {RULE_SPACE}, which expression normalizes away - the census is \
                      reading a value the learn phase could not have run",
                     edge.homology_id, rule.rule_id
                 ));
@@ -1028,7 +1031,7 @@ mod tests {
         assert_eq!(census.drive, 0);
         assert_eq!(census.full_conjunction, 0);
         assert_eq!(census.depth, [20, 0, 0, 0, 0]);
-        assert_eq!(census.rules, [20, 0, 0, 0, 0]);
+        assert_eq!(census.rules, [20, 0, 0, 0, 0, 0]);
     }
 
     /// The decisive assertion: an allele that satisfies three conditions is
@@ -1209,7 +1212,7 @@ mod tests {
             "every allele must land in exactly one rung"
         );
         assert_eq!(census.full_conjunction, census.depth[4]);
-        assert_eq!(census.rules, [4, 8, 0, 0, 0]);
+        assert_eq!(census.rules, [4, 8, 0, 0, 0, 0]);
     }
 
     /// The locus and chromosome counts the waiting-time arithmetic divides
@@ -1289,17 +1292,21 @@ mod tests {
     /// out-of-registry count must show that it was stored differently.
     #[test]
     fn an_out_of_registry_rule_id_is_counted_as_the_rule_expression_would_run() {
-        // 7 % 5 == 2, which is Oja - a rule that needs no coefficients, so
+        // 8 % 6 == 2, which is Oja - a rule that needs no coefficients, so
         // this also proves the normalization happens before the conjunction
-        // rather than after it.
+        // rather than after it. The modulus is the rule SPACE (six values
+        // since Phase 13's gated rule 5, ADR-0029), not the base count; a
+        // stored 7 used to reduce to 2 under the old mod-5 and reduces to 1
+        // now, which no real allele can notice - the fresh-rule draw never
+        // bore an id above 4 in any pre-13 world.
         let stored = genome(vec![edge(
             4_000,
             EDGE_FLAG_PLASTIC,
-            genes(7, 0.5, [0.0; 4], 0),
+            genes(8, 0.5, [0.0; 4], 0),
         )]);
         let census = allele_conjunction_census(std::slice::from_ref(&stored));
         assert_eq!(census.stored_rule_out_of_registry, 2);
-        assert_eq!(census.rules, [0, 0, 2, 0, 0]);
+        assert_eq!(census.rules, [0, 0, 2, 0, 0, 0]);
         assert_eq!(census.full_conjunction, 2);
     }
 
@@ -1547,7 +1554,7 @@ mod tests {
         assert_eq!(arm.alleles.full_conjunction_gated, 4);
         assert_eq!(arm.alleles.modulator_named, 4);
         assert_eq!(arm.alleles.depth, [0, 0, 0, 0, 4]);
-        assert_eq!(arm.alleles.rules, [0, 4, 0, 0, 0]);
+        assert_eq!(arm.alleles.rules, [0, 4, 0, 0, 0, 0]);
         assert_eq!(arm.worlds_with_any_full_conjunction, 2);
         assert_eq!(arm.learned.rows, 8);
         assert_eq!(arm.learned.nonzero_learned, 2);

@@ -1795,6 +1795,14 @@ impl SimConfig {
                     social.signal_corruption_q16,
                 ));
             }
+            // Rule 5 is a plasticity rule; a world that offers it with no
+            // learn phase would report a null it never measured.
+            if social.observational_enabled && !self.plasticity.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "social.observational_enabled requires plasticity",
+                    0,
+                ));
+            }
             // Condition D preserves the emission and its cost and scrambles
             // only delivery; with the signal half off there is nothing to
             // scramble and the arm would silently be condition B.
@@ -2363,7 +2371,11 @@ impl SimConfig {
             // same `rule_id` under a different registry is a different rule,
             // exactly as the same locus under a different channel registry
             // describes a different organism.
-            hasher.update_u32(u32::from(crate::plasticity::RULE_REGISTRY_VERSION));
+            // The version this world *offers*, not the constant: 1 for every
+            // world without the gated observational rule, so the Phase 11
+            // fixture hashes the byte it always hashed (the channel
+            // registry's precedent, ADR-0028 section 7).
+            hasher.update_u32(u32::from(self.plasticity_rule_registry_version()));
             hasher.update_i64(self.plasticity.plastic_edge_cost_milli_per_s);
             hasher.update_u32(self.plasticity.max_plastic_edges);
             hasher.update_u32(self.plasticity.lamarckian_fraction_q16);
@@ -2525,10 +2537,33 @@ impl SimConfig {
             return crate::controller2::PlasticityBudget::disabled();
         }
         let budget = crate::controller2::PlasticityBudget::edges(self.plasticity.max_plastic_edges);
-        if self.plasticity.live_rule_zero {
+        let budget = if self.plasticity.live_rule_zero {
             budget.with_live_rule_zero()
         } else {
             budget
+        };
+        if self.observational_offered() {
+            budget.with_observational()
+        } else {
+            budget
+        }
+    }
+
+    /// Whether rule 5 (Observational) is in this world's effective rule
+    /// space: the social section on and its gate set (condition P).
+    /// Validation guarantees the gate implies the plasticity section, so
+    /// the rule always has a learn phase to run in.
+    pub fn observational_offered(&self) -> bool {
+        self.social.enabled && self.social.observational_enabled
+    }
+
+    /// The plasticity rule-registry version this world offers: 2 when the
+    /// observational rule is offered, else 1.
+    pub fn plasticity_rule_registry_version(&self) -> u16 {
+        if self.observational_offered() {
+            crate::plasticity::RULE_REGISTRY_VERSION_OBSERVATIONAL
+        } else {
+            crate::plasticity::RULE_REGISTRY_VERSION
         }
     }
 
@@ -2541,11 +2576,14 @@ impl SimConfig {
     /// reduction in `PlasticityGenes::normalized` - is untouched, because
     /// this draw is the only place a fresh id is ever born.
     pub fn plasticity_rule_draw_count(&self) -> u8 {
-        if self.plasticity.enabled && self.plasticity.live_rule_zero {
+        let base = if self.plasticity.enabled && self.plasticity.live_rule_zero {
             crate::plasticity::LIVE_RULE_COUNT
         } else {
             crate::genome2::PLASTICITY_RULE_COUNT
-        }
+        };
+        // Condition P widens the draw by one so rule 5 is reachable by the
+        // same redraw that reaches every other rule (ADR-0029 section 5).
+        base + u8::from(self.observational_offered())
     }
 
     pub fn world_extent_x_fp(&self) -> i32 {

@@ -4435,6 +4435,14 @@ impl World {
             let learned_row = &mut learn.learned_q16[index];
             let trace_row = &mut learn.trace_q16[index];
             let before = learn.faults[index];
+            // Rule 5's presynaptic term: the perceived neighbour-motion cue
+            // this tick's sense phase computed (slot 0, cue 3). Zero in a
+            // world without the section, where rule 5 cannot compile.
+            let social_pre = self
+                .social
+                .as_ref()
+                .and_then(|social| social.perception.get(index))
+                .map_or(0.0, |cues| cues[3]);
             // The moat's charge basis, counted in the same pass that does the
             // work. Zero when the moat is off, and unread in that case.
             let mut moved_edges = 0_i64;
@@ -4450,6 +4458,7 @@ impl World {
                     // activation buffers hold this tick's values and a
                     // delayed edge's actual input is only in the capture.
                     pre: activation.plastic_pre(slot),
+                    social_pre,
                     post: activation.values[edge.target as usize],
                     // An edge with no usable modulator is handed 0.0, which
                     // makes rules 3 and 4 inert rather than always-on.
@@ -4496,6 +4505,16 @@ impl World {
                 }
                 learned_row[slot] = outcome.state.learned_q16;
                 trace_row[slot] = outcome.state.trace_q16;
+                // Condition S's verification counter (ADR-0029 section 5):
+                // an S arm asserts this stays zero, so the ablation is
+                // checked by the mechanism's own record rather than by a
+                // config flag.
+                if edge.rule.rule_id == plasticity::RULE_OBSERVATIONAL
+                    && matches!(outcome.kind, plasticity::StepKind::Applied)
+                    && let Some(social) = self.social.as_mut()
+                {
+                    social.table.counters.rule5_updates_total += 1;
+                }
             }
             let faults = learn.faults[index] - before;
             if faults > 0 {

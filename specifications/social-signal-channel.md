@@ -1,8 +1,12 @@
 # Social Signal Channel Specification
 
-Status: design specification, not implemented. Phase 13. Policy version
-`lifesim-social-v1`. Depends on genome schema 2 (channel registry) and
-plasticity (`specifications/plasticity-and-learning.md`).
+Status: implementing, Phase 13 (2026-09-01). Policy version
+`lifesim-social-v1`. Realized by ADR-0029, which records every place the
+implementation departs from this document's text beside its reason; the
+as-built notes at the end of this file summarize them. Depends on genome
+schema 2 (channel registry), the artifact section (the registry version
+scheme is a total order, ADR-0029 section 1), and plasticity
+(`specifications/plasticity-and-learning.md`).
 
 ## Problem
 
@@ -168,7 +172,7 @@ result meaningful are recorded in the phase plan and are not small.
 | Candidate selection | Sorted by `(distance_squared, object_id)`, truncated, then drawn |
 | Pairwise draws | `lifesim-pairkey-v1` canonical pair key |
 | Mutual learning in one tick | Both read frozen prior state; symmetric and order-free |
-| Checksum | Section `lifesim-signal-state-v1`, present only when enabled |
+| Checksum | Section `lifesim-social-state-v1`, present only when enabled (the section carries perception state as well as the field, so the broader name is used; ADR-0029 section 6) |
 
 ## Metrics And Events
 
@@ -199,3 +203,50 @@ none.
 - Non-finite neutralization on every input and output path, counted and
   evented, no panic.
 - Save round trip with a nonzero committed signal field.
+
+## As-Built Notes (2026-09-01, ADR-0029)
+
+The kernel realizes this specification with the following recorded
+departures; the reasoning for each is in ADR-0029 and none weakens a
+stated criterion:
+
+- **Registry version 3**, channels 23..=58 (nine cues per neighbour slot,
+  four slots), `signal_in` 59..=62, `signal_emit` 118..=121;
+  `perception_k` and `signal_channels` are validated `1..=4` against the
+  registry's width. `social.enabled` requires `artifact.enabled`.
+- **`neighbour_carried[k]`** is the neighbour's carried-load fraction, not
+  a material class (a material id is a label; ADR-0022 A3, ADR-0028).
+- **Visible phenotype** is body scale and health fraction; pigmentation
+  does not exist in this engine and size duplicates scale. A heritable
+  badge locus is a recorded follow-up needing its own ADR.
+- **`neighbour_motion[k]`** is the committed speed fraction; the turn
+  intent is not committed state.
+- **`neighbour_object_delta[k]`** is the committed magnitude of
+  object-state change the neighbour caused last tick (extraction,
+  consumption, combination), normalized against 1,000 milli.
+- **Heritable amplitude and sensitivity are the `IoBinding` gains** on the
+  emission and reception channels - the trait table is frozen at 14, and
+  the evolvable per-channel scalar already exists. Production and response
+  genes are separate loci by construction.
+- **Cost** is `signal_cost_milli * amplitude` summed over channels, exact
+  to the bit with a Q16-fractional-milli remainder per organism; the
+  `range_factor` term is absent because range already scales with
+  amplitude and a separate factor would price the same knob twice.
+- **Attenuation** is `1 - (d/range)^2` - monotone in distance as required,
+  square-root-free in fixed point. The field commit is decay-then-add at
+  `Finalize` with `signal_retain_q16` strictly below one whole (a
+  non-decaying field is refused: permanent marking is what artifacts are
+  for).
+- **Corruption** draws on the `Signal` stream keyed
+  `(receiver_id, channel, tick)`, taken for every organism and channel
+  whenever `signal_corruption_q16 > 0` so the draw pattern cannot depend
+  on what evolved; zero corruption takes no draw. The condition-D
+  scrambled delivery draws on the same stream keyed `(emitter_id, tick)`
+  at draw index 16.
+- **Events**: schema 7, `SignalEmitted` (tag 24: emitter, channel mask,
+  peak amplitude, cost) and `PerceptionFault` (tag 25). Reception is
+  summarized in metrics, never evented per organism per tick.
+- **Rule 5 (Observational)** is not yet implemented; ADR-0029 section 5
+  fixes its form (rule 1's arithmetic with the presynaptic term replaced
+  by the perceived `neighbour_motion[slot 0]` cue, gated by
+  `social.observational_enabled`, verified by counter in the S arm).

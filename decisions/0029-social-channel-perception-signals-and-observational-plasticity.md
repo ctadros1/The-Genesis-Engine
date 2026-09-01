@@ -68,9 +68,9 @@ Nine input channels per neighbour slot, four slots (`PERCEPTION_K_MAX =
 | `neighbour_present[k]` | 1.0 if occupied | as specified |
 | `neighbour_distance[k]` | 1 - d/radius, clamped | as specified |
 | `neighbour_bearing[k]` | signed cross-product bearing, the object-cue form | as specified |
-| `neighbour_motion[k]` | speed fraction blended with turn magnitude | as specified: body motion, not an action name |
+| `neighbour_motion[k]` | the neighbour's committed speed fraction | as specified: body motion, not an action name. Narrowed from "speed and turn magnitude": the turn intent is a per-tick controller output, not committed state, and a cue must read only what Rule 4 lets it read |
 | `neighbour_contact[k]` | the neighbour's committed prior-tick contact flag | as specified |
-| `neighbour_object_delta[k]` | committed prior-tick object-state-change magnitude near the neighbour | as specified |
+| `neighbour_object_delta[k]` | committed prior-tick object-state-change magnitude the neighbour caused | **deviation, see below** |
 | `neighbour_carried[k]` | the neighbour's carried load as a fraction of its capacity | **deviation, see below** |
 | `neighbour_scale[k]` | body scale, normalized | the spec's "visible phenotype", narrowed |
 | `neighbour_health[k]` | health fraction | the spec's "visible phenotype", narrowed |
@@ -111,6 +111,18 @@ committed at the end of the prior tick and carried in the social state
   accepts that outcome as a result: "the honest answer may be no. C13.7
   reports either way."
 
+- **`neighbour_object_delta[k]` reads what the neighbour caused, not what
+  is near it.** The spec says "whether an object near the neighbour changed
+  state last tick"; the implementation commits the magnitude of
+  object-state change the neighbour itself caused (extraction volume,
+  consumed energy, combined mass, normalized against 1,000 milli). A
+  spatial index of last tick's object deltas would price every organism
+  for events nobody perceives; the caused-by form is the same outcome-
+  shaped cue (never an act label) at per-organism cost, and it is the
+  reading the cumulative-culture review's mechanism table actually
+  licenses (9.2: "object motion, deformation, damage, transfer" of the
+  observed actor).
+
 The K-nearest tie at the truncation boundary resolves by `(distance_squared,
 organism_id)`, the project's standing Rule 5 form. The mutable-world review
 (13.4) warns that raw-ID tie-breaking is a persistent fitness advantage;
@@ -125,15 +137,20 @@ lottery on the `Perception` stream, and not before.
 is an output binding to `signal_emit[c]` (IDs 118..121; 109-112 stay
 unallocated forever per `CHANNELS_V2`'s doc). Amplitude is the clamped
 request in [0, 1]. Per tick, an emitting organism pays
-`signal_cost_milli * amplitude` (summed over channels, fixed point with a
-carried remainder - D-094's lesson pre-applied: a per-channel cost
-truncated per tick lands on zero), charged through the ledger whether or
-not any receiver exists (mutable-world 7.6: failed or unheard actions
-still cost, or agents probe the world for free).
+`signal_cost_milli * amplitude` (summed over channels, exact to the bit
+with a per-organism remainder carried in Q16 fractional milli - D-094's
+lesson pre-applied: a per-channel cost truncated per tick lands on zero),
+charged through the ledger whether or not any receiver exists
+(mutable-world 7.6: failed or unheard actions still cost, or agents probe
+the world for free). The spec's `range_factor` term is **deliberately
+absent**: range already scales with amplitude, so a separate range factor
+would price the same knob twice, and the single proportionality keeps
+"louder costs more and reaches further" one evolvable quantity.
 
-Propagation: the emission writes `amplitude * (1 - d / range)` (linear
-attenuation, fixed point) into every cell within `range =
-signal_base_range_m * amplitude`, capped by config, into a
+Propagation: the emission writes `amplitude * (1 - (d / range)^2)` into
+every cell within `range = signal_base_range_m * amplitude` - a monotone
+attenuation in distance, as the specification requires, chosen in this form
+because it needs no square root in fixed point - into a
 **staging field** during `apply`; contributions sum in ascending emitter
 organism ID and clamp; the staging field commits into the read field at
 `finalize` as `committed = decay(committed) + staged`, with
@@ -173,7 +190,18 @@ this exact keying; methodology 6.3 requires the named domain so arms stay
 paired). Zero corruption takes no draw, so a corruption-free world
 consumes nothing from the stream.
 
-### 4. Condition D is a first-class config gate, not an analysis trick
+### 4. The condition gates are config, and D is first-class
+
+Conditions A/B/C of the plan's table are realized by two sub-gates beside
+the section gate: `social.perception_enabled` (off in condition C) and
+`social.signal_enabled` (off in B and C). Both off-states keep the registry
+width - the channels stay offered and bindable, the cues read zero and the
+emissions deposit nothing - so the arms share a mutation spectrum and
+differ only in their named variable, which is the D-118 lesson applied in
+advance. A sub-gate moved with the section off is refused at validation,
+on the probe section's precedent.
+
+### Condition D is a first-class config gate, not an analysis trick
 
 `social.scramble_delivery` (condition D): the emission's attenuation
 profile is deposited centered on the position of a **randomly chosen other

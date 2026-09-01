@@ -438,3 +438,113 @@ fn a_fully_live_social_world_is_deterministic_over_200_ticks() {
     assert!(counters.corruption_draws_total > 0);
     assert!(counters.scrambled_deliveries_total > 0);
 }
+
+// --- rule 5: offered under P, verified absent by counter under S ------------
+
+/// The observational rule's gate, end to end (ADR-0029 section 5): the same
+/// rule-5 allele learns under condition P and is inert under condition S,
+/// and the S arm's proof is the mechanism's own counter, not the config
+/// flag. The edge feeds a hidden node nothing reads (the Phase 11 neutral-
+/// edge pattern), so the two arms' ecologies are identical and the only
+/// difference is the gate.
+#[test]
+fn a_rule_5_allele_learns_under_p_and_is_inert_under_s_verified_by_counter() {
+    use sim_core::{EDGE_FLAG_PLASTIC, LearnedEdgeSave, PlasticityGenes, RULE_OBSERVATIONAL};
+
+    fn add_rule5_edge(genome: &mut Genome2) {
+        const BASE: u32 = STRUCTURAL_HOMOLOGY_BASE;
+        const FOUNDER_INPUT: u32 = BASE + 1_000;
+        const NEUTRAL_NODE: u32 = BASE + 8_000;
+        const NEUTRAL_EDGE: u32 = BASE + 9_000;
+        for haplotype in &mut genome.haplotypes {
+            for chromosome in &mut haplotype.chromosomes {
+                chromosome.push(Locus {
+                    homology_id: NEUTRAL_NODE,
+                    gene_lineage_id: u64::from(NEUTRAL_NODE),
+                    mutation_event_id: 0,
+                    kind: LocusKind::Node {
+                        role: NodeRole::Hidden,
+                        activation_id: Activation::TanhApprox.id(),
+                        bias: 0.0,
+                        time_constant: 0,
+                    },
+                });
+                chromosome.push(Locus {
+                    homology_id: NEUTRAL_EDGE,
+                    gene_lineage_id: u64::from(NEUTRAL_EDGE),
+                    mutation_event_id: 0,
+                    kind: LocusKind::Edge {
+                        source: FOUNDER_INPUT,
+                        target: NEUTRAL_NODE,
+                        weight: 1.0,
+                        flags: EDGE_FLAG_PLASTIC,
+                        plasticity: PlasticityGenes {
+                            rule_id: RULE_OBSERVATIONAL,
+                            eta: 0.5,
+                            // c*y + d: applies whenever the rule runs, so
+                            // the arms discriminate on the gate alone. The
+                            // social-term-not-presynaptic discrimination is
+                            // unit-tested beside the registry.
+                            coefficients: [0.0, 0.0, 1.0, 1.0],
+                            decay: 0.0,
+                            modulator_node: 0,
+                        },
+                    },
+                });
+            }
+        }
+    }
+
+    fn rule5_world(observational: bool) -> World {
+        let mut config = social_config(SEED);
+        config.initial_organisms = 4;
+        config.plasticity.enabled = true;
+        config.social.observational_enabled = observational;
+        config.validate().expect("valid");
+        let world = World::new(config).expect("world");
+        let mut state = world.export_state();
+        let caps: GenomeCaps = state.config.genome2.caps;
+        let schema2 = state.schema2.as_mut().expect("a schema-2 world");
+        let mut rows = Vec::new();
+        for index in 0..schema2.genomes.len() {
+            let mut genome = Genome2::decode(&schema2.genomes[index], &caps).expect("decodes");
+            add_rule5_edge(&mut genome);
+            genome
+                .validate_structure(&caps)
+                .expect("the rewritten genome validates");
+            rows.push(vec![LearnedEdgeSave {
+                edge_homology_id: STRUCTURAL_HOMOLOGY_BASE + 9_000,
+                learned_q16: 0,
+                trace_q16: 0,
+            }]);
+            schema2.genomes[index] = genome.encode();
+            schema2.activation_values[index].push(0.0);
+            schema2.activation_prior[index].push(0.0);
+        }
+        if let Some(learn) = state.learn.as_mut() {
+            learn.edges = rows;
+        }
+        World::from_state(state).expect("restores")
+    }
+
+    let mut p_arm = rule5_world(true);
+    let mut s_arm = rule5_world(false);
+    assert_ne!(
+        p_arm.export_state().config.stable_hash(),
+        s_arm.export_state().config.stable_hash(),
+        "P and S are distinct replay lineages"
+    );
+    run(&mut p_arm, 30);
+    run(&mut s_arm, 30);
+
+    let p = p_arm.social_counters().unwrap();
+    assert!(
+        p.rule5_updates_total > 0,
+        "the offered rule never ran: {p:?}"
+    );
+    let s = s_arm.social_counters().unwrap();
+    assert_eq!(
+        s.rule5_updates_total, 0,
+        "condition S's ablation is verified by the counter: {s:?}"
+    );
+}
