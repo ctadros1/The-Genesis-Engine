@@ -981,3 +981,70 @@ fn corruption_noise_is_keyed_per_channel_and_per_receiver() {
          subject is not the receiver"
     );
 }
+
+/// The metrics snapshot's social block is the table's counters, not a
+/// parallel account: every field equals its counter, the
+/// perceived-neighbours gauge equals a hand count of present cues from the
+/// same perception rows the controllers read, and a social-disabled world
+/// reports `social_enabled` false with every field zero - the server
+/// renders the block only on that flag, so this is the gate the metrics
+/// endpoint stands on.
+#[test]
+fn the_metrics_snapshot_mirrors_the_social_counters_and_only_when_enabled() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 6;
+    let world = scripted_world(config, &[CHANNEL_SIGNAL_EMIT_BASE]);
+    // Co-locate everyone so perception slots actually fill.
+    let mut state = world.export_state();
+    for index in 1..state.x_fp.len() {
+        state.x_fp[index] = state.x_fp[0] + index as i32;
+        state.y_fp[index] = state.y_fp[0];
+    }
+    let mut world = World::from_state(state).expect("restores");
+    for _ in 0..3 {
+        world.step();
+    }
+    let metrics = world.metrics();
+    let counters = world.social_counters().expect("section on");
+    assert!(metrics.social_enabled);
+    assert_eq!(
+        metrics.signals_emitted_total,
+        counters.signals_emitted_total
+    );
+    assert_eq!(
+        metrics.signal_cost_milli_total,
+        counters.signal_cost_milli_total
+    );
+    assert_eq!(
+        metrics.perception_faults_total,
+        counters.perception_faults_total
+    );
+    assert_eq!(
+        metrics.corruption_draws_total,
+        counters.corruption_draws_total
+    );
+    assert_eq!(
+        metrics.scrambled_deliveries_total,
+        counters.scrambled_deliveries_total
+    );
+    assert_eq!(metrics.rule5_updates_total, counters.rule5_updates_total);
+    assert!(
+        metrics.signals_emitted_total > 0,
+        "non-vacuity: the scripted trace emits"
+    );
+    let by_hand: u64 = (0..world.population())
+        .map(|index| {
+            let cues = world.social_perception_of(index).expect("row exists");
+            (0..4).filter(|slot| cues[slot * 9] > 0.5).count() as u64
+        })
+        .sum();
+    assert_eq!(metrics.perceived_neighbours, by_hand);
+    assert!(by_hand > 0, "non-vacuity: co-located organisms perceive");
+
+    let plain = World::new(SimConfig::phase1_default(SEED)).expect("plain world");
+    let metrics = plain.metrics();
+    assert!(!metrics.social_enabled);
+    assert_eq!(metrics.signals_emitted_total, 0);
+    assert_eq!(metrics.signal_cost_milli_total, 0);
+    assert_eq!(metrics.perceived_neighbours, 0);
+}

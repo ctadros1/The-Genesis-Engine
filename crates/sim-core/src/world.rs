@@ -709,6 +709,22 @@ pub struct MetricsSnapshot {
     /// invalid layer/cell/value. C12.7: a run silently pressed against a cap
     /// must be visible in its report.
     pub worldmod_refusals: u64,
+    /// Phase 13. All zero (and `social_enabled` false) when the section is
+    /// disabled - the metrics endpoint renders the block only when enabled,
+    /// so a disabled world exports no social series at all (D-014's inert
+    /// rule applied to observability).
+    pub social_enabled: bool,
+    pub signals_emitted_total: u64,
+    pub signal_cost_milli_total: u64,
+    pub perception_faults_total: u64,
+    pub corruption_draws_total: u64,
+    pub scrambled_deliveries_total: u64,
+    pub rule5_updates_total: u64,
+    /// Conspecific neighbour slots filled at the last sense pass, summed
+    /// over living organisms: the spec's `lifesim_perceived_neighbours`
+    /// gauge. Counted from the present cue (slot base, set to exactly 1.0),
+    /// so it is the count the controllers actually saw, not a recount.
+    pub perceived_neighbours: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1623,6 +1639,42 @@ impl World {
                 .as_ref()
                 .map_or(0, |s| s.counters.cells_trimmed),
             worldmod_refusals: self.worldmod.as_ref().map_or(0, |s| s.counters.refusals()),
+            social_enabled: self.social.is_some(),
+            signals_emitted_total: self
+                .social
+                .as_ref()
+                .map_or(0, |s| s.table.counters.signals_emitted_total),
+            signal_cost_milli_total: self
+                .social
+                .as_ref()
+                .map_or(0, |s| s.table.counters.signal_cost_milli_total),
+            perception_faults_total: self
+                .social
+                .as_ref()
+                .map_or(0, |s| s.table.counters.perception_faults_total),
+            corruption_draws_total: self
+                .social
+                .as_ref()
+                .map_or(0, |s| s.table.counters.corruption_draws_total),
+            scrambled_deliveries_total: self
+                .social
+                .as_ref()
+                .map_or(0, |s| s.table.counters.scrambled_deliveries_total),
+            rule5_updates_total: self
+                .social
+                .as_ref()
+                .map_or(0, |s| s.table.counters.rule5_updates_total),
+            perceived_neighbours: self.social.as_ref().map_or(0, |social| {
+                social
+                    .perception
+                    .iter()
+                    .map(|cues| {
+                        (0..crate::social::PERCEPTION_K_MAX as usize)
+                            .filter(|slot| cues[slot * 9] > 0.5)
+                            .count() as u64
+                    })
+                    .sum()
+            }),
         }
     }
 

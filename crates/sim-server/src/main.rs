@@ -1258,6 +1258,32 @@ fn metrics_text(shared: &Shared) -> String {
         "lifesim_ticks_total{{world=\"{world_label}\"}} {}\n",
         shared.ticks_total.load(Ordering::Relaxed)
     ));
+    // Phase 13 social series (specifications/metrics-schema.md row 13),
+    // rendered only when the section is enabled: a disabled world exports
+    // no social series at all rather than a wall of zeros (D-014's inert
+    // rule applied to observability). Signal content is never a label.
+    if metrics.social_enabled {
+        text.push_str("# TYPE lifesim_signals_emitted_total counter\n");
+        text.push_str(&format!(
+            "lifesim_signals_emitted_total{{world=\"{world_label}\"}} {}\n",
+            metrics.signals_emitted_total
+        ));
+        text.push_str("# TYPE lifesim_signal_energy_spent_milli_total counter\n");
+        text.push_str(&format!(
+            "lifesim_signal_energy_spent_milli_total{{world=\"{world_label}\"}} {}\n",
+            metrics.signal_cost_milli_total
+        ));
+        text.push_str("# TYPE lifesim_perceived_neighbours gauge\n");
+        text.push_str(&format!(
+            "lifesim_perceived_neighbours{{world=\"{world_label}\"}} {}\n",
+            metrics.perceived_neighbours
+        ));
+        text.push_str("# TYPE lifesim_perception_faults_total counter\n");
+        text.push_str(&format!(
+            "lifesim_perception_faults_total{{world=\"{world_label}\"}} {}\n",
+            metrics.perception_faults_total
+        ));
+    }
     // Stream metrics for connected observers.
     let clients = shared.clients.lock().expect("clients");
     let total_bytes: u64 = clients

@@ -809,3 +809,74 @@ fn saves_checkpoints_and_isolated_verify_work_end_to_end() {
     assert!(world_body.contains("\"world_epoch\":2"));
     let _ = std::fs::remove_dir_all(&data_dir);
 }
+
+/// `/metrics` exports the Phase 13 social series only when the loaded
+/// world's social section is on (specifications/metrics-schema.md row 13):
+/// the default harness world exports none of them, and a social world
+/// saved in-process and loaded with `--load-save` exports all four. The
+/// values themselves are covered at the kernel level
+/// (`the_metrics_snapshot_mirrors_the_social_counters_and_only_when_enabled`);
+/// this test is the endpoint's gate and wiring, end to end through the
+/// format-8 snapshot path.
+#[test]
+fn the_metrics_endpoint_exports_the_social_series_only_when_the_section_is_on() {
+    const SOCIAL_SERIES: [&str; 4] = [
+        "lifesim_signals_emitted_total",
+        "lifesim_signal_energy_spent_milli_total",
+        "lifesim_perceived_neighbours",
+        "lifesim_perception_faults_total",
+    ];
+
+    let plain = spawn_server(&[]);
+    let (status, body) = http(&plain, "GET", "/metrics", Some(OBSERVER_TOKEN), None);
+    assert_eq!(status, 200);
+    assert!(body.contains("lifesim_ticks_total"), "{body}");
+    for series in SOCIAL_SERIES {
+        assert!(
+            !body.contains(series),
+            "a social-disabled world exported {series}:\n{body}"
+        );
+    }
+    drop(plain);
+
+    let mut config = sim_core::SimConfig::phase2_default(0x1373_5eed);
+    config.cells_x = 48;
+    config.cells_y = 48;
+    config.initial_organisms = 8;
+    config.max_entities = 200;
+    config.genome2.enabled = true;
+    config.worldmod.enabled = true;
+    config.contest.enabled = true;
+    config.artifact.enabled = true;
+    config.social.enabled = true;
+    config.reproduction_enabled = false;
+    config.validate().expect("the social config validates");
+    let mut world = sim_core::World::new(config).expect("world");
+    for _ in 0..3 {
+        world.step();
+    }
+    let bytes = sim_persist::encode_snapshot(
+        &world.export_state(),
+        1,
+        0,
+        world.state_checksum(),
+        sim_persist::BUILD_VERSION,
+        0,
+        Some(3),
+    )
+    .expect("encode social snapshot");
+    let directory =
+        std::env::temp_dir().join(format!("lifesim-social-metrics-{}", std::process::id()));
+    std::fs::create_dir_all(&directory).expect("temp dir");
+    let path = directory.join("social.alif");
+    std::fs::write(&path, &bytes).expect("write snapshot");
+
+    let guard = spawn_server(&["--load-save", &path.to_string_lossy()]);
+    let (status, body) = http(&guard, "GET", "/metrics", Some(OBSERVER_TOKEN), None);
+    assert_eq!(status, 200);
+    for series in SOCIAL_SERIES {
+        assert!(body.contains(series), "missing {series}:\n{body}");
+    }
+    drop(guard);
+    let _ = std::fs::remove_dir_all(&directory);
+}
