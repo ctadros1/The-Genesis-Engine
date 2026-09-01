@@ -85,6 +85,7 @@ fn run() -> Result<(), String> {
         Some("plasticity") => command_plasticity(parse_options(args.collect())?),
         Some("conjunction") => command_conjunction(parse_options(args.collect())?),
         Some("artifact") => command_artifact(parse_options(args.collect())?),
+        Some("social") => command_social(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -109,6 +110,7 @@ fn usage() -> String {
         "       lifesim plasticity --manifest FILE --treatment CONDITION --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX]\n",
         "       lifesim conjunction --manifest FILE   (descriptive census; no threshold, no verdict)\n",
         "       lifesim artifact --manifest FILE --treatment A --control C --disabled D   (C12.1-C12.3 against the pre-registered bars)\n",
+        "       lifesim social --manifest FILE --epoch N   (C13.1 arrival census + reachability census; no verdict)\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity --artifact [--artifact-inert] [--artifact-ephemeral]\n",
@@ -177,6 +179,7 @@ struct Options {
     sesoi: Option<i64>,
     analysis_seed: Option<u64>,
     power: bool,
+    epoch: Option<u64>,
 }
 
 fn parse_options(args: Vec<String>) -> Result<Options, String> {
@@ -284,6 +287,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--burn-in" => options.burn_in = Some(parse_number(name, value)?),
             "--sesoi" => options.sesoi = Some(parse_number::<i64>(name, value)?),
             "--analysis-seed" => options.analysis_seed = Some(parse_seed(value)?),
+            "--epoch" => options.epoch = Some(parse_number(name, value)?),
             _ => return Err(format!("unknown option {name}\n{}", usage())),
         }
         index += 2;
@@ -2278,6 +2282,205 @@ fn command_demography(options: Options) -> Result<(), String> {
             thermal_rho,
             thermal_n,
         );
+    }
+    Ok(())
+}
+
+/// The Phase 13 observer report: C13.1's arrival census and the social
+/// reachability census, one line per world, no threshold and no verdict
+/// (ADR-0016). The A-versus-C and A-versus-D decisions belong to the
+/// pre-registered campaign analysis, which reads these lines; a command
+/// that decided here would hide the census a null must be read against.
+///
+/// `--epoch N` names the relocation that gives C13.1 its patch P and its
+/// clock: the patch active during `[N*interval, (N+1)*interval)` is P,
+/// the relocation tick is the naive cut, and arrivals are counted only
+/// inside that window - an arrival after the next relocation is an
+/// arrival at a place the food has left. The patch centre is recomputed
+/// through the kernel's own schedule accessor, never re-derived here.
+fn command_social(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("social requires --manifest\n{}", usage()))?;
+    let epoch = options
+        .epoch
+        .ok_or_else(|| format!("social requires --epoch\n{}", usage()))?;
+    if epoch == 0 {
+        return Err("epoch 0 is the interval before the first relocation and has no patch".into());
+    }
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    println!("social-report 1 campaign {}", manifest.campaign.id);
+    println!(
+        "detector {} epoch {}",
+        sim_analysis::ARRIVAL_DETECTOR_VERSION,
+        epoch
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let stem = sim_experiment::run_stem(&run.condition, run.seed);
+            let config = manifest
+                .campaign
+                .config_for(condition, run.seed)
+                .map_err(|error| format!("{stem}: {error}"))?;
+            if !config.worldmod.enabled || !config.worldmod.patch_enabled {
+                return Err(format!(
+                    "{stem}: no relocating patch (worldmod.patch_enabled is off), so C13.1 \
+                     has no patch P; this command cannot report this campaign"
+                ));
+            }
+            let interval = config.worldmod.relocate_interval_ticks;
+            let naive_after = epoch * interval;
+            let window_end = naive_after + interval;
+
+            let log_path = directory.join(format!("{stem}.alev"));
+            let bytes =
+                fs::read(&log_path).map_err(|error| format!("{}: {error}", log_path.display()))?;
+            let (_, events) =
+                sim_persist::decode_log_events(&bytes).map_err(|error| error.to_string())?;
+
+            let spatial_path = directory.join(format!("{stem}.alss"));
+            let bytes = fs::read(&spatial_path)
+                .map_err(|error| format!("{}: {error}", spatial_path.display()))?;
+            let scan = sim_persist::decode_spatial(&bytes)
+                .map_err(|error| format!("{stem}: decode spatial: {error}"))?;
+            if scan.info.config_hash != run.config_hash {
+                return Err(format!(
+                    "{stem}: the spatial log's config hash {:#018x} is not the run's {:#018x}",
+                    scan.info.config_hash, run.config_hash
+                ));
+            }
+            if scan.info.terrain_checksum != run.terrain_checksum {
+                return Err(format!(
+                    "{stem}: the spatial log's terrain {:#018x} is not the run's {:#018x}",
+                    scan.info.terrain_checksum, run.terrain_checksum
+                ));
+            }
+            // Prove the whole series was read, not a silently shortened
+            // one - the manifest records the count for exactly this check.
+            if scan.samples.len() as u64 != run.spatial_samples {
+                return Err(format!(
+                    "{stem}: {} spatial samples decoded but the manifest recorded {}",
+                    scan.samples.len(),
+                    run.spatial_samples
+                ));
+            }
+            let window: Vec<sim_persist::SpatialSample> = scan
+                .samples
+                .iter()
+                .filter(|sample| sample.tick >= naive_after && sample.tick < window_end)
+                .cloned()
+                .collect();
+            if window.is_empty() {
+                return Err(format!(
+                    "{stem}: no spatial samples in epoch {epoch}'s window \
+                     [{naive_after},{window_end}); the run is {} ticks at interval {}",
+                    run.ticks, scan.info.sample_interval_ticks
+                ));
+            }
+
+            // The patch through the kernel's own schedule, never a
+            // re-derivation of the draw.
+            let world = sim_core::World::new(config.clone())
+                .map_err(|error| format!("{stem}: rebuild world: {error}"))?;
+            let centre_cell = world
+                .patch_centre_for_epoch(epoch)
+                .ok_or_else(|| format!("{stem}: the kernel reports no patch for epoch {epoch}"))?;
+            let patch = sim_analysis::PatchSpec::CellSquare {
+                centre_cell,
+                cells_x: config.cells_x,
+                cells_y: config.cells_y,
+                cell_size_fp: config.cell_size_fp(),
+                radius_cells: config.worldmod.patch_radius_cells,
+            };
+            let arrival = sim_analysis::arrival_census(
+                &events,
+                &window,
+                config.initial_organisms,
+                scan.info.sample_interval_ticks,
+                patch,
+                naive_after,
+            )
+            .map_err(|error| format!("{stem}: arrival census: {error:?}"))?;
+
+            let snapshot_path = directory.join(format!("{stem}.alif"));
+            let bytes = fs::read(&snapshot_path)
+                .map_err(|error| format!("{}: {error}", snapshot_path.display()))?;
+            let (_, state) = sim_persist::decode_snapshot(&bytes)
+                .map_err(|error| format!("{stem}: decode snapshot: {error}"))?;
+            if state.config.stable_hash() != run.config_hash {
+                return Err(format!(
+                    "{stem}: the snapshot's config hash {:#018x} is not the manifest's {:#018x}",
+                    state.config.stable_hash(),
+                    run.config_hash
+                ));
+            }
+            let caps = state.config.genome2.caps;
+            let genomes: Vec<sim_core::Genome2> = match state.schema2.as_ref() {
+                Some(schema2) => schema2
+                    .genomes
+                    .iter()
+                    .map(|encoded| {
+                        sim_core::Genome2::decode(encoded, &caps)
+                            .map_err(|error| format!("{stem}: decode genome: {error}"))
+                    })
+                    .collect::<Result<_, _>>()?,
+                None => Vec::new(),
+            };
+            let census = sim_analysis::social::social_binding_census(
+                &genomes,
+                state.config.plasticity_budget(),
+            )
+            .map_err(|error| format!("{stem}: {error}"))?;
+
+            let signals_emitted = events
+                .iter()
+                .filter(|event| matches!(event.kind, sim_core::EventKind::SignalEmitted { .. }))
+                .count();
+            let perception_faults = events
+                .iter()
+                .filter(|event| matches!(event.kind, sim_core::EventKind::PerceptionFault { .. }))
+                .count();
+
+            println!(
+                "world condition={} seed={:#018x} patch_cell={} window=[{},{}) \
+                 naive={} arrived={} censored={} born_in_patch={} never_observed={} \
+                 median_latency={} arrival_fraction_milli={} sample_interval={} \
+                 population={} binds_cues={} hearers={} speakers={} emit_and_in={} \
+                 in_and_cues={} rule5_alleles={} rule5_carriers={} rule5_edges={} \
+                 rule5_expressed_organisms={} signals_emitted={} perception_faults={}",
+                run.condition,
+                run.seed,
+                centre_cell,
+                naive_after,
+                window_end,
+                arrival.naive_total,
+                arrival.naive_arrived,
+                arrival.naive_censored,
+                arrival.born_in_patch,
+                arrival.never_observed,
+                arrival
+                    .median_naive_latency_ticks
+                    .map_or_else(|| "none".to_owned(), |ticks| ticks.to_string()),
+                arrival.arrival_fraction_milli,
+                arrival.sample_interval_ticks,
+                census.population,
+                census.binds_neighbour_cues,
+                census.binds_signal_in,
+                census.binds_signal_emit,
+                census.binds_emit_and_in,
+                census.binds_in_and_cues,
+                census.rule5_alleles,
+                census.organisms_with_rule5_allele,
+                census.rule5_expressed_edges,
+                census.organisms_with_rule5_expressed,
+                signals_emitted,
+                perception_faults,
+            );
+        }
     }
     Ok(())
 }
