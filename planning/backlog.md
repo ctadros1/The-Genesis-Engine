@@ -90,6 +90,45 @@ pre-registration: the D-118 inert-arm fix under `lifesim-artifact-v2`
 first, then reach / hold cap / costs / bind rate as the knobs, and ALSP
 1.1 if objects should reach the observer.
 
+## The Ladder To Learning And Culture (from the Phase 11 and 12 nulls)
+
+Recorded 2026-08-16, consolidating what D-099, D-105, D-117 and D-118
+measured into the four levers a follow-up moves. None of these is a new
+criterion or a change to any decided one; each is a candidate campaign
+that must carry its own pre-registration before it runs, and the D-118
+inert-arm fix under `lifesim-artifact-v2` lands before any of them.
+
+1. **Make the payoff bigger and closer.** Both nulls have the same shape:
+   the mechanism was reachable and firing, and it did not pay. The
+   Phase 12 refusal ledger names the specific knobs - `reach_m` (14.1M
+   NoTarget refusals at 2 m), `max_held_objects` (4.1M HeldCap at 1),
+   the action costs, and object value itself (placed objects currently
+   confer nothing; a shelter or storage effect would be a new ADR under
+   `lifesim-artifact-v2`, not a tuning change).
+2. **Make the world demand learning within a lifetime.** C11.1's
+   instrument existed and its nulls were real: a static-enough world
+   rewards instinct, and plasticity was selected to zero. The relocating
+   patch (`worldmod.patch_*`) is the built mechanism for within-lifetime
+   change; the unexplored region is change fast enough and consequential
+   enough that a fixed genome cannot track it - swept as its own
+   pre-registered campaign, with the Phase 11 age-stratified analysis
+   reused as the ruler.
+3. **Longer horizons.** Every behavioral campaign so far ran 60,000 ticks
+   (~60 generations at the confirmatory base). The kernel sustains 10^6
+   ticks (C11.6, C12.6) and the scheduler is embarrassingly parallel
+   across worlds; a 10x horizon at 30 seeds is compute, not design. The
+   honest caveat from D-105 stands: a null at 60k ticks licensed "not at
+   this horizon", so a longer-horizon arm is the direct test of that
+   caveat, not a fishing trip.
+4. **Then culture (Phase 13), in order.** Culture is learned behavior
+   transmitted between individuals; the social channel is the built path
+   for it, and Phase 17's era/tradition detection is the ruler. The
+   ordering constraint is stated here so it is not rediscovered: imitation
+   has nothing to copy until levers 1-3 make some within-lifetime
+   behavior worth copying, so Phase 13 should ship its mechanism and its
+   reachability census expecting the transmission criteria to read null
+   until a learning campaign under levers 1-3 succeeds.
+
 **PHASE 11 IS COMPLETE (2026-08-16): all eight criteria decided**, benchmark
 schema 7, record `phase11-local-20260816T063000Z`. Met: C11.3, C11.4, C11.5,
 C11.6 (10^6 ticks, 18,971,594 plasticity updates, ledger exact), **C11.7**,
