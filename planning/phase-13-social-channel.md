@@ -1,7 +1,13 @@
 # Phase 13: Social Channel
 
-Status: planned, not started. Policy version `lifesim-social-v1`.
-Specification: `specifications/social-signal-channel.md`.
+Status: mechanism BUILT (2026-09-01, ADR-0029, D-122); behavioral criteria
+NOT measured - the campaign needs its own pre-registration, and the ladder
+(`planning/backlog.md`) records in advance that the transmission criteria
+are expected to read null until a learning campaign under levers 1-3
+succeeds. Fixture: `scripts/verify-phase13-determinism.sh` (config
+`0x252199db7099e9a5`, state `0x5861f0fc8ab02957`). Policy version
+`lifesim-social-v1`. Specification: `specifications/social-signal-channel.md`
+(as-built notes at its end); every deviation is recorded in ADR-0029.
 
 ## Problem
 

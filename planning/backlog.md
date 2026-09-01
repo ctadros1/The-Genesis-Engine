@@ -92,6 +92,18 @@ fixture re-pinned `0x21405a5c0591ceeb` / `0x24defb6052eb9d42`), then
 reach / hold cap / costs / bind rate as the knobs, and ALSP 1.1 if
 objects should reach the observer.
 
+## Current Phase: 13 (social channel)
+
+**The mechanism is BUILT (2026-09-01, ADR-0029, D-119..D-122)**: perception
+cues, the costly signal field, the four condition gates, the gated
+observational rule, registry v3, ALIF format 8, event schema 7, the pinned
+fixture and its verify script. The D-118 inert-arm fix landed first
+(`lifesim-artifact-v2`, D-119). NOT DONE: the behavioral campaign (its own
+pre-registration; expected transmission nulls per the ladder below), the
+sim-analysis reachability census and C13.3/C13.7-C13.10 classifiers (Gate E
+synthetic validation first), benchmarks (schema pending), and the docs
+listed in the plan.
+
 ## The Ladder To Learning And Culture (from the Phase 11 and 12 nulls)
 
 Recorded 2026-08-16, consolidating what D-099, D-105, D-117 and D-118
