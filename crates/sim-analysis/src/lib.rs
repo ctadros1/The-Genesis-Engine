@@ -13,6 +13,7 @@
 
 mod arrival;
 mod artifact;
+mod communities;
 mod conjunction;
 mod demography;
 mod fidelity;
@@ -29,6 +30,7 @@ pub use arrival::{
     ARRIVAL_DETECTOR_VERSION, ArrivalCensus, ArrivalError, IndividualArrival, PatchSpec,
     arrival_census,
 };
+pub use communities::{COMMUNITIES_VERSION, CommunityPlan, WorldCommunities, world_communities};
 pub use fidelity::{
     FIDELITY_VERSION, FidelityBin, FidelityPlan, KINSHIP_ONE_Q32, Pedigree, RELATEDNESS_BIN_COUNT,
     RELATEDNESS_BIN_EDGES_Q32, WorldFidelity, world_fidelity,
