@@ -146,6 +146,14 @@ pub struct SimConfig {
     /// registry version is 1, nothing is appended to the config hash or the
     /// state checksum, and `spawn_carcass` takes the Phase 7 path.
     pub artifact: ArtifactConfig,
+    /// Phase 13 social section, disabled by default. Same D-014 rule, and
+    /// it carries the heaviest fixture obligation yet: **five** fixtures
+    /// must reproduce with this disabled - Phase 1, Phase 2, Phase 9,
+    /// Phase 11, and Phase 12 (as re-pinned by D-119). Disabled, no
+    /// perception is gathered, no signal field exists, no social channel is
+    /// offered, rule 5 is absent from the effective rule space, and nothing
+    /// is appended to the config hash or the state checksum.
+    pub social: SocialConfig,
 }
 
 /// Versioned Phase 12 artifact policy (`lifesim-artifact-v2`, ADR-0028;
@@ -293,6 +301,85 @@ impl ArtifactConfig {
             yield_regen_interval_ticks: 600,
             stone_relative_q16: 39_322,
             wood_relative_q16: 16_384,
+        }
+    }
+}
+
+/// Versioned Phase 13 social policy (`lifesim-social-v1`, ADR-0029).
+///
+/// Enabling this adds forty-four channels to the registry this world's
+/// organisms may bind (nine cues per neighbour slot, the signal-field
+/// inputs, and the emission outputs), one gather to `Sense`, one pass to
+/// `Apply` (emission into the staging field) and one to `Finalize` (decay
+/// and commit). Nothing here names a meaning: signal channels are numbered,
+/// not named, no kernel code reads one and does anything specific with it,
+/// and no cue is a label (ADR-0022 A3/A4).
+///
+/// # The four condition gates
+///
+/// `perception_enabled` and `signal_enabled` split conditions A/B/C of the
+/// plan's design; `scramble_delivery` is condition D (emission deposited at
+/// a randomly drawn other organism, identical cost, the spatial-causal link
+/// destroyed); `observational_enabled` is condition P against S (rule 5
+/// offered or absent). Each removes physics; none adds any.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct SocialConfig {
+    pub enabled: bool,
+    /// Perception of the K nearest conspecifics. Off, the cue channels read
+    /// zero for bound genomes and the sense phase gathers nothing (condition
+    /// C keeps the registry width so the mutation spectrum matches A's).
+    pub perception_enabled: bool,
+    /// The signal field. Off, emission requests are charged nothing, deposit
+    /// nothing, and the field does not exist (condition B).
+    pub signal_enabled: bool,
+    /// Condition D: every emission lands centered on a randomly drawn other
+    /// living organism instead of the emitter. Cost, attenuation and decay
+    /// identical to condition A.
+    pub scramble_delivery: bool,
+    /// Condition P against S: whether rule 5 (Observational) is in the
+    /// effective plasticity rule space. Verified by counter, not by flag
+    /// (ADR-0029 section 5).
+    pub observational_enabled: bool,
+    /// Neighbour slots gathered, `1..=PERCEPTION_K_MAX`.
+    pub perception_k: u32,
+    /// Candidate radius for the K-nearest set, metres.
+    pub perception_radius_m: u32,
+    /// Live signal channels, `1..=SIGNAL_CHANNELS_MAX`.
+    pub signal_channels: u32,
+    /// Range of a full-amplitude emission, metres; actual range scales with
+    /// amplitude.
+    pub signal_base_range_m: u32,
+    /// Cost per whole unit of emitted amplitude per tick, milli-EU, charged
+    /// with a carried remainder (D-094: a per-tick truncation on a small
+    /// number lands on zero).
+    pub signal_cost_milli: i64,
+    /// Fraction of the committed field retained per tick, Q16, strictly
+    /// below one whole: a signal is a transient local event, and a
+    /// non-decaying field would be a permanent world marking, which is what
+    /// artifacts are for.
+    pub signal_retain_q16: u32,
+    /// Reception noise half-width, Q16 of the channel range; zero draws
+    /// nothing. The fidelity knob of the corruption sweep.
+    pub signal_corruption_q16: u32,
+}
+
+impl SocialConfig {
+    /// Documented Phase 13 defaults (disabled by default). Provisional, as
+    /// every rate in this repo is; ADR-0029 records the reasoning.
+    pub fn social_default() -> Self {
+        Self {
+            enabled: false,
+            perception_enabled: true,
+            signal_enabled: true,
+            scramble_delivery: false,
+            observational_enabled: false,
+            perception_k: 4,
+            perception_radius_m: 8,
+            signal_channels: 4,
+            signal_base_range_m: 4,
+            signal_cost_milli: 20,
+            signal_retain_q16: 49_152,
+            signal_corruption_q16: 0,
         }
     }
 }
@@ -1082,6 +1169,7 @@ impl SimConfig {
             worldmod: WorldModConfig::worldmod_default(),
             probe: ProbeConfig::probe_default(),
             artifact: ArtifactConfig::artifact_default(),
+            social: SocialConfig::social_default(),
         }
     }
 
@@ -1648,6 +1736,87 @@ impl SimConfig {
                 0,
             ));
         }
+        // Phase 13. Inside `validate_subsystems` for D-084's reason.
+        let social = &self.social;
+        if social.enabled {
+            // The registry version scheme is a total order (ADR-0029
+            // section 1): a social world offers versions 1..=3, and offering
+            // the artifact channels without the artifact section would admit
+            // a genome bound to `pick_up` in a world with no objects.
+            if !self.artifact.enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "social.enabled requires artifact",
+                    0,
+                ));
+            }
+            if social.perception_k == 0 || social.perception_k > crate::social::PERCEPTION_K_MAX {
+                return Err(ConfigError::PhysiologyRange(
+                    "social.perception_k",
+                    i64::from(social.perception_k),
+                ));
+            }
+            if social.signal_channels == 0
+                || social.signal_channels > crate::social::SIGNAL_CHANNELS_MAX
+            {
+                return Err(ConfigError::PhysiologyRange(
+                    "social.signal_channels",
+                    i64::from(social.signal_channels),
+                ));
+            }
+            for (name, value) in [
+                (
+                    "social.perception_radius_m",
+                    u64::from(social.perception_radius_m),
+                ),
+                (
+                    "social.signal_base_range_m",
+                    u64::from(social.signal_base_range_m),
+                ),
+            ] {
+                if value == 0 {
+                    return Err(ConfigError::PhysiologyRange(name, 0));
+                }
+            }
+            if social.signal_cost_milli < 0 {
+                return Err(ConfigError::Negative("social.signal_cost_milli"));
+            }
+            // A field retained whole never decays, and a permanent marking
+            // is what artifacts are for; the boundary between the two
+            // channels is load-bearing for the Phase 12/13 comparison.
+            if social.signal_retain_q16 >= Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(
+                    "social.signal_retain_q16",
+                    social.signal_retain_q16,
+                ));
+            }
+            if social.signal_corruption_q16 > Q16_ONE {
+                return Err(ConfigError::FractionOutOfRange(
+                    "social.signal_corruption_q16",
+                    social.signal_corruption_q16,
+                ));
+            }
+            // Condition D preserves the emission and its cost and scrambles
+            // only delivery; with the signal half off there is nothing to
+            // scramble and the arm would silently be condition B.
+            if social.scramble_delivery && !social.signal_enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "social.scramble_delivery requires signal_enabled",
+                    0,
+                ));
+            }
+        } else if social.perception_enabled != SocialConfig::social_default().perception_enabled
+            || social.signal_enabled != SocialConfig::social_default().signal_enabled
+            || social.scramble_delivery
+            || social.observational_enabled
+        {
+            // A condition arm switched on (or a default sub-gate moved) with
+            // the section off is refused rather than treated as off, exactly
+            // as an artifact condition is.
+            return Err(ConfigError::PhysiologyRange(
+                "a social condition is set while social.enabled is false",
+                0,
+            ));
+        }
         let physiology = &self.physiology;
         if physiology.enabled {
             if !(1..=6).contains(&physiology.basal_exponent_quarters) {
@@ -1937,7 +2106,9 @@ impl SimConfig {
     /// hashes, what `bind` draws from, and what a genome's bindings are
     /// validated against at construction and restore (ADR-0028 section 7).
     pub fn channel_registry_version(&self) -> u16 {
-        if self.artifact.enabled {
+        if self.social.enabled {
+            crate::registry::CHANNEL_REGISTRY_VERSION_SOCIAL
+        } else if self.artifact.enabled {
             crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT
         } else {
             crate::registry::CHANNEL_REGISTRY_VERSION
@@ -2310,6 +2481,31 @@ impl SimConfig {
             hasher.update_u64(artifact.yield_regen_interval_ticks);
             hasher.update_u32(artifact.stone_relative_q16);
             hasher.update_u32(artifact.wood_relative_q16);
+        }
+        // Phase 13 social section, **appended after every section before it
+        // and hashed only when enabled**, for the reason every one of them
+        // was: this function's order is the definition of every existing
+        // config hash. Enabling the section changes the hash and starts a
+        // new replay lineage, which is correct - a world whose organisms can
+        // perceive one another and signal is not the same experiment as one
+        // whose organisms cannot - and the channel set this world offers is
+        // part of what the section means.
+        if self.social.enabled {
+            let social = &self.social;
+            hasher.update(b"lifesim-social-config");
+            hasher.update(crate::social::SOCIAL_POLICY_VERSION.as_bytes());
+            hasher.update_u32(u32::from(crate::registry::CHANNEL_REGISTRY_VERSION_SOCIAL));
+            hasher.update_u32(u32::from(social.perception_enabled));
+            hasher.update_u32(u32::from(social.signal_enabled));
+            hasher.update_u32(u32::from(social.scramble_delivery));
+            hasher.update_u32(u32::from(social.observational_enabled));
+            hasher.update_u32(social.perception_k);
+            hasher.update_u32(social.perception_radius_m);
+            hasher.update_u32(social.signal_channels);
+            hasher.update_u32(social.signal_base_range_m);
+            hasher.update_i64(social.signal_cost_milli);
+            hasher.update_u32(social.signal_retain_q16);
+            hasher.update_u32(social.signal_corruption_q16);
         }
         hasher.finish()
     }

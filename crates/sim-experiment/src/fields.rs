@@ -402,6 +402,18 @@ config_fields! {
     "artifact.yield_regen_interval_ticks" => artifact.yield_regen_interval_ticks: u64,
     "artifact.stone_relative_q16" => artifact.stone_relative_q16: u32,
     "artifact.wood_relative_q16" => artifact.wood_relative_q16: u32,
+    "social.enabled" => social.enabled: bool,
+    "social.perception_enabled" => social.perception_enabled: bool,
+    "social.signal_enabled" => social.signal_enabled: bool,
+    "social.scramble_delivery" => social.scramble_delivery: bool,
+    "social.observational_enabled" => social.observational_enabled: bool,
+    "social.perception_k" => social.perception_k: u32,
+    "social.perception_radius_m" => social.perception_radius_m: u32,
+    "social.signal_channels" => social.signal_channels: u32,
+    "social.signal_base_range_m" => social.signal_base_range_m: u32,
+    "social.signal_cost_milli" => social.signal_cost_milli: i64,
+    "social.signal_retain_q16" => social.signal_retain_q16: u32,
+    "social.signal_corruption_q16" => social.signal_corruption_q16: u32,
 }
 
 /// Every field on which two configs disagree, in `FIELD_NAMES` order.

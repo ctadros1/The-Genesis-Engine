@@ -43,6 +43,7 @@ mod rng;
 mod save;
 mod schema2;
 mod similarity;
+mod social;
 mod structmut;
 mod terrainmod;
 mod world;
@@ -66,8 +67,8 @@ pub use config::{
     ArtifactConfig, BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError,
     ContestConfig, Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_COMPOSITION_DEPTH, MAX_FRAGMENTS,
     MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION,
-    Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig, WorldModConfig,
-    WorldgenVersion,
+    Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig, SocialConfig,
+    WorldModConfig, WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -141,12 +142,13 @@ pub use plasticity::{
 };
 pub use registry::{
     ACTIVATION_LINEAR, ACTIVATION_REGISTRY_VERSION, ACTIVATION_TANH, Activation,
-    CHANNEL_CARRIED_LOAD, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_OBJECT_BEARING,
-    CHANNEL_OBJECT_DISTANCE, CHANNEL_OBJECT_HARDNESS, CHANNEL_OBJECT_HEFT, CHANNEL_OBJECT_PRESENT,
-    CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_REGISTRY_VERSION, CHANNEL_REGISTRY_VERSION_ARTIFACT,
-    CHANNEL_STRIKE, CHANNELS, CHANNELS_V2, ChannelDirection, ChannelEntry, NodeRole, channel,
-    channel_exists, channel_offered, channel_version, channels_for, input_channels,
-    output_channels,
+    CHANNEL_CARRIED_LOAD, CHANNEL_COMBINE, CHANNEL_DROP, CHANNEL_NEIGHBOUR_BASE,
+    CHANNEL_OBJECT_BEARING, CHANNEL_OBJECT_DISTANCE, CHANNEL_OBJECT_HARDNESS, CHANNEL_OBJECT_HEFT,
+    CHANNEL_OBJECT_PRESENT, CHANNEL_PICK_UP, CHANNEL_PLACE, CHANNEL_REGISTRY_VERSION,
+    CHANNEL_REGISTRY_VERSION_ARTIFACT, CHANNEL_REGISTRY_VERSION_SOCIAL, CHANNEL_SIGNAL_EMIT_BASE,
+    CHANNEL_SIGNAL_IN_BASE, CHANNEL_STRIKE, CHANNELS, CHANNELS_V2, CHANNELS_V3, ChannelDirection,
+    ChannelEntry, NEIGHBOUR_CUE_COUNT, NodeRole, channel, channel_exists, channel_offered,
+    channel_version, channels_for, input_channels, output_channels,
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
@@ -159,6 +161,7 @@ pub use schema2::{
     founder_from_traits, founder_with_morphology, outputs_from_requests, with_marker_locus,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
+pub use social::{PERCEPTION_K_MAX, SIGNAL_CHANNELS_MAX, SOCIAL_POLICY_VERSION};
 pub use structmut::{
     DUPLICATE_SPAN, MutationConfig, MutationCounters, MutationReport, OP_BINDING, OP_DELETION,
     OP_DUPLICATION, OP_INSERTION, OP_POINT, OP_TRANSPOSITION, RejectReason,

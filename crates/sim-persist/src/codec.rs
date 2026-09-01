@@ -77,7 +77,20 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_7;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_8;
+/// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
+///
+/// The fourth config-block bump, block-shaped like format 7's rather than
+/// byte-shaped like 5's and 6's, and appended in one piece after format 7's
+/// block so the format-7 body stays a byte prefix of the format-8 body;
+/// every appended byte is its field's default in a world without the
+/// section. The chain test in `format7.rs` gains one row declaring
+/// `FORMAT8_CONFIG_BYTES`.
+///
+/// **Named as its own constant from the day it shipped**, and every guard
+/// that introduces something at format 8 says `FORMAT_VERSION_8`, never
+/// `FORMAT_VERSION` (D-108's trap, closed structurally).
+pub const FORMAT_VERSION_8: u16 = 8;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -253,7 +266,8 @@ const SECTION_ACTION_CENSUS: u16 = 14;
 const SECTION_OBJECTS: u16 = 15;
 /// Bytes one object's fixed fields occupy: the bound a declared object count
 /// implies before any composition list is read.
-const OBJECT_FIXED_BYTES: u64 = 8 + 2 + 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 + 8 + 8 + 1 + 8 + 8 + 1 + 8 + 8;
+const OBJECT_FIXED_BYTES: u64 =
+    8 + 2 + 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 + 8 + 8 + 1 + 8 + 8 + 1 + 8 + 8;
 /// Bytes one organism's action row occupies. Used to bound the allocation a
 /// declared organism count implies, never to assert an exact length (D-075).
 const ACTION_CENSUS_BYTES_PER_ORGANISM: u64 = 4 * sim_core::ACTION_CLASS_COUNT as u64;
@@ -839,6 +853,12 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_7 {
         encode_artifact_config(&mut writer, config);
     }
+    // Format 8's block: the social section, appended after format 7's block
+    // for the reason format 7's was appended after format 6's byte. Guarded
+    // on `FORMAT_VERSION_8` by name, permanently.
+    if format >= FORMAT_VERSION_8 {
+        encode_social_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -897,7 +917,10 @@ pub const FORMAT7_CONFIG_BYTES: usize = 3 // enabled, inert, ephemeral
     + 4 + 4 // elevation bands
     + 4; // binding_q16
 
-fn decode_artifact_config(reader: &mut Reader, config: &mut sim_core::SimConfig) -> Result<(), CodecError> {
+fn decode_artifact_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
     let artifact = &mut config.artifact;
     artifact.enabled = reader.u8()? != 0;
     artifact.inert = reader.u8()? != 0;
@@ -931,6 +954,53 @@ fn decode_artifact_config(reader: &mut Reader, config: &mut sim_core::SimConfig)
     artifact.stone_relative_q16 = reader.u32()?;
     artifact.wood_relative_q16 = reader.u32()?;
     config.genome2.mutation.binding_q16 = reader.u32()?;
+    Ok(())
+}
+
+/// The format-8 social block, one field per line in declaration order.
+/// `config_field_coverage.rs` sweeps every one of these through the real
+/// codec, so a field added to `SocialConfig` and not written here fails a
+/// test rather than restoring at its default.
+fn encode_social_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    let social = &config.social;
+    writer.u8(u8::from(social.enabled));
+    writer.u8(u8::from(social.perception_enabled));
+    writer.u8(u8::from(social.signal_enabled));
+    writer.u8(u8::from(social.scramble_delivery));
+    writer.u8(u8::from(social.observational_enabled));
+    writer.u32(social.perception_k);
+    writer.u32(social.perception_radius_m);
+    writer.u32(social.signal_channels);
+    writer.u32(social.signal_base_range_m);
+    writer.i64(social.signal_cost_milli);
+    writer.u32(social.signal_retain_q16);
+    writer.u32(social.signal_corruption_q16);
+}
+
+/// Bytes the format-8 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT8_CONFIG_BYTES: usize = 5 // the five gates
+    + 4 * 4 // k, radius, channels, base range
+    + 8 // signal cost
+    + 4 + 4; // retain, corruption
+
+fn decode_social_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    let social = &mut config.social;
+    social.enabled = reader.u8()? != 0;
+    social.perception_enabled = reader.u8()? != 0;
+    social.signal_enabled = reader.u8()? != 0;
+    social.scramble_delivery = reader.u8()? != 0;
+    social.observational_enabled = reader.u8()? != 0;
+    social.perception_k = reader.u32()?;
+    social.perception_radius_m = reader.u32()?;
+    social.signal_channels = reader.u32()?;
+    social.signal_base_range_m = reader.u32()?;
+    social.signal_cost_milli = reader.i64()?;
+    social.signal_retain_q16 = reader.u32()?;
+    social.signal_corruption_q16 = reader.u32()?;
     Ok(())
 }
 
@@ -1158,6 +1228,9 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // write a format-6 file had an object in it or a `bind` operator to run.
     if format >= FORMAT_VERSION_7 {
         decode_artifact_config(&mut *reader, &mut config)?;
+    }
+    if format >= FORMAT_VERSION_8 {
+        decode_social_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -2549,6 +2622,7 @@ pub fn encode_snapshot_format3(
             format: FORMAT_VERSION_3,
         });
     }
+    refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format7_state(state, FORMAT_VERSION_3)?;
     encode_snapshot_versioned(
         state,
@@ -2599,6 +2673,7 @@ pub fn encode_snapshot_format4(
             format: FORMAT_VERSION_4,
         });
     }
+    refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format7_state(state, FORMAT_VERSION_4)?;
     encode_snapshot_versioned(
         state,
@@ -2639,6 +2714,7 @@ pub fn encode_snapshot_format5(
             format: FORMAT_VERSION_5,
         });
     }
+    refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format7_state(state, FORMAT_VERSION_5)?;
     encode_snapshot_versioned(
         state,
@@ -2672,6 +2748,7 @@ pub fn encode_snapshot_format6(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format7_state(state, FORMAT_VERSION_6)?;
     encode_snapshot_versioned(
         state,
@@ -2684,6 +2761,54 @@ pub fn encode_snapshot_format6(
         FORMAT_VERSION_6,
         SAVE_STATE_VERSION,
     )
+}
+
+/// Encode a **format 7** snapshot.
+///
+/// Retained on the same terms as every earlier writer: the acceptance
+/// requirement for the 7-to-8 migration is byte identity against a real
+/// legacy file, and a legacy file has to be constructible. It refuses a
+/// state carrying anything format 8 added, because a format-7 file has no
+/// bytes for the social section and writing one anyway would describe a
+/// world whose organisms cannot perceive one another - a different
+/// experiment, silently.
+pub fn encode_snapshot_format7(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format8_state(state, FORMAT_VERSION_7)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_7,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// The write-side refusal every retained pre-8 writer shares: a state that
+/// carries what only format 8 can express is refused with the field named,
+/// before a byte is written. The whole struct is compared against its
+/// default rather than only the gate, because a knob moved off its default
+/// with the section disabled is still a value the format has no bytes for,
+/// and restoring it at the default would alter meaning on load.
+fn refuse_format8_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    if state.config.social != sim_core::SocialConfig::social_default() {
+        return Err(CodecError::FieldNotInFormat {
+            field: "social",
+            format,
+        });
+    }
+    Ok(())
 }
 
 /// The write-side refusals every retained pre-7 writer shares: a state that
@@ -2956,6 +3081,12 @@ pub fn decode_snapshot_format5(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// every world that could write a format-6 file actually ran with.
 pub fn decode_snapshot_format6(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_6, SAVE_STATE_VERSION)
+}
+
+/// Decode a **format 7** snapshot. Retained for the 7-to-8 migration, on the
+/// terms every earlier retained reader is.
+pub fn decode_snapshot_format7(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_7, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

@@ -842,12 +842,13 @@ impl Genome2 {
             return Err(Genome2Error::UnsupportedSchema(schema));
         }
         let registry = reader.u16()?;
-        // Versions 1 and 2 are both readable; the declared version is what
+        // Versions 1..=3 are all readable; the declared version is what
         // each binding is validated against, so a version-1 genome cannot
-        // smuggle a version-2 channel and a genome cannot declare a version
-        // this build does not know.
+        // smuggle a version-2 or version-3 channel and a genome cannot
+        // declare a version this build does not know.
         if registry != CHANNEL_REGISTRY_VERSION
             && registry != crate::registry::CHANNEL_REGISTRY_VERSION_ARTIFACT
+            && registry != crate::registry::CHANNEL_REGISTRY_VERSION_SOCIAL
         {
             return Err(Genome2Error::UnsupportedChannelRegistry(registry));
         }

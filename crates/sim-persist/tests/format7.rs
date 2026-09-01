@@ -37,10 +37,11 @@ use sim_core::{
     SaveState, SimConfig, World, material,
 };
 use sim_persist::{
-    CodecError, FORMAT7_CONFIG_BYTES, FORMAT_VERSION, FORMAT_VERSION_4, FORMAT_VERSION_5,
-    FORMAT_VERSION_6, FORMAT_VERSION_7, StoreError, decode_snapshot, decode_snapshot_format6,
-    encode_snapshot, encode_snapshot_format4, encode_snapshot_format5, encode_snapshot_format6,
-    migration_for,
+    CodecError, FORMAT_VERSION, FORMAT_VERSION_4, FORMAT_VERSION_5, FORMAT_VERSION_6,
+    FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT7_CONFIG_BYTES, FORMAT8_CONFIG_BYTES, StoreError,
+    decode_snapshot, decode_snapshot_format6, decode_snapshot_format7, encode_snapshot,
+    encode_snapshot_format4, encode_snapshot_format5, encode_snapshot_format6,
+    encode_snapshot_format7, migration_for,
 };
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
@@ -189,7 +190,16 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
         (FORMAT_VERSION_4, encode_snapshot_format4 as Writer, 0),
         (FORMAT_VERSION_5, encode_snapshot_format5 as Writer, 1),
         (FORMAT_VERSION_6, encode_snapshot_format6 as Writer, 1),
-        (FORMAT_VERSION_7, encode_snapshot as Writer, FORMAT7_CONFIG_BYTES),
+        (
+            FORMAT_VERSION_7,
+            encode_snapshot_format7 as Writer,
+            FORMAT7_CONFIG_BYTES,
+        ),
+        (
+            FORMAT_VERSION_8,
+            encode_snapshot as Writer,
+            FORMAT8_CONFIG_BYTES,
+        ),
     ];
 
     let encoded: Vec<(u16, Vec<u8>, usize)> = chain
@@ -243,10 +253,19 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
     assert_eq!(*six_version, FORMAT_VERSION_6);
     assert_eq!(*seven_version, FORMAT_VERSION_7);
     let (_, six_state) = decode_snapshot_format6(six_bytes).expect("decode format 6");
-    let (_, seven_state) = decode_snapshot(seven_bytes).expect("decode format 7");
+    let (_, seven_state) = decode_snapshot_format7(seven_bytes).expect("decode format 7");
     assert_eq!(
         seven_state.config, six_state.config,
         "the appended artifact block did not round-trip to its defaults"
+    );
+    // And the 7-to-8 pair on the same terms: every appended social byte
+    // decodes back to its field's default for a world without the section.
+    let (eight_version, eight_bytes, _) = &encoded[4];
+    assert_eq!(*eight_version, FORMAT_VERSION_8);
+    let (_, eight_state) = decode_snapshot(eight_bytes).expect("decode format 8");
+    assert_eq!(
+        eight_state.config, seven_state.config,
+        "the appended social block did not round-trip to its defaults"
     );
 }
 
@@ -380,8 +399,11 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
     let state = world.export_state();
     let checksum = world.state_checksum();
 
-    let seven = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode format 7");
+    let eight = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+        .expect("encode format 8");
+    let seven =
+        encode_snapshot_format7(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+            .expect("encode format 7");
     let six = encode_snapshot_format6(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
         .expect("encode format 6");
 
@@ -400,10 +422,24 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
     // `decode_artifact_config`, which reads far more fields than a format-6
     // body has left - `TruncatedSection`.
     assert_eq!(
-        decode_snapshot(&relabel(&six, FORMAT_VERSION_7)).err(),
+        decode_snapshot_format7(&relabel(&six, FORMAT_VERSION_7)).err(),
         Some(CodecError::TruncatedSection),
         "a format 6 payload read as format 7 must run out of config body inside \
          the appended artifact block"
+    );
+    // The 7/8 pair, both ways: a format-8 body read as 7 leaves the social
+    // block over; a format-7 body read as 8 runs out inside
+    // `decode_social_config`.
+    assert_eq!(
+        decode_snapshot_format7(&relabel(&eight, FORMAT_VERSION_7)).err(),
+        Some(CodecError::ValueOutOfRange("section trailing bytes")),
+        "a format 8 payload read as format 7 must fail on the appended social block"
+    );
+    assert_eq!(
+        decode_snapshot(&relabel(&seven, FORMAT_VERSION_8)).err(),
+        Some(CodecError::TruncatedSection),
+        "a format 7 payload read as format 8 must run out of config body inside \
+         the appended social block"
     );
 }
 
@@ -486,8 +522,16 @@ fn the_format_6_writer_refuses_a_state_carrying_a_format_7_field() {
     let mut binding = state.clone();
     binding.config.genome2.mutation.binding_q16 = 1;
     assert_eq!(
-        encode_snapshot_format6(&binding, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-            .err(),
+        encode_snapshot_format6(
+            &binding,
+            1,
+            0,
+            checksum,
+            sim_persist::BUILD_VERSION,
+            0,
+            None
+        )
+        .err(),
         Some(CodecError::FieldNotInFormat {
             field: "genome2.mutation.binding_q16",
             format: FORMAT_VERSION_6,
@@ -495,10 +539,23 @@ fn the_format_6_writer_refuses_a_state_carrying_a_format_7_field() {
     );
 
     let mut applied = state.clone();
-    applied.schema2.as_mut().expect("schema2 present").counters.binding_applied = 1;
+    applied
+        .schema2
+        .as_mut()
+        .expect("schema2 present")
+        .counters
+        .binding_applied = 1;
     assert_eq!(
-        encode_snapshot_format6(&applied, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-            .err(),
+        encode_snapshot_format6(
+            &applied,
+            1,
+            0,
+            checksum,
+            sim_persist::BUILD_VERSION,
+            0,
+            None
+        )
+        .err(),
         Some(CodecError::FieldNotInFormat {
             field: "schema2.counters.binding_applied",
             format: FORMAT_VERSION_6,
@@ -508,8 +565,16 @@ fn the_format_6_writer_refuses_a_state_carrying_a_format_7_field() {
     let mut objects = state.clone();
     objects.objects = Some(ObjectTable::default());
     assert_eq!(
-        encode_snapshot_format6(&objects, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-            .err(),
+        encode_snapshot_format6(
+            &objects,
+            1,
+            0,
+            checksum,
+            sim_persist::BUILD_VERSION,
+            0,
+            None
+        )
+        .err(),
         Some(CodecError::SectionNotInFormat {
             tag: SECTION_OBJECTS,
             format: FORMAT_VERSION_6,
@@ -621,7 +686,10 @@ fn push_sample_objects(state: &mut SaveState, tick: u64) {
     let b = ObjectRecord::simple(base + 1, stone, 800, x_fp, y_fp, tick, CAUSE_EXTRACTED, 0);
     let held = ObjectRecord::simple(base + 3, stone, 800, x_fp, y_fp, tick, CAUSE_EXTRACTED, 0);
 
-    let table = state.objects.as_mut().expect("artifact world carries a table");
+    let table = state
+        .objects
+        .as_mut()
+        .expect("artifact world carries a table");
     for extracted in [&a, &b, &held] {
         table.ledger.mass_extracted_milli += i128::from(extracted.mass_milli);
         table.ledger.energy_extracted_milli += i128::from(extracted.energy_milli);
@@ -817,9 +885,7 @@ fn a_format_6_file_carrying_the_objects_section_is_refused() {
             },
             "the transform's own decode must fail the same way ours did"
         ),
-        other => panic!(
-            "the transform accepted a file that lies about its own version: {other:?}"
-        ),
+        other => panic!("the transform accepted a file that lies about its own version: {other:?}"),
     }
 }
 
@@ -830,7 +896,8 @@ fn a_format_6_file_carrying_the_objects_section_is_refused() {
 /// Mirrors `codec.rs`'s private `OBJECT_FIXED_BYTES` minus the
 /// composition-length word, whose own offset `object_layout` returns
 /// separately below.
-const OBJECT_PREFIX_BYTES: usize = 8 + 2 + 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 + 8 + 8 + 1 + 8 + 8 + 1 + 8;
+const OBJECT_PREFIX_BYTES: usize =
+    8 + 2 + 4 + 4 + 4 + 8 + 8 + 4 + 4 + 4 + 8 + 8 + 1 + 8 + 8 + 1 + 8;
 
 /// The object count word's offset, and every object's `composition.len()`
 /// word offset, walked the way `decode_objects` reads them rather than
@@ -925,7 +992,10 @@ fn every_declared_count_in_the_objects_section_is_bounded() {
         composite_breadth_offset,
         CodecError::ValueOutOfRange("object composition length"),
     );
-    probe(rows_offset, CodecError::ValueOutOfRange("object observation rows"));
+    probe(
+        rows_offset,
+        CodecError::ValueOutOfRange("object observation rows"),
+    );
 }
 
 /// Push three simple `MATERIAL_STONE` objects with no composite and no held
@@ -939,10 +1009,21 @@ fn push_three_simple_objects(state: &mut SaveState, tick: u64) {
     let (x_fp, y_fp) = (state.x_fp[0], state.y_fp[0]);
     let base = state.next_entity_id;
     let stone = material(MATERIAL_STONE).expect("stone is a registered material");
-    let table = state.objects.as_mut().expect("artifact world carries a table");
+    let table = state
+        .objects
+        .as_mut()
+        .expect("artifact world carries a table");
     for offset in 0..3_u64 {
-        let record =
-            ObjectRecord::simple(base + offset, stone, 800, x_fp, y_fp, tick, CAUSE_EXTRACTED, 0);
+        let record = ObjectRecord::simple(
+            base + offset,
+            stone,
+            800,
+            x_fp,
+            y_fp,
+            tick,
+            CAUSE_EXTRACTED,
+            0,
+        );
         table.ledger.mass_extracted_milli += i128::from(record.mass_milli);
         table.ledger.energy_extracted_milli += i128::from(record.energy_milli);
         table.push(record);
@@ -1054,13 +1135,28 @@ fn twenty_thousand_corruptions_of_the_objects_section_never_pass_as_the_original
 fn a_large_object_table_is_not_refused_by_its_own_count_bound() {
     let world = advance(artifact_config(SEED), 20);
     let mut state = world.export_state();
-    assert!(!state.ids.is_empty(), "the population died out before objects were added");
+    assert!(
+        !state.ids.is_empty(),
+        "the population died out before objects were added"
+    );
     let (x_fp, y_fp) = (state.x_fp[0], state.y_fp[0]);
     let base = state.next_entity_id;
     let stone = material(MATERIAL_STONE).expect("stone is a registered material");
-    let table = state.objects.as_mut().expect("artifact world carries a table");
+    let table = state
+        .objects
+        .as_mut()
+        .expect("artifact world carries a table");
     for offset in 0..200_u64 {
-        let record = ObjectRecord::simple(base + offset, stone, 800, x_fp, y_fp, 20, CAUSE_EXTRACTED, 0);
+        let record = ObjectRecord::simple(
+            base + offset,
+            stone,
+            800,
+            x_fp,
+            y_fp,
+            20,
+            CAUSE_EXTRACTED,
+            0,
+        );
         table.ledger.mass_extracted_milli += i128::from(record.mass_milli);
         table.ledger.energy_extracted_milli += i128::from(record.energy_milli);
         table.push(record);
@@ -1069,8 +1165,16 @@ fn a_large_object_table_is_not_refused_by_its_own_count_bound() {
     state.next_entity_id += 200;
     let max_depth = state.config.artifact.max_composition_depth.min(255) as u8;
     assert_eq!(state.objects.as_ref().unwrap().violation(max_depth), None);
-    let bytes = encode_snapshot(&state, 1, 0, world.state_checksum(), sim_persist::BUILD_VERSION, 0, None)
-        .expect("encodes");
+    let bytes = encode_snapshot(
+        &state,
+        1,
+        0,
+        world.state_checksum(),
+        sim_persist::BUILD_VERSION,
+        0,
+        None,
+    )
+    .expect("encodes");
     let (_, decoded) = decode_snapshot(&bytes).expect("a two-hundred-object table decodes");
     assert_eq!(decoded.objects.as_ref().map(|table| table.len()), Some(200));
     assert_eq!(decoded, state);
@@ -1108,7 +1212,10 @@ fn a_backup_set_with_overrides_and_composites_restores_in_isolation_and_continue
     }
     world.check_invariants().expect("invariants");
     let table = world.object_table().expect("section on");
-    assert!(table.count_with_depth_at_least(1) >= 1, "the composite did not survive twenty ticks");
+    assert!(
+        table.count_with_depth_at_least(1) >= 1,
+        "the composite did not survive twenty ticks"
+    );
     assert!(table.holder_id.iter().any(|&h| h != 0), "nothing is held");
 
     let root = std::env::temp_dir().join(format!("lifesim-format7-backup-{}", std::process::id()));
@@ -1119,7 +1226,16 @@ fn a_backup_set_with_overrides_and_composites_restores_in_isolation_and_continue
     fs::create_dir_all(&target).unwrap();
     let (store, _) = SnapshotStore::open(&source).unwrap();
     let record = store
-        .save(&world.export_state(), world.state_checksum(), 1, 0, "named-backup", "manual", 0, Some(3))
+        .save(
+            &world.export_state(),
+            world.state_checksum(),
+            1,
+            0,
+            "named-backup",
+            "manual",
+            0,
+            Some(3),
+        )
         .unwrap();
     for entry in fs::read_dir(&source).unwrap() {
         let entry = entry.unwrap();
@@ -1144,7 +1260,13 @@ fn a_backup_set_with_overrides_and_composites_restores_in_isolation_and_continue
         world.step();
         branched.step();
     }
-    assert_eq!(branched.state_checksum(), world.state_checksum(), "the restored world diverged");
-    branched.check_invariants().expect("invariants after the branch");
+    assert_eq!(
+        branched.state_checksum(),
+        world.state_checksum(),
+        "the restored world diverged"
+    );
+    branched
+        .check_invariants()
+        .expect("invariants after the branch");
     let _ = fs::remove_dir_all(&root);
 }

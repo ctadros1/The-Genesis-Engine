@@ -162,6 +162,80 @@ pub const CHANNEL_PLACE: u16 = 115;
 pub const CHANNEL_STRIKE: u16 = 116;
 pub const CHANNEL_COMBINE: u16 = 117;
 
+/// Registry version 3: version 2 plus the social channels (Phase 13,
+/// ADR-0029).
+pub const CHANNEL_REGISTRY_VERSION_SOCIAL: u16 = 3;
+
+/// The channels registry version 3 adds. Offered only by a world whose
+/// social section is enabled (which requires the artifact section, ADR-0029
+/// section 1: the version scheme is a total order because a genome's stamp
+/// is "the smallest version covering its bindings").
+///
+/// Inputs 23..=58 are nine cues for each of four neighbour slots, slot-major
+/// - cues, never labels (ADR-0022 A3/A4): no action class, no genotype
+/// distance, no material id (`neighbour_carried` is a load fraction, the
+/// deviation ADR-0029 section 2 records). Inputs 59..=62 are the committed
+/// signal field at the receiver's cell, one per channel. Outputs 118..=121
+/// are signal emission amplitudes; the emitted value has no authored
+/// meaning anywhere in the kernel.
+pub const CHANNELS_V3: &[ChannelEntry] = &[
+    input(23, "neighbour_present_0"),
+    input(24, "neighbour_distance_0"),
+    input(25, "neighbour_bearing_0"),
+    input(26, "neighbour_motion_0"),
+    input(27, "neighbour_contact_0"),
+    input(28, "neighbour_object_delta_0"),
+    input(29, "neighbour_carried_0"),
+    input(30, "neighbour_scale_0"),
+    input(31, "neighbour_health_0"),
+    input(32, "neighbour_present_1"),
+    input(33, "neighbour_distance_1"),
+    input(34, "neighbour_bearing_1"),
+    input(35, "neighbour_motion_1"),
+    input(36, "neighbour_contact_1"),
+    input(37, "neighbour_object_delta_1"),
+    input(38, "neighbour_carried_1"),
+    input(39, "neighbour_scale_1"),
+    input(40, "neighbour_health_1"),
+    input(41, "neighbour_present_2"),
+    input(42, "neighbour_distance_2"),
+    input(43, "neighbour_bearing_2"),
+    input(44, "neighbour_motion_2"),
+    input(45, "neighbour_contact_2"),
+    input(46, "neighbour_object_delta_2"),
+    input(47, "neighbour_carried_2"),
+    input(48, "neighbour_scale_2"),
+    input(49, "neighbour_health_2"),
+    input(50, "neighbour_present_3"),
+    input(51, "neighbour_distance_3"),
+    input(52, "neighbour_bearing_3"),
+    input(53, "neighbour_motion_3"),
+    input(54, "neighbour_contact_3"),
+    input(55, "neighbour_object_delta_3"),
+    input(56, "neighbour_carried_3"),
+    input(57, "neighbour_scale_3"),
+    input(58, "neighbour_health_3"),
+    input(59, "signal_in_0"),
+    input(60, "signal_in_1"),
+    input(61, "signal_in_2"),
+    input(62, "signal_in_3"),
+    output(118, "signal_emit_0"),
+    output(119, "signal_emit_1"),
+    output(120, "signal_emit_2"),
+    output(121, "signal_emit_3"),
+];
+
+/// First neighbour-cue input ID; slot `k` cue `c` is
+/// `CHANNEL_NEIGHBOUR_BASE + k * NEIGHBOUR_CUE_COUNT + c`.
+pub const CHANNEL_NEIGHBOUR_BASE: u16 = 23;
+/// Cues per neighbour slot, in the fixed order present, distance, bearing,
+/// motion, contact, object_delta, carried, scale, health.
+pub const NEIGHBOUR_CUE_COUNT: u16 = 9;
+/// First `signal_in` input ID; channel `c` is this plus `c`.
+pub const CHANNEL_SIGNAL_IN_BASE: u16 = 59;
+/// First `signal_emit` output ID; channel `c` is this plus `c`.
+pub const CHANNEL_SIGNAL_EMIT_BASE: u16 = 118;
+
 /// The smallest registry version that offers `id`, or `None` for an id no
 /// version knows.
 pub fn channel_version(id: u16) -> Option<u16> {
@@ -169,6 +243,8 @@ pub fn channel_version(id: u16) -> Option<u16> {
         Some(CHANNEL_REGISTRY_VERSION)
     } else if CHANNELS_V2.iter().any(|entry| entry.id == id) {
         Some(CHANNEL_REGISTRY_VERSION_ARTIFACT)
+    } else if CHANNELS_V3.iter().any(|entry| entry.id == id) {
+        Some(CHANNEL_REGISTRY_VERSION_SOCIAL)
     } else {
         None
     }
@@ -178,17 +254,24 @@ pub fn channel_version(id: u16) -> Option<u16> {
 /// this build does not know.
 pub fn channel_offered(id: u16, version: u16) -> bool {
     channel_version(id)
-        .is_some_and(|needed| needed <= version && version <= CHANNEL_REGISTRY_VERSION_ARTIFACT)
+        .is_some_and(|needed| needed <= version && version <= CHANNEL_REGISTRY_VERSION_SOCIAL)
 }
 
 /// Every channel registry `version` offers, in ID order within each
 /// direction's block. `None` for an unknown version.
 pub fn channels_for(version: u16) -> Option<impl Iterator<Item = &'static ChannelEntry>> {
-    match version {
-        CHANNEL_REGISTRY_VERSION => Some(CHANNELS.iter().chain(CHANNELS_V2[..0].iter())),
-        CHANNEL_REGISTRY_VERSION_ARTIFACT => Some(CHANNELS.iter().chain(CHANNELS_V2.iter())),
-        _ => None,
-    }
+    let (v2, v3) = match version {
+        CHANNEL_REGISTRY_VERSION => (0, 0),
+        CHANNEL_REGISTRY_VERSION_ARTIFACT => (CHANNELS_V2.len(), 0),
+        CHANNEL_REGISTRY_VERSION_SOCIAL => (CHANNELS_V2.len(), CHANNELS_V3.len()),
+        _ => return None,
+    };
+    Some(
+        CHANNELS
+            .iter()
+            .chain(CHANNELS_V2[..v2].iter())
+            .chain(CHANNELS_V3[..v3].iter()),
+    )
 }
 
 /// Activation registry version 1.
@@ -278,6 +361,7 @@ pub fn channel(id: u16) -> Option<&'static ChannelEntry> {
     CHANNELS
         .iter()
         .chain(CHANNELS_V2.iter())
+        .chain(CHANNELS_V3.iter())
         .find(|entry| entry.id == id)
 }
 
@@ -331,7 +415,7 @@ mod tests {
     fn an_unknown_channel_is_absent_rather_than_defaulted() {
         assert!(channel_exists(1));
         assert!(channel_exists(101));
-        for unknown in [0_u16, 23, 50, 100, 109, 110, 111, 112, 118, 999, u16::MAX] {
+        for unknown in [0_u16, 63, 100, 109, 110, 111, 112, 122, 999, u16::MAX] {
             assert!(
                 !channel_exists(unknown),
                 "channel {unknown} should not exist"
@@ -393,8 +477,8 @@ mod tests {
         }
         // An unknown version offers nothing, even a version-1 channel.
         assert!(!channel_offered(1, 0));
-        assert!(!channel_offered(1, 3));
-        assert!(channels_for(3).is_none());
+        assert!(!channel_offered(1, 4));
+        assert!(channels_for(4).is_none());
         assert_eq!(channels_for(1).unwrap().count(), CHANNELS.len());
         assert_eq!(
             channels_for(2).unwrap().count(),
@@ -404,6 +488,93 @@ mod tests {
         for entry in CHANNELS_V2 {
             assert!(!entry.name.contains("material"), "{}", entry.name);
             assert!(!entry.name.contains("depth"), "{}", entry.name);
+        }
+    }
+
+    #[test]
+    fn version_three_adds_exactly_the_social_channels_and_offers_them_only_at_three() {
+        // Nine cues per slot times four slots, four signal inputs, four
+        // emission outputs; distinct from every earlier id and from each
+        // other, none in the reserved 109..=112.
+        assert_eq!(CHANNELS_V3.len(), 44);
+        assert_eq!(
+            CHANNELS_V3
+                .iter()
+                .filter(|entry| entry.direction == ChannelDirection::Input)
+                .count(),
+            40
+        );
+        let all: BTreeSet<u16> = CHANNELS
+            .iter()
+            .chain(CHANNELS_V2.iter())
+            .chain(CHANNELS_V3.iter())
+            .map(|entry| entry.id)
+            .collect();
+        assert_eq!(
+            all.len(),
+            CHANNELS.len() + CHANNELS_V2.len() + CHANNELS_V3.len(),
+            "duplicate id across versions"
+        );
+        for entry in CHANNELS_V3 {
+            assert!(!(109..=112).contains(&entry.id), "{}", entry.name);
+            assert_eq!(
+                channel_version(entry.id),
+                Some(CHANNEL_REGISTRY_VERSION_SOCIAL)
+            );
+            assert!(
+                !channel_offered(entry.id, CHANNEL_REGISTRY_VERSION),
+                "{}",
+                entry.name
+            );
+            assert!(
+                !channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_ARTIFACT),
+                "{}",
+                entry.name
+            );
+            assert!(
+                channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_SOCIAL),
+                "{}",
+                entry.name
+            );
+            assert!(channel_exists(entry.id));
+        }
+        // Everything earlier is still offered at version 3: the scheme is a
+        // total order.
+        for entry in CHANNELS.iter().chain(CHANNELS_V2.iter()) {
+            assert!(
+                channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_SOCIAL),
+                "{}",
+                entry.name
+            );
+        }
+        assert_eq!(
+            channels_for(3).unwrap().count(),
+            CHANNELS.len() + CHANNELS_V2.len() + CHANNELS_V3.len()
+        );
+        // The slot/cue arithmetic the sense phase uses matches the table.
+        for slot in 0..4_u16 {
+            for cue in 0..NEIGHBOUR_CUE_COUNT {
+                let id = CHANNEL_NEIGHBOUR_BASE + slot * NEIGHBOUR_CUE_COUNT + cue;
+                assert_eq!(channel(id).unwrap().direction, ChannelDirection::Input);
+            }
+        }
+        for c in 0..4_u16 {
+            assert_eq!(
+                channel(CHANNEL_SIGNAL_IN_BASE + c).unwrap().direction,
+                ChannelDirection::Input
+            );
+            assert_eq!(
+                channel(CHANNEL_SIGNAL_EMIT_BASE + c).unwrap().direction,
+                ChannelDirection::Output
+            );
+        }
+        // Cues, never labels (ADR-0022 A3/A4, ADR-0029 section 2): no
+        // material, depth, action or kin channel; and no signal channel
+        // carries a name beyond its number.
+        for entry in CHANNELS_V3 {
+            for forbidden in ["material", "depth", "action", "kin", "genotype"] {
+                assert!(!entry.name.contains(forbidden), "{}", entry.name);
+            }
         }
     }
 

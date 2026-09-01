@@ -721,7 +721,10 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
     // and a missing one reads as zero, matching the two blocks above.
     let artifact = fields.contains_key("artifact_created_extracted").then(|| {
         let mut counters = [0_u64; sim_core::ObjectCounters::FIELD_COUNT];
-        for (slot, name) in counters.iter_mut().zip(sim_core::ObjectCounters::FIELD_NAMES) {
+        for (slot, name) in counters
+            .iter_mut()
+            .zip(sim_core::ObjectCounters::FIELD_NAMES)
+        {
             *slot = fields
                 .get(&format!("artifact_{name}"))
                 .and_then(|value| value.parse::<u64>().ok())
