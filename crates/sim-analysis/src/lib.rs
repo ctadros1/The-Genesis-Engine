@@ -11,6 +11,7 @@
 //! streams keyed on a recorded analysis seed. A report is a pure function
 //! of the campaign artifacts plus that seed.
 
+mod arrival;
 mod artifact;
 mod conjunction;
 mod demography;
@@ -22,6 +23,10 @@ pub mod social;
 mod spatial;
 mod structure;
 
+pub use arrival::{
+    ARRIVAL_DETECTOR_VERSION, ArrivalCensus, ArrivalError, IndividualArrival, PatchSpec,
+    arrival_census,
+};
 pub use artifact::{
     ARTIFACT_ANALYSIS_VERSION, ArtifactPlan, ArtifactReport, BindingCensus, LivingOrganism,
     Verdict as ArtifactVerdict, WorldArtifact, WorldInputs, binding_census,
