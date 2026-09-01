@@ -2997,8 +2997,9 @@ fn command_communities(options: Options) -> Result<(), String> {
                 "world condition={} seed={:#018x} windows={} communities={} chains={} \
                  null_p95={} null_max={} attacks={} within={} between={} unaffiliated={} \
                  outside={} pairs_within={} pairs_between={} within_rate_micro={} \
-                 between_rate_micro={} advantage={} disadvantage={} even={} coalitions={} \
-                 targets={}",
+                 between_rate_micro={} copresent_within={} copresent_between={} \
+                 copresent_within_rate_micro={} copresent_between_rate_micro={} advantage={} \
+                 disadvantage={} even={} coalitions={} targets={}",
                 run.condition,
                 run.seed,
                 summary.windows,
@@ -3015,6 +3016,10 @@ fn command_communities(options: Options) -> Result<(), String> {
                 summary.pairs_between,
                 summary.within_rate_micro,
                 summary.between_rate_micro,
+                summary.copresent_within,
+                summary.copresent_between,
+                summary.copresent_within_rate_micro,
+                summary.copresent_between_rate_micro,
                 summary.attacks_with_local_advantage,
                 summary.attacks_with_local_disadvantage,
                 summary.attacks_even,

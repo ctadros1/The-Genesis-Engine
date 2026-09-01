@@ -99,6 +99,17 @@ pub struct WorldCommunities {
     pub null_max_chains: usize,
     pub shuffles: u32,
     // C13.9/C13.10 descriptive ledger.
+    //
+    // Two denominator families. The raw membership pairs (below) count
+    // every within/between pair whether or not the two were ever near
+    // each other, and the pilot showed why that misleads: within-pairs
+    // are co-located by construction and between-pairs mostly are not,
+    // so raw rates compare attack propensity AND proximity at once. The
+    // CO-PRESENT denominators count only pairs that were within the
+    // association radius at one or more of the window's samples - the
+    // pairs that could have fought - so the co-present rates compare
+    // propensity at matched opportunity, which is what C13.9's
+    // between-versus-within factor must be read from.
     pub attacks_total: u64,
     pub attacks_within: u64,
     pub attacks_between: u64,
@@ -109,6 +120,11 @@ pub struct WorldCommunities {
     /// Attacks per million opportunity pairs; zero denominators report 0.
     pub within_rate_micro: i64,
     pub between_rate_micro: i64,
+    /// Co-present opportunity pairs and their rates (see above).
+    pub copresent_within: u64,
+    pub copresent_between: u64,
+    pub copresent_within_rate_micro: i64,
+    pub copresent_between_rate_micro: i64,
     pub attacks_with_local_advantage: u64,
     pub attacks_with_local_disadvantage: u64,
     pub attacks_even: u64,
@@ -187,12 +203,14 @@ pub(crate) fn close_pairs(
     pairs
 }
 
-/// One window's communities: member sets, each of at least
-/// `min_community`, ordered by smallest member ID.
+/// One window's communities (member sets, each of at least
+/// `min_community`, ordered by smallest member ID) and its co-presence
+/// map: every unordered pair that was within the association radius at
+/// one or more of the window's samples, with the count.
 fn window_communities(
     samples: &[(u64, BTreeMap<u64, (i32, i32)>)],
     plan: &CommunityPlan,
-) -> Vec<BTreeSet<u64>> {
+) -> (Vec<BTreeSet<u64>>, BTreeMap<(u64, u64), u32>) {
     let mut counts: BTreeMap<(u64, u64), u32> = BTreeMap::new();
     for (_, positions) in samples {
         for pair in close_pairs(positions, plan.association_radius_fp, plan.cell_size_fp) {
@@ -232,10 +250,11 @@ fn window_communities(
             .or_default()
             .insert(id);
     }
-    members
+    let communities = members
         .into_values()
         .filter(|community| community.len() >= plan.min_community)
-        .collect()
+        .collect();
+    (communities, counts)
 }
 
 fn jaccard_milli(a: &BTreeSet<u64>, b: &BTreeSet<u64>) -> i64 {
@@ -313,8 +332,24 @@ pub fn world_communities(
     for w in 0..window_count {
         let samples = &positions[w * plan.window_samples..(w + 1) * plan.window_samples];
         window_ranges.push((samples[0].0, samples[samples.len() - 1].0));
-        let communities = window_communities(samples, plan);
+        let (communities, copresence) = window_communities(samples, plan);
         summary.communities_total += communities.len();
+        // Co-present opportunity denominators for this window, classified
+        // by the window's own memberships.
+        {
+            let membership: BTreeMap<u64, usize> = communities
+                .iter()
+                .enumerate()
+                .flat_map(|(index, community)| community.iter().map(move |&id| (id, index)))
+                .collect();
+            for &(a, b) in copresence.keys() {
+                match (membership.get(&a), membership.get(&b)) {
+                    (Some(&ca), Some(&cb)) if ca == cb => summary.copresent_within += 1,
+                    (Some(_), Some(_)) => summary.copresent_between += 1,
+                    _ => {}
+                }
+            }
+        }
         // Home quadrat: modal over the window's samples, ties to the
         // smaller quadrat index.
         let mut tallies: BTreeMap<u64, BTreeMap<u32, u32>> = BTreeMap::new();
@@ -492,6 +527,16 @@ pub fn world_communities(
     } else {
         (summary.attacks_between as i128 * 1_000_000 / summary.pairs_between as i128) as i64
     };
+    summary.copresent_within_rate_micro = if summary.copresent_within == 0 {
+        0
+    } else {
+        (summary.attacks_within as i128 * 1_000_000 / summary.copresent_within as i128) as i64
+    };
+    summary.copresent_between_rate_micro = if summary.copresent_between == 0 {
+        0
+    } else {
+        (summary.attacks_between as i128 * 1_000_000 / summary.copresent_between as i128) as i64
+    };
     Ok(summary)
 }
 
@@ -662,6 +707,16 @@ mod tests {
         assert_eq!(summary.coalition_targets, 1);
         assert_eq!(summary.attacked_targets, 3);
         assert_eq!(summary.attacks_even, 2);
+        // Co-present denominators: all six pairs inside each cluster
+        // co-occur; the clusters sit ~2,900 fp apart against a 1,000 fp
+        // radius, so no between pair is ever co-present - the two
+        // between-attacks stand beside a zero co-present denominator,
+        // which is exactly the sample-resolution honesty the field doc
+        // states (the rate reads 0, the attack counts do not vanish).
+        assert_eq!(summary.copresent_within, 12);
+        assert_eq!(summary.copresent_between, 0);
+        assert_eq!(summary.copresent_within_rate_micro, 1_000_000 / 12);
+        assert_eq!(summary.copresent_between_rate_micro, 0);
     }
 
     /// An attack outside every window is counted as such, never guessed
