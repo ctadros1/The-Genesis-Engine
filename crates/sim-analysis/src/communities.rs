@@ -144,8 +144,9 @@ fn find(parent: &mut [usize], index: usize) -> usize {
 
 /// Pairs within `radius` at one sample, by grid buckets (bounded work at
 /// campaign densities; the naive quadratic scan is exactly what the
-/// kernel's own spatial index exists to avoid).
-fn close_pairs(
+/// kernel's own spatial index exists to avoid). Shared with the fidelity
+/// detector, whose exposure enumeration is the same computation.
+pub(crate) fn close_pairs(
     positions: &BTreeMap<u64, (i32, i32)>,
     radius_fp: i32,
     bucket_fp: i32,

@@ -326,7 +326,10 @@ pub fn arrival_census(
     census.median_naive_latency_ticks = if latencies.is_empty() {
         None
     } else {
-        Some(latencies[latencies.len() / 2])
+        // Even counts take the LOWER central value - the demography and
+        // paired modules' documented convention, which this module's own
+        // doc claims; the independent pass caught it taking the upper.
+        Some(latencies[(latencies.len() - 1) / 2])
     };
     census.arrival_fraction_milli = if census.naive_total == 0 {
         0
@@ -627,6 +630,80 @@ mod tests {
         assert!(
             deaths > 0,
             "the hazard never killed, so compaction never ran"
+        );
+    }
+
+    /// The median completed latency is the UPPER of the two central values
+    /// at an even cohort size (`latencies[len / 2]`). Two arrivers with
+    /// different latencies is the smallest case that separates that from
+    /// the lower-median convention `paired::median_milli` uses; every other
+    /// test in this module has at most one completed latency, where the two
+    /// conventions agree.
+    #[test]
+    fn the_median_latency_takes_the_lower_central_value_at_an_even_count() {
+        let events = vec![birth(15, 2), birth(15, 3)];
+        let samples = vec![
+            sample(20, vec![FAR, FAR, FAR]),
+            sample(30, vec![FAR, IN, FAR]),
+            sample(40, vec![FAR, FAR, IN]),
+        ];
+        let census = arrival_census(&events, &samples, 1, 10, PATCH, 10).expect("join holds");
+        // Organism 2 arrives at 30 (latency 15), organism 3 at 40 (25);
+        // the even-count median takes the lower central value, the
+        // demography convention this module cites.
+        assert_eq!((census.naive_total, census.naive_arrived), (2, 2));
+        assert_eq!(census.median_naive_latency_ticks, Some(15));
+    }
+
+    /// The arrival fraction truncates and never rounds: two arrivals in a
+    /// cohort of three is 666 milli, not 667. Rounding would move every
+    /// world-level statistic the campaign pairs by up to one milli-unit
+    /// without any test noticing.
+    #[test]
+    fn the_arrival_fraction_truncates_rather_than_rounding() {
+        let events = vec![birth(15, 2), birth(15, 3), birth(15, 4)];
+        let samples = vec![
+            sample(20, vec![FAR, FAR, FAR, FAR]),
+            sample(30, vec![FAR, IN, IN, FAR]),
+        ];
+        let census = arrival_census(&events, &samples, 1, 10, PATCH, 10).expect("join holds");
+        assert_eq!((census.naive_total, census.naive_arrived), (3, 2));
+        assert_eq!(census.arrival_fraction_milli, 666);
+    }
+
+    /// Sample ticks must be **strictly** increasing: a repeated tick is
+    /// refused exactly like a decreasing one, because the replay would
+    /// advance the alive set twice over one instant and then join the
+    /// second copy's positions to the wrong organisms.
+    #[test]
+    fn a_repeated_sample_tick_is_refused_like_a_decreasing_one() {
+        let repeated = vec![sample(10, vec![FAR]), sample(10, vec![FAR])];
+        assert_eq!(
+            arrival_census(&[], &repeated, 1, 10, PATCH, 0),
+            Err(ArrivalError::SamplesOutOfOrder { tick: 10 })
+        );
+        let backwards = vec![sample(20, vec![FAR]), sample(10, vec![FAR])];
+        assert_eq!(
+            arrival_census(&[], &backwards, 1, 10, PATCH, 0),
+            Err(ArrivalError::SamplesOutOfOrder { tick: 10 })
+        );
+    }
+
+    /// An organism alive at the last sample whose death is recorded after
+    /// it is closed at the death tick, not at the last sample - the field's
+    /// documented meaning ("death tick, or the last sample tick that
+    /// covered it"). One with no death event is closed at the last sample.
+    #[test]
+    fn a_death_after_the_last_sample_still_closes_the_record_at_the_death() {
+        let events = vec![birth(15, 2), death(50, 2)];
+        let samples = vec![sample(20, vec![FAR, FAR]), sample(40, vec![FAR, FAR])];
+        let census = arrival_census(&events, &samples, 1, 10, PATCH, 10).expect("join holds");
+        let two = census.individuals.iter().find(|r| r.id == 2).expect("2");
+        assert_eq!(two.observed_until, 50);
+        let founder = census.individuals.iter().find(|r| r.id == 1).expect("1");
+        assert_eq!(
+            founder.observed_until, 40,
+            "no death event, so the last sample"
         );
     }
 }

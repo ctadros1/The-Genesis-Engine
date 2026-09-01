@@ -465,4 +465,43 @@ mod tests {
             "the relative form is blind at zero controls; the absolute one is not"
         );
     }
+
+    /// The absolute directed count reads the paired difference in the
+    /// direction actually stated. A world that moved DOWN by three times
+    /// the SESOI counts for `Decrease` and not for `Increase`; the existing
+    /// coverage is sign-symmetric and cannot tell the two apart.
+    #[test]
+    fn the_absolute_directed_count_reads_the_difference_in_the_stated_direction() {
+        let pairs = [Pair {
+            seed: 1,
+            treatment_milli: 0,
+            control_milli: 300,
+        }];
+        let up = compare(&pairs, 100, 500, Direction::Increase, 3);
+        assert_eq!(
+            up.reaching_absolute_directed, 0,
+            "a fall of 300 does not reach a rise of 100"
+        );
+        let down = compare(&pairs, 100, 500, Direction::Decrease, 3);
+        assert_eq!(down.reaching_absolute_directed, 1);
+        assert_eq!(up.mean_difference_milli, -300);
+    }
+
+    /// TOST's bounds are strict: an interval whose endpoint sits exactly on
+    /// the equivalence bound has not been shown to lie inside it. Twenty
+    /// identical pairs put both interval endpoints exactly at the SESOI,
+    /// which is the only shape that separates `<` from `<=` here.
+    #[test]
+    fn an_interval_touching_the_sesoi_bound_is_not_equivalence() {
+        let pairs = pairs_from(&[(1_100, 1_000); 20]);
+        let result = compare(&pairs, 100, 500, Direction::Increase, 5);
+        assert_eq!(
+            (result.relative_ci_low_milli, result.relative_ci_high_milli),
+            (100, 100)
+        );
+        assert!(
+            !result.equivalent,
+            "an interval ending exactly on the bound is not inside it: {result:?}"
+        );
+    }
 }

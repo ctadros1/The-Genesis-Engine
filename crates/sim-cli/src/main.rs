@@ -87,6 +87,10 @@ fn run() -> Result<(), String> {
         Some("artifact") => command_artifact(parse_options(args.collect())?),
         Some("social") => command_social(parse_options(args.collect())?),
         Some("social-contrast") => command_social_contrast(parse_options(args.collect())?),
+        Some("fidelity") => command_fidelity(parse_options(args.collect())?),
+        Some("tradition") => command_tradition(parse_options(args.collect())?),
+        Some("communities") => command_communities(parse_options(args.collect())?),
+        Some("recognition") => command_recognition(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -113,6 +117,10 @@ fn usage() -> String {
         "       lifesim artifact --manifest FILE --treatment A --control C --disabled D   (C12.1-C12.3 against the pre-registered bars)\n",
         "       lifesim social --manifest FILE --epoch N   (C13.1 arrival census + reachability census; no verdict)\n",
         "       lifesim social-contrast --manifest FILE --treatment A --baseline C --epochs N,N,.. --sesoi N [--analysis-seed HEX]   (C13.1 seed-paired contrast)\n",
+        "       lifesim fidelity --manifest FILE   (C13.2 per-world reductions; no verdict)\n",
+        "       lifesim tradition --manifest FILE   (C13.3 per-world reductions; no verdict)\n",
+        "       lifesim communities --manifest FILE [--analysis-seed HEX]   (C13.8-C13.10 per-world reductions; no verdict)\n",
+        "       lifesim recognition --manifest FILE [--analysis-seed HEX]   (C13.7 per-world reductions; needs event schema 8 artifacts)\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity --artifact [--artifact-inert] [--artifact-ephemeral]\n",
@@ -2703,6 +2711,371 @@ fn command_social_contrast(options: Options) -> Result<(), String> {
         result.median_difference_milli,
         result.reaching_sesoi_directed,
     );
+    Ok(())
+}
+
+/// Shared per-run artifact loading for the Phase 13 report commands:
+/// events always; spatial and actions when asked; every cross-check the
+/// other report commands carry.
+struct RunArtifacts {
+    config: sim_core::SimConfig,
+    events: Vec<sim_core::Event>,
+    spatial: Option<sim_persist::SpatialLogScan>,
+    actions: Option<sim_persist::ActionLogScan>,
+}
+
+fn load_run_artifacts(
+    directory: &std::path::Path,
+    manifest: &sim_experiment::Manifest,
+    condition: &sim_experiment::Condition,
+    run: &sim_experiment::RunResult,
+    want_spatial: bool,
+    want_actions: bool,
+) -> Result<RunArtifacts, String> {
+    let stem = sim_experiment::run_stem(&run.condition, run.seed);
+    let config = manifest
+        .campaign
+        .config_for(condition, run.seed)
+        .map_err(|error| format!("{stem}: {error}"))?;
+    let bytes = fs::read(directory.join(format!("{stem}.alev")))
+        .map_err(|error| format!("{stem}.alev: {error}"))?;
+    let (_, events) = sim_persist::decode_log_events(&bytes).map_err(|error| error.to_string())?;
+    let spatial = if want_spatial {
+        let bytes = fs::read(directory.join(format!("{stem}.alss")))
+            .map_err(|error| format!("{stem}.alss: {error}"))?;
+        let scan = sim_persist::decode_spatial(&bytes)
+            .map_err(|error| format!("{stem}: decode spatial: {error}"))?;
+        if scan.info.config_hash != run.config_hash
+            || scan.info.terrain_checksum != run.terrain_checksum
+        {
+            return Err(format!("{stem}: the spatial log is not this run's"));
+        }
+        if scan.samples.len() as u64 != run.spatial_samples {
+            return Err(format!(
+                "{stem}: {} spatial samples decoded but the manifest recorded {}",
+                scan.samples.len(),
+                run.spatial_samples
+            ));
+        }
+        Some(scan)
+    } else {
+        None
+    };
+    let actions = if want_actions {
+        let bytes = fs::read(directory.join(format!("{stem}.alac")))
+            .map_err(|error| format!("{stem}.alac: {error}"))?;
+        let scan = sim_persist::decode_action(&bytes)
+            .map_err(|error| format!("{stem}: decode actions: {error}"))?;
+        if scan.info.config_hash != run.config_hash
+            || scan.info.terrain_checksum != run.terrain_checksum
+        {
+            return Err(format!("{stem}: the action log is not this run's"));
+        }
+        if scan.samples.len() as u64 != run.action_samples {
+            return Err(format!(
+                "{stem}: {} action samples decoded but the manifest recorded {}",
+                scan.samples.len(),
+                run.action_samples
+            ));
+        }
+        Some(scan)
+    } else {
+        None
+    };
+    Ok(RunArtifacts {
+        config,
+        events,
+        spatial,
+        actions,
+    })
+}
+
+/// C13.2's per-world reductions: the fidelity bin table, one line per
+/// world, no verdict (ADR-0016). Exposure radius is the run's own
+/// perception radius; the corruption sweep's F-curve is assembled from
+/// these lines by the pre-registered analysis.
+fn command_fidelity(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("fidelity requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    println!(
+        "fidelity-report 1 campaign {} detector {}",
+        manifest.campaign.id,
+        sim_analysis::FIDELITY_VERSION
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, true, true)?;
+            let spatial = artifacts.spatial.as_ref().expect("requested");
+            let actions = artifacts.actions.as_ref().expect("requested");
+            // Caps keep a dense world's reduction bounded; both are
+            // echoed per world through the summary's counted fields.
+            let plan = sim_analysis::FidelityPlan {
+                exposure_radius_fp: artifacts.config.social.perception_radius_m as i32
+                    * sim_core::FP_PER_METER,
+                founder_count: artifacts.config.initial_organisms,
+                exposed_cap_per_window: 2_000,
+                control_budget_per_window: 20_000,
+                window_stride: 10,
+            };
+            let summary = sim_analysis::world_fidelity(
+                &artifacts.events,
+                &actions.samples,
+                &spatial.samples,
+                &plan,
+            )
+            .map_err(|error| format!("fidelity: {error:?}"))?;
+            let bins: Vec<String> = summary
+                .bins
+                .iter()
+                .enumerate()
+                .map(|(index, bin)| {
+                    format!(
+                        "bin{}=[e:{} es:{} c:{} cs:{} u:{}]",
+                        index,
+                        bin.exposed_pairs,
+                        bin.exposed_similarity_sum_milli,
+                        bin.control_pairs,
+                        bin.control_similarity_sum_milli,
+                        bin.unmatched_exposed
+                    )
+                })
+                .collect();
+            println!(
+                "world condition={} seed={:#018x} windows={} exposed={} controls={} \
+                 delta_milli={} radius_fp={} {}",
+                run.condition,
+                run.seed,
+                summary.windows_analyzed,
+                summary.exposed_pairs_total,
+                summary.control_pairs_total,
+                summary
+                    .fidelity_delta_milli
+                    .map_or_else(|| "none".to_owned(), |delta| delta.to_string()),
+                plan.exposure_radius_fp,
+                bins.join(" "),
+            );
+        }
+    }
+    Ok(())
+}
+
+/// C13.3's per-world reductions: tradition findings with their mandatory
+/// genotype-matched controls, one line per world, no verdict.
+fn command_tradition(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("tradition requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    println!(
+        "tradition-report 1 campaign {} detector {}",
+        manifest.campaign.id,
+        sim_analysis::TRADITION_VERSION
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, true, true)?;
+            let spatial = artifacts.spatial.as_ref().expect("requested");
+            let actions = artifacts.actions.as_ref().expect("requested");
+            // The pre-registration's constants: quadrat 32 cells (the
+            // patch's own scale), threshold 100 milli, factor 1500,
+            // minimum neighbourhood 8, tolerance 1/8 relatedness in Q32.
+            let plan = sim_analysis::TraditionPlan {
+                founder_count: artifacts.config.initial_organisms,
+                cells_x: artifacts.config.cells_x,
+                cells_y: artifacts.config.cells_y,
+                cell_size_fp: artifacts.config.cell_size_fp(),
+                quadrat_cells: 32,
+                cluster_threshold_milli: 100,
+                concentration_factor_milli: 1_500,
+                min_neighbourhood: 8,
+                match_tolerance_q32: sim_analysis::KINSHIP_ONE_Q32 / 8,
+            };
+            let summary = sim_analysis::world_traditions(
+                &artifacts.events,
+                &actions.samples,
+                &spatial.samples,
+                &plan,
+            )
+            .map_err(|error| format!("tradition: {error:?}"))?;
+            println!(
+                "world condition={} seed={:#018x} median_lifespan={} gap={} endpoints={} \
+                 candidates={} rejected_end={} rejected_turnover={} rejected_no_cohort={} \
+                 rejected_control={} findings={}",
+                run.condition,
+                run.seed,
+                summary.median_lifespan_ticks,
+                summary.persistence_gap_ticks,
+                summary.endpoints_evaluated,
+                summary.candidates,
+                summary.rejected_end_concentration,
+                summary.rejected_turnover,
+                summary.rejected_no_cohort,
+                summary.rejected_control,
+                summary.findings.len(),
+            );
+            for finding in &summary.findings {
+                println!(
+                    "finding condition={} seed={:#018x} quadrat={} variant={} start={} end={} \
+                     n_start={} n_end={} freq_start={} freq_end={} global_start={} global_end={} \
+                     control_n={} control_freq={} tolerance_q32={}",
+                    run.condition,
+                    run.seed,
+                    finding.quadrat,
+                    finding.variant,
+                    finding.start_tick,
+                    finding.end_tick,
+                    finding.neighbourhood_start,
+                    finding.neighbourhood_end,
+                    finding.freq_start_milli,
+                    finding.freq_end_milli,
+                    finding.global_freq_start_milli,
+                    finding.global_freq_end_milli,
+                    finding.control_cohort,
+                    finding.control_freq_milli,
+                    finding.match_tolerance_q32,
+                );
+            }
+        }
+    }
+    Ok(())
+}
+
+/// C13.8-C13.10's per-world reductions: persistent-community chains
+/// against the proximity-matched null and the aggression ledger, one
+/// line per world, no verdict.
+fn command_communities(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("communities requires --manifest\n{}", usage()))?;
+    let analysis_seed = options.analysis_seed.unwrap_or(0x1373);
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    println!(
+        "communities-report 1 campaign {} detector {} analysis_seed {:#018x}",
+        manifest.campaign.id,
+        sim_analysis::COMMUNITIES_VERSION,
+        analysis_seed
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, true, false)?;
+            let spatial = artifacts.spatial.as_ref().expect("requested");
+            // Windows of 40 samples (one relocation epoch at spatial 50),
+            // edges at half-window co-occurrence, communities of 4+,
+            // Jaccard 500, chains of 3+ windows, 50 shuffles, quadrats at
+            // the patch's own 32-cell scale.
+            let plan = sim_analysis::CommunityPlan {
+                founder_count: artifacts.config.initial_organisms,
+                association_radius_fp: artifacts.config.social.perception_radius_m as i32
+                    * sim_core::FP_PER_METER,
+                window_samples: 40,
+                edge_min_count: 20,
+                min_community: 4,
+                persistence_jaccard_milli: 500,
+                min_chain_windows: 3,
+                shuffles: 50,
+                analysis_seed,
+                cells_x: artifacts.config.cells_x,
+                cells_y: artifacts.config.cells_y,
+                cell_size_fp: artifacts.config.cell_size_fp(),
+                quadrat_cells: 32,
+            };
+            let summary =
+                sim_analysis::world_communities(&artifacts.events, &spatial.samples, &plan)
+                    .map_err(|error| format!("communities: {error:?}"))?;
+            println!(
+                "world condition={} seed={:#018x} windows={} communities={} chains={} \
+                 null_p95={} null_max={} attacks={} within={} between={} unaffiliated={} \
+                 outside={} pairs_within={} pairs_between={} within_rate_micro={} \
+                 between_rate_micro={} advantage={} disadvantage={} even={} coalitions={} \
+                 targets={}",
+                run.condition,
+                run.seed,
+                summary.windows,
+                summary.communities_total,
+                summary.persistent_chains,
+                summary.null_p95_chains,
+                summary.null_max_chains,
+                summary.attacks_total,
+                summary.attacks_within,
+                summary.attacks_between,
+                summary.attacks_unaffiliated,
+                summary.attacks_outside_windows,
+                summary.pairs_within,
+                summary.pairs_between,
+                summary.within_rate_micro,
+                summary.between_rate_micro,
+                summary.attacks_with_local_advantage,
+                summary.attacks_with_local_disadvantage,
+                summary.attacks_even,
+                summary.coalition_targets,
+                summary.attacked_targets,
+            );
+        }
+    }
+    Ok(())
+}
+
+/// C13.7's per-world reductions: the discrimination statistic against
+/// its scrambled null, one line per world, no verdict. Needs event
+/// schema 8 artifacts (the tag-26 phenotype record); on older artifacts
+/// every attack reports missing-phenotype, which is the honest answer.
+fn command_recognition(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("recognition requires --manifest\n{}", usage()))?;
+    let analysis_seed = options.analysis_seed.unwrap_or(0x1373);
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    println!(
+        "recognition-report 1 campaign {} detector {} analysis_seed {:#018x}",
+        manifest.campaign.id,
+        sim_analysis::RECOGNITION_VERSION,
+        analysis_seed
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, true, false)?;
+            let spatial = artifacts.spatial.as_ref().expect("requested");
+            let plan = sim_analysis::RecognitionPlan {
+                founder_count: artifacts.config.initial_organisms,
+                candidate_radius_fp: artifacts.config.social.perception_radius_m as i32
+                    * sim_core::FP_PER_METER,
+                shuffles: 200,
+                analysis_seed,
+            };
+            let summary =
+                sim_analysis::world_recognition(&artifacts.events, &spatial.samples, &plan)
+                    .map_err(|error| format!("recognition: {error:?}"))?;
+            println!(
+                "world condition={} seed={:#018x} attacks={} usable={} missing_phenotype={} \
+                 no_candidates={} delta_milli={} null_p95_abs={} shuffles={}",
+                run.condition,
+                run.seed,
+                summary.attacks_total,
+                summary.attacks_usable,
+                summary.attacks_missing_phenotype,
+                summary.attacks_no_candidates,
+                summary
+                    .mean_delta_milli
+                    .map_or_else(|| "none".to_owned(), |delta| delta.to_string()),
+                summary.null_p95_abs_milli,
+                summary.shuffles,
+            );
+        }
+    }
     Ok(())
 }
 

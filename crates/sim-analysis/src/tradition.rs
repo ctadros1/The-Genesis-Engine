@@ -105,7 +105,12 @@ pub struct WorldTraditions {
     pub rejected_no_cohort: u64,
     pub rejected_control: u64,
     /// Findings that passed all four requirements, deduplicated to the
-    /// earliest start endpoint per (quadrat, variant).
+    /// earliest start endpoint per QUADRAT. Variant labels are local to
+    /// one endpoint pair's joint clustering (the independent pass showed
+    /// the same behavioural variant takes different labels at different
+    /// endpoints), so a per-(quadrat, variant) key would double-count;
+    /// the criterion reads per world anyway, and the earliest finding
+    /// carries its own endpoint's label for inspection.
     pub findings: Vec<TraditionFinding>,
 }
 
@@ -137,8 +142,10 @@ fn cluster_mixes(mixes: &[[i64; 7]], threshold_milli: i64) -> Vec<u32> {
             if l1 <= threshold_milli {
                 let (ra, rb) = (find(&mut parent, a), find(&mut parent, b));
                 if ra != rb {
-                    // Union toward the smaller index so labels follow
-                    // first appearance.
+                    // Union direction is a free choice (the labelling
+                    // below depends only on the component partition and
+                    // index order - proven equivalent by the independent
+                    // pass); smaller-root kept for reading comfort only.
                     let (lo, hi) = (ra.min(rb), ra.max(rb));
                     parent[hi] = lo;
                 }
@@ -239,7 +246,7 @@ pub fn world_traditions(
             .and_then(|(_, map)| map.get(&id).copied())
     };
 
-    let mut found: BTreeMap<(u32, u32), TraditionFinding> = BTreeMap::new();
+    let mut found: BTreeMap<u32, TraditionFinding> = BTreeMap::new();
 
     for start_index in 1..actions.len() {
         let start_tick = actions[start_index].tick;
@@ -349,7 +356,7 @@ pub fn world_traditions(
                     continue;
                 }
 
-                found.entry((quadrat, variant)).or_insert(TraditionFinding {
+                found.entry(quadrat).or_insert(TraditionFinding {
                     quadrat,
                     variant,
                     start_tick,
@@ -795,5 +802,226 @@ mod tests {
         assert_eq!(summary.persistence_gap_ticks, 0);
         assert_eq!(summary.endpoints_evaluated, 0);
         assert_eq!(summary.findings.len(), 0);
+    }
+
+    /// A window mix needs a prior row. An organism whose first census row is
+    /// the window's closing one has no measurable window, and reading its
+    /// absent prior row as zeros would invent a mix out of everything it
+    /// did before the window - a newborn's whole life, attributed to one
+    /// window it was mostly not alive for.
+    #[test]
+    fn an_organism_with_no_prior_row_contributes_no_window_mix() {
+        let actions = vec![
+            sample_set(0, &[(1, only(0, 5))]),
+            sample_set(500, &[(1, only(0, 10)), (2, only(6, 7))]),
+        ];
+        let mixes = window_mixes(&actions, 1);
+        assert!(mixes.contains_key(&1), "{mixes:?}");
+        assert!(
+            !mixes.contains_key(&2),
+            "no prior row means no window: {mixes:?}"
+        );
+    }
+
+    /// The persistence endpoint is inclusive at exactly the required gap: an
+    /// end sample at `start + 3 * median + 1` ticks already satisfies "more
+    /// than three median lifespans" and must be evaluated, not skipped.
+    #[test]
+    fn an_endpoint_exactly_at_the_persistence_gap_is_evaluated() {
+        let mut events = vec![birth(0, 20), birth(0, 21), death(100, 20), death(100, 21)];
+        events.sort_by_key(|entry| entry.tick);
+        let actions = vec![
+            sample_set(0, &[(1, [0; 7]), (2, [0; 7])]),
+            sample_set(500, &[(1, only(0, 10)), (2, only(0, 10))]),
+            sample_set(801, &[(1, only(0, 20)), (2, only(0, 20))]),
+        ];
+        let spatial = vec![
+            SpatialSample {
+                tick: 0,
+                positions: vec![LEFT, LEFT, RIGHT, RIGHT],
+            },
+            SpatialSample {
+                tick: 500,
+                positions: vec![LEFT, LEFT],
+            },
+            SpatialSample {
+                tick: 801,
+                positions: vec![LEFT, LEFT],
+            },
+        ];
+        let mut plan = base_plan();
+        plan.founder_count = 2;
+        let summary = world_traditions(&events, &actions, &spatial, &plan).expect("join holds");
+        assert_eq!(summary.persistence_gap_ticks, 301);
+        // Start 500, end 801 = 500 + 301 exactly.
+        assert_eq!(summary.endpoints_evaluated, 1, "{summary:?}");
+    }
+
+    /// The finding table is deduplicated to the EARLIEST start endpoint per
+    /// (quadrat, variant). Here the same left-hand rest tradition qualifies
+    /// at two consecutive start endpoints with complete turnover at each
+    /// (1,2 then 10,11 then 14,15), and the finding reported is the first.
+    #[test]
+    fn a_repeated_finding_keeps_its_earliest_start_endpoint() {
+        let mut events = vec![death(100, 20), death(100, 21)];
+        for id in [10_u64, 11, 14, 15, 20, 21, 30, 31] {
+            events.push(birth(0, id));
+        }
+        events.sort_by_key(|entry| entry.tick);
+        let actions = vec![
+            sample_set(0, &[(1, [0; 7]), (2, [0; 7]), (30, [0; 7]), (31, [0; 7])]),
+            sample_set(
+                500,
+                &[
+                    (1, only(0, 10)),
+                    (2, only(0, 10)),
+                    (10, [0; 7]),
+                    (11, [0; 7]),
+                    (30, only(6, 10)),
+                    (31, only(6, 10)),
+                ],
+            ),
+            sample_set(
+                1000,
+                &[
+                    (10, only(0, 10)),
+                    (11, only(0, 10)),
+                    (14, [0; 7]),
+                    (15, [0; 7]),
+                    (30, only(6, 20)),
+                    (31, only(6, 20)),
+                ],
+            ),
+            sample_set(
+                1500,
+                &[
+                    (14, only(0, 10)),
+                    (15, only(0, 10)),
+                    (30, only(6, 30)),
+                    (31, only(6, 30)),
+                ],
+            ),
+        ];
+        let left_six = vec![LEFT, LEFT, LEFT, LEFT, LEFT, LEFT];
+        let spatial = vec![
+            // Alive at 0: 1,2,10,11,14,15,20,21,30,31.
+            SpatialSample {
+                tick: 0,
+                positions: [left_six.clone(), vec![RIGHT, RIGHT, RIGHT, RIGHT]].concat(),
+            },
+            // Alive from 500 on: 1,2,10,11,14,15,30,31.
+            SpatialSample {
+                tick: 500,
+                positions: [left_six.clone(), vec![RIGHT, RIGHT]].concat(),
+            },
+            SpatialSample {
+                tick: 1000,
+                positions: [left_six.clone(), vec![RIGHT, RIGHT]].concat(),
+            },
+            SpatialSample {
+                tick: 1500,
+                positions: [left_six, vec![RIGHT, RIGHT]].concat(),
+            },
+        ];
+        let mut plan = base_plan();
+        plan.founder_count = 2;
+        let summary = world_traditions(&events, &actions, &spatial, &plan).expect("join holds");
+        assert_eq!(summary.endpoints_evaluated, 2, "{summary:?}");
+        assert_eq!(summary.findings.len(), 1, "{summary:?}");
+        assert_eq!(
+            (summary.findings[0].start_tick, summary.findings[0].end_tick),
+            (500, 1000),
+            "{summary:?}"
+        );
+    }
+
+    /// Concentration is strict at the factor at the END endpoint too, not
+    /// only at the start: a candidate whose end frequency sits exactly at
+    /// factor x global is rejected there and never reaches the turnover or
+    /// control tests. Left holds 3 of 4 rest (750 milli) against a global
+    /// 500 at factor 1500 - the boundary exactly.
+    #[test]
+    fn end_concentration_exactly_at_the_factor_boundary_is_rejected() {
+        let mut events = vec![death(100, 20), death(100, 21)];
+        for id in [3_u64, 4, 5, 6, 7, 8, 20, 21] {
+            events.push(birth(0, id));
+        }
+        events.sort_by_key(|entry| entry.tick);
+        let actions = vec![
+            sample_set(0, &[(1, [0; 7]), (2, [0; 7]), (3, [0; 7])]),
+            sample_set(
+                500,
+                &[
+                    (1, only(0, 10)),
+                    (2, only(0, 10)),
+                    (3, only(6, 10)),
+                    (4, [0; 7]),
+                    (5, [0; 7]),
+                    (6, [0; 7]),
+                    (7, [0; 7]),
+                    (8, [0; 7]),
+                ],
+            ),
+            sample_set(
+                1000,
+                &[
+                    (1, only(0, 20)),
+                    (2, only(0, 20)),
+                    // 3 switches to rest: its delta over the window is rest.
+                    (3, [10, 0, 0, 0, 0, 0, 10]),
+                    (4, only(6, 10)),
+                    (5, only(0, 10)),
+                    (6, only(6, 10)),
+                    (7, only(6, 10)),
+                    (8, only(6, 10)),
+                ],
+            ),
+        ];
+        let spatial = vec![
+            // Alive at 0: 1..8, 20, 21.
+            SpatialSample {
+                tick: 0,
+                positions: vec![
+                    LEFT, LEFT, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT,
+                ],
+            },
+            // Alive from 500 on: 1..8.
+            SpatialSample {
+                tick: 500,
+                positions: vec![LEFT, LEFT, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT, RIGHT],
+            },
+            SpatialSample {
+                tick: 1000,
+                positions: vec![LEFT, LEFT, LEFT, LEFT, RIGHT, RIGHT, RIGHT, RIGHT],
+            },
+        ];
+        let mut plan = base_plan();
+        plan.founder_count = 2;
+        let summary = world_traditions(&events, &actions, &spatial, &plan).expect("join holds");
+        assert_eq!(summary.candidates, 1, "{summary:?}");
+        // 750 * 1000 == 1500 * 500 exactly, so the end endpoint rejects it.
+        assert_eq!(summary.rejected_end_concentration, 1, "{summary:?}");
+        assert_eq!(summary.rejected_turnover, 0, "{summary:?}");
+        assert!(summary.findings.is_empty(), "{summary:?}");
+    }
+
+    /// The quadrat index is row-major over the cell grid: the cell's x
+    /// selects the column and its y the row. Every other test in this
+    /// module places organisms on the grid diagonal, where transposing the
+    /// two axes is invisible.
+    #[test]
+    fn the_quadrat_index_is_row_major_over_the_cell_grid() {
+        let plan = base_plan();
+        // 8x8 cells of 1,000 fp in 4-cell quadrats: a 2x2 quadrat map.
+        assert_eq!(
+            quadrat_of(5_500, 1_500, &plan),
+            1,
+            "cell (5,1) is quadrat 1"
+        );
+        assert_eq!(
+            quadrat_of(1_500, 5_500, &plan),
+            2,
+            "cell (1,5) is quadrat 2"
+        );
     }
 }

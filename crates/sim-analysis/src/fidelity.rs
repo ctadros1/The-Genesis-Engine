@@ -44,10 +44,10 @@
 //! corruption sweep is assembled from these world reductions by the
 //! pre-registered analysis (ADR-0022 A5; ADR-0016).
 
-use crate::arrival::{ArrivalError, PatchSpec};
+use crate::arrival::ArrivalError;
 use sim_core::{Event, EventKind};
 use sim_persist::{ActionSampleSet, SpatialSample};
-use std::collections::BTreeMap;
+use std::collections::{BTreeMap, BTreeSet};
 
 pub const FIDELITY_VERSION: &str = "lifesim-fidelity-v1";
 
@@ -97,6 +97,11 @@ pub struct WorldFidelity {
     pub fidelity_delta_milli: Option<i64>,
     pub exposed_pairs_total: u64,
     pub control_pairs_total: u64,
+    /// Exposed pairs excluded by the per-window cap (stride-sampled out).
+    pub exposed_skipped_by_cap: u64,
+    /// Windows whose shared control-scan budget ran out with exposed
+    /// pairs still unmatched.
+    pub control_budget_exhausted_windows: u64,
 }
 
 /// Analysis parameters, named so a report can echo them.
@@ -107,6 +112,23 @@ pub struct FidelityPlan {
     pub exposure_radius_fp: i32,
     /// Founders in the world (IDs `1..=n`), for the spatial join.
     pub founder_count: u32,
+    /// At most this many exposed pairs are scored per window,
+    /// stride-sampled deterministically from the full enumeration; the
+    /// rest are counted in `exposed_skipped_by_cap`, never silently
+    /// dropped. 0 = unlimited (tests; a campaign world at density needs
+    /// the cap or the reduction is quadratic).
+    pub exposed_cap_per_window: usize,
+    /// At most this many candidate control pairs are examined per window
+    /// across ALL exposed pairs (a shared cursor - each control pair is
+    /// consumed at most once). Exhaustion is counted in
+    /// `control_budget_exhausted_windows`. 0 = unlimited.
+    pub control_budget_per_window: usize,
+    /// Analyze every Nth window triple (0 or 1 = every one). At campaign
+    /// density a per-window reduction over every window is minutes per
+    /// world; the estimand is a rate, and a deterministic stride over
+    /// windows samples it without bias. Echoed via `windows_analyzed`
+    /// against the series length.
+    pub window_stride: usize,
 }
 
 fn action_mix_milli(delta: &[u32; 7]) -> Option<[i64; 7]> {
@@ -217,7 +239,8 @@ pub fn world_fidelity(
     let mut summary = WorldFidelity::default();
     let id_positions = spatial_positions_by_id(events, spatial, plan.founder_count)?;
 
-    for windows in actions.windows(3) {
+    let stride = plan.window_stride.max(1);
+    for windows in actions.windows(3).step_by(stride) {
         let [before, during, after] = windows else {
             continue;
         };
@@ -262,72 +285,137 @@ pub fn world_fidelity(
             }
         }
 
-        let radius = i64::from(plan.exposure_radius_fp);
-        let radius_squared = radius * radius;
-        let window_samples: Vec<&BTreeMap<u64, (i32, i32)>> = id_positions
+        // Nearness for this window, from the bucketed pair scan at the
+        // window's OPENING sample (the first spatial sample at or after
+        // `before.tick`). One sample, not a union over the window: at
+        // campaign density the union is billions of pair inserts per
+        // world, and exposure-at-the-opening-sample is the documented
+        // instrument - the report's resolution statement covers it the
+        // way the arrival detector's covers its 50-tick samples.
+        let mut near_set: BTreeSet<(u64, u64)> = BTreeSet::new();
+        if let Some((_, positions)) = id_positions
             .iter()
-            .filter(|(tick, _)| *tick >= before.tick && *tick < during.tick)
-            .map(|(_, positions)| positions)
-            .collect();
-        let near = |a: u64, b: u64| -> bool {
-            window_samples
-                .iter()
-                .any(|positions| match (positions.get(&a), positions.get(&b)) {
-                    (Some(&(ax, ay)), Some(&(bx, by))) => {
-                        let dx = i64::from(ax) - i64::from(bx);
-                        let dy = i64::from(ay) - i64::from(by);
-                        dx * dx + dy * dy <= radius_squared
-                    }
-                    _ => false,
-                })
-        };
+            .find(|(tick, _)| *tick >= before.tick && *tick < during.tick)
+        {
+            for (a, b) in crate::communities::close_pairs(
+                positions,
+                plan.exposure_radius_fp,
+                plan.exposure_radius_fp.max(1),
+            ) {
+                near_set.insert((a.min(b), a.max(b)));
+            }
+        }
+        let near = |a: u64, b: u64| -> bool { near_set.contains(&(a.min(b), a.max(b))) };
 
         let demonstrators: Vec<u64> = demonstration.keys().copied().collect();
-        for &demonstrator in &demonstrators {
-            for (&observer, observer_mix) in &observation {
-                if observer == demonstrator || !near(demonstrator, observer) {
-                    continue;
-                }
-                let bin = relatedness_bin(pedigree.relatedness_q32(demonstrator, observer));
-                let similarity = similarity_milli(&demonstration[&demonstrator], observer_mix);
-                summary.bins[bin].exposed_pairs += 1;
-                summary.bins[bin].exposed_similarity_sum_milli += similarity;
-                summary.exposed_pairs_total += 1;
+        let observers: Vec<u64> = observation.keys().copied().collect();
 
-                // The matched control: first same-bin non-exposed pair in
-                // ascending (demonstrator, observer) order, sharing no
-                // member with the exposed pair.
-                let mut matched = false;
-                'control: for &control_demo in demonstrators
-                    .iter()
-                    .filter(|&&id| id != demonstrator && id != observer)
+        // Exposed pairs from the near set (both orientations where the
+        // roles have mixes), sorted ascending (demonstrator, observer),
+        // then stride-sampled to the cap - a deterministic every-nth
+        // selection with the remainder counted. Kinship is evaluated
+        // only for the pairs that survive the stride: the pedigree
+        // recursion is the expensive step, and running it for every
+        // near pair made the reduction unusable at campaign density.
+        let mut exposed: Vec<(u64, u64)> = Vec::new();
+        for &(a, b) in &near_set {
+            for (demonstrator, observer) in [(a, b), (b, a)] {
+                if demonstration.contains_key(&demonstrator) && observation.contains_key(&observer)
                 {
-                    for (&control_obs, control_obs_mix) in &observation {
-                        if control_obs == control_demo
-                            || control_obs == demonstrator
-                            || control_obs == observer
-                        {
-                            continue;
-                        }
-                        if relatedness_bin(pedigree.relatedness_q32(control_demo, control_obs))
-                            != bin
-                            || near(control_demo, control_obs)
-                        {
-                            continue;
-                        }
-                        let control_similarity =
-                            similarity_milli(&demonstration[&control_demo], control_obs_mix);
-                        summary.bins[bin].control_pairs += 1;
-                        summary.bins[bin].control_similarity_sum_milli += control_similarity;
-                        summary.control_pairs_total += 1;
-                        matched = true;
-                        break 'control;
-                    }
-                }
-                if !matched {
-                    summary.bins[bin].unmatched_exposed += 1;
+                    exposed.push((demonstrator, observer));
                 }
             }
+        }
+        exposed.sort_unstable();
+        let kept: Vec<(u64, u64)> =
+            if plan.exposed_cap_per_window > 0 && exposed.len() > plan.exposed_cap_per_window {
+                let stride = exposed.len().div_ceil(plan.exposed_cap_per_window);
+                let kept: Vec<_> = exposed.iter().copied().step_by(stride).collect();
+                summary.exposed_skipped_by_cap += (exposed.len() - kept.len()) as u64;
+                kept
+            } else {
+                exposed
+            };
+        let selected: Vec<(u64, u64, usize)> = kept
+            .into_iter()
+            .map(|(demonstrator, observer)| {
+                let bin = relatedness_bin(pedigree.relatedness_q32(demonstrator, observer));
+                (demonstrator, observer, bin)
+            })
+            .collect();
+
+        // The shared control scan: candidate pairs in ascending
+        // (demonstrator, observer) order, examined at most once each
+        // under one per-window budget. A pair that is globally invalid
+        // (a self-pair, or the two were near each other) is consumed on
+        // sight; every other examined pair is banked in its OWN
+        // kinship bin's queue and consumed only when an exposed pair
+        // actually uses it as its control. A pair that merely shares a
+        // member with the CURRENT exposed pair stays banked for the next
+        // one - consuming it there would starve later pairs, which is
+        // exactly what the independent pass's weighting test caught in
+        // the first cursor design.
+        let mut bin_queues: Vec<std::collections::VecDeque<(u64, u64)>> =
+            vec![std::collections::VecDeque::new(); RELATEDNESS_BIN_COUNT];
+        let mut scan_demo = 0_usize;
+        let mut scan_obs = 0_usize;
+        let mut budget = plan.control_budget_per_window;
+        let unlimited = plan.control_budget_per_window == 0;
+        let mut exhausted = false;
+        for &(demonstrator, observer, bin) in &selected {
+            let similarity =
+                similarity_milli(&demonstration[&demonstrator], &observation[&observer]);
+            summary.bins[bin].exposed_pairs += 1;
+            summary.bins[bin].exposed_similarity_sum_milli += similarity;
+            summary.exposed_pairs_total += 1;
+
+            let conflicts = |pair: &(u64, u64)| {
+                pair.0 == demonstrator
+                    || pair.0 == observer
+                    || pair.1 == demonstrator
+                    || pair.1 == observer
+            };
+            let mut chosen = bin_queues[bin].iter().position(|pair| !conflicts(pair));
+            while chosen.is_none() && scan_demo < demonstrators.len() {
+                if !unlimited && budget == 0 {
+                    exhausted = true;
+                    break;
+                }
+                if scan_obs >= observers.len() {
+                    scan_demo += 1;
+                    scan_obs = 0;
+                    continue;
+                }
+                let control_demo = demonstrators[scan_demo];
+                let control_obs = observers[scan_obs];
+                scan_obs += 1;
+                if !unlimited {
+                    budget -= 1;
+                }
+                if control_obs == control_demo || near(control_demo, control_obs) {
+                    continue;
+                }
+                let pair_bin = relatedness_bin(pedigree.relatedness_q32(control_demo, control_obs));
+                bin_queues[pair_bin].push_back((control_demo, control_obs));
+                if pair_bin == bin && !conflicts(&(control_demo, control_obs)) {
+                    chosen = Some(bin_queues[bin].len() - 1);
+                }
+            }
+            match chosen {
+                Some(position) => {
+                    let (control_demo, control_obs) =
+                        bin_queues[bin].remove(position).expect("position exists");
+                    let control_similarity =
+                        similarity_milli(&demonstration[&control_demo], &observation[&control_obs]);
+                    summary.bins[bin].control_pairs += 1;
+                    summary.bins[bin].control_similarity_sum_milli += control_similarity;
+                    summary.control_pairs_total += 1;
+                }
+                None => summary.bins[bin].unmatched_exposed += 1,
+            }
+        }
+        if exhausted {
+            summary.control_budget_exhausted_windows += 1;
         }
     }
 
@@ -360,18 +448,12 @@ pub(crate) fn spatial_positions_by_id(
     spatial: &[SpatialSample],
     founder_count: u32,
 ) -> Result<Vec<(u64, BTreeMap<u64, (i32, i32)>)>, ArrivalError> {
-    crate::arrival::arrival_census(
-        events,
-        spatial,
-        founder_count,
-        0,
-        PatchSpec::Circle {
-            x_fp: i32::MIN / 2,
-            y_fp: i32::MIN / 2,
-            radius_fp: 0,
-        },
-        u64::MAX,
-    )?;
+    // ONE alive-set predicate, checked against every sample's own length
+    // before any zip: the independent pass showed the earlier version
+    // kept two hand-synchronized copies of the boundary rules (one in
+    // the arrival census it called for its check, one inline) and then
+    // zipped, which truncates silently the moment they disagree - the
+    // exact misassignment the fail-closed rule exists to prevent.
     let mut born_at: BTreeMap<u64, u64> =
         (1..=u64::from(founder_count)).map(|id| (id, 0)).collect();
     let mut died_at: BTreeMap<u64, u64> = BTreeMap::new();
@@ -388,11 +470,22 @@ pub(crate) fn spatial_positions_by_id(
     }
     let mut result = Vec::with_capacity(spatial.len());
     for sample in spatial {
-        let alive = born_at.iter().filter(|(id, born)| {
-            **born <= sample.tick && !died_at.get(id).is_some_and(|&at| at <= sample.tick)
-        });
-        let positions: BTreeMap<u64, (i32, i32)> = alive
+        let alive: Vec<u64> = born_at
+            .iter()
+            .filter(|(id, born)| {
+                **born <= sample.tick && !died_at.get(id).is_some_and(|&at| at <= sample.tick)
+            })
             .map(|(&id, _)| id)
+            .collect();
+        if alive.len() != sample.positions.len() {
+            return Err(ArrivalError::PopulationMismatch {
+                tick: sample.tick,
+                reconstructed: alive.len(),
+                sampled: sample.positions.len(),
+            });
+        }
+        let positions: BTreeMap<u64, (i32, i32)> = alive
+            .into_iter()
             .zip(sample.positions.iter().copied())
             .collect();
         result.push((sample.tick, positions));
@@ -530,6 +623,9 @@ mod tests {
             &FidelityPlan {
                 exposure_radius_fp: RADIUS,
                 founder_count: 4,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
             },
         )
         .expect("join holds");
@@ -573,6 +669,9 @@ mod tests {
                 &FidelityPlan {
                     exposure_radius_fp: RADIUS,
                     founder_count: 2,
+                    exposed_cap_per_window: 0,
+                    control_budget_per_window: 0,
+                    window_stride: 0,
                 },
             )
             .expect("join holds");
@@ -614,6 +713,9 @@ mod tests {
             &FidelityPlan {
                 exposure_radius_fp: RADIUS,
                 founder_count: 2,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
             },
         )
         .expect("join holds");
@@ -672,6 +774,9 @@ mod tests {
             &FidelityPlan {
                 exposure_radius_fp: RADIUS,
                 founder_count: 3,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
             },
         )
         .expect("join holds");
@@ -713,10 +818,374 @@ mod tests {
             &FidelityPlan {
                 exposure_radius_fp: RADIUS,
                 founder_count: 2,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
             },
         )
         .expect("join holds");
         assert_eq!(summary.windows_analyzed, 1);
         assert_eq!(summary.exposed_pairs_total, 0);
+    }
+
+    /// Two-class counts, for the mixes that separate a real normalization
+    /// from an accidental one.
+    fn rest_and_attack(rest: u32, attack: u32) -> [u32; 7] {
+        let mut counts = [0_u32; 7];
+        counts[0] = rest;
+        counts[6] = attack;
+        counts
+    }
+
+    /// The pair of founders every arithmetic test below uses: co-located,
+    /// unrelated, both carrying a demonstration and an observation mix.
+    fn two_co_located_founders(actions: Vec<ActionSampleSet>) -> WorldFidelity {
+        let together = vec![(0, 0), (100, 0)];
+        let spatial = vec![
+            spatial_sample(500, together.clone()),
+            spatial_sample(1000, together.clone()),
+            spatial_sample(1500, together),
+        ];
+        world_fidelity(
+            &Vec::new(),
+            &actions,
+            &spatial,
+            &FidelityPlan {
+                exposure_radius_fp: RADIUS,
+                founder_count: 2,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
+            },
+        )
+        .expect("join holds")
+    }
+
+    /// The action mix normalizes by the window's TOTAL action count, not by
+    /// its largest class. Every other test in this module uses single-class
+    /// deltas, where sum and maximum coincide; a two-class window is the
+    /// smallest shape that tells them apart.
+    #[test]
+    fn the_action_mix_normalizes_by_the_window_total_not_its_largest_class() {
+        let summary = two_co_located_founders(vec![
+            sample_set(500, &[(1, [0; 7]), (2, [0; 7])]),
+            // Demonstration deltas: 1 is 6 rest + 2 attack, 2 the reverse.
+            sample_set(
+                1000,
+                &[(1, rest_and_attack(6, 2)), (2, rest_and_attack(2, 6))],
+            ),
+            // Observation deltas: both 2 rest + 6 attack.
+            sample_set(
+                1500,
+                &[(1, rest_and_attack(8, 8)), (2, rest_and_attack(4, 12))],
+            ),
+        ]);
+        assert_eq!(summary.bins[0].exposed_pairs, 2, "{summary:?}");
+        // Mixes over the total: demonstrations 750/250 and 250/750,
+        // observations both 250/750. (1,2) scores 1000 - 1000/2 = 500 and
+        // (2,1) scores 1000. Normalizing by the largest class instead would
+        // read 1000/333 and 333/1000 and score 333 + 1000.
+        assert_eq!(summary.bins[0].exposed_similarity_sum_milli, 1_500);
+    }
+
+    /// The similarity halves the L1 distance with truncation. A three-way
+    /// mix makes L1 odd, which is the only case where truncating and
+    /// rounding differ - and no other test in this module produces one.
+    #[test]
+    fn the_similarity_truncates_the_halved_l1_distance() {
+        let three_ways = [1, 1, 1, 0, 0, 0, 0];
+        let summary = two_co_located_founders(vec![
+            sample_set(500, &[(1, [0; 7]), (2, [0; 7])]),
+            sample_set(1000, &[(1, three_ways), (2, only(0, 1))]),
+            sample_set(1500, &[(1, [2, 1, 1, 0, 0, 0, 0]), (2, only(0, 6))]),
+        ]);
+        assert_eq!(summary.bins[0].exposed_pairs, 2, "{summary:?}");
+        // (1,2): demonstration [333,333,333,..] against observation
+        // [1000,0,..] is L1 1333, so 1000 - 666 = 334, not 1000 - 667.
+        // (2,1) is two identical pure-rest mixes: 1000.
+        assert_eq!(summary.bins[0].exposed_similarity_sum_milli, 1_334);
+    }
+
+    /// The exposure window is half-open at the demonstration window's
+    /// closing tick: a sample taken exactly there belongs to the next
+    /// window and cannot make a pair exposed.
+    #[test]
+    fn a_sample_at_the_windows_closing_tick_is_outside_the_window() {
+        let actions = vec![
+            sample_set(500, &[(1, [0; 7]), (2, [0; 7])]),
+            sample_set(1000, &[(1, only(0, 10)), (2, only(0, 10))]),
+            sample_set(1500, &[(1, only(0, 20)), (2, only(0, 20))]),
+        ];
+        let apart = vec![(0, 0), (50_000, 0)];
+        let together = vec![(0, 0), (100, 0)];
+        let spatial = vec![
+            spatial_sample(500, apart.clone()),
+            spatial_sample(750, apart),
+            // The pair meets only at exactly the closing tick.
+            spatial_sample(1000, together.clone()),
+            spatial_sample(1500, together),
+        ];
+        let summary = world_fidelity(
+            &Vec::new(),
+            &actions,
+            &spatial,
+            &FidelityPlan {
+                exposure_radius_fp: RADIUS,
+                founder_count: 2,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
+            },
+        )
+        .expect("join holds");
+        assert_eq!(summary.windows_analyzed, 1);
+        assert_eq!(summary.exposed_pairs_total, 0, "{summary:?}");
+    }
+
+    /// A control is a pair of two organisms, never a degenerate (d, d).
+    /// Organism 99 carries action rows but no birth event, so it holds no
+    /// position and is therefore not "near" even itself - the one shape in
+    /// which a self-pair passes every other control test (same bin, not
+    /// exposed, no member shared with the exposed pair).
+    #[test]
+    fn a_self_pair_is_never_accepted_as_the_matched_control() {
+        let events = vec![
+            paired(100, 10, 1, 2),
+            paired(100, 11, 1, 2),
+            paired(200, 13, 10, 11),
+        ];
+        let ids = [1_u64, 2, 10, 11, 13, 99];
+        let rows = |counts: [u32; 7]| -> Vec<(u64, [u32; 7])> {
+            ids.iter().map(|&id| (id, counts)).collect()
+        };
+        let actions = vec![
+            sample_set(500, &rows([0; 7])),
+            sample_set(1000, &rows(only(0, 10))),
+            sample_set(1500, &rows(only(0, 20))),
+        ];
+        // Alive at every sample, ascending: 1, 2, 10, 11, 13. Only 10 and
+        // 13 lie within the radius of each other; 99 has no position at all.
+        let places = vec![(50_000, 0), (0, 50_000), (0, 0), (50_000, 50_000), (100, 0)];
+        let spatial = vec![
+            spatial_sample(500, places.clone()),
+            spatial_sample(1000, places.clone()),
+            spatial_sample(1500, places),
+        ];
+        let summary = world_fidelity(
+            &events,
+            &actions,
+            &spatial,
+            &FidelityPlan {
+                exposure_radius_fp: RADIUS,
+                founder_count: 2,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
+            },
+        )
+        .expect("join holds");
+        // 13 is the child of full sibs 10 and 11, so r(10,13) = 3/4: the
+        // closer-than-sibs bin, whose only other member pair is (99, 99).
+        assert_eq!(summary.bins[4].exposed_pairs, 2, "{summary:?}");
+        assert_eq!(summary.bins[4].control_pairs, 0, "{summary:?}");
+        assert_eq!(summary.bins[4].unmatched_exposed, 2, "{summary:?}");
+    }
+
+    /// The weighted delta weights each bin by its **matched** exposed pairs,
+    /// not by all of them. The world below separates the two: 1 and 2 are
+    /// the only pair far enough apart to be a control, so every exposed
+    /// unrelated pair containing one of them goes unmatched, while the
+    /// sibling bin (12 and 13 exposed, 10 and 11 available) is fully
+    /// matched. The expectation is recomputed from the published bin table
+    /// so the test states the weight rule rather than a golden number.
+    #[test]
+    fn the_delta_weights_each_bin_by_its_matched_pairs_not_its_exposed_pairs() {
+        // Founders 1..4 are unrelated; 10 and 11 are full sibs, and so are
+        // 12 and 13, from parent pairs that never act.
+        let events = vec![
+            paired(100, 10, 6, 7),
+            paired(100, 11, 6, 7),
+            paired(100, 12, 8, 9),
+            paired(100, 13, 8, 9),
+        ];
+        let ids = [1_u64, 2, 3, 4, 10, 11, 12, 13];
+        let rows = |counts: [u32; 7]| -> Vec<(u64, [u32; 7])> {
+            ids.iter().map(|&id| (id, counts)).collect()
+        };
+        let mut last = rows(only(0, 20));
+        // 12 and 13 observe pure attack; everyone else observes pure rest,
+        // which is what makes the two bins' deltas differ.
+        for row in last.iter_mut() {
+            if row.0 == 12 || row.0 == 13 {
+                row.1 = rest_and_attack(10, 10);
+            }
+        }
+        let actions = vec![
+            sample_set(500, &rows([0; 7])),
+            sample_set(1000, &rows(only(0, 10))),
+            sample_set(1500, &last),
+        ];
+        // Ascending ids 1,2,3,4,10,11,12,13. Every pair is within the
+        // radius except (1,2) and (10,11).
+        let places = vec![
+            (-800, 0),
+            (800, 0),
+            (0, 0),
+            (0, 0),
+            (0, 600),
+            (0, -600),
+            (0, 100),
+            (0, -100),
+        ];
+        let spatial = vec![
+            spatial_sample(500, places.clone()),
+            spatial_sample(1000, places.clone()),
+            spatial_sample(1500, places),
+        ];
+        let summary = world_fidelity(
+            &events,
+            &actions,
+            &spatial,
+            &FidelityPlan {
+                exposure_radius_fp: RADIUS,
+                founder_count: 4,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
+            },
+        )
+        .expect("join holds");
+        assert!(
+            summary.bins[0].unmatched_exposed > 0 && summary.bins[0].control_pairs > 0,
+            "the unrelated bin must carry both matched and unmatched pairs: {summary:?}"
+        );
+        assert_eq!(
+            summary.bins[3].unmatched_exposed, 0,
+            "the sibling bin must be fully matched: {summary:?}"
+        );
+        let recompute = |weight_of: fn(&FidelityBin) -> i64| -> i64 {
+            let mut weighted = 0_i64;
+            let mut weight = 0_i64;
+            for bin in &summary.bins {
+                if bin.exposed_pairs > 0 && bin.control_pairs > 0 {
+                    let exposed_mean = bin.exposed_similarity_sum_milli / bin.exposed_pairs as i64;
+                    let control_mean = bin.control_similarity_sum_milli / bin.control_pairs as i64;
+                    let w = weight_of(bin);
+                    weighted += (exposed_mean - control_mean) * w;
+                    weight += w;
+                }
+            }
+            weighted / weight
+        };
+        let by_matched = recompute(|bin| (bin.exposed_pairs - bin.unmatched_exposed) as i64);
+        let by_exposed = recompute(|bin| bin.exposed_pairs as i64);
+        assert_ne!(
+            by_matched, by_exposed,
+            "the world must distinguish the two weightings: {summary:?}"
+        );
+        assert_eq!(
+            summary.fidelity_delta_milli,
+            Some(by_matched),
+            "{summary:?}"
+        );
+    }
+
+    /// The position join uses the arrival replay's own death boundary: a
+    /// death at exactly a sample tick is absent from that sample. Founder 1
+    /// dies at the first sample tick, so the two positions there belong to
+    /// 2 and 3 - a join that kept 1 alive would hand 2's position to 1 and
+    /// drop 3 entirely, and the fail-closed population check (which uses the
+    /// correct boundary) would still balance and say nothing.
+    #[test]
+    fn the_position_join_drops_an_organism_that_dies_at_the_sample_tick() {
+        let events = vec![event(
+            500,
+            EventKind::Death {
+                id: 1,
+                cause: DeathCause::Starvation,
+            },
+        )];
+        let actions = vec![
+            sample_set(500, &[(2, [0; 7]), (3, [0; 7])]),
+            sample_set(1000, &[(2, only(0, 10)), (3, only(0, 10))]),
+            sample_set(1500, &[(2, only(0, 20)), (3, only(0, 20))]),
+        ];
+        let survivors = vec![(0, 0), (100, 0)];
+        let spatial = vec![
+            spatial_sample(500, survivors.clone()),
+            spatial_sample(1000, survivors.clone()),
+            spatial_sample(1500, survivors),
+        ];
+        let summary = world_fidelity(
+            &events,
+            &actions,
+            &spatial,
+            &FidelityPlan {
+                exposure_radius_fp: RADIUS,
+                founder_count: 3,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
+            },
+        )
+        .expect("join holds");
+        assert_eq!(summary.exposed_pairs_total, 2, "{summary:?}");
+    }
+
+    /// ...and the replay's birth boundary: an organism born at exactly a
+    /// sample tick is present at it. The tick-500 birth below carries the
+    /// small id 2, so dropping it would shift every later organism's
+    /// position one place along while the population count still balances.
+    #[test]
+    fn the_position_join_admits_an_organism_born_at_the_sample_tick() {
+        let events = vec![
+            event(
+                100,
+                EventKind::Birth {
+                    id: 3,
+                    parent_id: 1,
+                },
+            ),
+            event(
+                100,
+                EventKind::Birth {
+                    id: 4,
+                    parent_id: 1,
+                },
+            ),
+            event(
+                500,
+                EventKind::Birth {
+                    id: 2,
+                    parent_id: 1,
+                },
+            ),
+        ];
+        let actions = vec![
+            sample_set(500, &[(3, [0; 7]), (4, [0; 7])]),
+            sample_set(1000, &[(3, only(0, 10)), (4, only(0, 10))]),
+            sample_set(1500, &[(3, only(0, 20)), (4, only(0, 20))]),
+        ];
+        // Ascending ids 1, 2, 3, 4: only 3 and 4 are within the radius.
+        let places = vec![(100_000, 0), (50_000, 0), (0, 0), (100, 0)];
+        let spatial = vec![
+            spatial_sample(500, places.clone()),
+            spatial_sample(1000, places.clone()),
+            spatial_sample(1500, places),
+        ];
+        let summary = world_fidelity(
+            &events,
+            &actions,
+            &spatial,
+            &FidelityPlan {
+                exposure_radius_fp: RADIUS,
+                founder_count: 1,
+                exposed_cap_per_window: 0,
+                control_budget_per_window: 0,
+                window_stride: 0,
+            },
+        )
+        .expect("join holds");
+        assert_eq!(summary.exposed_pairs_total, 2, "{summary:?}");
     }
 }
