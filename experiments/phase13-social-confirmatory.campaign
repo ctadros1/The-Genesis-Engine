@@ -1,0 +1,135 @@
+# Phase 13 confirmatory campaign: C13.1 primary (A-vs-C AND A-vs-D),
+# with the B/D/S ablation ladder and the C13.2 corruption sweep.
+#
+# ============================================================
+# PRE-REGISTRATION. Committed before the campaign was run.
+# The companion document is experiments/phase13-social-preregistration.md;
+# every decision rule, constant, epoch, SESOI, and claim ceiling is locked
+# there, from the Stage B pilot (experiments/phase13-social-pilot.campaign,
+# disjoint seeds 13901..13908).
+# ============================================================
+#
+# EXPECTED OUTCOME, STATED IN ADVANCE: null on C13.1. The ladder's levers
+# (D-120) have not yet produced what transmission needs; the value here is
+# the controlled why - B, C, D, S and the F-curve say which link fails -
+# plus the artifacts every later lever reuses. The pilot measured
+# reachability decisively non-null (hearers and speakers in the hundreds
+# to thousands per world), so a null will not be a reachability null
+# unless this campaign's own censuses say otherwise, world by world.
+#
+# Arms differ from A in exactly their named variables (D-118's lesson);
+# observational is common-mode in A/B/C/D; the sweep arms are A at three
+# corruption levels for C13.2's F-curve.
+
+campaign phase13-social-confirmatory
+ticks 60000
+workers 8
+seeds 13001..13030
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.mutation.binding_q16 16384
+base genome2.mutation.plasticity_enabled true
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base contest.enabled true
+base probe.enabled true
+base probe.action_census_enabled true
+base probe.marker_locus_enabled true
+base plasticity.enabled true
+base plasticity.max_plastic_edges 32
+base plasticity.plastic_edge_cost_milli_per_s 2
+base plasticity.lamarckian_fraction_q16 0
+base plasticity.live_rule_zero true
+base worldmod.enabled true
+base worldmod.patch_enabled true
+base worldmod.relocate_interval_ticks 2000
+base worldmod.patch_radius_cells 32
+base worldmod.patch_capacity_scale_q16 262144
+base worldmod.max_capacity_overrides 8192
+base worldmod.max_material_overrides 8192
+base artifact.enabled true
+base artifact.max_objects 4096
+base artifact.max_objects_per_cell 8
+base artifact.max_composition_depth 4
+base artifact.max_composition_breadth 8
+base artifact.max_held_objects 1
+base artifact.max_candidates 8
+base artifact.carry_capacity_milli 4000
+base artifact.carry_move_cost_q16 65536
+base artifact.hold_cost_milli_per_s 20
+base artifact.action_cost_milli 60
+base artifact.strike_cost_milli 120
+base artifact.action_threshold_q16 32768
+base artifact.reach_m 2
+base artifact.consume_reach_m 2
+base artifact.perception_range_m 8
+base artifact.strike_force_q16 262144
+base artifact.strike_mass_reference_milli 2000
+base artifact.fracture_margin_q16 65536
+base artifact.max_fragments 4
+base artifact.min_fragment_mass_milli 100
+base artifact.joint_floor_q16 16384
+base artifact.blocking_mass_milli 3000
+base artifact.terrain_yield_milli 6000
+base artifact.extraction_milli 800
+base artifact.yield_regen_milli 400
+base artifact.yield_regen_interval_ticks 600
+base artifact.stone_relative_q16 39322
+base artifact.wood_relative_q16 16384
+base social.enabled true
+base social.observational_enabled true
+condition A
+condition B
+condition C
+condition D
+condition S
+condition A8k
+condition A16k
+condition A32k
+set A social.perception_enabled true
+set A social.signal_enabled true
+set B social.perception_enabled true
+set B social.signal_enabled false
+set C social.perception_enabled false
+set C social.signal_enabled false
+set D social.perception_enabled true
+set D social.signal_enabled true
+set D social.scramble_delivery true
+set S social.perception_enabled true
+set S social.signal_enabled true
+set S social.observational_enabled false
+set A8k social.perception_enabled true
+set A8k social.signal_enabled true
+set A8k social.signal_corruption_q16 8192
+set A16k social.perception_enabled true
+set A16k social.signal_enabled true
+set A16k social.signal_corruption_q16 16384
+set A32k social.perception_enabled true
+set A32k social.signal_enabled true
+set A32k social.signal_corruption_q16 32768
+vary social.perception_enabled
+vary social.signal_enabled
+vary social.scramble_delivery
+vary social.observational_enabled
+vary social.signal_corruption_q16
+output events on
+output snapshots on
+output actions 500
+output spatial 50
