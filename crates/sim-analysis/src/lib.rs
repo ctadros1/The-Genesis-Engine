@@ -21,6 +21,7 @@ mod morph;
 mod paired;
 mod plasticity;
 mod power;
+mod recognition;
 pub mod social;
 mod spatial;
 mod structure;
@@ -35,6 +36,7 @@ pub use fidelity::{
     FIDELITY_VERSION, FidelityBin, FidelityPlan, KINSHIP_ONE_Q32, Pedigree, RELATEDNESS_BIN_COUNT,
     RELATEDNESS_BIN_EDGES_Q32, WorldFidelity, world_fidelity,
 };
+pub use recognition::{RECOGNITION_VERSION, RecognitionPlan, WorldRecognition, world_recognition};
 pub use tradition::{
     TRADITION_VERSION, TraditionFinding, TraditionPlan, WorldTraditions, world_traditions,
 };
