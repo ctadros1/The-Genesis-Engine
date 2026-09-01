@@ -1,8 +1,18 @@
 # Phase 12: Mutable World And Artifacts
 
-Status: planned, not started. Policy versions `lifesim-material-v1`,
-`lifesim-artifact-v1`, `lifesim-worldmod-v1`. Introduces **ALIF format 4**
-(see the version correction below).
+Status: **COMPLETE, 2026-08-16: all eight criteria decided.** Met: C12.4,
+C12.5, C12.6 (including the 10^6-tick ledger soak), C12.7 (with the breadth
+cap recorded as unbindable, D-116), C12.8. **C12.1, C12.2 and C12.3 are
+UNMET, as measured nulls with controls** (campaign `0x36c2d68a9a0869da`,
+`experiments/results/phase12-artifact-confirmatory-findings.txt`, D-117) -
+and, unlike Phase 11's null, not a reachability null: every world's living
+population bound all five object actions. A measured null is a result, not
+a gap. Known confound D-118 (the inert arm skips consumption) is recorded
+with its fix deferred to `lifesim-artifact-v2`. The mutable-world half
+completed 2026-08-10; the artifact half (ADR-0028) 2026-08-16. Policy
+versions `lifesim-material-v1`, `lifesim-artifact-v1`, `lifesim-worldmod-v1`.
+Introduced **ALIF format 4** for the mutable-world half (see the version
+correction below) and **ALIF format 7** for the artifact half.
 Specifications: `specifications/artifact-and-material-ontology.md`,
 `specifications/mutable-world-state.md`,
 `specifications/world-save-format.md`.

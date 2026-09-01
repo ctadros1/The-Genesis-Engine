@@ -79,6 +79,17 @@ the tamper test accepted *either* error. Two tests now pin the near guard by
 its diagnostic. The general pattern - a guard whose only test accepts a set
 of errors rather than the one it should produce - is worth grepping for.
 
+**PHASE 12 IS COMPLETE (2026-08-16): all eight criteria decided**, both
+halves. Met: C12.4-C12.8 (own fixture `0x853d257398a2718c`, format 7,
+10^6-tick ledger soak clean, caps driven, five fixtures preserved).
+**C12.1-C12.3 UNMET as measured nulls with controls** (D-117) - not a
+reachability null: the bind operator (D-114) put every object action into
+every world's living population; firing them did not pay at this reach,
+cost and horizon. Follow-ups recorded, each needing its own
+pre-registration: the D-118 inert-arm fix under `lifesim-artifact-v2`
+first, then reach / hold cap / costs / bind rate as the knobs, and ALSP
+1.1 if objects should reach the observer.
+
 **PHASE 11 IS COMPLETE (2026-08-16): all eight criteria decided**, benchmark
 schema 7, record `phase11-local-20260816T063000Z`. Met: C11.3, C11.4, C11.5,
 C11.6 (10^6 ticks, 18,971,594 plasticity updates, ledger exact), **C11.7**,
