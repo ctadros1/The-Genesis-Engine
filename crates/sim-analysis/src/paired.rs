@@ -110,6 +110,12 @@ pub struct PairedResult {
     /// Worlds reaching the SESOI **in the prespecified direction**. This is
     /// the count the decision rule uses.
     pub reaching_sesoi_directed: usize,
+    /// Worlds whose ABSOLUTE paired difference reaches the SESOI in the
+    /// prespecified direction. Defined for every pair, including those
+    /// whose control is exactly zero (where the relative form is not);
+    /// the decision rule for a normalized-fraction quantity uses this
+    /// count, per its own pre-registration (D-120's blindness lesson).
+    pub reaching_absolute_directed: usize,
     pub direction: Direction,
     pub positive_differences: usize,
     /// Exact one-sided binomial p-value for `reaching_sesoi_directed`
@@ -263,6 +269,17 @@ pub fn compare(
                 .is_some_and(|relative| direction.counts(relative, sesoi_milli))
         })
         .count();
+    // The absolute-scale counterpart: for quantities that are already
+    // normalized fractions (Phase 13's naive arrival fraction), the
+    // relative form is undefined whenever the control is exactly zero -
+    // which for an expected-null control arm is most pairs, and a SESOI
+    // count that silently excludes them is an outcome measure blind to
+    // its own factor (D-120). The absolute count is defined for every
+    // pair; which form a criterion uses is fixed in its pre-registration.
+    let reaching_absolute_directed = differences
+        .iter()
+        .filter(|&&difference| direction.counts(difference, sesoi_milli))
+        .count();
     let positive_differences = differences.iter().filter(|value| **value > 0).count();
 
     // Alpha is 0.05, so the equivalence interval is the 90% one and the
@@ -275,6 +292,7 @@ pub fn compare(
         pairs: pairs.len(),
         reaching_sesoi: reaching,
         reaching_sesoi_directed: reaching_directed,
+        reaching_absolute_directed,
         direction,
         positive_differences,
         sesoi_p_value_milli: binomial_upper_tail_milli(
@@ -416,5 +434,35 @@ mod tests {
         assert_eq!(result.mean_relative_milli, 200);
         assert_eq!(result.pairs, 2);
         assert_eq!(result.reaching_sesoi, 1);
+    }
+
+    /// The absolute directed count is defined at zero controls (where the
+    /// relative form is None) and inclusive at exactly the SESOI - the
+    /// two properties the Phase 13 primary depends on.
+    #[test]
+    fn the_absolute_directed_count_includes_zero_control_pairs_inclusively() {
+        let pairs = [
+            Pair {
+                seed: 1,
+                treatment_milli: 100,
+                control_milli: 0,
+            },
+            Pair {
+                seed: 2,
+                treatment_milli: 99,
+                control_milli: 0,
+            },
+            Pair {
+                seed: 3,
+                treatment_milli: 0,
+                control_milli: 100,
+            },
+        ];
+        let result = compare(&pairs, 100, 500, Direction::Increase, 7);
+        assert_eq!(result.reaching_absolute_directed, 1);
+        assert_eq!(
+            result.reaching_sesoi_directed, 0,
+            "the relative form is blind at zero controls; the absolute one is not"
+        );
     }
 }

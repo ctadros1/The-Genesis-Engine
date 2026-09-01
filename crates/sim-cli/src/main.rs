@@ -86,6 +86,7 @@ fn run() -> Result<(), String> {
         Some("conjunction") => command_conjunction(parse_options(args.collect())?),
         Some("artifact") => command_artifact(parse_options(args.collect())?),
         Some("social") => command_social(parse_options(args.collect())?),
+        Some("social-contrast") => command_social_contrast(parse_options(args.collect())?),
         Some("fields") => command_fields(),
         Some("verify-events") => command_verify_events(args.collect()),
         _ => Err(usage()),
@@ -111,6 +112,7 @@ fn usage() -> String {
         "       lifesim conjunction --manifest FILE   (descriptive census; no threshold, no verdict)\n",
         "       lifesim artifact --manifest FILE --treatment A --control C --disabled D   (C12.1-C12.3 against the pre-registered bars)\n",
         "       lifesim social --manifest FILE --epoch N   (C13.1 arrival census + reachability census; no verdict)\n",
+        "       lifesim social-contrast --manifest FILE --treatment A --baseline C --epochs N,N,.. --sesoi N [--analysis-seed HEX]   (C13.1 seed-paired contrast)\n",
         "       lifesim fields\n",
         "       lifesim verify-events LOG [--expect-events]\n",
         "config flags: --seed HEX|N --organisms N --max-entities N --cells-x N --cells-y N --dt-ms N --no-reproduction --phase2 --genome2 --plasticity --artifact [--artifact-inert] [--artifact-ephemeral]\n",
@@ -180,6 +182,7 @@ struct Options {
     analysis_seed: Option<u64>,
     power: bool,
     epoch: Option<u64>,
+    epochs: Option<String>,
 }
 
 fn parse_options(args: Vec<String>) -> Result<Options, String> {
@@ -288,6 +291,7 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--sesoi" => options.sesoi = Some(parse_number::<i64>(name, value)?),
             "--analysis-seed" => options.analysis_seed = Some(parse_seed(value)?),
             "--epoch" => options.epoch = Some(parse_number(name, value)?),
+            "--epochs" => options.epochs = Some(value.clone()),
             _ => return Err(format!("unknown option {name}\n{}", usage())),
         }
         index += 2;
@@ -2482,6 +2486,223 @@ fn command_social(options: Options) -> Result<(), String> {
             );
         }
     }
+    Ok(())
+}
+
+/// C13.1's seed-paired contrast: the world-level naive arrival fraction
+/// under the treatment arm against the baseline arm, paired by seed, with
+/// the SESOI count on the ABSOLUTE paired difference (the relative form
+/// is undefined at a zero-fraction control, which an expected-null
+/// baseline mostly is - D-120's blindness lesson, recorded on
+/// `PairedResult::reaching_absolute_directed`).
+///
+/// Per world: for each pre-registered epoch, the arrival census's
+/// fraction (naive_arrived / naive_total, milli); the world statistic is
+/// the mean over epochs with a nonzero naive cohort (ADR-0022 A5). A
+/// world where every named epoch has an empty cohort is unusable and
+/// reported by seed, never imputed. The A-versus-C and A-versus-D calls
+/// are two invocations of this command; the criterion needs both.
+fn command_social_contrast(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("social-contrast requires --manifest\n{}", usage()))?;
+    let treatment = options
+        .treatment
+        .as_ref()
+        .ok_or_else(|| format!("social-contrast requires --treatment\n{}", usage()))?;
+    let baseline = options
+        .baseline
+        .as_ref()
+        .ok_or_else(|| format!("social-contrast requires --baseline\n{}", usage()))?;
+    let epochs: Vec<u64> = options
+        .epochs
+        .as_ref()
+        .ok_or_else(|| format!("social-contrast requires --epochs\n{}", usage()))?
+        .split(',')
+        .map(|part| {
+            part.trim()
+                .parse::<u64>()
+                .map_err(|_| format!("invalid epoch '{part}' in --epochs"))
+        })
+        .collect::<Result<_, _>>()?;
+    if epochs.is_empty() || epochs.contains(&0) {
+        return Err("--epochs needs at least one epoch, none of them 0".into());
+    }
+    let sesoi = options
+        .sesoi
+        .ok_or_else(|| format!("social-contrast requires --sesoi\n{}", usage()))?;
+    let analysis_seed = options.analysis_seed.unwrap_or(0x1373_5eed_0000_0001);
+
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    println!(
+        "social-contrast 1 campaign {} detector {} stats {}",
+        manifest.campaign.id,
+        sim_analysis::ARRIVAL_DETECTOR_VERSION,
+        sim_analysis::PAIRED_STATS_VERSION,
+    );
+    println!(
+        "treatment {} baseline {} epochs {:?} sesoi_milli {} direction increase \
+         analysis_seed {:#018x}",
+        treatment, baseline, epochs, sesoi, analysis_seed
+    );
+
+    // Per (condition, seed): mean arrival fraction over contributing
+    // epochs, or the reason there is none.
+    let mut fractions: std::collections::BTreeMap<(String, u64), Result<i64, String>> =
+        std::collections::BTreeMap::new();
+    for name in [treatment.as_str(), baseline.as_str()] {
+        let condition = manifest
+            .campaign
+            .conditions
+            .iter()
+            .find(|condition| condition.name == name)
+            .ok_or_else(|| format!("condition {name} is not in the campaign"))?;
+        for run in manifest.runs_for(name) {
+            let stem = sim_experiment::run_stem(&run.condition, run.seed);
+            let config = manifest
+                .campaign
+                .config_for(condition, run.seed)
+                .map_err(|error| format!("{stem}: {error}"))?;
+            if !config.worldmod.enabled || !config.worldmod.patch_enabled {
+                return Err(format!(
+                    "{stem}: no relocating patch, so C13.1 has no patch P"
+                ));
+            }
+            let interval = config.worldmod.relocate_interval_ticks;
+
+            let bytes = fs::read(directory.join(format!("{stem}.alev")))
+                .map_err(|error| format!("{stem}.alev: {error}"))?;
+            let (_, events) =
+                sim_persist::decode_log_events(&bytes).map_err(|error| error.to_string())?;
+            let bytes = fs::read(directory.join(format!("{stem}.alss")))
+                .map_err(|error| format!("{stem}.alss: {error}"))?;
+            let scan = sim_persist::decode_spatial(&bytes)
+                .map_err(|error| format!("{stem}: decode spatial: {error}"))?;
+            if scan.info.config_hash != run.config_hash
+                || scan.info.terrain_checksum != run.terrain_checksum
+            {
+                return Err(format!("{stem}: the spatial log is not this run's"));
+            }
+            if scan.samples.len() as u64 != run.spatial_samples {
+                return Err(format!(
+                    "{stem}: {} spatial samples decoded but the manifest recorded {}",
+                    scan.samples.len(),
+                    run.spatial_samples
+                ));
+            }
+            let world = sim_core::World::new(config.clone())
+                .map_err(|error| format!("{stem}: rebuild world: {error}"))?;
+
+            let mut contributing: Vec<i64> = Vec::new();
+            for &epoch in &epochs {
+                let naive_after = epoch * interval;
+                let window_end = naive_after + interval;
+                let window: Vec<sim_persist::SpatialSample> = scan
+                    .samples
+                    .iter()
+                    .filter(|sample| sample.tick >= naive_after && sample.tick < window_end)
+                    .cloned()
+                    .collect();
+                if window.is_empty() {
+                    return Err(format!(
+                        "{stem}: epoch {epoch} window [{naive_after},{window_end}) holds no \
+                         samples; the epoch set does not fit this campaign"
+                    ));
+                }
+                let centre_cell = world.patch_centre_for_epoch(epoch).ok_or_else(|| {
+                    format!("{stem}: the kernel reports no patch for epoch {epoch}")
+                })?;
+                let census = sim_analysis::arrival_census(
+                    &events,
+                    &window,
+                    config.initial_organisms,
+                    scan.info.sample_interval_ticks,
+                    sim_analysis::PatchSpec::CellSquare {
+                        centre_cell,
+                        cells_x: config.cells_x,
+                        cells_y: config.cells_y,
+                        cell_size_fp: config.cell_size_fp(),
+                        radius_cells: config.worldmod.patch_radius_cells,
+                    },
+                    naive_after,
+                )
+                .map_err(|error| format!("{stem}: arrival census: {error:?}"))?;
+                if census.naive_total > 0 {
+                    contributing.push(census.arrival_fraction_milli);
+                }
+            }
+            let outcome = if contributing.is_empty() {
+                Err("every named epoch had an empty naive cohort".to_owned())
+            } else {
+                Ok(contributing.iter().sum::<i64>() / contributing.len() as i64)
+            };
+            match &outcome {
+                Ok(fraction) => println!(
+                    "world condition={} seed={:#018x} fraction_milli={} epochs_contributing={}",
+                    name,
+                    run.seed,
+                    fraction,
+                    contributing.len()
+                ),
+                Err(reason) => println!(
+                    "world condition={} seed={:#018x} unusable reason={}",
+                    name,
+                    run.seed,
+                    reason.replace(' ', "_")
+                ),
+            }
+            fractions.insert((name.to_owned(), run.seed), outcome);
+        }
+    }
+
+    let mut pairs: Vec<sim_analysis::Pair> = Vec::new();
+    let mut unusable = 0_usize;
+    for run in manifest.runs_for(treatment) {
+        let t = fractions.get(&(treatment.clone(), run.seed));
+        let c = fractions.get(&(baseline.clone(), run.seed));
+        match (t, c) {
+            (Some(Ok(t)), Some(Ok(c))) => pairs.push(sim_analysis::Pair {
+                seed: run.seed,
+                treatment_milli: *t,
+                control_milli: *c,
+            }),
+            _ => unusable += 1,
+        }
+    }
+    // The prespecified direction: the treatment arm arrives faster, so
+    // its fraction is higher (the pre-registration fixes this; A-vs-C
+    // and A-vs-D both expect increase).
+    let result = sim_analysis::compare(
+        &pairs,
+        sesoi,
+        500,
+        sim_analysis::Direction::Increase,
+        analysis_seed,
+    );
+    let absolute_p = sim_analysis::binomial_upper_tail_milli(
+        result.reaching_absolute_directed,
+        result.pairs,
+        500,
+    );
+    println!(
+        "contrast pairs={} unusable_seeds={} reaching_absolute_directed={} \
+         absolute_p_milli={} positive_differences={} mean_difference_milli={} \
+         ci95=[{},{}] median_difference_milli={} reaching_relative_directed={}",
+        result.pairs,
+        unusable,
+        result.reaching_absolute_directed,
+        absolute_p,
+        result.positive_differences,
+        result.mean_difference_milli,
+        result.ci_low_milli,
+        result.ci_high_milli,
+        result.median_difference_milli,
+        result.reaching_sesoi_directed,
+    );
     Ok(())
 }
 

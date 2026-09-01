@@ -188,3 +188,70 @@ fn the_report_refuses_epoch_zero_and_a_window_past_the_run_by_name() {
     assert!(!past.status.success());
     assert!(stderr(&past).contains("[5000,5500)"), "{}", stderr(&past));
 }
+
+#[test]
+fn the_contrast_reduces_pairs_and_reports_the_absolute_directed_count() {
+    let campaign = Campaign::run("contrast");
+    let output = lifesim(&[
+        "social-contrast",
+        "--manifest",
+        campaign.manifest().to_str().unwrap(),
+        "--treatment",
+        "A",
+        "--baseline",
+        "C",
+        "--epochs",
+        "1,2,3",
+        "--sesoi",
+        "100",
+        "--analysis-seed",
+        "0x1373",
+    ]);
+    assert!(output.status.success(), "stderr: {}", stderr(&output));
+    let text = stdout(&output);
+    assert!(
+        text.starts_with("social-contrast 1 campaign social-cli"),
+        "{text}"
+    );
+    // The plan echo carries the pre-registered inputs verbatim.
+    assert!(
+        text.contains("treatment A baseline C epochs [1, 2, 3] sesoi_milli 100"),
+        "{text}"
+    );
+    // One line per world of each arm, usable or not, then one contrast.
+    let world_lines = text
+        .lines()
+        .filter(|line| line.starts_with("world "))
+        .count();
+    assert_eq!(world_lines, 4, "{text}");
+    let contrast = text
+        .lines()
+        .find(|line| line.starts_with("contrast "))
+        .expect("contrast line");
+    // Pairs + unusable accounts for both seeds; every named field parses.
+    let pairs = field(contrast, "pairs");
+    let unusable = field(contrast, "unusable_seeds");
+    assert_eq!(pairs + unusable, 2, "{contrast}");
+    let reaching = field(contrast, "reaching_absolute_directed");
+    assert!(reaching <= pairs, "{contrast}");
+    let p = field(contrast, "absolute_p_milli");
+    assert!(p <= 1000, "{contrast}");
+
+    // The same invocation with an epoch set that cannot fit the run
+    // refuses by name rather than reducing a partial window.
+    let past = lifesim(&[
+        "social-contrast",
+        "--manifest",
+        campaign.manifest().to_str().unwrap(),
+        "--treatment",
+        "A",
+        "--baseline",
+        "C",
+        "--epochs",
+        "10",
+        "--sesoi",
+        "100",
+    ]);
+    assert!(!past.status.success());
+    assert!(stderr(&past).contains("[5000,5500)"), "{}", stderr(&past));
+}
