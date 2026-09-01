@@ -120,6 +120,24 @@ run_arm --social-corrupt > "$phase13_tmp/c2.json"
 cmp "$phase13_tmp/c1.json" "$phase13_tmp/c2.json"
 
 field() { sed -n "s/.*\"$2\":\"\{0,1\}\([^\",}]*\)\"\{0,1\}.*/\1/p" "$1"; }
+# The condition arms' states are pinned absolutely, not merely distinct:
+# the independent mutation pass (D-123) showed the corruption draw's
+# keying (subject and draw index) and the scramble draw's self-exclusion
+# arithmetic were verified by nothing while only replay and distinctness
+# were asserted. Pinned 2026-09-01; if either moves, record old and new in
+# the D-log with the reason.
+scramble_state=0x82c08143180116dc
+corrupt_state=0x440c31960b6cef8c
+if ! grep -q "\"state_checksum\":\"$scramble_state\"" "$phase13_tmp/d1.json"; then
+  printf 'phase13 scramble arm state moved: FAIL\n' >&2
+  cat "$phase13_tmp/d1.json" >&2
+  exit 1
+fi
+if ! grep -q "\"state_checksum\":\"$corrupt_state\"" "$phase13_tmp/c1.json"; then
+  printf 'phase13 corruption arm state moved: FAIL\n' >&2
+  cat "$phase13_tmp/c1.json" >&2
+  exit 1
+fi
 base_hash=$(field "$phase13_tmp/base.json" config_hash)
 s_hash=$(field "$phase13_tmp/s1.json" config_hash)
 d_hash=$(field "$phase13_tmp/d1.json" config_hash)

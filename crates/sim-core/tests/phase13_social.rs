@@ -548,3 +548,436 @@ fn a_rule_5_allele_learns_under_p_and_is_inert_under_s_verified_by_counter() {
         "condition S's ablation is verified by the counter: {s:?}"
     );
 }
+
+// --- gap closures from the independent mutation pass (D-123) ----------------
+
+/// The commit arithmetic, pinned analytically: the first-tick stamp equals
+/// `amplitude * (range^2 - d^2) / range^2` computed from first principles
+/// (the amplitude recovered exactly from the emission bill), and the second
+/// tick equals `clamp(first * retain >> 16 + stamp)`. An empirical
+/// two-world calibration cannot pin this - add-then-decay is
+/// observationally identical to a stamp rescaling, `(c + S) * k = c * k +
+/// S * k`, clamp included, so only an absolute expectation catches it
+/// (the independent pass's M06, which the fixture checksum caught and no
+/// cargo test could).
+#[test]
+fn the_commit_is_decay_then_add_against_the_analytic_stamp() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 1;
+    // Cost 1 milli per whole amplitude: the bill IS the amplitude, so the
+    // analytic stamp needs no access to the private emission scratch.
+    config.social.signal_cost_milli = 1;
+    config.validate().expect("valid");
+    let world = World::new(config.clone()).expect("world");
+    let mut state = world.export_state();
+    {
+        let caps: GenomeCaps = state.config.genome2.caps;
+        let schema2 = state.schema2.as_mut().expect("schema 2");
+        let mut genome = Genome2::decode(&schema2.genomes[0], &caps).expect("decodes");
+        bind_always_on(&mut genome, CHANNEL_SIGNAL_EMIT_BASE, 0.25, 0);
+        bind_always_on(&mut genome, CHANNEL_REST, 1.0, 1);
+        genome.validate_structure(&caps).expect("validates");
+        schema2.genomes[0] = genome.encode();
+        for _ in 0..2 {
+            schema2.activation_values[0].push(0.0);
+            schema2.activation_prior[0].push(0.0);
+        }
+    }
+    let mut world = World::from_state(state).expect("restores");
+    world.step();
+
+    let table = world.social_table().expect("section on");
+    let counters = world.social_counters().unwrap();
+    let amplitude =
+        ((counters.signal_cost_milli_total as i64) << 16) + table.emission_remainder_milli[0];
+    assert!(amplitude > 0 && amplitude < 65_536, "a sub-whole amplitude");
+
+    let after = world.export_state();
+    let cell_fp = i64::from(config.cell_size_m as i32 * 1024);
+    let cell_x = i64::from(after.x_fp[0]) / cell_fp;
+    let cell_y = i64::from(after.y_fp[0]) / cell_fp;
+    let cell = (cell_y * i64::from(config.cells_x) + cell_x) as usize;
+    let channels = config.social.signal_channels as usize;
+    let slot = cell * channels;
+
+    // The analytic stamp at the emitter's own cell, the kernel's formula
+    // recomputed from first principles: range scales with amplitude,
+    // attenuation is 1 - (d/range)^2 over the cell-centre offset.
+    let base_range_fp = i64::from(config.social.signal_base_range_m) * 1024;
+    let range_fp = base_range_fp * amplitude >> 16;
+    let range_squared = range_fp * range_fp;
+    let centre_x = cell_x * cell_fp + cell_fp / 2;
+    let centre_y = cell_y * cell_fp + cell_fp / 2;
+    let dx = centre_x - i64::from(after.x_fp[0]);
+    let dy = centre_y - i64::from(after.y_fp[0]);
+    let d_squared = dx * dx + dy * dy;
+    assert!(
+        d_squared <= range_squared,
+        "the emitter covers its own cell"
+    );
+    let stamp = amplitude * (range_squared - d_squared) / range_squared;
+
+    let first = i64::from(table.committed_field_q16[slot]);
+    assert_eq!(
+        first, stamp,
+        "the first commit must equal the analytic stamp exactly"
+    );
+
+    // Second tick: the organism rests in place, so the same stamp lands on
+    // a decayed field.
+    world.step();
+    let second = i64::from(world.social_table().unwrap().committed_field_q16[slot]);
+    let retain = i64::from(config.social.signal_retain_q16);
+    let expected = ((first * retain) >> 16) + stamp;
+    assert_eq!(
+        second,
+        expected.min(65_536),
+        "the second commit must be clamp(decay(first) + stamp)"
+    );
+}
+
+/// Two co-located emitters sum before the clamp: the committed value is the
+/// clamp of the sum of the stamps each produces alone, never an overwrite
+/// and never order-dependent.
+#[test]
+fn simultaneous_emitters_sum_before_the_clamp() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 2;
+    let world = scripted_world(config.clone(), &[CHANNEL_SIGNAL_EMIT_BASE, CHANNEL_REST]);
+    let mut state = world.export_state();
+    // Both on one exact spot, so their stamps land on identical cells.
+    state.x_fp[1] = state.x_fp[0];
+    state.y_fp[1] = state.y_fp[0];
+    let cell = {
+        let cell_fp = i64::from(config.cell_size_m as i32 * 1024);
+        let x = i64::from(state.x_fp[0]) / cell_fp;
+        let y = i64::from(state.y_fp[0]) / cell_fp;
+        (y * i64::from(config.cells_x) + x) as usize
+    };
+    let channels = config.social.signal_channels as usize;
+    let slot = cell * channels;
+
+    // Solo worlds measure each founder's stamp alone (kill the other by
+    // removing it from the pair world is not expressible; instead run the
+    // one-founder config, whose founder is the same genome the pair's
+    // founder 0 carries).
+    let mut solo_config = social_config(SEED);
+    solo_config.initial_organisms = 1;
+    let mut solo = scripted_world(solo_config, &[CHANNEL_SIGNAL_EMIT_BASE, CHANNEL_REST]);
+    solo.step();
+    let solo_stamp = i64::from(solo.social_table().unwrap().committed_field_q16[slot]);
+
+    let mut pair = World::from_state(state).expect("restores");
+    pair.step();
+    let committed = i64::from(pair.social_table().unwrap().committed_field_q16[slot]);
+    // The two founders' amplitudes may differ by a few Q16 steps (their
+    // evolved networks differ), so the assertion is bounded rather than
+    // exact: the pair's commit exceeds either alone and never exceeds the
+    // clamp, and when the sum is over one whole it IS the clamp.
+    assert!(
+        committed > solo_stamp,
+        "an emitter was overwritten: {committed} vs {solo_stamp}"
+    );
+    assert!(committed <= 65_536);
+    if 2 * solo_stamp >= 65_536 + 4_096 {
+        assert_eq!(committed, 65_536, "a saturating sum must commit the clamp");
+    }
+}
+
+/// The emission bill is exact to the rational charge (D-094): over N ticks
+/// at a constant amplitude, whole-milli charges plus the retained remainder
+/// equal `cost * amplitude * N` in Q16 milli, to the bit.
+#[test]
+fn the_emission_bill_is_exact_to_the_rational_charge() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 1;
+    // A cost whose product with a sub-whole amplitude is never a whole
+    // number of milli, so the carry has to fire or the total drifts. The
+    // emitter binds at gain 0.9 because a saturated node at gain 1.0
+    // clamps to exactly one whole and the remainder never moves - which is
+    // itself the condition the independent pass measured (its M08/M09
+    // survived because every scripted amplitude was exactly 1.0).
+    config.social.signal_cost_milli = 7;
+    config.validate().expect("valid");
+    let world = World::new(config).expect("world");
+    let mut state = world.export_state();
+    let caps: GenomeCaps = state.config.genome2.caps;
+    {
+        let schema2 = state.schema2.as_mut().expect("schema 2");
+        let mut genome = Genome2::decode(&schema2.genomes[0], &caps).expect("decodes");
+        bind_always_on(&mut genome, CHANNEL_SIGNAL_EMIT_BASE, 0.9, 0);
+        bind_always_on(&mut genome, CHANNEL_REST, 1.0, 1);
+        genome.validate_structure(&caps).expect("validates");
+        schema2.genomes[0] = genome.encode();
+        for _ in 0..2 {
+            schema2.activation_values[0].push(0.0);
+            schema2.activation_prior[0].push(0.0);
+        }
+    }
+    let mut world = World::from_state(state).expect("restores");
+    let ticks = 400_u64;
+    run(&mut world, ticks);
+    let table = world.social_table().expect("section on");
+    let counters = world.social_counters().unwrap();
+    assert_eq!(
+        counters.signals_emitted_total, ticks,
+        "one emission per tick"
+    );
+    // The amplitude is constant (an always-on saturated node), so the exact
+    // charge is N * cost * amplitude_q16, and what was billed plus what is
+    // still carried must equal it exactly.
+    let remainder = table.emission_remainder_milli[0];
+    assert!(
+        remainder > 0,
+        "a 7-milli cost at a sub-whole amplitude must carry a live remainder"
+    );
+    let billed_q16 = (counters.signal_cost_milli_total as i64) << 16;
+    let total_q16 = billed_q16 + remainder;
+    // Reconstruct the per-tick scaled charge: total must divide evenly into
+    // N equal per-tick contributions of cost * amplitude.
+    assert_eq!(
+        total_q16 % ticks as i64,
+        0,
+        "billed + carried must be exactly N identical per-tick charges: \
+         billed {billed_q16}, carried {remainder}"
+    );
+    let per_tick = total_q16 / ticks as i64;
+    assert_eq!(per_tick % 7, 0, "each tick's charge is cost * amplitude");
+    let amplitude = per_tick / 7;
+    assert!(
+        (50_000..=60_000).contains(&amplitude),
+        "the recovered amplitude is the gain-0.9 request: {amplitude}"
+    );
+}
+
+/// Deaths and births keep every social per-organism array in lockstep: the
+/// scenario the whole suite otherwise avoids (no test bred or starved
+/// inside its window, so `retain` and `push_organism` never ran in cargo -
+/// the pass's M25/M26 were caught only by the out-of-suite fixture).
+#[test]
+fn deaths_and_births_keep_the_social_arrays_in_lockstep() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 24;
+    config.reproduction_enabled = true;
+    config.physiology.enabled = true;
+    // Heavy enough that deaths happen inside the window, light enough that
+    // most founders outlive the 600-tick maturity age and breed.
+    config.physiology.extrinsic_hazard_q16_per_s = 300;
+    config.validate().expect("valid");
+    let mut world = scripted_world(config, &[CHANNEL_SIGNAL_EMIT_BASE]);
+    let mut deaths = 0_u64;
+    let mut births = 0_u64;
+    // Past the 600-tick maturity age, or nobody can breed at all.
+    for _ in 0..2_000 {
+        world.step();
+        world.check_invariants().expect("lockstep holds every tick");
+        for event in world.events() {
+            match event.kind {
+                sim_core::EventKind::Death { .. } | sim_core::EventKind::DeathByDamage { .. } => {
+                    deaths += 1;
+                }
+                sim_core::EventKind::Birth { .. } | sim_core::EventKind::PairedBirth { .. } => {
+                    births += 1;
+                }
+                _ => {}
+            }
+        }
+    }
+    assert!(deaths > 0, "the hazard never killed, so retain never ran");
+    assert!(births > 0, "nobody bred, so push_organism never ran");
+}
+
+/// The four nearest conspecifics fill the slots in ascending distance, the
+/// fifth is truncated after the sort, and an exact distance-squared tie
+/// breaks by the lower organism id (Rule 5's form) - pinned through the
+/// cue vector, which is the only surface the selection has.
+#[test]
+fn the_four_nearest_fill_the_slots_in_order_and_ties_break_by_id() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 6;
+    let world = scripted_world(config, &[CHANNEL_REST]);
+    let mut state = world.export_state();
+    let (x, y) = (state.x_fp[0], state.y_fp[0]);
+    // Five neighbours at distinct distances, nearest-to-farthest NOT in id
+    // order, all inside the 8 m radius; the farthest still inside, so the
+    // truncation has to happen after the sort to exclude exactly it.
+    state.x_fp[1] = x + 4 * 1024;
+    state.y_fp[1] = y;
+    state.x_fp[2] = x + 1024;
+    state.y_fp[2] = y;
+    state.x_fp[3] = x + 6 * 1024;
+    state.y_fp[3] = y;
+    state.x_fp[4] = x + 2 * 1024;
+    state.y_fp[4] = y;
+    state.x_fp[5] = x + 3 * 1024;
+    state.y_fp[5] = y;
+    let mut world = World::from_state(state).expect("restores");
+    world.step();
+    let cues = world.social_perception_of(0).expect("row exists");
+    // Slots hold organisms 2 (1 m), 4 (2 m), 5 (3 m), 1 (4 m); organism 3
+    // (6 m) is truncated. Distance cue is 1 - d/8m.
+    let expected = [1.0_f32, 2.0, 3.0, 4.0];
+    for (slot, metres) in expected.iter().enumerate() {
+        assert_eq!(cues[slot * 9], 1.0, "slot {slot} occupied");
+        let distance_cue = cues[slot * 9 + 1];
+        let want = 1.0 - metres / 8.0;
+        assert!(
+            (distance_cue - want).abs() < 0.02,
+            "slot {slot}: distance cue {distance_cue} but the {metres} m \
+             neighbour belongs here"
+        );
+    }
+
+    // The tie: two organisms at exactly 2 m on opposite sides. The lower id
+    // must take the nearer slot set; asserted by giving the higher id a
+    // distinguishing contact record and checking slot order.
+    let world = scripted_world(
+        {
+            let mut config = social_config(SEED);
+            config.initial_organisms = 3;
+            config
+        },
+        &[CHANNEL_REST],
+    );
+    let mut state = world.export_state();
+    let (x, y) = (state.x_fp[0], state.y_fp[0]);
+    state.x_fp[1] = x + 2 * 1024;
+    state.y_fp[1] = y;
+    state.x_fp[2] = x - 2 * 1024;
+    state.y_fp[2] = y;
+    // Mark the higher id's committed contact record so the slots are
+    // tellable apart through the cue vector.
+    state.social.as_mut().unwrap().prior_contact[2] = true;
+    let mut world = World::from_state(state).expect("restores");
+    world.step();
+    let cues = world.social_perception_of(0).expect("row exists");
+    assert_eq!(cues[0], 1.0);
+    assert_eq!(cues[9], 1.0);
+    assert_eq!(
+        (cues[4], cues[13]),
+        (0.0, 1.0),
+        "an exact tie must put the lower id in slot 0: {cues:?}"
+    );
+}
+
+/// Every `signal_in` channel reaches a bound node, including the last one:
+/// the gather range that stops one channel short (the pass's M28) leaves
+/// channel 62 reading zero forever, which only a genome bound to it can
+/// see.
+#[test]
+fn every_signal_in_channel_reaches_a_bound_node() {
+    use sim_core::CHANNEL_SIGNAL_IN_BASE;
+    for channel in 0..4_u16 {
+        let mut config = social_config(SEED);
+        config.initial_organisms = 1;
+        let world = World::new(config.clone()).expect("world");
+        let mut state = world.export_state();
+        let caps: GenomeCaps = state.config.genome2.caps;
+        let schema2 = state.schema2.as_mut().expect("schema 2");
+        let mut genome = Genome2::decode(&schema2.genomes[0], &caps).expect("decodes");
+        // An Input-role node fed by the channel, linear so the activation
+        // IS the gathered value.
+        let node_id = STRUCTURAL_HOMOLOGY_BASE + 70_000;
+        for haplotype in &mut genome.haplotypes {
+            let chromosome = &mut haplotype.chromosomes[0];
+            chromosome.push(Locus {
+                homology_id: node_id,
+                gene_lineage_id: u64::from(node_id),
+                mutation_event_id: 0,
+                kind: LocusKind::Node {
+                    role: NodeRole::Input,
+                    activation_id: Activation::Linear.id(),
+                    bias: 0.0,
+                    time_constant: 0,
+                },
+            });
+            chromosome.push(Locus {
+                homology_id: node_id + 1,
+                gene_lineage_id: u64::from(node_id + 1),
+                mutation_event_id: 0,
+                kind: LocusKind::IoBinding {
+                    node: node_id,
+                    channel_id: CHANNEL_SIGNAL_IN_BASE + channel,
+                    gain: 1.0,
+                },
+            });
+            chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+        }
+        genome.validate_structure(&caps).expect("validates");
+        schema2.genomes[0] = genome.encode();
+        schema2.activation_values[0].push(0.0);
+        schema2.activation_prior[0].push(0.0);
+        // A committed field value on the organism's own cell, this channel.
+        let cell = {
+            let cell_fp = i64::from(config.cell_size_m as i32 * 1024);
+            let x = i64::from(state.x_fp[0]) / cell_fp;
+            let y = i64::from(state.y_fp[0]) / cell_fp;
+            (y * i64::from(config.cells_x) + x) as usize
+        };
+        let channels = config.social.signal_channels as usize;
+        state.social.as_mut().unwrap().committed_field_q16[cell * channels + channel as usize] =
+            32_768;
+        let mut world = World::from_state(state).expect("restores");
+        world.step();
+        let sensed = world.social_perception_of(0).expect("row")[36 + channel as usize];
+        assert!(
+            (sensed - 0.5).abs() < 0.02,
+            "channel {channel}: the sense phase reads the committed field"
+        );
+        let after = world.export_state();
+        let values = &after.schema2.as_ref().unwrap().activation_values[0];
+        let bound = values[values.len() - 1];
+        assert!(
+            (bound - 0.5).abs() < 0.05,
+            "channel {channel}: the gather must hand the bound node the \
+             committed value, got {bound}"
+        );
+    }
+}
+
+/// Corruption noise is keyed per channel and per receiver: four channels
+/// holding the same committed value read four different noisy values, and
+/// two co-located receivers read different noise on the same channel. A
+/// draw index pinned to one channel (the pass's M11) makes the four
+/// channels' noise identical, which no state checksum can see - corrupted
+/// cues are scratch unless a genome binds them - so the keying has to be
+/// pinned at the sense surface.
+#[test]
+fn corruption_noise_is_keyed_per_channel_and_per_receiver() {
+    let mut config = social_config(SEED);
+    config.initial_organisms = 2;
+    config.social.signal_corruption_q16 = 32_768;
+    config.validate().expect("valid");
+    let world = scripted_world(config.clone(), &[CHANNEL_REST]);
+    let mut state = world.export_state();
+    state.x_fp[1] = state.x_fp[0];
+    state.y_fp[1] = state.y_fp[0];
+    let cell = {
+        let cell_fp = i64::from(config.cell_size_m as i32 * 1024);
+        let x = i64::from(state.x_fp[0]) / cell_fp;
+        let y = i64::from(state.y_fp[0]) / cell_fp;
+        (y * i64::from(config.cells_x) + x) as usize
+    };
+    let channels = config.social.signal_channels as usize;
+    {
+        let social = state.social.as_mut().unwrap();
+        for channel in 0..channels {
+            social.committed_field_q16[cell * channels + channel] = 32_768;
+        }
+    }
+    let mut world = World::from_state(state).expect("restores");
+    world.step();
+    let first = world.social_perception_of(0).expect("row");
+    let second = world.social_perception_of(1).expect("row");
+    let received: Vec<f32> = (0..channels).map(|c| first[36 + c]).collect();
+    assert!(
+        received.windows(2).any(|pair| pair[0] != pair[1]),
+        "equal committed values must read differently across channels or \
+         the draw index is not the channel: {received:?}"
+    );
+    assert!(
+        (0..channels).any(|c| first[36 + c] != second[36 + c]),
+        "two receivers on one cell must read different noise or the draw \
+         subject is not the receiver"
+    );
+}

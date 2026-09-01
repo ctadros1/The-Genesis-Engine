@@ -1599,6 +1599,31 @@ mod tests {
         }
     }
 
+    /// The chain without the observational gate can never land on rule 5,
+    /// for any stored byte: the two doors the reduction guards (a save
+    /// written flag-clear, a seeded founder) both arrive here as arbitrary
+    /// ids, and a leak would run the social rule in a world that computes
+    /// no social term (the independent pass's M20).
+    #[test]
+    fn the_chain_alone_can_never_reach_the_observational_rule() {
+        let budget = PlasticityBudget::edges(8).with_live_rule_zero();
+        for rule_id in 0..=u8::MAX {
+            assert_ne!(
+                budget.effective_rule_id(rule_id),
+                plasticity::RULE_OBSERVATIONAL,
+                "stored {rule_id} leaked into the gated rule"
+            );
+        }
+        let plain = PlasticityBudget::edges(8);
+        for rule_id in 0..=u8::MAX {
+            assert_ne!(
+                plain.effective_rule_id(rule_id % plasticity::RULE_SPACE),
+                plasticity::RULE_OBSERVATIONAL,
+                "ungated {rule_id} leaked into the gated rule"
+            );
+        }
+    }
+
     /// With the flag set, **every** id names a live rule and none names the
     /// dead one.
     #[test]
