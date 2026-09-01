@@ -3202,7 +3202,8 @@ impl World {
                                         .contains(&channel_id)
                                         .then(|| {
                                             cues[usize::from(
-                                                channel_id - crate::registry::CHANNEL_OBJECT_PRESENT,
+                                                channel_id
+                                                    - crate::registry::CHANNEL_OBJECT_PRESENT,
                                             )]
                                         })
                                 })
@@ -3427,8 +3428,9 @@ impl World {
                 let speed_frac_q16 =
                     (p2.speed_milli[index] << 16) / phenotype.max_speed_milli.max(1);
                 let speed_squared_q16 = (speed_frac_q16 * speed_frac_q16) >> 16;
-                let mut move_cost = self.move_cost_tick * phenotype.body_scale_milli * speed_squared_q16
-                    / (1000 * 65536);
+                let mut move_cost =
+                    self.move_cost_tick * phenotype.body_scale_milli * speed_squared_q16
+                        / (1000 * 65536);
                 // Phase 12: carried mass multiplies the movement cost by
                 // `1 + carry_move_cost_q16 * carried / capacity`. Exactly
                 // one for an organism holding nothing, and the branch is
@@ -3438,7 +3440,9 @@ impl World {
                     let carried = self.held_mass_milli(index);
                     if carried > 0 {
                         let capacity = self.carry_capacity_milli(index);
-                        let extra_q16 = i64::from(self.config.artifact.carry_move_cost_q16) * carried / capacity;
+                        let extra_q16 = i64::from(self.config.artifact.carry_move_cost_q16)
+                            * carried
+                            / capacity;
                         move_cost += move_cost * extra_q16 >> 16;
                     }
                 }
@@ -3450,8 +3454,10 @@ impl World {
                 let carried = self.held_mass_milli(index);
                 if carried > 0 {
                     let capacity = self.carry_capacity_milli(index);
-                    cost += self.config.artifact.hold_cost_milli_per_s * i64::from(self.config.dt_ms)
-                        * carried / (1000 * capacity);
+                    cost += self.config.artifact.hold_cost_milli_per_s
+                        * i64::from(self.config.dt_ms)
+                        * carried
+                        / (1000 * capacity);
                 }
             }
             if self.intent_crowded[index] {
@@ -4662,7 +4668,8 @@ impl World {
                 if let Some(state) = self.action_census.as_mut() {
                     state.push_organism();
                 }
-                let birth_capacity = self.terrain.capacity_milli[self.cell_of(child.x_fp, child.y_fp)];
+                let birth_capacity =
+                    self.terrain.capacity_milli[self.cell_of(child.x_fp, child.y_fp)];
                 if let Some(state) = self.objects.as_mut() {
                     let band = state.band_of(birth_capacity);
                     state.push_organism(band);

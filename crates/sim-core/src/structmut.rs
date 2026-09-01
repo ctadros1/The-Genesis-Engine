@@ -557,7 +557,15 @@ pub fn mutate(
     // existed before it, on draw indices none of them use, so a world with
     // the rate at zero takes exactly the draws it took before.
     if fires(config.binding_q16, draw(64)) {
-        match bind(genome, caps, world_seed, tick, child_id, channel_registry_version, &draw) {
+        match bind(
+            genome,
+            caps,
+            world_seed,
+            tick,
+            child_id,
+            channel_registry_version,
+            &draw,
+        ) {
             Ok(()) => counters.binding_applied += 1,
             Err(reason) => {
                 counters.reject(reason);

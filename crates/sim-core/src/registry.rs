@@ -177,7 +177,8 @@ pub fn channel_version(id: u16) -> Option<u16> {
 /// Whether registry `version` offers channel `id`. Fails closed on a version
 /// this build does not know.
 pub fn channel_offered(id: u16, version: u16) -> bool {
-    channel_version(id).is_some_and(|needed| needed <= version && version <= CHANNEL_REGISTRY_VERSION_ARTIFACT)
+    channel_version(id)
+        .is_some_and(|needed| needed <= version && version <= CHANNEL_REGISTRY_VERSION_ARTIFACT)
 }
 
 /// Every channel registry `version` offers, in ID order within each
@@ -356,7 +357,11 @@ mod tests {
             .chain(CHANNELS_V2.iter())
             .map(|entry| entry.id)
             .collect();
-        assert_eq!(all.len(), CHANNELS.len() + CHANNELS_V2.len(), "duplicate id across versions");
+        assert_eq!(
+            all.len(),
+            CHANNELS.len() + CHANNELS_V2.len(),
+            "duplicate id across versions"
+        );
         let names: BTreeSet<&str> = CHANNELS
             .iter()
             .chain(CHANNELS_V2.iter())
@@ -365,9 +370,20 @@ mod tests {
         assert_eq!(names.len(), CHANNELS.len() + CHANNELS_V2.len());
         for entry in CHANNELS_V2 {
             assert!(!(109..=112).contains(&entry.id), "{}", entry.name);
-            assert_eq!(channel_version(entry.id), Some(CHANNEL_REGISTRY_VERSION_ARTIFACT));
-            assert!(!channel_offered(entry.id, CHANNEL_REGISTRY_VERSION), "{}", entry.name);
-            assert!(channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_ARTIFACT), "{}", entry.name);
+            assert_eq!(
+                channel_version(entry.id),
+                Some(CHANNEL_REGISTRY_VERSION_ARTIFACT)
+            );
+            assert!(
+                !channel_offered(entry.id, CHANNEL_REGISTRY_VERSION),
+                "{}",
+                entry.name
+            );
+            assert!(
+                channel_offered(entry.id, CHANNEL_REGISTRY_VERSION_ARTIFACT),
+                "{}",
+                entry.name
+            );
             assert!(channel_exists(entry.id));
         }
         for entry in CHANNELS {
@@ -380,7 +396,10 @@ mod tests {
         assert!(!channel_offered(1, 3));
         assert!(channels_for(3).is_none());
         assert_eq!(channels_for(1).unwrap().count(), CHANNELS.len());
-        assert_eq!(channels_for(2).unwrap().count(), CHANNELS.len() + CHANNELS_V2.len());
+        assert_eq!(
+            channels_for(2).unwrap().count(),
+            CHANNELS.len() + CHANNELS_V2.len()
+        );
         // No perception cue names a material or a depth.
         for entry in CHANNELS_V2 {
             assert!(!entry.name.contains("material"), "{}", entry.name);

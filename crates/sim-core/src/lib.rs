@@ -48,14 +48,14 @@ mod terrainmod;
 mod world;
 mod worldgen;
 
+pub use actioncensus::{
+    ACTION_CENSUS_POLICY_VERSION, ACTION_CLASS_COUNT, ActionCensusCounters, ActionClass,
+    LOCOMOTION_CLASS_COUNT, TURN_BAND_MILLI, locomotion as locomotion_class,
+};
 pub use artifact::{
     ARTIFACT_POLICY_VERSION, CAUSE_CARCASS, CAUSE_COMBINED, CAUSE_EXTRACTED, CAUSE_FRACTURED,
     DestroyCause, INTEGRITY_WHOLE_Q16, ObjectAction, ObjectCounters, ObjectIntent, ObjectLedger,
     ObjectRecord, ObjectState, ObjectTable, RefuseReason, TableViolation, cause_is_known,
-};
-pub use actioncensus::{
-    ACTION_CENSUS_POLICY_VERSION, ACTION_CLASS_COUNT, ActionCensusCounters, ActionClass,
-    LOCOMOTION_CLASS_COUNT, TURN_BAND_MILLI, locomotion as locomotion_class,
 };
 pub use checksum::{Fnv1a64, fnv1a64};
 pub use climate::{
@@ -63,11 +63,11 @@ pub use climate::{
     ClimateState, classify as classify_biome, drift_milli, season_milli,
 };
 pub use config::{
-    ArtifactConfig, BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError, ContestConfig,
-    Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_COMPOSITION_DEPTH, MAX_FRAGMENTS,
-    MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig,
-    PHASE2_BEHAVIOR_POLICY_VERSION, Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig,
-    SimConfig, WorldModConfig, WorldgenVersion,
+    ArtifactConfig, BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError,
+    ContestConfig, Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_COMPOSITION_DEPTH, MAX_FRAGMENTS,
+    MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION,
+    Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig, WorldModConfig,
+    WorldgenVersion,
 };
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
@@ -110,8 +110,7 @@ pub use genome2::{
 pub use material::{
     MATERIAL_CARCASS, MATERIAL_COUNT, MATERIAL_FIBER, MATERIAL_POLICY_VERSION,
     MATERIAL_REGISTRY_VERSION, MATERIAL_STONE, MATERIAL_WOOD, MATERIALS, MaterialDef,
-    hash_registry_into as hash_material_registry_into, material, material_exists,
-    max_hardness_q16,
+    hash_registry_into as hash_material_registry_into, material, material_exists, max_hardness_q16,
 };
 pub use meiosis::{
     Gamete, InheritanceMode, MAX_EXTRA_CROSSOVERS, MEIOSIS_POLICY_VERSION, MeiosisConfig, gamete,
@@ -162,8 +161,8 @@ pub use schema2::{
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use structmut::{
     DUPLICATE_SPAN, MutationConfig, MutationCounters, MutationReport, OP_BINDING, OP_DELETION,
-    OP_DUPLICATION, OP_INSERTION, OP_POINT, OP_TRANSPOSITION, RejectReason, STRUCTMUT_POLICY_VERSION,
-    minimal_founder, mutate,
+    OP_DUPLICATION, OP_INSERTION, OP_POINT, OP_TRANSPOSITION, RejectReason,
+    STRUCTMUT_POLICY_VERSION, minimal_founder, mutate,
 };
 pub use terrainmod::{
     LAYER_CAPACITY_SCALE, LAYER_COUNT, LAYER_MATERIAL_YIELD, LAYER_TRAVERSABLE, ModOutcome,

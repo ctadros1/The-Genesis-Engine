@@ -225,7 +225,11 @@ fn bind_always_on(genome: &mut Genome2, channel: u16, salt: u32) {
             homology_id: node_id + 1,
             gene_lineage_id: u64::from(node_id + 1),
             mutation_event_id: 0,
-            kind: LocusKind::IoBinding { node: node_id, channel_id: channel, gain: 1.0 },
+            kind: LocusKind::IoBinding {
+                node: node_id,
+                channel_id: channel,
+                gain: 1.0,
+            },
         });
         chromosome.sort_unstable_by_key(|locus| locus.homology_id);
     }
@@ -275,7 +279,8 @@ fn tick_cost_of(mut world: World) -> (f64, World) {
 #[test]
 #[ignore = "timed benchmark; run with --ignored"]
 fn artifact_tick_cost_disabled_quiet_and_scripted() {
-    let (disabled_us, disabled) = tick_cost_of(World::new(artifact_base_config(false)).expect("world"));
+    let (disabled_us, disabled) =
+        tick_cost_of(World::new(artifact_base_config(false)).expect("world"));
     let (quiet_us, quiet) = tick_cost_of(World::new(artifact_base_config(true)).expect("world"));
     let (scripted_us, scripted) = tick_cost_of(scripted_artifact_world(artifact_base_config(true)));
     let quiet_counters = quiet.object_counters().expect("section on");
