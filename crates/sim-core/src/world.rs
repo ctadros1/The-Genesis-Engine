@@ -174,8 +174,11 @@ impl DeathCause {
 /// pairing formed under the mate-choice gate, carrying the chosen
 /// candidate's true cue values and the candidate set's true cue sums so
 /// the C14.2 assortment statistic has its opportunity denominator without
-/// re-simulation. The decoder keeps accepting older schemas.
-pub const EVENT_SCHEMA_VERSION: u32 = 9;
+/// re-simulation. Version 10 (Phase 14): adds tag 28, `GrowthCompleted` -
+/// the moment an organism's last module activates, which is what lets the
+/// C14.1 census know each organism's juvenile window without the analysis
+/// guessing it from config. The decoder keeps accepting older schemas.
+pub const EVENT_SCHEMA_VERSION: u32 = 10;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -405,6 +408,14 @@ pub enum EventKind {
         scrambled: bool,
         chosen_cues_milli: [i32; 9],
         cue_sums_milli: [i64; 9],
+    },
+    /// An organism's last module activated (Phase 14, C14.1): its juvenile
+    /// window is [birth, this record). Founders are admitted fully grown
+    /// and never emit one - the census excludes them by construction,
+    /// exactly as tag 26's does. Emitted only under `ontogeny_enabled`.
+    GrowthCompleted {
+        id: u64,
+        modules: u32,
     },
 }
 
@@ -1924,6 +1935,7 @@ impl World {
     /// growth - the life-history tradeoff as a mechanism, not a multiplier.
     /// Deterministic, no draws.
     fn step_ontogeny(&mut self, p2: &mut Phase2State) {
+        let mut completions: Vec<(u64, u32)> = Vec::new();
         let (Some(ontogeny), Some(morphology)) =
             (self.ontogeny.as_mut(), self.morphology.as_ref())
         else {
@@ -1967,6 +1979,9 @@ impl World {
                     ontogeny.grown_modules[index] += 1;
                     ontogeny.modules_grown_total += 1;
                     activated = true;
+                    if ontogeny.grown_modules[index] >= total {
+                        completions.push((self.ids[index], total));
+                    }
                 }
             }
             if activated {
@@ -1978,6 +1993,10 @@ impl World {
                 ontogeny.derived_grown[index] = derived;
                 p2.phenotypes[index].apply_body(&derived, &morphology.reference);
             }
+        }
+        let tick = self.tick + 1;
+        for (id, modules) in completions {
+            self.push_event(tick, EventKind::GrowthCompleted { id, modules });
         }
     }
 
@@ -5335,6 +5354,20 @@ impl World {
                         self.config.morphology.lattice,
                         self.config.physiology.birth_modules_min,
                     );
+                    // A child whose whole body fits inside the birth
+                    // minimum is born complete and will never activate a
+                    // module, so its completion record is emitted here -
+                    // without it the C14.1 census would class the organism
+                    // juvenile for life, which is the opposite of what a
+                    // one-module body is.
+                    let total = child_body.len() as u32;
+                    if self.config.physiology.birth_modules_min >= total {
+                        let id = self.next_entity_id;
+                        self.push_event(
+                            self.tick + 1,
+                            EventKind::GrowthCompleted { id, modules: total },
+                        );
+                    }
                 }
                 if let (Some(matechoice), Some(genome2)) =
                     (self.matechoice.as_mut(), child.genome2.as_ref())

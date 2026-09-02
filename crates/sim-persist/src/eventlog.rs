@@ -105,6 +105,9 @@ const TAG_PHENOTYPE_AT_BIRTH: u8 = 26;
 /// the candidate set's true cue sums - the opportunity denominator the
 /// C14.2 assortment statistic divides by.
 const TAG_MATE_CHOICE: u8 = 27;
+/// Phase 14 (schema 10): the moment an organism's last module activates -
+/// the C14.1 census's juvenile-window close. Founders never emit one.
+const TAG_GROWTH_COMPLETED: u8 = 28;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -350,6 +353,8 @@ impl ReconstructedCounters {
             // choice counters are world state, saved with it, so the log
             // reconstructs nothing here either.
             EventKind::MateChoice { .. } => {}
+            // A pure record for the C14.1 census, on the same terms.
+            EventKind::GrowthCompleted { .. } => {}
         }
     }
 }
@@ -836,6 +841,11 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
                 out.extend_from_slice(&value.to_le_bytes());
             }
         }
+        EventKind::GrowthCompleted { id, modules } => {
+            out.push(TAG_GROWTH_COMPLETED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&modules.to_le_bytes());
+        }
     }
 }
 
@@ -1291,6 +1301,15 @@ fn decode_events_into(
                     cue_sums_milli,
                 }
             }
+            TAG_GROWTH_COMPLETED => {
+                let id = short!(cursor.u64());
+                let modules = short!(cursor.u32());
+                // A completed body has at least its origin module.
+                if modules == 0 {
+                    return Err(EventLogError::ValueOutOfRange("growth completed modules"));
+                }
+                EventKind::GrowthCompleted { id, modules }
+            }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.
             other => return Err(EventLogError::UnknownEventType { tick, tag: other }),
@@ -1695,6 +1714,24 @@ mod tests {
                     max_speed_milli: 2_100,
                 },
             },
+            // Phase 14 (event schemas 9 and 10): the choice record with a
+            // negative cue (the bearing cue is signed) so the i32 path is
+            // exercised, and the growth completion.
+            Event {
+                tick,
+                kind: EventKind::MateChoice {
+                    chooser: 27,
+                    chosen: 28,
+                    candidates: 3,
+                    scrambled: true,
+                    chosen_cues_milli: [1_000, 750, -250, 500, 1, 0, 0, 599, 1_000],
+                    cue_sums_milli: [3_000, 1_800, -100, 900, 2, 0, 0, 1_400, 3_000],
+                },
+            },
+            Event {
+                tick,
+                kind: EventKind::GrowthCompleted { id: 29, modules: 6 },
+            },
         ]
     }
 
@@ -1711,7 +1748,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 39);
+        assert_eq!(scan.events, 45);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());

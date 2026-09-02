@@ -12,6 +12,8 @@
 //! of the campaign artifacts plus that seed.
 
 mod arrival;
+mod assortment;
+mod development;
 mod artifact;
 mod communities;
 mod conjunction;
@@ -27,6 +29,10 @@ mod spatial;
 mod structure;
 mod tradition;
 
+pub use assortment::{ASSORTMENT_POLICY_VERSION, AssortmentCensus, assortment_census};
+pub use development::{
+    DEVELOPMENT_POLICY_VERSION, DevelopmentCensus, DevelopmentError, development_census,
+};
 pub use arrival::{
     ARRIVAL_DETECTOR_VERSION, ArrivalCensus, ArrivalError, IndividualArrival, PatchSpec,
     arrival_census,

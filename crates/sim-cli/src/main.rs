@@ -88,6 +88,8 @@ fn run() -> Result<(), String> {
         Some("social") => command_social(parse_options(args.collect())?),
         Some("social-contrast") => command_social_contrast(parse_options(args.collect())?),
         Some("fidelity") => command_fidelity(parse_options(args.collect())?),
+        Some("development") => command_development(parse_options(args.collect())?),
+        Some("assortment") => command_assortment(parse_options(args.collect())?),
         Some("tradition") => command_tradition(parse_options(args.collect())?),
         Some("communities") => command_communities(parse_options(args.collect())?),
         Some("recognition") => command_recognition(parse_options(args.collect())?),
@@ -2970,6 +2972,117 @@ fn load_run_artifacts(
 /// world, no verdict (ADR-0016). Exposure radius is the run's own
 /// perception radius; the corruption sweep's F-curve is assembled from
 /// these lines by the pre-registered analysis.
+/// The C14.1 development census per world (`lifesim-development-v1`):
+/// juvenile-versus-adult realized speed and mortality with opportunity
+/// denominators, the juvenile window read from the GrowthCompleted
+/// records, the arm's gate read from the run's own config.
+fn command_development(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("development requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    println!(
+        "development-report 1 campaign {} detector {}",
+        manifest.campaign.id,
+        sim_analysis::DEVELOPMENT_POLICY_VERSION
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, true, false)?;
+            let spatial = artifacts.spatial.as_ref().expect("requested");
+            let ontogeny_enabled = artifacts.config.physiology.enabled
+                && artifacts.config.physiology.ontogeny_enabled;
+            let census = sim_analysis::development_census(
+                &artifacts.events,
+                &spatial.samples,
+                artifacts.config.initial_organisms,
+                ontogeny_enabled,
+            )
+            .map_err(|error| format!("development: {error}"))?;
+            let optional = |value: Option<i64>| {
+                value.map_or_else(|| "none".to_owned(), |value| value.to_string())
+            };
+            println!(
+                "world condition={} seed={:#018x} ontogeny={} completions={} \
+                 juvenile_obs={} adult_obs={} juvenile_speed_milli={} \
+                 adult_speed_milli={} juvenile_speed_organisms={} \
+                 adult_speed_organisms={} juvenile_deaths={} adult_deaths={} \
+                 juvenile_mortality_micro={} adult_mortality_micro={} \
+                 censored_alive={} died_growing={}",
+                run.condition,
+                run.seed,
+                ontogeny_enabled,
+                census.completions,
+                census.juvenile_observations,
+                census.adult_observations,
+                optional(census.juvenile_speed_milli),
+                optional(census.adult_speed_milli),
+                census.juvenile_speed_organisms,
+                census.adult_speed_organisms,
+                census.juvenile_deaths,
+                census.adult_deaths,
+                optional(census.juvenile_mortality_micro),
+                optional(census.adult_mortality_micro),
+                census.censored_alive,
+                census.died_growing,
+            );
+        }
+    }
+    Ok(())
+}
+
+/// The C14.2 assortment census per world (`lifesim-assortment-v1`): the
+/// candidate-weighted mean deviation of the chosen cue from its
+/// opportunity mean, per cue, straight from the MateChoice records.
+fn command_assortment(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("assortment requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    println!(
+        "assortment-report 1 campaign {} detector {}",
+        manifest.campaign.id,
+        sim_analysis::ASSORTMENT_POLICY_VERSION
+    );
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, false, false)?;
+            let census = sim_analysis::assortment_census(&artifacts.events);
+            let deviations: Vec<String> = census
+                .deviation_milli
+                .iter()
+                .enumerate()
+                .map(|(cue, value)| {
+                    format!(
+                        "dev{}={}",
+                        cue,
+                        value.map_or_else(|| "none".to_owned(), |value| value.to_string())
+                    )
+                })
+                .collect();
+            println!(
+                "world condition={} seed={:#018x} choices={} used={} single={} \
+                 scrambled={} weight={} {}",
+                run.condition,
+                run.seed,
+                census.choices_total,
+                census.choices_used,
+                census.single_candidate,
+                census.scrambled,
+                census.weight_total,
+                deviations.join(" "),
+            );
+        }
+    }
+    Ok(())
+}
+
 fn command_fidelity(options: Options) -> Result<(), String> {
     let path = options
         .manifest
