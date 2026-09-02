@@ -1,0 +1,311 @@
+tradition-report 1 campaign phase13-social-confirmatory detector lifesim-tradition-v1
+world condition=A seed=0x00000000000032c9 median_lifespan=967 gap=2902 endpoints=113 candidates=1397 rejected_end=1112 rejected_turnover=285 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032ca median_lifespan=987 gap=2962 endpoints=113 candidates=2382 rejected_end=1878 rejected_turnover=504 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032cb median_lifespan=1018 gap=3055 endpoints=112 candidates=1811 rejected_end=1285 rejected_turnover=522 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=A seed=0x00000000000032cb quadrat=3 variant=1 start=51000 end=54500 n_start=41 n_end=27 freq_start=24 freq_end=37 global_start=7 global_end=5 control_n=278 control_freq=0 tolerance_q32=536870912
+finding condition=A seed=0x00000000000032cb quadrat=4 variant=1 start=34000 end=37500 n_start=159 n_end=44 freq_start=12 freq_end=22 global_start=6 global_end=11 control_n=122 control_freq=16 tolerance_q32=536870912
+world condition=A seed=0x00000000000032cc median_lifespan=995 gap=2986 endpoints=113 candidates=1720 rejected_end=1335 rejected_turnover=385 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032cd median_lifespan=1194 gap=3583 endpoints=111 candidates=1373 rejected_end=1101 rejected_turnover=272 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032ce median_lifespan=954 gap=2863 endpoints=113 candidates=2189 rejected_end=1735 rejected_turnover=454 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032cf median_lifespan=926 gap=2779 endpoints=113 candidates=1794 rejected_end=1383 rejected_turnover=411 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d0 median_lifespan=985 gap=2956 endpoints=113 candidates=2014 rejected_end=1554 rejected_turnover=460 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d1 median_lifespan=943 gap=2830 endpoints=113 candidates=1980 rejected_end=1631 rejected_turnover=348 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032d1 quadrat=0 variant=3 start=55000 end=58000 n_start=48 n_end=12 freq_start=41 freq_end=83 global_start=23 global_end=18 control_n=1019 control_freq=9 tolerance_q32=536870912
+world condition=A seed=0x00000000000032d2 median_lifespan=986 gap=2959 endpoints=113 candidates=1656 rejected_end=1318 rejected_turnover=338 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d3 median_lifespan=1003 gap=3010 endpoints=112 candidates=2001 rejected_end=1542 rejected_turnover=459 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d4 median_lifespan=970 gap=2911 endpoints=113 candidates=1608 rejected_end=1257 rejected_turnover=351 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d5 median_lifespan=936 gap=2809 endpoints=113 candidates=1917 rejected_end=1494 rejected_turnover=423 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d6 median_lifespan=1007 gap=3022 endpoints=112 candidates=1879 rejected_end=1411 rejected_turnover=467 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032d6 quadrat=0 variant=2 start=20500 end=24000 n_start=42 n_end=44 freq_start=23 freq_end=22 global_start=3 global_end=0 control_n=425 control_freq=0 tolerance_q32=536870912
+world condition=A seed=0x00000000000032d7 median_lifespan=980 gap=2941 endpoints=113 candidates=1492 rejected_end=1184 rejected_turnover=308 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032d8 median_lifespan=923 gap=2770 endpoints=113 candidates=1723 rejected_end=1240 rejected_turnover=481 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032d8 quadrat=4 variant=11 start=52000 end=55000 n_start=191 n_end=21 freq_start=10 freq_end=95 global_start=1 global_end=4 control_n=1249 control_freq=5 tolerance_q32=536870912
+world condition=A seed=0x00000000000032d9 median_lifespan=964 gap=2893 endpoints=113 candidates=1792 rejected_end=1363 rejected_turnover=429 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032da median_lifespan=971 gap=2914 endpoints=113 candidates=1751 rejected_end=1388 rejected_turnover=363 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032db median_lifespan=1000 gap=3001 endpoints=112 candidates=2179 rejected_end=1754 rejected_turnover=425 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032dc median_lifespan=1064 gap=3193 endpoints=112 candidates=2006 rejected_end=1567 rejected_turnover=439 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032dd median_lifespan=952 gap=2857 endpoints=113 candidates=2283 rejected_end=1761 rejected_turnover=522 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032de median_lifespan=1018 gap=3055 endpoints=112 candidates=2246 rejected_end=1850 rejected_turnover=393 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032de quadrat=15 variant=1 start=40500 end=44000 n_start=35 n_end=25 freq_start=342 freq_end=360 global_start=54 global_end=24 control_n=189 control_freq=74 tolerance_q32=536870912
+world condition=A seed=0x00000000000032df median_lifespan=1021 gap=3064 endpoints=112 candidates=1976 rejected_end=1585 rejected_turnover=391 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032e0 median_lifespan=949 gap=2848 endpoints=113 candidates=2080 rejected_end=1565 rejected_turnover=515 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032e1 median_lifespan=1089 gap=3268 endpoints=112 candidates=1643 rejected_end=1237 rejected_turnover=405 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032e1 quadrat=2 variant=1 start=53000 end=56500 n_start=47 n_end=8 freq_start=106 freq_end=125 global_start=13 global_end=16 control_n=28 control_freq=0 tolerance_q32=536870912
+world condition=A seed=0x00000000000032e2 median_lifespan=972 gap=2917 endpoints=113 candidates=2539 rejected_end=1967 rejected_turnover=572 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032e3 median_lifespan=950 gap=2851 endpoints=113 candidates=1870 rejected_end=1376 rejected_turnover=493 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032e3 quadrat=15 variant=2 start=37000 end=40000 n_start=9 n_end=16 freq_start=111 freq_end=62 global_start=0 global_end=1 control_n=1494 control_freq=3 tolerance_q32=536870912
+world condition=A seed=0x00000000000032e4 median_lifespan=912 gap=2737 endpoints=113 candidates=2126 rejected_end=1684 rejected_turnover=441 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A seed=0x00000000000032e4 quadrat=14 variant=4 start=29000 end=32000 n_start=43 n_end=17 freq_start=23 freq_end=58 global_start=0 global_end=1 control_n=255 control_freq=0 tolerance_q32=536870912
+world condition=A seed=0x00000000000032e5 median_lifespan=1068 gap=3205 endpoints=112 candidates=1092 rejected_end=801 rejected_turnover=291 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A seed=0x00000000000032e6 median_lifespan=950 gap=2851 endpoints=113 candidates=2410 rejected_end=1962 rejected_turnover=448 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032c9 median_lifespan=990 gap=2971 endpoints=113 candidates=1189 rejected_end=927 rejected_turnover=262 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032ca median_lifespan=973 gap=2920 endpoints=113 candidates=2011 rejected_end=1549 rejected_turnover=461 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032ca quadrat=12 variant=1 start=47000 end=50000 n_start=37 n_end=18 freq_start=108 freq_end=166 global_start=49 global_end=53 control_n=122 control_freq=24 tolerance_q32=536870912
+world condition=B seed=0x00000000000032cb median_lifespan=1088 gap=3265 endpoints=112 candidates=1946 rejected_end=1533 rejected_turnover=413 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032cc median_lifespan=1045 gap=3136 endpoints=112 candidates=2122 rejected_end=1622 rejected_turnover=499 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032cc quadrat=13 variant=1 start=55500 end=59000 n_start=33 n_end=16 freq_start=212 freq_end=250 global_start=39 global_end=132 control_n=67 control_freq=74 tolerance_q32=536870912
+world condition=B seed=0x00000000000032cd median_lifespan=1311 gap=3934 endpoints=111 candidates=933 rejected_end=744 rejected_turnover=188 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032cd quadrat=9 variant=4 start=27500 end=31500 n_start=10 n_end=53 freq_start=200 freq_end=18 global_start=3 global_end=8 control_n=126 control_freq=0 tolerance_q32=536870912
+world condition=B seed=0x00000000000032ce median_lifespan=1006 gap=3019 endpoints=112 candidates=1897 rejected_end=1507 rejected_turnover=388 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032ce quadrat=12 variant=2 start=30000 end=33500 n_start=25 n_end=14 freq_start=120 freq_end=214 global_start=1 global_end=3 control_n=53 control_freq=37 tolerance_q32=536870912
+world condition=B seed=0x00000000000032cf median_lifespan=955 gap=2866 endpoints=113 candidates=1811 rejected_end=1433 rejected_turnover=378 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d0 median_lifespan=1013 gap=3040 endpoints=112 candidates=1838 rejected_end=1442 rejected_turnover=395 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032d0 quadrat=15 variant=1 start=46500 end=50000 n_start=79 n_end=18 freq_start=75 freq_end=166 global_start=17 global_end=9 control_n=698 control_freq=11 tolerance_q32=536870912
+world condition=B seed=0x00000000000032d1 median_lifespan=963 gap=2890 endpoints=113 candidates=2307 rejected_end=1719 rejected_turnover=588 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d2 median_lifespan=1064 gap=3193 endpoints=112 candidates=1891 rejected_end=1412 rejected_turnover=479 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d3 median_lifespan=1005 gap=3016 endpoints=112 candidates=1703 rejected_end=1373 rejected_turnover=329 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032d3 quadrat=12 variant=1 start=22000 end=25500 n_start=59 n_end=14 freq_start=33 freq_end=71 global_start=13 global_end=15 control_n=197 control_freq=30 tolerance_q32=536870912
+world condition=B seed=0x00000000000032d4 median_lifespan=967 gap=2902 endpoints=113 candidates=1697 rejected_end=1270 rejected_turnover=427 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d5 median_lifespan=962 gap=2887 endpoints=113 candidates=2207 rejected_end=1793 rejected_turnover=414 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d6 median_lifespan=1009 gap=3028 endpoints=112 candidates=2066 rejected_end=1595 rejected_turnover=471 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d7 median_lifespan=965 gap=2896 endpoints=113 candidates=2352 rejected_end=1966 rejected_turnover=386 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d8 median_lifespan=914 gap=2743 endpoints=113 candidates=1421 rejected_end=1139 rejected_turnover=282 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032d9 median_lifespan=1035 gap=3106 endpoints=112 candidates=1477 rejected_end=1172 rejected_turnover=305 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032da median_lifespan=994 gap=2983 endpoints=113 candidates=1861 rejected_end=1380 rejected_turnover=480 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=B seed=0x00000000000032da quadrat=1 variant=1 start=44000 end=47000 n_start=614 n_end=17 freq_start=221 freq_end=176 global_start=74 global_end=51 control_n=166 control_freq=30 tolerance_q32=536870912
+world condition=B seed=0x00000000000032db median_lifespan=1021 gap=3064 endpoints=112 candidates=2452 rejected_end=1952 rejected_turnover=500 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032dc median_lifespan=1048 gap=3145 endpoints=112 candidates=2302 rejected_end=1865 rejected_turnover=437 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032dd median_lifespan=973 gap=2920 endpoints=113 candidates=2469 rejected_end=1951 rejected_turnover=518 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032de median_lifespan=1012 gap=3037 endpoints=112 candidates=2306 rejected_end=1854 rejected_turnover=452 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032df median_lifespan=991 gap=2974 endpoints=113 candidates=2156 rejected_end=1725 rejected_turnover=431 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032e0 median_lifespan=947 gap=2842 endpoints=113 candidates=1866 rejected_end=1421 rejected_turnover=445 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032e1 median_lifespan=997 gap=2992 endpoints=113 candidates=1049 rejected_end=770 rejected_turnover=279 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032e2 median_lifespan=945 gap=2836 endpoints=113 candidates=1787 rejected_end=1363 rejected_turnover=424 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032e3 median_lifespan=962 gap=2887 endpoints=113 candidates=2329 rejected_end=1835 rejected_turnover=494 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032e4 median_lifespan=919 gap=2758 endpoints=113 candidates=2271 rejected_end=1810 rejected_turnover=457 rejected_no_cohort=0 rejected_control=1 findings=1
+finding condition=B seed=0x00000000000032e4 quadrat=12 variant=1 start=39500 end=42500 n_start=56 n_end=11 freq_start=89 freq_end=90 global_start=19 global_end=15 control_n=231 control_freq=60 tolerance_q32=536870912
+world condition=B seed=0x00000000000032e5 median_lifespan=1075 gap=3226 endpoints=112 candidates=1000 rejected_end=744 rejected_turnover=256 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=B seed=0x00000000000032e6 median_lifespan=949 gap=2848 endpoints=113 candidates=2233 rejected_end=1726 rejected_turnover=507 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032c9 median_lifespan=972 gap=2917 endpoints=113 candidates=1015 rejected_end=749 rejected_turnover=266 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032ca median_lifespan=975 gap=2926 endpoints=113 candidates=1740 rejected_end=1374 rejected_turnover=366 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032cb median_lifespan=985 gap=2956 endpoints=113 candidates=1277 rejected_end=908 rejected_turnover=368 rejected_no_cohort=0 rejected_control=1 findings=0
+world condition=C seed=0x00000000000032cc median_lifespan=985 gap=2956 endpoints=113 candidates=1421 rejected_end=1033 rejected_turnover=388 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032cd median_lifespan=1007 gap=3022 endpoints=112 candidates=743 rejected_end=498 rejected_turnover=244 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032cd quadrat=0 variant=5 start=56000 end=59500 n_start=31 n_end=15 freq_start=32 freq_end=66 global_start=6 global_end=11 control_n=107 control_freq=0 tolerance_q32=536870912
+world condition=C seed=0x00000000000032ce median_lifespan=981 gap=2944 endpoints=113 candidates=1700 rejected_end=1181 rejected_turnover=517 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032ce quadrat=8 variant=3 start=37500 end=40500 n_start=11 n_end=38 freq_start=90 freq_end=52 global_start=4 global_end=6 control_n=323 control_freq=0 tolerance_q32=536870912
+world condition=C seed=0x00000000000032cf median_lifespan=917 gap=2752 endpoints=113 candidates=1716 rejected_end=1259 rejected_turnover=453 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=C seed=0x00000000000032cf quadrat=10 variant=1 start=19000 end=22000 n_start=22 n_end=87 freq_start=45 freq_end=11 global_start=1 global_end=1 control_n=702 control_freq=0 tolerance_q32=536870912
+finding condition=C seed=0x00000000000032cf quadrat=15 variant=14 start=51500 end=54500 n_start=18 n_end=30 freq_start=55 freq_end=33 global_start=3 global_end=5 control_n=609 control_freq=4 tolerance_q32=536870912
+world condition=C seed=0x00000000000032d0 median_lifespan=988 gap=2965 endpoints=113 candidates=1949 rejected_end=1474 rejected_turnover=475 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032d1 median_lifespan=851 gap=2554 endpoints=113 candidates=1994 rejected_end=1534 rejected_turnover=460 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032d2 median_lifespan=1010 gap=3031 endpoints=112 candidates=1868 rejected_end=1313 rejected_turnover=555 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032d3 median_lifespan=971 gap=2914 endpoints=113 candidates=1409 rejected_end=959 rejected_turnover=443 rejected_no_cohort=0 rejected_control=2 findings=2
+finding condition=C seed=0x00000000000032d3 quadrat=12 variant=1 start=34000 end=37000 n_start=73 n_end=11 freq_start=219 freq_end=90 global_start=35 global_end=13 control_n=146 control_freq=0 tolerance_q32=536870912
+finding condition=C seed=0x00000000000032d3 quadrat=13 variant=2 start=46500 end=49500 n_start=287 n_end=19 freq_start=108 freq_end=52 global_start=53 global_end=34 control_n=11 control_freq=0 tolerance_q32=536870912
+world condition=C seed=0x00000000000032d4 median_lifespan=1007 gap=3022 endpoints=112 candidates=1688 rejected_end=1291 rejected_turnover=397 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032d5 median_lifespan=953 gap=2860 endpoints=113 candidates=1893 rejected_end=1369 rejected_turnover=522 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032d5 quadrat=14 variant=11 start=39000 end=42000 n_start=98 n_end=17 freq_start=10 freq_end=58 global_start=0 global_end=0 control_n=625 control_freq=0 tolerance_q32=536870912
+world condition=C seed=0x00000000000032d6 median_lifespan=994 gap=2983 endpoints=113 candidates=1502 rejected_end=1021 rejected_turnover=481 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032d7 median_lifespan=943 gap=2830 endpoints=113 candidates=1483 rejected_end=1043 rejected_turnover=439 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032d7 quadrat=15 variant=3 start=41000 end=44000 n_start=14 n_end=16 freq_start=142 freq_end=62 global_start=2 global_end=1 control_n=27 control_freq=0 tolerance_q32=536870912
+world condition=C seed=0x00000000000032d8 median_lifespan=910 gap=2731 endpoints=113 candidates=1220 rejected_end=881 rejected_turnover=339 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032d9 median_lifespan=1025 gap=3076 endpoints=112 candidates=1353 rejected_end=1074 rejected_turnover=277 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032d9 quadrat=12 variant=1 start=33500 end=37000 n_start=88 n_end=8 freq_start=11 freq_end=125 global_start=2 global_end=1 control_n=445 control_freq=2 tolerance_q32=536870912
+world condition=C seed=0x00000000000032da median_lifespan=942 gap=2827 endpoints=113 candidates=1580 rejected_end=1145 rejected_turnover=435 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032db median_lifespan=965 gap=2896 endpoints=113 candidates=1661 rejected_end=1235 rejected_turnover=425 rejected_no_cohort=0 rejected_control=1 findings=0
+world condition=C seed=0x00000000000032dc median_lifespan=937 gap=2812 endpoints=113 candidates=1381 rejected_end=979 rejected_turnover=402 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032dd median_lifespan=930 gap=2791 endpoints=113 candidates=2093 rejected_end=1546 rejected_turnover=547 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032de median_lifespan=978 gap=2935 endpoints=113 candidates=1520 rejected_end=1097 rejected_turnover=423 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032df median_lifespan=973 gap=2920 endpoints=113 candidates=1438 rejected_end=1026 rejected_turnover=412 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032e0 median_lifespan=965 gap=2896 endpoints=113 candidates=1773 rejected_end=1249 rejected_turnover=524 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032e1 median_lifespan=1060 gap=3181 endpoints=112 candidates=1204 rejected_end=823 rejected_turnover=380 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032e1 quadrat=13 variant=8 start=55000 end=58500 n_start=56 n_end=13 freq_start=142 freq_end=76 global_start=10 global_end=3 control_n=102 control_freq=9 tolerance_q32=536870912
+world condition=C seed=0x00000000000032e2 median_lifespan=976 gap=2929 endpoints=113 candidates=1821 rejected_end=1288 rejected_turnover=533 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032e3 median_lifespan=965 gap=2896 endpoints=113 candidates=1737 rejected_end=1269 rejected_turnover=468 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032e4 median_lifespan=899 gap=2698 endpoints=113 candidates=1936 rejected_end=1467 rejected_turnover=469 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032e5 median_lifespan=1059 gap=3178 endpoints=112 candidates=1077 rejected_end=749 rejected_turnover=328 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=C seed=0x00000000000032e6 median_lifespan=881 gap=2644 endpoints=113 candidates=1212 rejected_end=878 rejected_turnover=333 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=C seed=0x00000000000032e6 quadrat=3 variant=2 start=47500 end=50500 n_start=97 n_end=8 freq_start=30 freq_end=125 global_start=17 global_end=28 control_n=53 control_freq=37 tolerance_q32=536870912
+world condition=D seed=0x00000000000032c9 median_lifespan=990 gap=2971 endpoints=113 candidates=1787 rejected_end=1445 rejected_turnover=340 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=D seed=0x00000000000032c9 quadrat=1 variant=1 start=29000 end=32000 n_start=18 n_end=9 freq_start=55 freq_end=111 global_start=4 global_end=3 control_n=311 control_freq=6 tolerance_q32=536870912
+world condition=D seed=0x00000000000032ca median_lifespan=991 gap=2974 endpoints=113 candidates=2431 rejected_end=1867 rejected_turnover=564 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032cb median_lifespan=1018 gap=3055 endpoints=112 candidates=2021 rejected_end=1457 rejected_turnover=564 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032cc median_lifespan=1020 gap=3061 endpoints=112 candidates=2091 rejected_end=1648 rejected_turnover=436 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=D seed=0x00000000000032cc quadrat=12 variant=2 start=52000 end=55500 n_start=8 n_end=17 freq_start=125 freq_end=294 global_start=22 global_end=28 control_n=160 control_freq=62 tolerance_q32=536870912
+finding condition=D seed=0x00000000000032cc quadrat=13 variant=1 start=54500 end=58000 n_start=30 n_end=18 freq_start=200 freq_end=55 global_start=25 global_end=28 control_n=199 control_freq=25 tolerance_q32=536870912
+world condition=D seed=0x00000000000032cd median_lifespan=1196 gap=3589 endpoints=111 candidates=1114 rejected_end=884 rejected_turnover=230 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032ce median_lifespan=1014 gap=3043 endpoints=112 candidates=1631 rejected_end=1309 rejected_turnover=322 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032cf median_lifespan=952 gap=2857 endpoints=113 candidates=2472 rejected_end=1847 rejected_turnover=624 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=D seed=0x00000000000032cf quadrat=14 variant=2 start=23000 end=26000 n_start=16 n_end=83 freq_start=62 freq_end=108 global_start=2 global_end=4 control_n=470 control_freq=10 tolerance_q32=536870912
+world condition=D seed=0x00000000000032d0 median_lifespan=1034 gap=3103 endpoints=112 candidates=1975 rejected_end=1575 rejected_turnover=400 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d1 median_lifespan=951 gap=2854 endpoints=113 candidates=2061 rejected_end=1628 rejected_turnover=432 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=D seed=0x00000000000032d1 quadrat=14 variant=1 start=34500 end=37500 n_start=17 n_end=20 freq_start=58 freq_end=50 global_start=1 global_end=2 control_n=717 control_freq=1 tolerance_q32=536870912
+world condition=D seed=0x00000000000032d2 median_lifespan=1000 gap=3001 endpoints=112 candidates=2082 rejected_end=1511 rejected_turnover=570 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=D seed=0x00000000000032d2 quadrat=2 variant=10 start=54000 end=57500 n_start=75 n_end=32 freq_start=13 freq_end=156 global_start=1 global_end=1 control_n=2 control_freq=0 tolerance_q32=536870912
+world condition=D seed=0x00000000000032d3 median_lifespan=976 gap=2929 endpoints=113 candidates=1565 rejected_end=1197 rejected_turnover=368 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d4 median_lifespan=998 gap=2995 endpoints=113 candidates=1792 rejected_end=1358 rejected_turnover=434 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d5 median_lifespan=941 gap=2824 endpoints=113 candidates=1829 rejected_end=1471 rejected_turnover=358 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d6 median_lifespan=1021 gap=3064 endpoints=112 candidates=1792 rejected_end=1408 rejected_turnover=384 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d7 median_lifespan=999 gap=2998 endpoints=113 candidates=2068 rejected_end=1662 rejected_turnover=406 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d8 median_lifespan=936 gap=2809 endpoints=113 candidates=1397 rejected_end=1156 rejected_turnover=241 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032d9 median_lifespan=1063 gap=3190 endpoints=112 candidates=2415 rejected_end=1927 rejected_turnover=486 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=D seed=0x00000000000032d9 quadrat=12 variant=1 start=51000 end=54500 n_start=126 n_end=16 freq_start=261 freq_end=62 global_start=12 global_end=7 control_n=741 control_freq=6 tolerance_q32=536870912
+world condition=D seed=0x00000000000032da median_lifespan=969 gap=2908 endpoints=113 candidates=1725 rejected_end=1371 rejected_turnover=354 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032db median_lifespan=1002 gap=3007 endpoints=112 candidates=1932 rejected_end=1561 rejected_turnover=371 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032dc median_lifespan=1011 gap=3034 endpoints=112 candidates=2013 rejected_end=1599 rejected_turnover=414 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032dd median_lifespan=954 gap=2863 endpoints=113 candidates=2331 rejected_end=1729 rejected_turnover=602 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032de median_lifespan=1005 gap=3016 endpoints=112 candidates=1878 rejected_end=1472 rejected_turnover=406 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032df median_lifespan=997 gap=2992 endpoints=113 candidates=2006 rejected_end=1558 rejected_turnover=448 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032e0 median_lifespan=995 gap=2986 endpoints=113 candidates=2210 rejected_end=1751 rejected_turnover=459 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032e1 median_lifespan=1075 gap=3226 endpoints=112 candidates=802 rejected_end=620 rejected_turnover=180 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=D seed=0x00000000000032e1 quadrat=6 variant=1 start=43500 end=47000 n_start=254 n_end=21 freq_start=43 freq_end=47 global_start=28 global_end=22 control_n=73 control_freq=13 tolerance_q32=536870912
+finding condition=D seed=0x00000000000032e1 quadrat=10 variant=2 start=22500 end=26000 n_start=165 n_end=24 freq_start=48 freq_end=41 global_start=21 global_end=19 control_n=42 control_freq=23 tolerance_q32=536870912
+world condition=D seed=0x00000000000032e2 median_lifespan=975 gap=2926 endpoints=113 candidates=1843 rejected_end=1350 rejected_turnover=493 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032e3 median_lifespan=952 gap=2857 endpoints=113 candidates=1996 rejected_end=1491 rejected_turnover=505 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032e4 median_lifespan=943 gap=2830 endpoints=113 candidates=2205 rejected_end=1737 rejected_turnover=468 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032e5 median_lifespan=1059 gap=3178 endpoints=112 candidates=1366 rejected_end=1005 rejected_turnover=361 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=D seed=0x00000000000032e6 median_lifespan=944 gap=2833 endpoints=113 candidates=1757 rejected_end=1351 rejected_turnover=406 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032c9 median_lifespan=967 gap=2902 endpoints=113 candidates=1401 rejected_end=1115 rejected_turnover=286 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032ca median_lifespan=982 gap=2947 endpoints=113 candidates=2387 rejected_end=1945 rejected_turnover=442 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032cb median_lifespan=1018 gap=3055 endpoints=112 candidates=1779 rejected_end=1249 rejected_turnover=530 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032cc median_lifespan=993 gap=2980 endpoints=113 candidates=1751 rejected_end=1365 rejected_turnover=386 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032cd median_lifespan=1195 gap=3586 endpoints=111 candidates=1391 rejected_end=1110 rejected_turnover=281 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032ce median_lifespan=951 gap=2854 endpoints=113 candidates=2135 rejected_end=1697 rejected_turnover=438 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032cf median_lifespan=927 gap=2782 endpoints=113 candidates=1806 rejected_end=1419 rejected_turnover=387 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d0 median_lifespan=987 gap=2962 endpoints=113 candidates=2057 rejected_end=1565 rejected_turnover=492 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d1 median_lifespan=955 gap=2866 endpoints=113 candidates=1661 rejected_end=1376 rejected_turnover=285 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d2 median_lifespan=986 gap=2959 endpoints=113 candidates=1622 rejected_end=1250 rejected_turnover=372 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d3 median_lifespan=1007 gap=3022 endpoints=112 candidates=1638 rejected_end=1273 rejected_turnover=365 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d4 median_lifespan=970 gap=2911 endpoints=113 candidates=1626 rejected_end=1272 rejected_turnover=354 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d5 median_lifespan=935 gap=2806 endpoints=113 candidates=1913 rejected_end=1486 rejected_turnover=427 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d6 median_lifespan=1015 gap=3046 endpoints=112 candidates=1881 rejected_end=1407 rejected_turnover=473 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=S seed=0x00000000000032d6 quadrat=0 variant=2 start=20500 end=24000 n_start=42 n_end=44 freq_start=23 freq_end=22 global_start=3 global_end=0 control_n=425 control_freq=0 tolerance_q32=536870912
+world condition=S seed=0x00000000000032d7 median_lifespan=980 gap=2941 endpoints=113 candidates=1797 rejected_end=1420 rejected_turnover=376 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=S seed=0x00000000000032d7 quadrat=3 variant=1 start=44000 end=47000 n_start=47 n_end=12 freq_start=85 freq_end=83 global_start=31 global_end=31 control_n=303 control_freq=66 tolerance_q32=536870912
+world condition=S seed=0x00000000000032d8 median_lifespan=912 gap=2737 endpoints=113 candidates=1608 rejected_end=1207 rejected_turnover=401 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032d9 median_lifespan=976 gap=2929 endpoints=113 candidates=1895 rejected_end=1462 rejected_turnover=433 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032da median_lifespan=965 gap=2896 endpoints=113 candidates=1814 rejected_end=1471 rejected_turnover=343 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032db median_lifespan=1007 gap=3022 endpoints=112 candidates=2003 rejected_end=1615 rejected_turnover=388 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032dc median_lifespan=1059 gap=3178 endpoints=112 candidates=2036 rejected_end=1590 rejected_turnover=446 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032dd median_lifespan=951 gap=2854 endpoints=113 candidates=2430 rejected_end=1855 rejected_turnover=575 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032de median_lifespan=1015 gap=3046 endpoints=112 candidates=2153 rejected_end=1756 rejected_turnover=397 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032df median_lifespan=1019 gap=3058 endpoints=112 candidates=2040 rejected_end=1635 rejected_turnover=405 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032e0 median_lifespan=946 gap=2839 endpoints=113 candidates=2006 rejected_end=1515 rejected_turnover=489 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=S seed=0x00000000000032e0 quadrat=3 variant=2 start=52500 end=55500 n_start=76 n_end=10 freq_start=26 freq_end=100 global_start=2 global_end=2 control_n=191 control_freq=5 tolerance_q32=536870912
+world condition=S seed=0x00000000000032e1 median_lifespan=1090 gap=3271 endpoints=112 candidates=1612 rejected_end=1238 rejected_turnover=374 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032e2 median_lifespan=967 gap=2902 endpoints=113 candidates=2582 rejected_end=1868 rejected_turnover=714 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032e3 median_lifespan=951 gap=2854 endpoints=113 candidates=1814 rejected_end=1336 rejected_turnover=477 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=S seed=0x00000000000032e3 quadrat=15 variant=2 start=37000 end=40000 n_start=9 n_end=20 freq_start=111 freq_end=50 global_start=1 global_end=1 control_n=1396 control_freq=2 tolerance_q32=536870912
+world condition=S seed=0x00000000000032e4 median_lifespan=915 gap=2746 endpoints=113 candidates=2142 rejected_end=1709 rejected_turnover=432 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=S seed=0x00000000000032e4 quadrat=14 variant=4 start=29000 end=32000 n_start=43 n_end=17 freq_start=23 freq_end=58 global_start=0 global_end=1 control_n=255 control_freq=0 tolerance_q32=536870912
+world condition=S seed=0x00000000000032e5 median_lifespan=1072 gap=3217 endpoints=112 candidates=1073 rejected_end=777 rejected_turnover=296 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=S seed=0x00000000000032e6 median_lifespan=944 gap=2833 endpoints=113 candidates=2129 rejected_end=1694 rejected_turnover=435 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032c9 median_lifespan=965 gap=2896 endpoints=113 candidates=1548 rejected_end=1215 rejected_turnover=333 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032ca median_lifespan=966 gap=2899 endpoints=113 candidates=2068 rejected_end=1628 rejected_turnover=440 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032cb median_lifespan=1045 gap=3136 endpoints=112 candidates=2092 rejected_end=1521 rejected_turnover=571 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032cc median_lifespan=1046 gap=3139 endpoints=112 candidates=1907 rejected_end=1527 rejected_turnover=379 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A8k seed=0x00000000000032cc quadrat=12 variant=1 start=46000 end=49500 n_start=11 n_end=15 freq_start=90 freq_end=66 global_start=10 global_end=5 control_n=84 control_freq=0 tolerance_q32=536870912
+world condition=A8k seed=0x00000000000032cd median_lifespan=1165 gap=3496 endpoints=112 candidates=1090 rejected_end=879 rejected_turnover=211 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032ce median_lifespan=960 gap=2881 endpoints=113 candidates=1922 rejected_end=1353 rejected_turnover=569 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032cf median_lifespan=961 gap=2884 endpoints=113 candidates=1923 rejected_end=1514 rejected_turnover=405 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A8k seed=0x00000000000032cf quadrat=15 variant=2 start=53000 end=56000 n_start=17 n_end=10 freq_start=58 freq_end=200 global_start=7 global_end=6 control_n=918 control_freq=16 tolerance_q32=536870912
+world condition=A8k seed=0x00000000000032d0 median_lifespan=1039 gap=3118 endpoints=112 candidates=2354 rejected_end=1820 rejected_turnover=534 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d1 median_lifespan=928 gap=2785 endpoints=113 candidates=1771 rejected_end=1472 rejected_turnover=299 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d2 median_lifespan=992 gap=2977 endpoints=113 candidates=2111 rejected_end=1544 rejected_turnover=567 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d3 median_lifespan=1021 gap=3064 endpoints=112 candidates=1847 rejected_end=1464 rejected_turnover=383 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d4 median_lifespan=985 gap=2956 endpoints=113 candidates=1804 rejected_end=1373 rejected_turnover=431 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d5 median_lifespan=931 gap=2794 endpoints=113 candidates=3062 rejected_end=2449 rejected_turnover=613 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d6 median_lifespan=1022 gap=3067 endpoints=112 candidates=2157 rejected_end=1646 rejected_turnover=511 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d7 median_lifespan=989 gap=2968 endpoints=113 candidates=1915 rejected_end=1460 rejected_turnover=455 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032d8 median_lifespan=922 gap=2767 endpoints=113 candidates=1451 rejected_end=1090 rejected_turnover=359 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A8k seed=0x00000000000032d8 quadrat=8 variant=1 start=50500 end=53500 n_start=66 n_end=18 freq_start=121 freq_end=55 global_start=48 global_end=15 control_n=486 control_freq=8 tolerance_q32=536870912
+world condition=A8k seed=0x00000000000032d9 median_lifespan=996 gap=2989 endpoints=113 candidates=1833 rejected_end=1452 rejected_turnover=381 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032da median_lifespan=954 gap=2863 endpoints=113 candidates=1984 rejected_end=1520 rejected_turnover=463 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A8k seed=0x00000000000032da quadrat=1 variant=2 start=45500 end=48500 n_start=167 n_end=39 freq_start=47 freq_end=25 global_start=22 global_end=11 control_n=2907 control_freq=11 tolerance_q32=536870912
+world condition=A8k seed=0x00000000000032db median_lifespan=1011 gap=3034 endpoints=112 candidates=1892 rejected_end=1487 rejected_turnover=404 rejected_no_cohort=0 rejected_control=1 findings=0
+world condition=A8k seed=0x00000000000032dc median_lifespan=994 gap=2983 endpoints=113 candidates=2595 rejected_end=2030 rejected_turnover=565 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032dd median_lifespan=950 gap=2851 endpoints=113 candidates=2054 rejected_end=1625 rejected_turnover=429 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032de median_lifespan=982 gap=2947 endpoints=113 candidates=2220 rejected_end=1800 rejected_turnover=420 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032df median_lifespan=959 gap=2878 endpoints=113 candidates=1986 rejected_end=1530 rejected_turnover=456 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032e0 median_lifespan=961 gap=2884 endpoints=113 candidates=1732 rejected_end=1364 rejected_turnover=368 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032e1 median_lifespan=1078 gap=3235 endpoints=112 candidates=944 rejected_end=727 rejected_turnover=217 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032e2 median_lifespan=955 gap=2866 endpoints=113 candidates=1775 rejected_end=1320 rejected_turnover=453 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=A8k seed=0x00000000000032e2 quadrat=3 variant=2 start=32500 end=35500 n_start=17 n_end=14 freq_start=294 freq_end=71 global_start=14 global_end=20 control_n=573 control_freq=22 tolerance_q32=536870912
+finding condition=A8k seed=0x00000000000032e2 quadrat=12 variant=1 start=37500 end=40500 n_start=39 n_end=11 freq_start=51 freq_end=90 global_start=4 global_end=4 control_n=144 control_freq=6 tolerance_q32=536870912
+world condition=A8k seed=0x00000000000032e3 median_lifespan=946 gap=2839 endpoints=113 candidates=2350 rejected_end=1784 rejected_turnover=566 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032e4 median_lifespan=908 gap=2725 endpoints=113 candidates=2381 rejected_end=1838 rejected_turnover=543 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A8k seed=0x00000000000032e5 median_lifespan=1061 gap=3184 endpoints=112 candidates=1661 rejected_end=1181 rejected_turnover=479 rejected_no_cohort=0 rejected_control=1 findings=0
+world condition=A8k seed=0x00000000000032e6 median_lifespan=977 gap=2932 endpoints=113 candidates=1894 rejected_end=1450 rejected_turnover=444 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032c9 median_lifespan=937 gap=2812 endpoints=113 candidates=1290 rejected_end=1052 rejected_turnover=238 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032ca median_lifespan=967 gap=2902 endpoints=113 candidates=2452 rejected_end=1844 rejected_turnover=608 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032cb median_lifespan=1010 gap=3031 endpoints=112 candidates=1503 rejected_end=1091 rejected_turnover=412 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032cc median_lifespan=989 gap=2968 endpoints=113 candidates=1601 rejected_end=1265 rejected_turnover=336 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032cd median_lifespan=1289 gap=3868 endpoints=111 candidates=1028 rejected_end=817 rejected_turnover=211 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032ce median_lifespan=979 gap=2938 endpoints=113 candidates=2421 rejected_end=1940 rejected_turnover=481 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032cf median_lifespan=946 gap=2839 endpoints=113 candidates=1989 rejected_end=1627 rejected_turnover=362 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d0 median_lifespan=1008 gap=3025 endpoints=112 candidates=1791 rejected_end=1454 rejected_turnover=337 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d1 median_lifespan=954 gap=2863 endpoints=113 candidates=1895 rejected_end=1375 rejected_turnover=520 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d2 median_lifespan=1028 gap=3085 endpoints=112 candidates=1555 rejected_end=1158 rejected_turnover=397 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d3 median_lifespan=1010 gap=3031 endpoints=112 candidates=1626 rejected_end=1349 rejected_turnover=277 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d4 median_lifespan=1015 gap=3046 endpoints=112 candidates=1798 rejected_end=1385 rejected_turnover=413 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d5 median_lifespan=942 gap=2827 endpoints=113 candidates=2329 rejected_end=1739 rejected_turnover=590 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d6 median_lifespan=968 gap=2905 endpoints=113 candidates=1776 rejected_end=1324 rejected_turnover=452 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d7 median_lifespan=953 gap=2860 endpoints=113 candidates=1963 rejected_end=1503 rejected_turnover=460 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032d8 median_lifespan=920 gap=2761 endpoints=113 candidates=1259 rejected_end=913 rejected_turnover=345 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A16k seed=0x00000000000032d8 quadrat=7 variant=1 start=47500 end=50500 n_start=132 n_end=21 freq_start=37 freq_end=47 global_start=19 global_end=2 control_n=4 control_freq=0 tolerance_q32=536870912
+world condition=A16k seed=0x00000000000032d9 median_lifespan=990 gap=2971 endpoints=113 candidates=1883 rejected_end=1396 rejected_turnover=487 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032da median_lifespan=954 gap=2863 endpoints=113 candidates=2311 rejected_end=1767 rejected_turnover=544 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032db median_lifespan=990 gap=2971 endpoints=113 candidates=2217 rejected_end=1699 rejected_turnover=518 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032dc median_lifespan=989 gap=2968 endpoints=113 candidates=2061 rejected_end=1597 rejected_turnover=464 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032dd median_lifespan=941 gap=2824 endpoints=113 candidates=2153 rejected_end=1663 rejected_turnover=489 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A16k seed=0x00000000000032dd quadrat=15 variant=1 start=42500 end=45500 n_start=13 n_end=24 freq_start=76 freq_end=250 global_start=31 global_end=20 control_n=469 control_freq=29 tolerance_q32=536870912
+world condition=A16k seed=0x00000000000032de median_lifespan=1016 gap=3049 endpoints=112 candidates=1953 rejected_end=1549 rejected_turnover=404 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032df median_lifespan=1003 gap=3010 endpoints=112 candidates=2062 rejected_end=1655 rejected_turnover=404 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A16k seed=0x00000000000032df quadrat=12 variant=1 start=48500 end=52000 n_start=46 n_end=31 freq_start=152 freq_end=64 global_start=8 global_end=9 control_n=144 control_freq=13 tolerance_q32=536870912
+world condition=A16k seed=0x00000000000032e0 median_lifespan=983 gap=2950 endpoints=113 candidates=1750 rejected_end=1338 rejected_turnover=412 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032e1 median_lifespan=1023 gap=3070 endpoints=112 candidates=732 rejected_end=576 rejected_turnover=156 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032e2 median_lifespan=962 gap=2887 endpoints=113 candidates=1965 rejected_end=1514 rejected_turnover=451 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032e3 median_lifespan=959 gap=2878 endpoints=113 candidates=2265 rejected_end=1755 rejected_turnover=504 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A16k seed=0x00000000000032e3 quadrat=0 variant=1 start=24000 end=27000 n_start=83 n_end=35 freq_start=36 freq_end=28 global_start=1 global_end=1 control_n=301 control_freq=9 tolerance_q32=536870912
+world condition=A16k seed=0x00000000000032e4 median_lifespan=922 gap=2767 endpoints=113 candidates=2176 rejected_end=1752 rejected_turnover=424 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032e5 median_lifespan=1058 gap=3175 endpoints=112 candidates=1191 rejected_end=855 rejected_turnover=336 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A16k seed=0x00000000000032e6 median_lifespan=919 gap=2758 endpoints=113 candidates=2467 rejected_end=2057 rejected_turnover=410 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032c9 median_lifespan=1008 gap=3025 endpoints=112 candidates=1345 rejected_end=1045 rejected_turnover=300 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032ca median_lifespan=973 gap=2920 endpoints=113 candidates=1934 rejected_end=1427 rejected_turnover=506 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032ca quadrat=12 variant=2 start=52000 end=55000 n_start=112 n_end=20 freq_start=8 freq_end=50 global_start=1 global_end=4 control_n=152 control_freq=39 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032cb median_lifespan=999 gap=2998 endpoints=113 candidates=1904 rejected_end=1351 rejected_turnover=553 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032cc median_lifespan=1020 gap=3061 endpoints=112 candidates=2366 rejected_end=1854 rejected_turnover=512 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032cd median_lifespan=1202 gap=3607 endpoints=111 candidates=1010 rejected_end=805 rejected_turnover=204 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032cd quadrat=4 variant=2 start=39000 end=43000 n_start=154 n_end=33 freq_start=6 freq_end=30 global_start=1 global_end=2 control_n=1302 control_freq=1 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032ce median_lifespan=1032 gap=3097 endpoints=112 candidates=1907 rejected_end=1436 rejected_turnover=471 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032cf median_lifespan=966 gap=2899 endpoints=113 candidates=2196 rejected_end=1618 rejected_turnover=577 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032cf quadrat=4 variant=2 start=48500 end=51500 n_start=97 n_end=26 freq_start=41 freq_end=38 global_start=22 global_end=15 control_n=1682 control_freq=11 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d0 median_lifespan=1032 gap=3097 endpoints=112 candidates=2521 rejected_end=2061 rejected_turnover=458 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=A32k seed=0x00000000000032d0 quadrat=3 variant=4 start=34500 end=38000 n_start=153 n_end=13 freq_start=6 freq_end=76 global_start=2 global_end=1 control_n=658 control_freq=4 tolerance_q32=536870912
+finding condition=A32k seed=0x00000000000032d0 quadrat=12 variant=3 start=24000 end=27500 n_start=88 n_end=54 freq_start=11 freq_end=18 global_start=4 global_end=7 control_n=129 control_freq=0 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d1 median_lifespan=994 gap=2983 endpoints=113 candidates=2185 rejected_end=1707 rejected_turnover=476 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032d1 quadrat=12 variant=3 start=38000 end=41000 n_start=23 n_end=14 freq_start=43 freq_end=71 global_start=6 global_end=5 control_n=543 control_freq=9 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d2 median_lifespan=987 gap=2962 endpoints=113 candidates=2137 rejected_end=1590 rejected_turnover=547 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032d3 median_lifespan=1007 gap=3022 endpoints=112 candidates=2093 rejected_end=1591 rejected_turnover=502 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032d4 median_lifespan=1007 gap=3022 endpoints=112 candidates=1941 rejected_end=1460 rejected_turnover=481 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032d5 median_lifespan=967 gap=2902 endpoints=113 candidates=2236 rejected_end=1800 rejected_turnover=435 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032d5 quadrat=12 variant=11 start=36000 end=39000 n_start=60 n_end=121 freq_start=16 freq_end=8 global_start=0 global_end=0 control_n=1596 control_freq=0 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d6 median_lifespan=1006 gap=3019 endpoints=112 candidates=2190 rejected_end=1641 rejected_turnover=547 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032d6 quadrat=12 variant=7 start=31000 end=34500 n_start=10 n_end=27 freq_start=200 freq_end=74 global_start=4 global_end=5 control_n=711 control_freq=28 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d7 median_lifespan=979 gap=2938 endpoints=113 candidates=2217 rejected_end=1686 rejected_turnover=530 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032d7 quadrat=3 variant=10 start=23500 end=26500 n_start=70 n_end=84 freq_start=14 freq_end=11 global_start=1 global_end=0 control_n=783 control_freq=0 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d8 median_lifespan=913 gap=2740 endpoints=113 candidates=1690 rejected_end=1260 rejected_turnover=428 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=A32k seed=0x00000000000032d8 quadrat=4 variant=5 start=52000 end=55000 n_start=312 n_end=11 freq_start=19 freq_end=181 global_start=5 global_end=2 control_n=598 control_freq=1 tolerance_q32=536870912
+finding condition=A32k seed=0x00000000000032d8 quadrat=8 variant=14 start=36000 end=39000 n_start=32 n_end=11 freq_start=31 freq_end=90 global_start=1 global_end=3 control_n=197 control_freq=15 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032d9 median_lifespan=1033 gap=3100 endpoints=112 candidates=1926 rejected_end=1522 rejected_turnover=404 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032da median_lifespan=960 gap=2881 endpoints=113 candidates=1876 rejected_end=1509 rejected_turnover=367 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032db median_lifespan=1017 gap=3052 endpoints=112 candidates=1904 rejected_end=1496 rejected_turnover=406 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=A32k seed=0x00000000000032db quadrat=4 variant=4 start=14000 end=17500 n_start=21 n_end=70 freq_start=47 freq_end=14 global_start=2 global_end=2 control_n=170 control_freq=0 tolerance_q32=536870912
+finding condition=A32k seed=0x00000000000032db quadrat=15 variant=3 start=39000 end=42500 n_start=10 n_end=10 freq_start=200 freq_end=100 global_start=5 global_end=5 control_n=279 control_freq=7 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032dc median_lifespan=969 gap=2908 endpoints=113 candidates=2256 rejected_end=1710 rejected_turnover=545 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032dc quadrat=13 variant=14 start=45000 end=48000 n_start=144 n_end=27 freq_start=6 freq_end=37 global_start=0 global_end=0 control_n=88 control_freq=0 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032dd median_lifespan=932 gap=2797 endpoints=113 candidates=2264 rejected_end=1838 rejected_turnover=425 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032dd quadrat=15 variant=1 start=56000 end=59000 n_start=17 n_end=10 freq_start=58 freq_end=200 global_start=28 global_end=44 control_n=646 control_freq=24 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032de median_lifespan=1021 gap=3064 endpoints=112 candidates=2001 rejected_end=1562 rejected_turnover=439 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032df median_lifespan=1011 gap=3034 endpoints=112 candidates=2214 rejected_end=1799 rejected_turnover=414 rejected_no_cohort=0 rejected_control=0 findings=1
+finding condition=A32k seed=0x00000000000032df quadrat=14 variant=24 start=50000 end=53500 n_start=125 n_end=25 freq_start=8 freq_end=40 global_start=1 global_end=2 control_n=546 control_freq=12 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032e0 median_lifespan=969 gap=2908 endpoints=113 candidates=2104 rejected_end=1532 rejected_turnover=572 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032e1 median_lifespan=1123 gap=3370 endpoints=112 candidates=1411 rejected_end=988 rejected_turnover=421 rejected_no_cohort=0 rejected_control=0 findings=2
+finding condition=A32k seed=0x00000000000032e1 quadrat=4 variant=9 start=28500 end=32000 n_start=87 n_end=15 freq_start=34 freq_end=133 global_start=7 global_end=1 control_n=211 control_freq=0 tolerance_q32=536870912
+finding condition=A32k seed=0x00000000000032e1 quadrat=8 variant=7 start=36500 end=40000 n_start=8 n_end=34 freq_start=250 freq_end=29 global_start=2 global_end=0 control_n=163 control_freq=0 tolerance_q32=536870912
+world condition=A32k seed=0x00000000000032e2 median_lifespan=985 gap=2956 endpoints=113 candidates=2099 rejected_end=1581 rejected_turnover=518 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032e3 median_lifespan=950 gap=2851 endpoints=113 candidates=2030 rejected_end=1546 rejected_turnover=484 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032e4 median_lifespan=902 gap=2707 endpoints=113 candidates=2528 rejected_end=2004 rejected_turnover=524 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032e5 median_lifespan=1077 gap=3232 endpoints=112 candidates=1338 rejected_end=997 rejected_turnover=341 rejected_no_cohort=0 rejected_control=0 findings=0
+world condition=A32k seed=0x00000000000032e6 median_lifespan=918 gap=2755 endpoints=113 candidates=1685 rejected_end=1290 rejected_turnover=395 rejected_no_cohort=0 rejected_control=0 findings=0

@@ -1,10 +1,20 @@
 # Phase 13: Social Channel
 
 Status: mechanism BUILT (2026-09-01, ADR-0029, D-122); behavioral criteria
-NOT measured - the campaign needs its own pre-registration, and the ladder
-(`planning/backlog.md`) records in advance that the transmission criteria
-are expected to read null until a learning campaign under levers 1-3
-succeeds. Fixture: `scripts/verify-phase13-determinism.sh` (config
+MEASURED (2026-09-02, D-126, campaign `0x5a0ee0ccb8d48df7`, findings at
+`experiments/results/phase13-social-confirmatory-findings.txt`). **C13.1,
+C13.3, C13.8 and C13.9 are UNMET as the pre-registered expected nulls,
+with controls - and the censuses make C13.1 a transmission null, not a
+reachability null** (every decision-arm world carries hearers, speakers
+and a naive cohort at the horizon). C13.4 landed on its third outcome
+(both A and S fail; scaffolding controlled). C13.11 PASSED. The campaign's
+three unplanned findings: speaker depletion under emission billing (the
+named lever for the next iteration), the fidelity exposure delta present
+in full in no-channel arms (subtract a no-channel baseline in any reuse),
+and the tradition detector's control arm firing 4/12 against a bar of
+zero (the era-and-tradition control needs sharpening). The ladder
+(`planning/backlog.md`) recorded the null expectation in advance.
+Fixture: `scripts/verify-phase13-determinism.sh` (config
 `0x252199db7099e9a5`, state `0x5861f0fc8ab02957`). Policy version
 `lifesim-social-v1`. Specification: `specifications/social-signal-channel.md`
 (as-built notes at its end); every deviation is recorded in ADR-0029.
@@ -124,6 +134,10 @@ C13.10 because the outcomes are rare and heavy-tailed.
       stated effect size. The same difference must hold for **A versus D**.
       An A-versus-C difference without an A-versus-D difference is not
       transmission and is reported as a negative result.
+      **UNMET, measured, 2026-09-02: A-vs-C 0 of 30, A-vs-D 0 of 30**
+      (bar 20 of 30 on both; campaign `0x5a0ee0ccb8d48df7`, D-126). The
+      pre-registered expected null, and a transmission null: hearers,
+      speakers and naive cohorts present in every world's own census.
 - [ ] **C13.2 Fidelity clears the accumulation threshold.** Measure
       transmission fidelity F as the correlation between a demonstrator's
       action policy and an observer's post-exposure policy, controlled for
@@ -132,6 +146,11 @@ C13.10 because the outcomes are rare and heavy-tailed.
       which is the condition under which improvements accumulate rather than
       decay. Report F across the corruption sweep, so the result is a curve
       rather than a single number.
+      **Measured, 2026-09-02: the curve is FLAT (+15/+13/+16/+14 milli
+      at corruption 0/8192/16384/32768) and the no-channel arms sit on
+      it (B +19, C +17)** - the exposure delta is not transmission, and
+      transmission-attributable F is indistinguishable from zero at
+      every corruption level (D-126).
 - [ ] **C13.3 Traditions outlive individuals.** A behavioral variant present
       in a local neighbourhood at tick t is present at tick t + L, where L
       exceeds three times that run's median lifespan and no individual is
@@ -142,6 +161,10 @@ C13.10 because the outcomes are rare and heavy-tailed.
       distance to the neighbourhood's genotype distribution. Without that
       control, an inherited trait is indistinguishable from a tradition. See
       `specifications/era-and-tradition-detection.md`.
+      **UNMET, measured, 2026-09-02: A 8 of 30 (bar 15) - and C fired
+      4 of 12 against a bar of ZERO**, so the detector's positives are
+      false positives by construction and the spec's control needs
+      sharpening before any verdict here means anything (D-126).
 - [ ] **C13.4 Scaffolding requirement measured.** Report C13.1 and C13.3
       separately for conditions A and S. Three outcomes, all publishable:
       S succeeds (the observational rule was unnecessary and should be
@@ -149,12 +172,19 @@ C13.10 because the outcomes are rare and heavy-tailed.
       about how much scaffolding observational learning needs in this
       world); both fail (a clean null with the scaffolding question already
       controlled for).
+      **Measured, 2026-09-02: the third outcome - both fail** (A-vs-S
+      arrival 0 of 30, mean -1 milli, CI [-2,0]; traditions S 5/30 vs
+      A 8/30; D-126). The S ablation itself verified at scale: zero
+      expressed rule-5 organisms in all 30 S worlds.
 - [ ] **C13.5 Payoff-sensitive variant competition.** When two arbitrary
       behavioral variants with different payoffs are both present, the
       higher-payoff variant increases in relative frequency faster under A
       than under C, in at least 20 of 30 worlds. This is the rung between
       "something spreads" and "something useful spreads", and the plan
       previously skipped it (ADR-0022 A12).
+      **Reported 2026-09-02: undefined by its own wording** - no two
+      identified variants exist (C13.3's positives do not survive their
+      control arm; D-126).
 - [ ] **C13.6 Retention of one socially acquired improvement.** At least one
       performance improvement is acquired socially by an individual that did
       not discover it, and is retained through that individual's remaining
@@ -162,6 +192,8 @@ C13.10 because the outcomes are rare and heavy-tailed.
       with the world as the replicate. This is the minimum unit of
       accumulation and must pass before any cumulative claim in Phase 12 or
       16 is interpretable.
+      **Measured 2026-09-02: rate 0 in 240 of 240 worlds** - no
+      transmission was detected upstream to retain (D-126).
 
 ### Organized conflict, relocated from Phase 7
 
@@ -178,26 +210,44 @@ demanding behavioral criteria.
       networks built from the event log show communities that persist beyond
       the stated window, and are not explained by spatial proximity alone
       (tested against a proximity-matched null).
+      **UNMET, measured, 2026-09-02: A 10 of 30 above the null p95 (bar
+      20), C 10 of 30 - exactly arm-symmetric, chains median 0** (D-126;
+      addendum rules, commit f66b0e2).
 - [ ] **C13.9 Directed rather than indiscriminate aggression.** The rate of
       damage between communities exceeds the rate within them by at least
       factor f, in at least 20 of 30 worlds, with communities defined
       offline from the interaction network and never entering the
       simulation. Under the cue-scrambled control the rates do not differ.
+      **UNMET, measured, 2026-09-02: 6 of 30 (bar 20), p = 1.000, mean
+      -234 milli** - the addendum's expected null; the co-present
+      between/within factor is boundary structure present in BOTH arms,
+      C's descriptively higher (D-126).
 - [ ] **C13.10 Coalition and asymmetry, or a measured null.** Report whether
       aggression rate depends on local numerical advantage, and whether
       multiple aggressors act on one target more often than chance. **Both
       are expected to return null** and are stated so in advance; a null
       here is a measurement about what this physics supports.
+      **Measured 2026-09-02: the expected null, arms agreeing to within
+      rounding** (advantage ratios 1.85:1 A vs 1.81:1 C; coalition rates
+      48 vs 47 milli - spatial, not social; D-126).
 
-- [ ] **C13.11 Energy accounting.** The ledger stays exact to the milli-unit
+- [x] **C13.11 Energy accounting.** The ledger stays exact to the milli-unit
       with signalling costs flowing through it over a 10^6-tick run.
-- [ ] **C13.12 Determinism.** Storage-permutation equality over N ticks;
+      **PASSED, 2026-09-01/02**: seed 13201, 10^6 ticks, continuous
+      check interval, exit 0, ledger exact throughout; archived at
+      `runs/phase13-c1311-ledger-soak-0x2323c6b96b9d0b35`.
+- [x] **C13.12 Determinism.** Storage-permutation equality over N ticks;
       committed signal field identical under permutation; clean-process
       fixture replay; social-disabled configs reproduce the Phase 11 fixture
       exactly.
-- [ ] **C13.13 Perception is causally clean.** A test that mutates an
+      **PASSED, carried by the committed suite** (fixture replay, storage
+      permutation over the social arrays, verify scripts green on both
+      hosts; D-122/D-123/D-126).
+- [x] **C13.13 Perception is causally clean.** A test that mutates an
       organism's state mid-phase must not be observable by any other
       organism in the same tick.
+      **PASSED, carried by the committed suite** (the mid-phase mutation
+      test; D-122/D-123).
 
 ## Test Plan
 

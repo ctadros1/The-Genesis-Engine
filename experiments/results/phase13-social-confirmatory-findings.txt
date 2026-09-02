@@ -1,0 +1,322 @@
+Phase 13 social-channel confirmatory campaign: C13.1-C13.6, C13.8-C13.11,
+with the conflict addendum's C13.7-C13.10 rules. Findings.
+
+Campaign source   experiments/phase13-social-confirmatory.campaign
+Pre-registered in experiments/phase13-social-preregistration.md, commit
+                  37983b7, before the campaign ran: direction, SESOI 20
+                  milli absolute, the 20-of-30 bar on BOTH contrasts, the
+                  analysis seed, and the expected null were all fixed
+                  there. C13.7-C13.10 were locked separately in
+                  experiments/phase13-conflict-addendum-preregistration.md,
+                  commit f66b0e2, before any of those classifiers read a
+                  confirmatory world.
+Campaign hash     0x5a0ee0ccb8d48df7
+Kernel            commit 37983b7 (the binary that ran the worlds). The
+                  analysis binary is b02cc35 (which added the co-present
+                  denominators; analysis code unchanged through 9b75bb6,
+                  which adds only the recognition campaign file).
+Raw artifacts     phase13-social-confirmatory-manifest.txt here; the run
+                  archived at runs/phase13-social-confirmatory-
+                  0x5a0ee0ccb8d48df7 (60 GB: event logs on, actions
+                  capped at 500 per snapshot window, spatial series at
+                  50-tick cadence).
+Reports           phase13-social-confirmatory-{contrast-AC,contrast-AD,
+                  contrast-AS,census-e25,fidelity,tradition,
+                  communities}.txt - the per-world lifesim outputs. The
+                  world-level reduction is
+                  phase13-social-confirmatory-reduction.py in this
+                  directory; every number below is recomputable from the
+                  committed report lines by the pre-registrations' own
+                  rules.
+Analysis          lifesim-arrival-detector-v1 / lifesim-fidelity-v1 /
+                  lifesim-tradition-v1 / lifesim-communities-v1; paired
+                  intervals lifesim-paired-stats-v1. Analysis seed
+                  0x0000000000001373 everywhere.
+Run               240 worlds (8 arms x 30 seeds 13001..13030, matched
+                  across arms), 60,000 ticks each, 8 workers, 29,825.5 s
+                  wall, 482.8 aggregate ticks/s, 0 failed, 0 extinct at
+                  the horizon. Run on the laptop.
+Recognition run   The C13.7 campaign (experiments/phase13-recognition
+                  .campaign, hash 0x33099bb271e99cde): 60 worlds (A and C
+                  x 30 seeds 13101..13130) at event schema 8, run on the
+                  VM at 9b75bb6, 9,776.9 s wall, 368.2 t/s, 0 failed. Its
+                  reading is the last section of this file.
+
+================================================================
+THE PRIMARY IS THE PRE-REGISTERED EXPECTED NULL, ON BOTH REQUIRED
+CONTRASTS - AND THE CENSUSES MAKE IT A TRANSMISSION NULL, NOT A
+REACHABILITY NULL: EVERY DECISION-ARM WORLD CARRIES HEARERS,
+SPEAKERS AND A NAIVE COHORT AT THE HORIZON.
+================================================================
+
+  C13.1   A-vs-C 0 of 30, A-vs-D 0 of 30 (bar 20 of 30 on both). UNMET.
+  C13.2   Curve reported, no borrowed threshold. FLAT across the
+          corruption sweep - and the no-channel arms show the same
+          delta, so the measured delta is not transmission.
+  C13.3   A 8 of 30 (bar 15); C 4 of 12 (bar 0). UNMET - and the
+          control arm's nonzero count invalidates the detector's
+          positives as traditions.
+  C13.4   Both fail (A-vs-S 0 of 30; traditions S 5, A 8): the plan's
+          third outcome - a clean null with scaffolding controlled.
+  C13.5   Undefined by its own wording: no two identified variants.
+  C13.6   Zero identified socially-acquired improvements; reported
+          descriptively.
+  C13.7   [pending - filled by the follow-up commit, see section 7]
+  C13.8   A 10 of 30, C 10 of 30, exactly arm-symmetric. UNMET.
+  C13.9   6 of 30 (bar 20), p = 1.000, mean -234 milli. UNMET -
+          the addendum's expected null.
+  C13.10  Descriptive, near-identical across arms. The expected null.
+  C13.11  PASSED (10^6-tick soak, ledger exact; archived separately).
+  C13.12  Carried by the committed suite and both hosts' verify runs.
+  C13.13  Carried by the committed suite (mid-phase mutation test).
+
+No threshold moved after data was seen. The pre-registration stated the
+null in advance and said the campaign's value would be the controlled
+"why"; the sections below are that why.
+
+----------------------------------------------------------------
+1. C13.1 - THE PRIMARY CONTRASTS
+----------------------------------------------------------------
+
+Per world, F = mean naive arrival fraction over epochs 10, 15, 20, 25
+(window [2000e, 2000e+2000), naive cut at 2000e, censoring counted never
+imputed). Seed-paired between-arm differences, direction increase, SESOI
+20 milli absolute, decided on reaching_absolute_directed (the relative
+form is None at a zero control fraction - D-120):
+
+  A-vs-C  pairs=30 unusable=0 reaching=0/30 p=1.000 positive=11
+          mean=-4 milli  ci95=[-8,-1]  median=-3
+  A-vs-D  pairs=30 unusable=0 reaching=0/30 p=1.000 positive=14
+          mean=-1 milli  ci95=[-5,+1]  median=-2
+
+Not one seed of thirty reached +20 milli in either contrast; the 95%
+intervals localize any true effect below ~+1 milli, twenty times smaller
+than the SESOI. The point estimates lean slightly negative (the A arm
+arrives marginally *slower*); the A-vs-C interval excludes zero on the
+negative side by 1 milli, which at this resolution is reported as
+estimation, not evidence of harm.
+
+Why this is a transmission null and not a reachability null (the
+pre-registration's own reading note, applied): in the epoch-25 census,
+every single A world has hearers (min 331), speakers (min 57), organisms
+that both emit and receive (min 19), and a naive cohort in the hundreds
+(min 634). Signals flow at scale - median 7.0M priced emissions per A
+world - and are delivered on time under Rule 4's one-tick lag. The
+channel is built, populated, paid for, and used; what it carries does
+not move naive organisms toward the patch any faster than silence.
+
+----------------------------------------------------------------
+2. THE CENSUS, AND THE ONE UNPLANNED RESULT WORTH THE CAMPAIGN
+----------------------------------------------------------------
+
+Medians at epoch 25, n = 30 worlds per arm:
+
+  arm    pop  naive hearers speakers emit&in r5expr   emitted  arrived(sum)
+  A     4928   2496    1154      527     108     14  7,000,556    2138
+  B     5133   2655    1448     1388     336     12          0    2863
+  C     5577   2456    1417     1413     377     14          0    2753
+  D     5681   2607    1142      553     113      7  6,934,050    2954
+  S     4609   2521    1136      517     129      0  7,747,179    2628
+  A8k   5827   2673    1784      606     171     16  6,648,066    2683
+  A16k  5586   2787    1832      555     159     11  7,322,947    2873
+  A32k  5745   2603    1644      453      92     11  5,896,340    2924
+
+Zero worlds extinct, zero perception faults across all 240 worlds.
+
+**Speaker depletion under billing.** The arms where emission is priced
+(A, D, S: ~520-550 median speakers) carry 2.5x FEWER speakers than the
+arms where the signal channel is disabled and the same genes cost
+nothing (B: 1,388; C: 1,413). Emission cost is selecting against
+speakers wherever it is actually billed. This is the social-mechanisms
+review's "signals become noise" risk realized in its evolutionary form -
+the channel does not fill with lies, it empties of speakers - and it is
+the single strongest lever candidate the campaign surfaced: at this
+pricing, selection removes the transmitter before transmission can pay.
+
+**The S ablation verified at scale.** S is the only arm with a zero
+median for expressed rule-5 organisms (every other arm 7-16); its
+`rule5_updates_total == 0` gate held in all 30 worlds. The
+observational-rule knob does what it says under campaign densities, not
+just in the Gate E fixture.
+
+never_observed medians run 28k-31k in all arms - dominated by
+post-window births, bookkeeping not signal, per the locked reading note.
+
+----------------------------------------------------------------
+3. C13.2 - THE F-CURVE IS FLAT, AND THE NO-CHANNEL ARMS EXPLAIN IT
+----------------------------------------------------------------
+
+Median per-world fidelity delta (exposed-pair policy similarity minus
+same-kinship-bin matched-control similarity, milli), ~20,600 exposed
+pairs per world, zero worlds unusable:
+
+  corruption      0      8192     16384     32768
+  delta        +15.0    +13.0     +16.0     +14.0     [the curve]
+  B (no signal)         +19.0
+  C (no perception)     +17.0                         [no-channel context]
+  D (scrambled)         +17.5
+  S (no rule 5)         +14.5
+
+The curve does not bend across a corruption sweep spanning half the Q16
+range - and the arms with NO channel at all sit at the same +15-19
+milli as the arm with the full channel. Whatever the exposure delta
+measures, it is present in full when nothing can be transmitted;
+subtracting the no-channel baseline, the transmission-attributable
+fidelity is indistinguishable from zero at every corruption level. The
+residual +15-19 milli common to all arms is spatial assortment finer
+than the kinship bins - organisms co-located with a demonstrator
+resemble it for reasons the four relatedness bins do not fully absorb.
+
+The persistence>1 line, computed from the run's own delivery counts as
+the locked rule requires: R = 5,307 median deliveries per hearer at
+epoch 25 under A, putting the line at 1000/R = 0.188 milli. The raw
+deltas sit far above that line, but the line is reported as context
+only (the rule borrowed no threshold): the as-built F is a similarity
+delta, not a per-event copy probability, and the no-channel arms show
+the delta is not transmission at all. No accumulation claim is
+licensed. Control power is visible in the per-bin tables in the
+committed fidelity report (unmatched-exposed counts concentrate in the
+closest-kin bin, where control candidates are scarcest).
+
+----------------------------------------------------------------
+4. C13.3 - THE TRADITION DETECTOR'S CONTROL ARM CONVICTS IT
+----------------------------------------------------------------
+
+A: 8 of 30 worlds with findings (bar 15) - unmet on its own. But the
+sharper result is the control arm: C shows 4 of 12 worlds with findings
+against a locked bar of ZERO. A world with perception and signalling
+both disabled cannot host a socially transmitted variant, so every C
+finding is a false positive by construction, and at a ~30% world rate
+the A-arm positives cannot be read as traditions either. Findings per
+arm across all eight (A 9, B 8, C 11, D 9, S 5, A8k 6, A16k 4, A32k 18
+total findings) are consistent with one channel-independent generator.
+
+What passes the detector: variants concentrated in a quadrat at both
+endpoints of a >3-lifespan gap with zero shared members, exceeding
+their frequency in a genotype-matched cohort elsewhere. What the
+uniform arm profile says is that this world's physics produces such
+configurations from inheritance plus spatial structure alone - the
+genotype-matched cohort control, as specified, does not fully absorb
+local lineage clustering. Of A's 56,929 candidates, 44,320 died at the
+endpoint-persistence requirement and 12,595 at member turnover; zero
+died for want of a cohort and zero at the control - the control is not
+starved, it is insufficiently sharp. C13.3 is UNMET, and the era-and-
+tradition spec needs a stronger control (a within-lineage placebo or a
+permutation over quadrat assignments) before its verdicts mean
+anything. Recorded as a methods finding, not tuned post hoc.
+
+----------------------------------------------------------------
+5. C13.4 - SCAFFOLDING: THE PLAN'S THIRD OUTCOME
+----------------------------------------------------------------
+
+  arrival    A-vs-S  reaching 0/30, mean -1 milli, ci95=[-2,0],
+             positive 4/30 - the tightest interval of the campaign
+  traditions S 5/30 worlds with findings vs A 8/30 (neither near a bar)
+
+Both A and S fail C13.1/C13.3, so the observational rule's presence or
+absence changes nothing measurable: a clean null with the scaffolding
+question already controlled. The S recurrence ceiling stands: this
+licenses "withholding rule 5 changed nothing here", never "observational
+learning is inert" - state-reset interventions remain out of scope.
+
+----------------------------------------------------------------
+6. C13.5 AND C13.6 - REPORTED BY THEIR OWN WORDING
+----------------------------------------------------------------
+
+C13.5 is undefined until two identified behavioral variants with
+different payoffs exist; none emerged (C13.3's positives do not survive
+their control arm, so no variant is *identified*). Reported as such.
+
+C13.6 asks for at least one performance improvement acquired socially
+by an individual that did not discover it and retained for life. With
+no transmission detected anywhere upstream, the world-level rate is 0
+in 240 of 240 worlds. The per-individual exposure records this was to
+be measured from exist in the committed fidelity report (median 20,632
+exposed pairs per world, per-bin exposure and control counts); what
+they contain is the flat curve of section 3.
+
+----------------------------------------------------------------
+7. C13.7 - RECOGNITION (ADDENDUM RULES, SCHEMA-8 CAMPAIGN)
+----------------------------------------------------------------
+
+[PENDING - the VM reading of campaign 0x33099bb271e99cde was in
+progress when the confirmatory sections above were committed; this
+section is filled by the follow-up commit that carries
+phase13-recognition-report.txt.]
+
+----------------------------------------------------------------
+8. C13.8 / C13.9 / C13.10 - THE CONFLICT ADDENDUM'S READINGS
+----------------------------------------------------------------
+
+**C13.8 (persistent communities):** A 10/30 worlds with persistent
+chains above their proximity-matched null p95 (bar 20); C 10/30 -
+exactly arm-symmetric, chains median 0 and max 2 in both arms. The
+pilot's marginal-to-null expectation held. Community persistence in
+this physics is scarce and cue-independent; what "community" the
+detector finds is home-range structure, and the null comparison - the
+criterion's own "not spatial proximity alone" clause - keeps it from
+being reported as more.
+
+**C13.9 (directed aggression, the addendum's primary):** seed-paired
+A-vs-C contrast of the co-present between/within factor, SESOI 500
+milli absolute increase: 6/30 reaching (bar 20), exact binomial
+p = 1.000, mean difference -234 milli, median -138, positive 13/30.
+The expected null, exactly as the pilot's cross-arm symmetry
+predicted. Descriptively both arms show elevated between-community
+attack rates on co-present opportunities (A median factor 1,572 milli,
+16/30 >= 1,500; C median 1,816, 21/30) - boundary structure present
+without perception, deciding nothing, per the addendum's own clause.
+
+**C13.10 (coalition and asymmetry):** the pre-stated expected null,
+and the arms agree to within rounding. Between-community attacks with
+local numerical advantage vs disadvantage: A 5,226 vs 2,819 (1.85:1),
+C 6,059 vs 3,348 (1.81:1) - attackers are where their community is,
+in both arms equally, so the asymmetry is spatial, not social.
+Coalition targets (>= 2 attackers in-window): A 48 milli of attacked
+targets, C 47 milli. Nothing here depends on the channel; any stronger
+claim needs its own pre-registration.
+
+----------------------------------------------------------------
+9. C13.11 / C13.12 / C13.13 - THE INFRASTRUCTURE CRITERIA
+----------------------------------------------------------------
+
+C13.11 PASSED before these reductions ran: the 10^6-tick soak (seed
+13201, arm-A config, continuous check interval) exited 0 with the
+ledger exact to the milli-unit throughout - 61.1 t/s, 1.74M births,
+ancestry depth 1,133, 734 alive at the horizon. Archived at
+runs/phase13-c1311-ledger-soak-0x2323c6b96b9d0b35.
+
+C13.12 and C13.13 are carried by the committed suite: fixture replay
+(config 0x252199db7099e9a5 / state 0x5861f0fc8ab02957 at 8,000 ticks),
+storage permutation over the social arrays with committed-field
+equality, the mid-phase mutation test for perceptual cleanliness, and
+the clean-process verify scripts green on both hosts (VM suite at
+21aa5d4; the analysis-only commits since were VM-verified with the
+recognition campaign's own build at 9b75bb6).
+
+----------------------------------------------------------------
+10. WHAT THE CAMPAIGN LEAVES BEHIND
+----------------------------------------------------------------
+
+- A transmission null with its mechanism intact and its censuses
+  attached, on 30 matched seeds per arm - the artifact base every
+  later social lever will be contrasted against.
+- The speaker-depletion signature (section 2): emission pricing is
+  the named, measured lever standing between this null and the next
+  design iteration.
+- Two detector-methods findings bought cheaply: the fidelity exposure
+  delta needs a no-channel baseline subtracted (the B/C arms provide
+  it), and the tradition control needs sharpening before C13.3 can
+  ever pass honestly.
+- 60 GB of schema-7 artifacts (event logs, spatial series, action
+  censuses) and 60 schema-8 recognition worlds, all reproducible from
+  committed campaign files by seed.
+
+Reading notes carried from the pre-registrations, still binding on any
+reuse of these artifacts: rule5_alleles reads stored-id space and is
+blind under chain renumbering (the expressed-edge count is the
+interpretive number); never_observed is bookkeeping; A-vs-C alone is
+never transmission (D is the delivery-severed control); the S arm's
+recurrence ceiling stands; claim ceilings from the addendum -
+"repeated-association structure", never "social groups"; "directed by
+something the channel carries", never "kin recognition".
