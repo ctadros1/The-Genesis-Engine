@@ -4,7 +4,15 @@
 `docs/19-implementation-roadmap.md` carries the authoritative execution
 order.
 
-Status: planned, not started. Policy version `lifesim-physiology-v2`.
+Status: mechanisms BUILT and pinned (2026-09-02, ADR-0030, D-127 -
+ontogeny and mate choice through commits 6385156/b23b84a, fixture
+`scripts/verify-phase14-determinism.sh`, benchmarks in
+`experiments/results/phase14-benchmark-measurements.txt`); the disease
+slice is deferred to its own increment (ADR-0030 decision 3). Stage A
+detectors landed (`lifesim-development-v1`, `lifesim-assortment-v1`);
+behavioral criteria NOT yet measured - the C14.5 soak and the Stage B
+pilot run first, then the pre-registration locks before any confirmatory
+world (ADR-0022 A7). Policy version `lifesim-physiology-v2`.
 Split from the former Phase 13 by ADR-0025; the demographic half executes
 early as `planning/phase-8-demography-and-life-history.md`.
 

@@ -1,0 +1,25 @@
+assortment-report 1 campaign phase14-physiology-pilot detector lifesim-assortment-v1
+world condition=A seed=0x0000000000003a35 choices=100949 used=7095 single=93854 scrambled=0 weight=14956 dev0=0 dev1=107 dev2=-2 dev3=-1 dev4=0 dev5=0 dev6=0 dev7=-2 dev8=9
+world condition=A seed=0x0000000000003a36 choices=130472 used=10141 single=120331 scrambled=0 weight=21617 dev0=0 dev1=103 dev2=8 dev3=-1 dev4=0 dev5=0 dev6=0 dev7=-1 dev8=2
+world condition=A seed=0x0000000000003a37 choices=78286 used=4981 single=73305 scrambled=0 weight=10496 dev0=0 dev1=99 dev2=-3 dev3=1 dev4=0 dev5=0 dev6=0 dev7=-3 dev8=12
+world condition=A seed=0x0000000000003a38 choices=168178 used=12385 single=155793 scrambled=0 weight=26102 dev0=0 dev1=101 dev2=-3 dev3=1 dev4=0 dev5=0 dev6=0 dev7=-1 dev8=5
+world condition=A seed=0x0000000000003a39 choices=139531 used=8299 single=131232 scrambled=0 weight=17289 dev0=0 dev1=68 dev2=-7 dev3=0 dev4=0 dev5=0 dev6=0 dev7=6 dev8=-7
+world condition=A seed=0x0000000000003a3a choices=83927 used=3528 single=80399 scrambled=0 weight=7275 dev0=0 dev1=95 dev2=-22 dev3=0 dev4=0 dev5=0 dev6=0 dev7=1 dev8=-4
+world condition=A seed=0x0000000000003a3b choices=125156 used=9834 single=115322 scrambled=0 weight=20964 dev0=0 dev1=95 dev2=25 dev3=-1 dev4=0 dev5=0 dev6=0 dev7=-1 dev8=1
+world condition=A seed=0x0000000000003a3c choices=170865 used=13452 single=157413 scrambled=0 weight=28768 dev0=0 dev1=102 dev2=14 dev3=-1 dev4=0 dev5=0 dev6=0 dev7=-1 dev8=5
+world condition=B seed=0x0000000000003a35 choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a36 choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a37 choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a38 choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a39 choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a3a choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a3b choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=B seed=0x0000000000003a3c choices=0 used=0 single=0 scrambled=0 weight=0 dev0=none dev1=none dev2=none dev3=none dev4=none dev5=none dev6=none dev7=none dev8=none
+world condition=P seed=0x0000000000003a35 choices=93930 used=5496 single=88434 scrambled=5496 weight=11427 dev0=0 dev1=103 dev2=0 dev3=-1 dev4=0 dev5=0 dev6=0 dev7=-1 dev8=5
+world condition=P seed=0x0000000000003a36 choices=129049 used=8945 single=120104 scrambled=8945 weight=18786 dev0=0 dev1=103 dev2=1 dev3=-2 dev4=0 dev5=0 dev6=0 dev7=0 dev8=3
+world condition=P seed=0x0000000000003a37 choices=87868 used=6993 single=80875 scrambled=6993 weight=15001 dev0=0 dev1=92 dev2=8 dev3=0 dev4=0 dev5=0 dev6=0 dev7=-2 dev8=4
+world condition=P seed=0x0000000000003a38 choices=162078 used=10962 single=151116 scrambled=10962 weight=23165 dev0=0 dev1=93 dev2=1 dev3=0 dev4=0 dev5=0 dev6=0 dev7=0 dev8=4
+world condition=P seed=0x0000000000003a39 choices=147958 used=9093 single=138865 scrambled=9093 weight=19290 dev0=0 dev1=89 dev2=-3 dev3=-2 dev4=0 dev5=0 dev6=0 dev7=0 dev8=-1
+world condition=P seed=0x0000000000003a3a choices=87021 used=4226 single=82795 scrambled=4226 weight=8800 dev0=0 dev1=105 dev2=7 dev3=0 dev4=0 dev5=0 dev6=0 dev7=-1 dev8=2
+world condition=P seed=0x0000000000003a3b choices=119716 used=9507 single=110209 scrambled=9507 weight=20226 dev0=0 dev1=100 dev2=-4 dev3=1 dev4=0 dev5=0 dev6=0 dev7=0 dev8=0
+world condition=P seed=0x0000000000003a3c choices=166531 used=10370 single=156161 scrambled=10370 weight=21649 dev0=0 dev1=85 dev2=5 dev3=-2 dev4=0 dev5=0 dev6=0 dev7=0 dev8=4
