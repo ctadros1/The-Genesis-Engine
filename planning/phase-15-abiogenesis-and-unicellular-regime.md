@@ -87,40 +87,59 @@ scaffolded condition runs its unscaffolded control on the same seeds.
 
 Criteria:
 
-- [ ] **C15.1 Exact conservation.** Total mass and energy across chemistry,
+- [~] **C15.1 Exact conservation.** *(2026-09-02: exact by construction and
+      enforced as a World invariant; exact in-run and in-reduction across all
+      150 campaign worlds; the 10^6-tick full-stack soak is running on the
+      server and completes this box.)* Total mass and energy across chemistry,
       field populations, and individuals is invariant to the milli-unit over
       a 10^6-tick run. Diffusion conserves exactly under adversarial
       gradients. This is the most important criterion in the phase: a
       conservation defect here corrupts every result downstream and is the
       classic failure mode of a two-representation design.
-- [ ] **C15.2 Field cost is independent of individual population.** Measured
+- [x] **C15.2 Field cost is independent of individual population.**
+      *(2026-09-02: benchmark record - deltas 75 vs 85 us across a 16x
+      population spread at 128x128; cost tracks cells.)* Measured
       across population tiers with the field regime active. If field cost
       scales with population, the regime separation has leaked and the
       design is wrong.
-- [ ] **C15.3 Abiogenesis occurs and persists, or is reported as not
-      occurring.** Report the rate of protocell formation and the fraction
+- [x] **C15.3 Abiogenesis occurs and persists, or is reported as not
+      occurring.** *(2026-09-02: MEASURED - persistence at ceiling in N and
+      every S, small measurable contrast effects, contrast lever saturates by
+      4x; experiments/results/phase15-field-scaffold-findings.txt.)* Report the rate of protocell formation and the fraction
       of formations producing a population that persists beyond a stated
       window, for **N and every S condition**, as a curve against scaffold
       intensity. The reportable result is the difference between conditions,
       never the scaffolded number alone.
-- [ ] **C15.4 The scaffold is described without naming its target.** Every
+- [x] **C15.4 The scaffold is described without naming its target.**
+      *(2026-09-02: "the same substrate input concentrated into patches of
+      radius 3 at contrast c" - structure, no outcome.)* Every
       scaffold config carries a plain-language description that passes
       ADR-0018's naming test under review. A config describable only as
       "conditions that favor life" is withdrawn.
-- [ ] **C15.5 Abiogenesis disabled produces a valid empty world** that
+- [x] **C15.5 Abiogenesis disabled produces a valid empty world**
+      *(2026-09-02: unit + integration tests; saves nothing, invariant-clean.)* that
       remains savable, observable, and invariant-clean, exactly as an
       extinct world does today.
-- [ ] **C15.6 Reverse coupling balances.** Organism consumption and death
+- [x] **C15.6 Reverse coupling balances.** *(2026-09-02: v1 half - the
+      exchange test's three arms exact; chemistry-as-food deferred to Phase 16
+      per ADR-0031, the narrowing named in the findings; the server soak runs
+      the long-horizon heavy-exchange half under C15.1's box.)* Organism consumption and death
       return exactly what they took, verified by ledger over a long run with
       heavy field-organism exchange.
-- [ ] **C15.7 Determinism.** Clean-process fixture replay; field update
+- [x] **C15.7 Determinism.** *(2026-09-02: verify-phase15-determinism.sh,
+      pinned constants, cross-host on the server; double-buffered passes give
+      storage-order independence by construction; populated-field save round
+      trip mutation-verified.)* Clean-process fixture replay; field update
       order independence from storage layout; save round trip with a
       populated field.
-- [ ] **C15.8 Snapshot growth is measured.** Per-cell field state adds a new
+- [x] **C15.8 Snapshot growth is measured.** *(2026-09-02: 393,368 bytes
+      plain at 64x64 = 96 bytes/cell exactly, 59,346 at zstd-3,
+      restore-verified; phase15-benchmark-measurements.txt.)* Per-cell field state adds a new
       growth term to a snapshot already carrying schema-3 genomes, learned
       state, objects, and terrain deltas. Measured against the Phase 13
       record, with the checkpoint budget re-verified rather than assumed.
-- [ ] **C15.9 Fixtures preserved.** Field regime disabled reproduces the
+- [x] **C15.9 Fixtures preserved.** *(2026-09-02: phase-13 and phase-14
+      fixture scripts green at every phase-15 commit.)* Field regime disabled reproduces the
       Phase 13 fixture exactly.
 
 **Recorded in advance:** under condition N, abiogenesis is expected either

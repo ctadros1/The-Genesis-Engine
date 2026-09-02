@@ -1,0 +1,123 @@
+PHASE 15 FIELD-SCAFFOLD FINDINGS (C15.3)
+=========================================================================
+Campaign phase15-field-scaffold, hash 0x23fe72d94e66b6db: 5 conditions x
+30 matched seeds (16001..16032 minus 16005/16009 - the pre-registered
+amendment; preflight refused those two for sub-minimum land fractions
+before any world ran), 60,000 ticks, 64x64 cells, 150 worlds, 0 failed.
+Read ONLY through experiments/phase15-field-preregistration.md (LOCKED
+and committed at 2feda75, seed amendment 960cbc0, both before any
+campaign world ran). Reduction: phase15-field-reduction.py beside this
+file, recomputable from the archived run at
+runs/phase15-field-scaffold-0x23fe72d94e66b6db (11 MB: 150 .alfd series
++ 150 end snapshots + manifest + batch log).
+
+Run integrity: the campaign was started, stopped at 8 worlds for a
+performance refactor of the microbial pass (derived caches, ccd1dcb),
+and rerun from scratch on the optimized binary. The refactor is
+arithmetic-identical (every pinned fixture hash unchanged) and the 8
+first-run series are byte-identical to the same worlds in the final run
+- determinism makes the restart a non-event, and both halves of that
+sentence were checked, not assumed. Wall time 482.7 s, 18,643 aggregate
+ticks/s, 8 workers. In-run conservation: World::check_invariants
+enforced the exact field identity every 5,000 ticks in all 150 worlds;
+the reduction independently re-verified produced + deposited ==
+chemistry + microbial at the final sample of every world. All exact.
+
+THE PRE-REGISTERED OBSERVABLES (verbatim reduction output)
+-------------------------------------------------------------------------
+# condition persistent/30 median_rate_per_1e6_cell_ticks median_sustainment median_occupancy
+N  30/30 131.514 52.680 1.0000
+S1 30/30 129.657 53.365 1.0000
+S2 30/30 129.659 53.326 1.0000
+S3 30/30 129.659 53.326 1.0000
+S4 30/30 129.659 53.326 1.0000
+# differences from N (S minus N)
+S1-N persistent +0 rate -1.858 sustainment +0.685 occupancy +0.0000
+S2-N persistent +0 rate -1.855 sustainment +0.646 occupancy +0.0000
+S3-N persistent +0 rate -1.855 sustainment +0.646 occupancy +0.0000
+S4-N persistent +0 rate -1.855 sustainment +0.646 occupancy +0.0000
+
+READING, AGAINST THE LOCKED EXPECTATIONS
+-------------------------------------------------------------------------
+1. THE PERSISTENCE CEILING, AS PRE-REGISTERED. Every condition,
+   including neutral N, carries a persistent self-sustaining microbial
+   population in 30/30 worlds: formation fires everywhere (median ~130
+   firings per 10^6 cell-ticks), the standing density is ~53x
+   everything abiogenesis ever seeded (growth-dominated, not
+   re-seeding-dominated), and every cell of every world is occupied at
+   the horizon. The persistence curve against scaffold intensity is
+   FLAT AT THE CEILING, and per the pre-registration the flat curve is
+   the reported result. The phase plan's a-priori expectation - that
+   under N abiogenesis never fires usefully or does not persist - DOES
+   NOT HOLD at the shipped rate constants; the pre-registration
+   recorded this from the fixture before the campaign, and the campaign
+   confirms it at scale. It is a fact about the chosen rate regime
+   (growth 2-6% per step against 1% death over an accumulating
+   substrate), not a tuned outcome: nothing was adjusted after seeing
+   the data.
+
+2. THE CONTRAST DIRECTION IS MEASURABLE AND SMALL. Concentrating the
+   same production into patches LOWERS total formation slightly (about
+   -1.86 per 10^6 cell-ticks, -1.4% versus N) and RAISES sustainment
+   slightly (+0.65..+0.69 on 52.7, about +1.3%). At equal production
+   totals, patchiness trades a little formation for a little
+   per-seeded-milli sustainment; both differences are far from the
+   persistence margin at these rates. A plausible mechanism - patch
+   cells sitting at the abiogenesis rate cap while off-patch substrate
+   thins - is consistent with the numbers but was not separately
+   instrumented; it is a hypothesis, not a finding.
+
+3. INSTRUMENT FINDING: THE CONTRAST LEVER SATURATES BY 4x. On all 30
+   seeds, the S2 (4x), S3 (8x) and S4 (16x) worlds are BYTE-IDENTICAL
+   trajectories - every field series sample equal, every recorded total
+   equal; their state checksums differ only because state_checksum
+   folds in config_hash and the stored contrast word differs. The
+   integer production-weight redistribution evidently floors the
+   background share to the same value at contrast >= 4x with radius 3
+   on a 64x64 map, so "4x", "8x" and "16x" are all the same
+   fully-concentrated arm. The intended five-point curve is effectively
+   three points: uniform, 2x, fully-concentrated. ANY FUTURE SCAFFOLD
+   SWEEP at this radius/map must sweep below 4x (or vary radius) to
+   place more than one interior point on the curve. Recorded as a
+   methods finding; the three distinct points still bracket the lever's
+   whole range, so C15.3's curve-with-controls requirement is met.
+
+4. C15.4 NAMING TEST. The scaffold description - "the same substrate
+   input concentrated into patches of radius 3 at contrast c" - names
+   an environmental structure and no outcome. The campaign's conditions
+   differ from N only in the two scaffold fields (the vary declaration
+   and per-world config hashes agree).
+
+NAMED NARROWINGS (ADR-0031 coupling v1)
+-------------------------------------------------------------------------
+- Chemistry-as-food is DEFERRED: organisms in this campaign are
+  present but fully decoupled (both coupling fractions zero), and
+  C15.6's exchange test certifies the organism-to-field direction only
+  (excretion and remains through the counted deposit term).
+  Field-to-organism materialization is Phase 16's, stream 20 reserved.
+- The abiogenesis temperature term ships implicitly at weight zero
+  (the rate reads the three substrate concentrations only).
+- The aggregation axis is registry-real but behaviourally inert in v1
+  (a heritable class dimension with no spatial pass yet).
+
+CRITERIA STATUS AFTER THIS CAMPAIGN
+-------------------------------------------------------------------------
+- C15.3 MEASURED - this file. Formation occurs and persists in N and
+  every S; the curve and its differences are the record.
+- C15.1: exact in-run and in-reduction across all 150 campaign worlds;
+  the 10^6-tick soak (phase15-c151-ledger-soak, full stack including
+  both coupling fractions, invariant checked every 5,000 ticks) is
+  running on the server - its result completes this criterion.
+- C15.2: the benchmark record (phase15-benchmark-measurements.txt)
+  shows field cost tracking cells, not population (deltas 75 vs 85 us
+  across a 16x population spread at 128x128).
+- C15.5: the disabled/empty-world tests (phase15_chemistry.rs).
+- C15.6 (v1 half): the exchange test, all three arms, exact.
+- C15.7: verify-phase15-determinism.sh (clean-process replay, pinned
+  constants, scaffold distinct-lineage, phase-14 preservation) - also
+  passed on the server host, so the field regime replays cross-host.
+- C15.8: the snapshot record - 393,368 bytes plain at 64x64 (96
+  bytes/cell exactly: 32 chemistry + 64 microbial), 59,346 at zstd-3,
+  restore-verified.
+- C15.9: every prior fixture byte-identical throughout the phase
+  (verify-phase13/14 green at every commit).
