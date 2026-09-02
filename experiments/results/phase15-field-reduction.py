@@ -20,7 +20,9 @@ from pathlib import Path
 from statistics import median
 
 CONDITIONS = ["N", "S1", "S2", "S3", "S4"]
-SEEDS = list(range(16001, 16031))
+# 16001..16032 excluding 16005 and 16009 - the pre-registration's
+# recorded seed amendment (preflight refused the two before any world ran).
+SEEDS = [seed for seed in range(16001, 16033) if seed not in (16005, 16009)]
 TICKS = 60_000
 INTERVAL = 500
 EXPECTED_SAMPLES = TICKS // INTERVAL  # ticks 500..60000 inclusive

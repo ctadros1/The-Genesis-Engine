@@ -20,8 +20,16 @@ never a scaffolded number alone (ADR-0018).
 ## World and base configuration
 
 64x64 cells, phase-1 preset, 40 organisms, 60,000 ticks, 30 seeds per
-condition (16001..16030, disjoint from every prior decision range), the
-same seeds in every condition. The field stack: chemistry enabled at one
+condition (16001..16032 excluding 16005 and 16009, disjoint from every
+prior decision range), the same seeds in every condition.
+
+*Seed amendment, recorded 2026-09-02 before any campaign world ran:*
+the range as first locked was 16001..16030; the campaign preflight
+refused seeds 16005 and 16009 - both generate land fractions below the
+worldgen minimum at 64x64 - and refused to run the whole design, so
+zero worlds and zero data existed at amendment time. The two ungenerable
+seeds are replaced by 16031 and 16032 (the next generable values, probed
+by 1-tick world generation). Nothing else changed. The field stack: chemistry enabled at one
 field step per tick, microbial classes 2x2x2, abiogenesis enabled, all
 rate constants at their shipped defaults except `mutation_q16 = 4096` -
 the shipped default (66) truncates to zero for densities below 993

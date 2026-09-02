@@ -5,11 +5,14 @@
 # construction; only its placement varies. Both coupling fractions stay
 # zero so organisms and field cannot touch each other and every
 # between-condition difference is the production placement's alone.
-# Seeds 16001..16030, disjoint from every prior decision range.
+# Seeds 16001..16032 excluding 16005 and 16009 (30 seeds, disjoint from
+# every prior decision range): the campaign's preflight refused those two
+# before any world ran - both generate land fractions below the worldgen
+# minimum at 64x64 - and the pre-registration records the amendment.
 campaign phase15-field-scaffold
 ticks 60000
 workers 8
-seeds 16001..16030
+seeds 16001..16004 16006..16008 16010..16032
 check-interval 5000
 base preset phase1
 base cells_x 64
