@@ -40,7 +40,8 @@ Recognition run   The C13.7 campaign (experiments/phase13-recognition
                   .campaign, hash 0x33099bb271e99cde): 60 worlds (A and C
                   x 30 seeds 13101..13130) at event schema 8, run on the
                   VM at 9b75bb6, 9,776.9 s wall, 368.2 t/s, 0 failed. Its
-                  reading is the last section of this file.
+                  reading is section 7; its report and manifest are
+                  phase13-recognition-{report,manifest}.txt here.
 
 ================================================================
 THE PRIMARY IS THE PRE-REGISTERED EXPECTED NULL, ON BOTH REQUIRED
@@ -61,7 +62,8 @@ SPEAKERS AND A NAIVE COHORT AT THE HORIZON.
   C13.5   Undefined by its own wording: no two identified variants.
   C13.6   Zero identified socially-acquired improvements; reported
           descriptively.
-  C13.7   [pending - filled by the follow-up commit, see section 7]
+  C13.7   A 2 of 30 clear the scale-permutation null (bar 20); C 1 of
+          30 (the control holds). UNMET - the addendum's expected null.
   C13.8   A 10 of 30, C 10 of 30, exactly arm-symmetric. UNMET.
   C13.9   6 of 30 (bar 20), p = 1.000, mean -234 milli. UNMET -
           the addendum's expected null.
@@ -239,10 +241,28 @@ they contain is the flat curve of section 3.
 7. C13.7 - RECOGNITION (ADDENDUM RULES, SCHEMA-8 CAMPAIGN)
 ----------------------------------------------------------------
 
-[PENDING - the VM reading of campaign 0x33099bb271e99cde was in
-progress when the confirmatory sections above were committed; this
-section is filled by the follow-up commit that carries
-phase13-recognition-report.txt.]
+The schema-8 campaign (60 worlds, A and C x seeds 13101..13130, run on
+the VM, 0 failed) read through `lifesim recognition` at analysis seed
+0x1373: per Damage event, the attacker-to-target body-scale similarity
+against the attacker's candidate mean, decided per world by
+|mean_delta_milli| > the 200-shuffle scale-permutation null's p95.
+
+  A  2 of 30 worlds clear their null (bar 20 of 30).        UNMET.
+  C  1 of 30 (the criterion requires C NOT to reach 20/30 -
+     the cue-ablated control holds).
+
+The addendum's expected null, and a well-powered one: median 112,261
+usable attacks per A world (106,559 under C), zero unusable worlds,
+per-world deltas spanning only -3..+2 milli against permutation nulls
+with median p95 of 1 milli. Attackers strike targets whose visible
+scale is statistically indistinguishable from their candidate set's -
+aggression is not directed by the one phenotype cue the schema-8
+instrument can see. missing_phenotype counted 516 (A) / 367 (C) of
+~3.3M attacks - founders and pre-schema-8 edge cases, counted never
+imputed. The claim ceiling stands: this measures discrimination
+correlated with cue-visible phenotype, never mechanism; the deviation
+recorded in the addendum (C as the cue-ablated control, since no
+cue-scramble config exists) applies to this reading.
 
 ----------------------------------------------------------------
 8. C13.8 / C13.9 / C13.10 - THE CONFLICT ADDENDUM'S READINGS

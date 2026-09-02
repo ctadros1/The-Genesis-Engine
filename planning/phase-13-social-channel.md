@@ -3,10 +3,10 @@
 Status: mechanism BUILT (2026-09-01, ADR-0029, D-122); behavioral criteria
 MEASURED (2026-09-02, D-126, campaign `0x5a0ee0ccb8d48df7`, findings at
 `experiments/results/phase13-social-confirmatory-findings.txt`). **C13.1,
-C13.3, C13.8 and C13.9 are UNMET as the pre-registered expected nulls,
-with controls - and the censuses make C13.1 a transmission null, not a
-reachability null** (every decision-arm world carries hearers, speakers
-and a naive cohort at the horizon). C13.4 landed on its third outcome
+C13.3, C13.7, C13.8 and C13.9 are UNMET as the pre-registered expected
+nulls, with controls - and the censuses make C13.1 a transmission null,
+not a reachability null** (every decision-arm world carries hearers,
+speakers and a naive cohort at the horizon). C13.4 landed on its third outcome
 (both A and S fail; scaffolding controlled). C13.11 PASSED. The campaign's
 three unplanned findings: speaker depletion under emission billing (the
 named lever for the next iteration), the fidelity exposure delta present
@@ -206,6 +206,11 @@ demanding behavioral criteria.
       no genotype-distance channel available. Under a cue-scrambled control
       the discrimination disappears. Absent this, nothing below is
       interpretable as group-structured.
+      **UNMET, measured, 2026-09-02: A 2 of 30 clear the
+      scale-permutation null (bar 20), C 1 of 30 (the control holds)** -
+      the addendum's expected null on a median 112k usable attacks per
+      world (campaign `0x33099bb271e99cde`, schema 8; the C-as-ablation
+      deviation is recorded in the addendum; D-126).
 - [ ] **C13.8 Persistent interaction communities.** Repeated-association
       networks built from the event log show communities that persist beyond
       the stated window, and are not explained by spatial proximity alone
