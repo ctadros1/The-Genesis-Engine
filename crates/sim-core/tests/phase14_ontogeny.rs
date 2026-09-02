@@ -183,7 +183,11 @@ fn an_unfinished_juvenile_never_becomes_a_parent() {
     // so low it cannot finish inside the window, while everything else
     // (one-module, born grown) breeds normally around it.
     let mut config = ontogeny_config(SEED ^ 0x77);
-    config.physiology.growth_rate_milli_per_s = 1;
+    // The floor rate (one milli per tick at this dt - anything lower is
+    // refused as flooring to zero) against a price that makes the first
+    // module alone cost thousands of milli: growth runs but can never
+    // finish inside the window.
+    config.physiology.growth_rate_milli_per_s = 10;
     config.physiology.growth_cost_milli_per_mass_milli = 10_000;
     let (mut world, _body) = spliced_world(&config);
     let spliced_id = {

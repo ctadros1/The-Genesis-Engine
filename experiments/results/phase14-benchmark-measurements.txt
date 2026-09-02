@@ -1,0 +1,4 @@
+# phase14-local-20260902T075800Z
+# benchmark schema 10: PHASE14-BENCH markers, medians over 500 ticks after 100 warmup
+PHASE14-BENCH physiology-tick founders=200 disabled_us=94.1 disabled_population=190 steady_us=74.9 steady_population=190 growing_us=78.0 growing_juveniles=179 modules_grown=596 choosing_us=84.7 choices=31 choosing_population=208
+PHASE14-BENCH physiology-tick founders=1000 disabled_us=281.7 disabled_population=843 steady_us=286.7 steady_population=843 growing_us=296.9 growing_juveniles=787 modules_grown=2918 choosing_us=426.5 choices=381 choosing_population=976

@@ -1915,6 +1915,18 @@ impl SimConfig {
                 if physiology.growth_rate_milli_per_s <= 0 {
                     return Err(ConfigError::NonPositive("growth_rate_milli_per_s"));
                 }
+                // The growth pass budgets `rate * dt_ms / 1000` whole milli
+                // per tick; a rate that truncates to zero at this dt asks
+                // for growth and silently gets none - refused rather than
+                // inert, like every other gate in this section (found by
+                // the Phase 14 benchmark's growing arm, whose juveniles
+                // scanned forever and never paid a milli).
+                if physiology.growth_rate_milli_per_s * i64::from(self.dt_ms) < 1_000 {
+                    return Err(ConfigError::PhysiologyRange(
+                        "growth_rate_milli_per_s floors to zero at this dt_ms",
+                        physiology.growth_rate_milli_per_s,
+                    ));
+                }
             }
             // Phase 14 mate choice (ADR-0030). Refused rather than inert
             // when its preconditions are missing, for the reason ontogeny
