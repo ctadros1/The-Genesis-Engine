@@ -67,7 +67,11 @@ culture campaigns already ran in a regulated world.
 
 ## Determinism Notes
 
-- New streams: `Development` (15), `Mortality` (16).
+- No new streams (ADR-0030 corrects this plan's original note: 15 is
+  `TerrainMod` since Phase 12 and 16 is `Mortality` since Phase 8).
+  Growth is deterministic and energy-gated; mate-choice scramble draws
+  use the `Perception` stream (12), reserved by ADR-0029 for exactly a
+  later preference mechanism.
 - Developmental progress, accumulated hazard, and disease load are fixed
   point (Rule 7); all three accumulate over a lifetime.
 - Disease transmission draws use `lifesim-pairkey-v1`, so an infection event
