@@ -1092,6 +1092,8 @@ pub struct World {
     ontogeny: Option<crate::ontogeny::OntogenyState>,
     /// Phase 14 mate-choice state; `None` exactly when the gate is off.
     matechoice: Option<crate::matechoice::MateChoiceState>,
+    /// Phase 15 chemistry field; `None` exactly when the section is off.
+    chemistry: Option<crate::chemistry::ChemistryState>,
     /// Phase 11 learned state; `None` exactly when
     /// `config.plasticity.enabled` is false, so a disabled world compiles no
     /// plastic edge, runs an empty learn phase, and appends nothing to the
@@ -1205,6 +1207,7 @@ impl World {
             morphology: None,
             ontogeny: None,
             matechoice: None,
+            chemistry: None,
             learn: None,
             action_census: None,
             objects: None,
@@ -1453,6 +1456,16 @@ impl World {
                 world.ids.len(),
             );
             world.social = Some(crate::social::SocialState::from_table(table));
+        }
+        // Phase 15: the chemistry field starts empty; everything in it
+        // arrives through a counted term. Constructed at top level - the
+        // field needs no genome, no phase 2, nothing but the raster.
+        if world.config.chemistry.enabled {
+            world.chemistry = Some(crate::chemistry::ChemistryState::new(
+                world.config.cells_x,
+                world.config.cells_y,
+                &world.config.chemistry,
+            ));
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -1872,6 +1885,10 @@ impl World {
 
     pub(crate) fn matechoice_state(&self) -> Option<&crate::matechoice::MateChoiceState> {
         self.matechoice.as_ref()
+    }
+
+    pub(crate) fn chemistry_state(&self) -> Option<&crate::chemistry::ChemistryState> {
+        self.chemistry.as_ref()
     }
 
     /// Read-only view of Phase 11 learned state, `None` when the plasticity
@@ -2417,6 +2434,7 @@ impl World {
         social: Option<crate::social::SocialState>,
         ontogeny: Option<crate::ontogeny::OntogenyState>,
         matechoice: Option<crate::matechoice::MateChoiceState>,
+        chemistry: Option<crate::chemistry::ChemistryState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -2439,6 +2457,7 @@ impl World {
         self.morphology = morphology;
         self.ontogeny = ontogeny;
         self.matechoice = matechoice;
+        self.chemistry = chemistry;
         // Learned state comes from the save, like every other subsystem here.
         //
         // It did not, for one stage: this rebuilt the rows from the restored
@@ -2604,6 +2623,7 @@ impl World {
 
         observer.phase_started(TickPhase::Environment);
         self.step_climate(next_tick);
+        self.step_chemistry();
         self.grow_food();
         // Phase 12 artifact half: material yield regenerates on its cadence.
         // Empty and free when the section is disabled.
@@ -3022,6 +3042,19 @@ impl World {
     /// Advance moisture and, on the configured cadence, reclassify biomes.
     /// Empty when the climate section is disabled, so the environment phase
     /// costs exactly what it did before Phase 6.
+    /// Phase 15: the chemistry field's steps for one world tick. Runs in
+    /// the environment phase beside climate; `field_steps_per_tick` field
+    /// steps advance per world tick (ADR-0020's abstraction, hashed).
+    fn step_chemistry(&mut self) {
+        let Some(chemistry) = self.chemistry.as_mut() else {
+            return;
+        };
+        let config = self.config.chemistry;
+        for _ in 0..config.field_steps_per_tick {
+            chemistry.step(self.config.cells_x, self.config.cells_y, &config);
+        }
+    }
+
     fn step_climate(&mut self, next_tick: u64) {
         if let Some(mut climate) = self.climate.take() {
             climate.step(
@@ -5601,6 +5634,9 @@ impl World {
         }
         if let Some(matechoice) = self.matechoice.as_ref() {
             matechoice.hash_into(&mut hasher);
+        }
+        if let Some(chemistry) = self.chemistry.as_ref() {
+            chemistry.hash_into(&mut hasher);
         }
         hasher.finish()
     }

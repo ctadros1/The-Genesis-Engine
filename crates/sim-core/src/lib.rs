@@ -22,6 +22,7 @@ mod actioncensus;
 mod artifact;
 mod checksum;
 mod climate;
+mod chemistry;
 mod config;
 mod contest;
 mod controller;
@@ -69,7 +70,8 @@ pub use config::{
     ArtifactConfig, BEHAVIOR_POLICY_VERSION, CONFIG_SCHEMA_VERSION, ClimateConfig, ConfigError,
     ContestConfig, Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_COMPOSITION_DEPTH, MAX_FRAGMENTS,
     MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION,
-    Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig, SocialConfig,
+    ChemistryConfig, Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig,
+    SocialConfig,
     WorldModConfig, WorldgenVersion,
 };
 pub use contest::{
@@ -130,6 +132,10 @@ pub use origin::{
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
 };
 pub use phase2::{PairRejectReason, Phase2Counters, SENSOR_RANGE_MAX_M};
+pub use chemistry::{
+    CHEMISTRY_POLICY_VERSION, ChemistryState, S_MONOMER, S_POLYMER, S_PRIMORDIAL, S_WASTE,
+    SUBSTRATE_COUNT, SUBSTRATE_REGISTRY_VERSION,
+};
 pub use matechoice::{MateChoiceSave, MateChoiceState};
 pub use ontogeny::{OntogenySave, OntogenyState, derive_prefix, growth_order};
 pub use physiology::{
@@ -157,7 +163,8 @@ pub use registry::{
 };
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
-    ActionCensusSaveState, ClimateSaveState, ContestSaveState, LearnSaveState, LearnedEdgeSave,
+    ActionCensusSaveState, ChemistrySave, ClimateSaveState, ContestSaveState, LearnSaveState,
+    LearnedEdgeSave,
     MorphologySaveState, Phase2SaveState, PhysiologySaveState, RestoreError, SAVE_STATE_VERSION,
     SaveState, Schema2SaveState,
 };

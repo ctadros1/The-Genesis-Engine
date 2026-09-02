@@ -237,6 +237,8 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         // Counters only, no per-organism array (the weights cache is
         // derived and lives outside the save).
         matechoice: _,
+        // Per cell, not per organism (Phase 15).
+        chemistry: _,
     } = state;
 
     per_organism!("ids", ids);
@@ -515,6 +517,8 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         // Counters only, no per-organism array (the weights cache is
         // derived and lives outside the save).
         matechoice: _,
+        // Per cell, not per organism (Phase 15).
+        chemistry: _,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);

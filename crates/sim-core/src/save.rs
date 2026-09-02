@@ -271,6 +271,22 @@ pub struct SaveState {
     /// Phase 14 mate-choice counters. Present exactly when the config's
     /// physiology section is enabled with its mate-choice gate on.
     pub matechoice: Option<crate::matechoice::MateChoiceSave>,
+    /// Phase 15 chemistry field. Present exactly when the section is
+    /// enabled. Stored, never recomputed (ADR-0020): the concentrations
+    /// and ledger cannot be derived from anything. The save twin carries
+    /// only logical state - the scratch buffer and the production weight
+    /// map are caches rebuilt on load.
+    pub chemistry: Option<ChemistrySave>,
+}
+
+/// The chemistry field's saved half: concentrations plus the ledger.
+#[derive(Clone, Debug, PartialEq)]
+pub struct ChemistrySave {
+    pub concentrations: Vec<i64>,
+    pub produced_milli: i128,
+    pub deposited_milli: i128,
+    pub seeded_out_milli: i128,
+    pub abiogenesis_fired_total: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -459,6 +475,13 @@ impl World {
             matechoice: self
                 .matechoice_state()
                 .map(|matechoice| matechoice.to_save()),
+            chemistry: self.chemistry_state().map(|chemistry| ChemistrySave {
+                concentrations: chemistry.concentrations.clone(),
+                produced_milli: chemistry.produced_milli,
+                deposited_milli: chemistry.deposited_milli,
+                seeded_out_milli: chemistry.seeded_out_milli,
+                abiogenesis_fired_total: chemistry.abiogenesis_fired_total,
+            }),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -1057,6 +1080,46 @@ impl World {
             }
         };
 
+        // Phase 15 chemistry. Presence must match the configuration; the
+        // saved arrays are checked structurally by name, and the derived
+        // caches (scratch, production weights) are rebuilt from config.
+        let rebuilt_chemistry = match (world.config().chemistry.enabled, state.chemistry) {
+            (true, Some(save)) => {
+                let config = *world.config();
+                let cells = config.cells_x as usize * config.cells_y as usize;
+                if save.concentrations.len() != cells * crate::chemistry::SUBSTRATE_COUNT {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "chemistry carries {} concentrations for {} cells",
+                        save.concentrations.len(),
+                        cells
+                    )));
+                }
+                if save.concentrations.iter().any(|&value| value < 0) {
+                    return Err(RestoreError::StateInvalid(
+                        "chemistry concentration is negative".to_owned(),
+                    ));
+                }
+                let mut chemistry = crate::chemistry::ChemistryState::new(
+                    config.cells_x,
+                    config.cells_y,
+                    &config.chemistry,
+                );
+                chemistry.concentrations = save.concentrations;
+                chemistry.produced_milli = save.produced_milli;
+                chemistry.deposited_milli = save.deposited_milli;
+                chemistry.seeded_out_milli = save.seeded_out_milli;
+                chemistry.abiogenesis_fired_total = save.abiogenesis_fired_total;
+                chemistry.rebuild_derived(config.cells_x, config.cells_y, &config.chemistry);
+                Some(chemistry)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "chemistry section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         // A restored organism wears its GROWN body, not its adult one. The
         // phenotypes rebuilt above came from full bodies (the only bodies
         // the morphology rebuild knows); re-applying the grown prefix here
@@ -1112,6 +1175,7 @@ impl World {
             rebuilt_social,
             rebuilt_ontogeny,
             rebuilt_matechoice,
+            rebuilt_chemistry,
         );
 
         // Step 5 of the restore order in

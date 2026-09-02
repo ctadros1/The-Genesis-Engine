@@ -154,6 +154,9 @@ pub struct SimConfig {
     /// offered, rule 5 is absent from the effective rule space, and nothing
     /// is appended to the config hash or the state checksum.
     pub social: SocialConfig,
+    /// Phase 15 chemistry field (ADR-0031). Inert when disabled; the
+    /// Phase 13 fixture reproduces exactly.
+    pub chemistry: ChemistryConfig,
 }
 
 /// Versioned Phase 12 artifact policy (`lifesim-artifact-v2`, ADR-0028;
@@ -861,6 +864,73 @@ impl PhysiologyConfig {
     }
 }
 
+/// Versioned Phase 15 chemistry-field policy (`lifesim-chemistry-v1`,
+/// ADR-0031). The field regime's chemistry half: four abstract substrates
+/// on the raster, a closed abiotic mass cycle, and the abiogenesis rate
+/// function. Everything fixed point; every rate is per FIELD step, and
+/// `field_steps_per_tick` of those run per world tick.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct ChemistryConfig {
+    pub enabled: bool,
+    /// Field steps per world tick; at least 1. Versioned config, hashed -
+    /// an abstraction, not a timescale claim (ADR-0020).
+    pub field_steps_per_tick: u32,
+    /// Per-neighbour outflow rate, Q16 per field step. Four neighbours,
+    /// so validation bounds it at a quarter of one to keep outflow below
+    /// the cell's own content.
+    pub diffusion_q16: u32,
+    /// S_PRIMORDIAL -> S_MONOMER abiotic rate, Q16 per field step.
+    pub reaction_monomer_q16: u32,
+    /// S_WASTE -> S_PRIMORDIAL recycling rate, Q16 per field step.
+    pub reaction_recycle_q16: u32,
+    /// Abiotic S_PRIMORDIAL input, milli per cell-average per field step;
+    /// counted in the chemistry ledger as production, so C15.1's identity
+    /// stays exact. The scaffold redistributes this same total.
+    pub production_milli_per_step: i64,
+    /// ADR-0018 scaffold: 0 radius = uniform production (the N arm);
+    /// otherwise production concentrates into patches on a regular grid
+    /// of centres (spacing four radii), total held constant.
+    pub scaffold_patch_radius_cells: u32,
+    /// Production multiplier inside patches, Q16; outside cells share the
+    /// remainder so the total is unchanged. Q16_ONE means no contrast.
+    pub scaffold_patch_contrast_q16: u32,
+    /// The abiogenesis rate function's gate and parameters.
+    pub abiogenesis_enabled: bool,
+    /// Q16 weights over the rate inputs (primordial, monomer, polymer
+    /// surface term), applied to milli concentrations; the sum, capped,
+    /// becomes the per-cell firing probability in Q16 per field step.
+    pub abiogenesis_weight_primordial_q16: u32,
+    pub abiogenesis_weight_monomer_q16: u32,
+    pub abiogenesis_weight_polymer_q16: u32,
+    /// Probability cap, Q16 per field step.
+    pub abiogenesis_cap_q16: u32,
+    /// Density seeded into the founder class on a firing, milli; the same
+    /// mass is debited from S_PRIMORDIAL, so genesis conserves. A firing
+    /// with less S_PRIMORDIAL present than this seeds nothing.
+    pub abiogenesis_seed_milli: i64,
+}
+
+impl ChemistryConfig {
+    pub fn chemistry_default() -> Self {
+        Self {
+            enabled: false,
+            field_steps_per_tick: 1,
+            diffusion_q16: 3_277, // 0.05 per neighbour per step
+            reaction_monomer_q16: 655, // 0.01
+            reaction_recycle_q16: 1_311, // 0.02
+            production_milli_per_step: 2,
+            scaffold_patch_radius_cells: 0,
+            scaffold_patch_contrast_q16: Q16_ONE,
+            abiogenesis_enabled: false,
+            abiogenesis_weight_primordial_q16: 66,
+            abiogenesis_weight_monomer_q16: 131,
+            abiogenesis_weight_polymer_q16: 262,
+            abiogenesis_cap_q16: 655, // 0.01 per cell per step at the cap
+            abiogenesis_seed_milli: 1_000,
+        }
+    }
+}
+
 /// Versioned Phase 7 contest policy (`contest-behavior-v1`). Every value is
 /// experimental policy, hashed only when `enabled` is true.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1209,6 +1279,7 @@ impl SimConfig {
             probe: ProbeConfig::probe_default(),
             artifact: ArtifactConfig::artifact_default(),
             social: SocialConfig::social_default(),
+            chemistry: ChemistryConfig::chemistry_default(),
         }
     }
 
@@ -1953,6 +2024,55 @@ impl SimConfig {
                 ));
             }
         }
+        // Phase 15 chemistry field (ADR-0031). Refused rather than inert
+        // when a value asks for something the update cannot deliver.
+        let chemistry = &self.chemistry;
+        if chemistry.enabled {
+            if chemistry.field_steps_per_tick == 0 {
+                return Err(ConfigError::NonPositive("field_steps_per_tick"));
+            }
+            // Four neighbours each taking `diffusion_q16` must leave the
+            // cell non-negative: bound the per-neighbour rate strictly
+            // below a quarter.
+            if chemistry.diffusion_q16 >= Q16_ONE / 4 {
+                return Err(ConfigError::FractionOutOfRange(
+                    "chemistry.diffusion_q16",
+                    chemistry.diffusion_q16,
+                ));
+            }
+            if chemistry.reaction_monomer_q16 > Q16_ONE
+                || chemistry.reaction_recycle_q16 > Q16_ONE
+                || chemistry.abiogenesis_cap_q16 > Q16_ONE
+                || chemistry.scaffold_patch_contrast_q16 == 0
+            {
+                return Err(ConfigError::PhysiologyRange(
+                    "chemistry rate outside its range",
+                    0,
+                ));
+            }
+            if chemistry.production_milli_per_step < 0 {
+                return Err(ConfigError::Negative("production_milli_per_step"));
+            }
+            if chemistry.abiogenesis_enabled && chemistry.abiogenesis_seed_milli <= 0 {
+                return Err(ConfigError::NonPositive("abiogenesis_seed_milli"));
+            }
+            if chemistry.scaffold_patch_radius_cells > 0 {
+                let span = 4 * chemistry.scaffold_patch_radius_cells;
+                if span >= self.cells_x || span >= self.cells_y {
+                    return Err(ConfigError::PhysiologyRange(
+                        "scaffold_patch_radius_cells spans the map",
+                        i64::from(chemistry.scaffold_patch_radius_cells),
+                    ));
+                }
+            }
+        } else if chemistry.abiogenesis_enabled {
+            // A condition arm switched on with the section off is refused
+            // rather than treated as off, exactly as a social condition is.
+            return Err(ConfigError::PhysiologyRange(
+                "abiogenesis_enabled is set while chemistry.enabled is false",
+                0,
+            ));
+        }
         Ok(())
     }
 
@@ -2387,6 +2507,26 @@ impl SimConfig {
                 hasher.update(b"lifesim-physiology-v2-mate-choice");
                 hasher.update_u32(u32::from(self.physiology.mate_choice_scramble));
             }
+        }
+        // Phase 15 section: hashed only when enabled, so every hash issued
+        // before the chemistry field existed is unchanged.
+        if self.chemistry.enabled {
+            hasher.update(b"lifesim-chemistry-config");
+            hasher.update(crate::chemistry::CHEMISTRY_POLICY_VERSION.as_bytes());
+            hasher.update_u32(u32::from(crate::chemistry::SUBSTRATE_REGISTRY_VERSION));
+            hasher.update_u32(self.chemistry.field_steps_per_tick);
+            hasher.update_u32(self.chemistry.diffusion_q16);
+            hasher.update_u32(self.chemistry.reaction_monomer_q16);
+            hasher.update_u32(self.chemistry.reaction_recycle_q16);
+            hasher.update_i64(self.chemistry.production_milli_per_step);
+            hasher.update_u32(self.chemistry.scaffold_patch_radius_cells);
+            hasher.update_u32(self.chemistry.scaffold_patch_contrast_q16);
+            hasher.update_u32(u32::from(self.chemistry.abiogenesis_enabled));
+            hasher.update_u32(self.chemistry.abiogenesis_weight_primordial_q16);
+            hasher.update_u32(self.chemistry.abiogenesis_weight_monomer_q16);
+            hasher.update_u32(self.chemistry.abiogenesis_weight_polymer_q16);
+            hasher.update_u32(self.chemistry.abiogenesis_cap_q16);
+            hasher.update_i64(self.chemistry.abiogenesis_seed_milli);
         }
         // Phase 9 section: hashed only when enabled, so a schema-1 config
         // hashes exactly as it did before schema 2 existed and every earlier

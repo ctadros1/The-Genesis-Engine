@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_10;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_11;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -101,6 +101,11 @@ pub const FORMAT_VERSION_9: u16 = 9;
 /// gates to the config body and introduces `SECTION_MATECHOICE`. Guarded
 /// by name wherever it gates, permanently (D-108).
 pub const FORMAT_VERSION_10: u16 = 10;
+
+/// Format 11 (Phase 15, ADR-0031): appends the chemistry config block and
+/// introduces `SECTION_CHEMISTRY`. Guarded by name wherever it gates,
+/// permanently (D-108).
+pub const FORMAT_VERSION_11: u16 = 11;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -286,6 +291,9 @@ const SECTION_ONTOGENY: u16 = 17;
 /// Phase 14 mate-choice counters (format 10): the section is counters
 /// only - the weights cache is expressed from genomes on load.
 const SECTION_MATECHOICE: u16 = 18;
+/// Phase 15 chemistry field (format 11): per-cell substrate
+/// concentrations plus the chemistry ledger. Stored, never recomputed.
+const SECTION_CHEMISTRY: u16 = 19;
 /// Bytes one object's fixed fields occupy: the bound a declared object count
 /// implies before any composition list is read.
 const OBJECT_FIXED_BYTES: u64 =
@@ -891,6 +899,10 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_10 {
         encode_matechoice_config(&mut writer, config);
     }
+    // Format 11's block, on the same terms again.
+    if format >= FORMAT_VERSION_11 {
+        encode_chemistry_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1084,6 +1096,52 @@ fn decode_matechoice_config(
 ) -> Result<(), CodecError> {
     config.physiology.mate_choice_enabled = reader.u8()? != 0;
     config.physiology.mate_choice_scramble = reader.u8()? != 0;
+    Ok(())
+}
+
+/// The format-11 chemistry block, one field per line in declaration
+/// order, swept by `config_field_coverage.rs` like every block before it.
+fn encode_chemistry_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    let chemistry = &config.chemistry;
+    writer.u8(u8::from(chemistry.enabled));
+    writer.u32(chemistry.field_steps_per_tick);
+    writer.u32(chemistry.diffusion_q16);
+    writer.u32(chemistry.reaction_monomer_q16);
+    writer.u32(chemistry.reaction_recycle_q16);
+    writer.i64(chemistry.production_milli_per_step);
+    writer.u32(chemistry.scaffold_patch_radius_cells);
+    writer.u32(chemistry.scaffold_patch_contrast_q16);
+    writer.u8(u8::from(chemistry.abiogenesis_enabled));
+    writer.u32(chemistry.abiogenesis_weight_primordial_q16);
+    writer.u32(chemistry.abiogenesis_weight_monomer_q16);
+    writer.u32(chemistry.abiogenesis_weight_polymer_q16);
+    writer.u32(chemistry.abiogenesis_cap_q16);
+    writer.i64(chemistry.abiogenesis_seed_milli);
+}
+
+/// Bytes the format-11 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT11_CONFIG_BYTES: usize = 1 + 4 * 4 + 8 + 4 * 2 + 1 + 4 * 4 + 8;
+
+fn decode_chemistry_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    let chemistry = &mut config.chemistry;
+    chemistry.enabled = reader.u8()? != 0;
+    chemistry.field_steps_per_tick = reader.u32()?;
+    chemistry.diffusion_q16 = reader.u32()?;
+    chemistry.reaction_monomer_q16 = reader.u32()?;
+    chemistry.reaction_recycle_q16 = reader.u32()?;
+    chemistry.production_milli_per_step = reader.i64()?;
+    chemistry.scaffold_patch_radius_cells = reader.u32()?;
+    chemistry.scaffold_patch_contrast_q16 = reader.u32()?;
+    chemistry.abiogenesis_enabled = reader.u8()? != 0;
+    chemistry.abiogenesis_weight_primordial_q16 = reader.u32()?;
+    chemistry.abiogenesis_weight_monomer_q16 = reader.u32()?;
+    chemistry.abiogenesis_weight_polymer_q16 = reader.u32()?;
+    chemistry.abiogenesis_cap_q16 = reader.u32()?;
+    chemistry.abiogenesis_seed_milli = reader.i64()?;
     Ok(())
 }
 
@@ -1329,6 +1387,12 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // by anything but distance.
     if format >= FORMAT_VERSION_10 {
         decode_matechoice_config(&mut *reader, &mut config)?;
+    }
+    // Format 11's block. Left at its defaults for an older body - the
+    // whole section off - the same resolution-not-invention as always: no
+    // build that could write a format-10 file held a chemistry field.
+    if format >= FORMAT_VERSION_11 {
+        decode_chemistry_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -1720,6 +1784,18 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
         section.u64(matechoice.choices_total);
         section.u64(matechoice.scrambled_choices_total);
         write_section(&mut payload, SECTION_MATECHOICE, 0, section.0);
+    }
+    if let Some(chemistry) = state.chemistry.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(chemistry.concentrations.len() as u64);
+        for &value in &chemistry.concentrations {
+            section.i64(value);
+        }
+        section.i128(chemistry.produced_milli);
+        section.i128(chemistry.deposited_milli);
+        section.i128(chemistry.seeded_out_milli);
+        section.u64(chemistry.abiogenesis_fired_total);
+        write_section(&mut payload, SECTION_CHEMISTRY, 0, section.0);
     }
     payload
 }
@@ -2171,6 +2247,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut social: Option<sim_core::SocialTable> = None;
     let mut ontogeny: Option<sim_core::OntogenySave> = None;
     let mut matechoice: Option<sim_core::MateChoiceSave> = None;
+    let mut chemistry: Option<sim_core::ChemistrySave> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -2788,6 +2865,32 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                     scrambled_choices_total: reader.u64()?,
                 });
             }
+            SECTION_CHEMISTRY => {
+                // `FORMAT_VERSION_11` by name (D-108).
+                if format < FORMAT_VERSION_11 {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if chemistry.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let values = reader.u64()?;
+                // Cap before allocating: 8 bytes per value plus the four
+                // trailing ledger terms (D-091's discipline).
+                if !allocation_fits(values, 8, 56, body.len()) {
+                    return Err(CodecError::ValueOutOfRange("chemistry values"));
+                }
+                let mut concentrations = Vec::with_capacity(values as usize);
+                for _ in 0..values {
+                    concentrations.push(reader.i64()?);
+                }
+                chemistry = Some(sim_core::ChemistrySave {
+                    concentrations,
+                    produced_milli: reader.i128()?,
+                    deposited_milli: reader.i128()?,
+                    seeded_out_milli: reader.i128()?,
+                    abiogenesis_fired_total: reader.u64()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -2818,6 +2921,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         social,
         ontogeny,
         matechoice,
+        chemistry,
         ids,
         x_fp,
         y_fp,
@@ -2898,6 +3002,7 @@ pub fn encode_snapshot_format3(
     refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format9_state(state, FORMAT_VERSION_3)?;
     refuse_format10_state(state, FORMAT_VERSION_3)?;
+    refuse_format11_state(state, FORMAT_VERSION_3)?;
     refuse_format7_state(state, FORMAT_VERSION_3)?;
     encode_snapshot_versioned(
         state,
@@ -2951,6 +3056,7 @@ pub fn encode_snapshot_format4(
     refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format9_state(state, FORMAT_VERSION_4)?;
     refuse_format10_state(state, FORMAT_VERSION_4)?;
+    refuse_format11_state(state, FORMAT_VERSION_4)?;
     refuse_format7_state(state, FORMAT_VERSION_4)?;
     encode_snapshot_versioned(
         state,
@@ -2994,6 +3100,7 @@ pub fn encode_snapshot_format5(
     refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format9_state(state, FORMAT_VERSION_5)?;
     refuse_format10_state(state, FORMAT_VERSION_5)?;
+    refuse_format11_state(state, FORMAT_VERSION_5)?;
     refuse_format7_state(state, FORMAT_VERSION_5)?;
     encode_snapshot_versioned(
         state,
@@ -3030,6 +3137,7 @@ pub fn encode_snapshot_format6(
     refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format9_state(state, FORMAT_VERSION_6)?;
     refuse_format10_state(state, FORMAT_VERSION_6)?;
+    refuse_format11_state(state, FORMAT_VERSION_6)?;
     refuse_format7_state(state, FORMAT_VERSION_6)?;
     encode_snapshot_versioned(
         state,
@@ -3065,6 +3173,7 @@ pub fn encode_snapshot_format7(
     refuse_format8_state(state, FORMAT_VERSION_7)?;
     refuse_format9_state(state, FORMAT_VERSION_7)?;
     refuse_format10_state(state, FORMAT_VERSION_7)?;
+    refuse_format11_state(state, FORMAT_VERSION_7)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -3098,6 +3207,7 @@ pub fn encode_snapshot_format8(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format9_state(state, FORMAT_VERSION_8)?;
     refuse_format10_state(state, FORMAT_VERSION_8)?;
+    refuse_format11_state(state, FORMAT_VERSION_8)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -3124,6 +3234,7 @@ pub fn encode_snapshot_format9(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format10_state(state, FORMAT_VERSION_9)?;
+    refuse_format11_state(state, FORMAT_VERSION_9)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -3137,12 +3248,56 @@ pub fn encode_snapshot_format9(
     )
 }
 
+/// Encode a **format 10** snapshot, retained on the terms every earlier
+/// writer is: the 10-to-11 migration's byte-identity requirement is
+/// stated against it.
+pub fn encode_snapshot_format10(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format11_state(state, FORMAT_VERSION_10)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_10,
+        SAVE_STATE_VERSION,
+    )
+}
+
 /// The write-side refusal every retained pre-8 writer shares: a state that
 /// carries what only format 8 can express is refused with the field named,
 /// before a byte is written. The whole struct is compared against its
 /// default rather than only the gate, because a knob moved off its default
 /// with the section disabled is still a value the format has no bytes for,
 /// and restoring it at the default would alter meaning on load.
+/// The write-side refusal every retained pre-11 writer shares, on the
+/// terms its predecessors are.
+fn refuse_format11_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    if state.config.chemistry != sim_core::ChemistryConfig::chemistry_default() {
+        return Err(CodecError::FieldNotInFormat {
+            field: "chemistry",
+            format,
+        });
+    }
+    if state.chemistry.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_CHEMISTRY,
+            format,
+        });
+    }
+    Ok(())
+}
+
 /// The write-side refusal every retained pre-10 writer shares, on the
 /// terms `refuse_format9_state` is: the two mate-choice gates compared
 /// field by field, and the counters section refused by name.
@@ -3496,6 +3651,12 @@ pub fn decode_snapshot_format8(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// the terms every earlier retained reader is.
 pub fn decode_snapshot_format9(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_9, SAVE_STATE_VERSION)
+}
+
+/// Decode a **format 10** snapshot. Retained for the 10-to-11 migration,
+/// on the terms every earlier retained reader is.
+pub fn decode_snapshot_format10(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_10, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(
