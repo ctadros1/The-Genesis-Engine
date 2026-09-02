@@ -163,6 +163,9 @@ struct Options {
     social_scramble: bool,
     social_strict: bool,
     social_corrupt: bool,
+    physiology_v2: bool,
+    physiology_v2_scramble: bool,
+    physiology_v2_inert: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -250,6 +253,21 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--social-corrupt" {
             options.social_corrupt = true;
+            index += 1;
+            continue;
+        }
+        if name == "--physiology-v2" {
+            options.physiology_v2 = true;
+            index += 1;
+            continue;
+        }
+        if name == "--physiology-v2-scramble" {
+            options.physiology_v2_scramble = true;
+            index += 1;
+            continue;
+        }
+        if name == "--physiology-v2-inert" {
+            options.physiology_v2_inert = true;
             index += 1;
             continue;
         }
@@ -412,6 +430,9 @@ fn build_world(options: &Options) -> Result<World, String> {
     }
     if options.social {
         return social_trace_world(options);
+    }
+    if options.physiology_v2 {
+        return physiology_trace_world(options);
     }
     if options.social_scramble || options.social_strict || options.social_corrupt {
         return Err(format!(
@@ -675,6 +696,14 @@ fn social_trace_world(options: &Options) -> Result<World, String> {
         options.social_strict,
         options.social_corrupt,
     );
+    social_trace_world_from(config)
+}
+
+/// The social trace's scripted-founder surgery, taking the config so the
+/// Phase 14 trace can run the identical scripts on a physiology-v2 world.
+/// The Phase 13 fixture's bytes are this function's bytes; nothing in the
+/// split moved an operation.
+fn social_trace_world_from(config: SimConfig) -> Result<World, String> {
     config.validate().map_err(|error| error.to_string())?;
     let world = World::new(config).map_err(|error| error.to_string())?;
     let mut state = world.export_state();
@@ -796,6 +825,153 @@ fn social_trace_world(options: &Options) -> Result<World, String> {
         learn.edges = learn_rows;
     }
     World::from_state(state).map_err(|error| format!("scripted founders do not restore: {error}"))
+}
+
+// --- the Phase 14 physiology-v2 trace ---------------------------------------
+
+/// The Phase 14 trace's configuration: the social trace's world plus
+/// morphology and the physiology section with hazards off, and - unless
+/// the inert arm asks otherwise - both ADR-0030 gates. Hazards are off for
+/// the plasticity trace's reason: a hazard draw taking a scripted founder
+/// mid-horizon turns the fixture into a fixture of who died when.
+fn physiology_trace_config(seed: u64, scramble: bool, inert: bool) -> SimConfig {
+    let mut config = social_trace_config(seed, false, false, false);
+    config.morphology.enabled = true;
+    config.physiology.enabled = true;
+    config.physiology.senescence_enabled = false;
+    config.physiology.extrinsic_hazard_q16_per_s = 0;
+    config.physiology.juvenile_hazard_multiplier_q16 = 65_536;
+    // The social trace's ecology runs hungry by design (tenth-scale costs,
+    // scripted verbs every tick); the shipped pairing threshold would keep
+    // every founder below pairing energy and the choice mechanism would
+    // never run - a fixture that is a control and does not say so (trap
+    // 1). The threshold is a knob, the mechanism is the fixture's subject.
+    config.phase2.pairing_energy_threshold_milli = 100;
+    // The scripted founders carry ~7 extra output/binding nodes on a
+    // three-module body whose neural budget was sized for an unscripted
+    // network; without headroom C10.7 refuses every child as over-budget
+    // and the choice mechanism never reaches a birth. The budget is a
+    // knob, the mechanism is the fixture's subject.
+    config.morphology.base_node_budget = 96;
+    if !inert {
+        config.physiology.ontogeny_enabled = true;
+        config.physiology.birth_modules_min = 1;
+        config.physiology.growth_cost_milli_per_mass_milli = 100;
+        config.physiology.growth_rate_milli_per_s = 50;
+        config.physiology.mate_choice_enabled = true;
+        config.physiology.mate_choice_scramble = scramble;
+    }
+    config
+}
+
+/// The social trace's scripted founders, plus: every founder emits mate
+/// intent every tick (an output node with bias 8 bound to the mate
+/// channel, exactly how the artifact scripts force their verbs), every
+/// founder's proximity-cue preference gene reads prefer-far (so choices
+/// are informed, not tie-breaks), founder 0 carries a six-module growth
+/// program with its ontogeny progress reset to one module (so growth
+/// billing runs from tick one), and everyone is mature. Every Phase 14
+/// mechanism therefore runs inside an affordable horizon, and the verify
+/// script refuses each mechanism's counter at zero.
+fn physiology_trace_world(options: &Options) -> Result<World, String> {
+    if !options.genome2 || !options.phase2 {
+        return Err(format!(
+            "--physiology-v2 requires --phase2 --genome2\n{}",
+            usage()
+        ));
+    }
+    let inert = options.physiology_v2_inert;
+    let config = physiology_trace_config(
+        options.seed.unwrap_or(DEFAULT_SEED),
+        options.physiology_v2_scramble,
+        inert,
+    );
+    let world = social_trace_world_from(config)?;
+    let mut state = world.export_state();
+    let caps = state.config.genome2.caps;
+    let schema2 = state
+        .schema2
+        .as_mut()
+        .ok_or_else(|| "the trace world is not schema 2".to_owned())?;
+    /// The mate output channel: `registry.rs` names output 106 "mate".
+    const CHANNEL_MATE: u16 = 106;
+    const MATE_NODE: u32 = sim_core::STRUCTURAL_HOMOLOGY_BASE + 60_000;
+    const GROWTH_RULE: u32 = sim_core::STRUCTURAL_HOMOLOGY_BASE + 61_000;
+    for (index, encoded) in schema2.genomes.iter_mut().enumerate() {
+        let mut genome = sim_core::Genome2::decode(encoded, &caps)
+            .map_err(|error| format!("scripted founder does not decode: {error}"))?;
+        for haplotype in &mut genome.haplotypes {
+            let chromosome = &mut haplotype.chromosomes[0];
+            chromosome.push(sim_core::Locus {
+                homology_id: MATE_NODE,
+                gene_lineage_id: u64::from(MATE_NODE),
+                mutation_event_id: 0,
+                kind: LocusKind::Node {
+                    role: sim_core::NodeRole::Output,
+                    activation_id: sim_core::Activation::TanhApprox.id(),
+                    bias: 8.0,
+                    time_constant: 0,
+                },
+            });
+            chromosome.push(sim_core::Locus {
+                homology_id: MATE_NODE + 1,
+                gene_lineage_id: u64::from(MATE_NODE + 1),
+                mutation_event_id: 0,
+                kind: LocusKind::IoBinding {
+                    node: MATE_NODE,
+                    channel_id: CHANNEL_MATE,
+                    gain: 1.0,
+                },
+            });
+            if index == 0 {
+                chromosome.push(sim_core::Locus {
+                    homology_id: GROWTH_RULE,
+                    gene_lineage_id: u64::from(GROWTH_RULE),
+                    mutation_event_id: 0,
+                    kind: LocusKind::Regulatory {
+                        rule: sim_core::Regulatory {
+                            condition_kind: sim_core::COND_MODULE_COUNT,
+                            condition_op: sim_core::OP_LT,
+                            condition_param: 0,
+                            threshold: 6,
+                            action_kind: sim_core::ACT_PLACE,
+                            action_type: sim_core::ModuleType::Motor.id(),
+                            direction: 0,
+                            scale_milli: 1_000,
+                        },
+                    },
+                });
+            }
+            for locus in chromosome.iter_mut() {
+                if let LocusKind::Trait {
+                    trait_id, value, ..
+                } = &mut locus.kind
+                    && *trait_id == sim_core::PREFERENCE_TRAIT_BASE + 1
+                {
+                    // Gene 0.0 expresses weight -1 on the proximity cue:
+                    // prefer-far, a choice proximity pairing cannot make.
+                    *value = 0.0;
+                }
+            }
+            chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+        }
+        genome
+            .validate_structure(&caps)
+            .map_err(|error| format!("scripted founder does not validate: {error}"))?;
+        *encoded = genome.encode();
+        // One extra node (the mate output) joined the network.
+        schema2.activation_values[index].push(0.0);
+        schema2.activation_prior[index].push(0.0);
+    }
+    for age in state.age_ticks.iter_mut() {
+        *age = 700;
+    }
+    if let Some(ontogeny) = state.ontogeny.as_mut() {
+        ontogeny.grown_modules[0] = 1;
+        ontogeny.growth_paid_milli[0] = 0;
+    }
+    World::from_state(state)
+        .map_err(|error| format!("scripted physiology founders do not restore: {error}"))
 }
 
 // --- the Phase 11 numeric-safety trace --------------------------------------
@@ -3282,7 +3458,46 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if let Some(social) = world.social_counters() {
+    if metrics.ontogeny_enabled || metrics.mate_choice_enabled {
+        // Fixture schema 10: the Phase 14 physiology-v2 trace. Separate on
+        // the grounds every earlier schema was: a world that grows bodies
+        // and chooses mates is not comparable field-for-field to one that
+        // does neither. Every mechanism the phase added has a field, so
+        // the fixture cannot silently become a control (trap 1):
+        // `verify-phase14-determinism.sh` refuses the load-bearing ones at
+        // zero. The social and artifact traces keep running underneath.
+        let social = world
+            .social_counters()
+            .expect("the physiology trace runs on the social trace");
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":10,\"phase\":\"phase14\",",
+                "\"physiology_policy\":\"lifesim-physiology-v2\",",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"births_total\":{},\"modules_grown\":{},",
+                "\"growth_spent_milli\":{},\"juveniles_growing\":{},",
+                "\"choices\":{},\"scrambled_choices\":{},",
+                "\"signals_emitted\":{},\"controller_faults_total\":{}}}"
+            ),
+            world.config().initial_organisms,
+            metrics.tick,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.births_total,
+            metrics.modules_grown_total,
+            metrics.growth_spent_milli_total,
+            metrics.juveniles_growing,
+            metrics.choices_total,
+            metrics.scrambled_choices_total,
+            social.signals_emitted_total,
+            metrics.controller_faults_total,
+        );
+    } else if let Some(social) = world.social_counters() {
         // Fixture schema 9: the Phase 13 social trace. A separate schema on
         // the grounds every earlier one was separated: a social world
         // perceives and signals, and a reader that parsed it as a Phase 12
