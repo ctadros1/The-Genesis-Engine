@@ -1,0 +1,92 @@
+# Phase 14 ledger soak: C14.5's exactness clause. One world, one million
+# ticks, the Phase 13 soak's full configuration plus morphology and both
+# ADR-0030 gates, so growth billing and choice both flow through the
+# ledger at scale for the whole run. The pass condition is the kernel's
+# own ledger invariant, checked every 5,000 ticks exactly as the C12.6
+# and C13.11 soaks checked it. Events are off - a million ticks of event
+# log is an artifact with no reader - and the final snapshot is kept.
+
+campaign phase14-c145-ledger-soak
+ticks 1000000
+workers 1
+seeds 14201
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.mutation.binding_q16 16384
+base genome2.mutation.plasticity_enabled true
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base contest.enabled true
+base probe.enabled true
+base probe.action_census_enabled true
+base probe.marker_locus_enabled true
+base plasticity.enabled true
+base plasticity.max_plastic_edges 32
+base plasticity.plastic_edge_cost_milli_per_s 2
+base plasticity.lamarckian_fraction_q16 0
+base plasticity.live_rule_zero true
+base worldmod.enabled true
+base worldmod.patch_enabled true
+base worldmod.relocate_interval_ticks 2000
+base worldmod.patch_radius_cells 32
+base worldmod.patch_capacity_scale_q16 262144
+base worldmod.max_capacity_overrides 8192
+base worldmod.max_material_overrides 8192
+base artifact.enabled true
+base artifact.max_objects 4096
+base artifact.max_objects_per_cell 8
+base artifact.max_composition_depth 4
+base artifact.max_composition_breadth 8
+base artifact.max_held_objects 1
+base artifact.max_candidates 8
+base artifact.carry_capacity_milli 4000
+base artifact.carry_move_cost_q16 65536
+base artifact.hold_cost_milli_per_s 20
+base artifact.action_cost_milli 60
+base artifact.strike_cost_milli 120
+base artifact.action_threshold_q16 32768
+base artifact.reach_m 2
+base artifact.consume_reach_m 2
+base artifact.perception_range_m 8
+base artifact.strike_force_q16 262144
+base artifact.strike_mass_reference_milli 2000
+base artifact.fracture_margin_q16 65536
+base artifact.max_fragments 4
+base artifact.min_fragment_mass_milli 100
+base artifact.joint_floor_q16 16384
+base artifact.blocking_mass_milli 3000
+base artifact.terrain_yield_milli 6000
+base artifact.extraction_milli 800
+base artifact.yield_regen_milli 400
+base artifact.yield_regen_interval_ticks 600
+base artifact.stone_relative_q16 39322
+base artifact.wood_relative_q16 16384
+base social.enabled true
+base social.observational_enabled true
+base social.perception_enabled true
+base social.signal_enabled true
+base morphology.enabled true
+base physiology.ontogeny_enabled true
+base physiology.mate_choice_enabled true
+condition A
+check-interval 5000
+output events off
+output snapshots on
+output actions off

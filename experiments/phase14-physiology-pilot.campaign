@@ -1,0 +1,108 @@
+# Phase 14 Stage B pilot. NOT the confirmatory campaign, and decides no
+# criterion: its seeds (14901..14908) are disjoint from every confirmatory
+# range used or planned, and nothing measured here may be read against a
+# C14 bar (ADR-0022 A7; methodology review 6.1). What it exists to lock,
+# before the pre-registration is written:
+#
+#   1. Wall-clock per world with morphology + physiology-v2 at the
+#      campaign tier (the benchmark priced the seams; the pilot prices
+#      the composed world - D-121: campaign worlds are single-threaded).
+#   2. Used-choice counts per world: the Stage A smoke showed ~90% of
+#      choices see a single candidate, and C14.2's power rides on the
+#      informing count - a pre-registered N without it is a guess
+#      wearing a number (D-106).
+#   3. Whether preference weights leave neutral at all within 60,000
+#      ticks (the neutral-equivalence fact: A and P are identical worlds
+#      until they do), read through the A-vs-P assortment deviations.
+#   4. Juvenile-window shapes from the development census: completions,
+#      window lengths, juvenile observation counts, and the realized
+#      speed direction (the smoke showed prefix growth can out-ratio the
+#      adult body - the pre-registration must know which way to read it).
+#
+# Environment: the Phase 13 pilot's base minus the social and plasticity
+# sections (no Phase 14 criterion touches them; cues 6 and 8 stay live
+# through the artifact and contest sections) plus morphology and the
+# physiology-v2 gates. Arms: A (both gates), B (both off - the Phase 8
+# baseline), P (choice with scrambled cue assignment).
+campaign phase14-physiology-pilot
+ticks 60000
+workers 8
+seeds 14901..14908
+base preset phase2
+base cells_x 128
+base cells_y 128
+base initial_organisms 200
+base max_entities 40000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base morphology.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.mutation.binding_q16 16384
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base contest.enabled true
+base probe.enabled true
+base probe.action_census_enabled true
+base probe.marker_locus_enabled true
+base worldmod.enabled true
+base worldmod.patch_enabled true
+base worldmod.relocate_interval_ticks 2000
+base worldmod.patch_radius_cells 32
+base worldmod.patch_capacity_scale_q16 262144
+base worldmod.max_capacity_overrides 8192
+base worldmod.max_material_overrides 8192
+base artifact.enabled true
+base artifact.max_objects 4096
+base artifact.max_objects_per_cell 8
+base artifact.max_composition_depth 4
+base artifact.max_composition_breadth 8
+base artifact.max_held_objects 1
+base artifact.max_candidates 8
+base artifact.carry_capacity_milli 4000
+base artifact.carry_move_cost_q16 65536
+base artifact.hold_cost_milli_per_s 20
+base artifact.action_cost_milli 60
+base artifact.strike_cost_milli 120
+base artifact.action_threshold_q16 32768
+base artifact.reach_m 2
+base artifact.consume_reach_m 2
+base artifact.perception_range_m 8
+base artifact.strike_force_q16 262144
+base artifact.strike_mass_reference_milli 2000
+base artifact.fracture_margin_q16 65536
+base artifact.max_fragments 4
+base artifact.min_fragment_mass_milli 100
+base artifact.joint_floor_q16 16384
+base artifact.blocking_mass_milli 3000
+base artifact.terrain_yield_milli 6000
+base artifact.extraction_milli 800
+base artifact.yield_regen_milli 400
+base artifact.yield_regen_interval_ticks 600
+base artifact.stone_relative_q16 39322
+base artifact.wood_relative_q16 16384
+condition A
+condition B
+condition P
+set A physiology.ontogeny_enabled true
+set A physiology.mate_choice_enabled true
+set P physiology.ontogeny_enabled true
+set P physiology.mate_choice_enabled true
+set P physiology.mate_choice_scramble true
+vary physiology.ontogeny_enabled
+vary physiology.mate_choice_enabled
+vary physiology.mate_choice_scramble
+output events on
+output snapshots on
+output actions off
+output spatial 50
