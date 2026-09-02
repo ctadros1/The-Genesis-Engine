@@ -214,6 +214,74 @@ fn a_populated_microbial_field_survives_a_save_round_trip_with_the_same_future()
     );
 }
 
+// --- increment 3: organism-to-field coupling (C15.6, v1 half) ---------------
+
+/// The exchange test for the coupling this phase ships: excretion and
+/// remains arrive in the field as counted deposits, the conservation
+/// identity holds with organisms attached, and a world with the coupling
+/// off deposits nothing. Materialization (field-to-organism) is Phase
+/// 16's half, deferred by ADR-0031 and named in the findings.
+#[test]
+fn the_coupling_deposits_through_the_ledger_and_the_identity_holds() {
+    let run = |excretion: u32, remains: u32| {
+        let mut config = chemistry_config(SEED ^ 0x21);
+        config.chemistry.excretion_fraction_q16 = excretion;
+        config.chemistry.remains_fraction_q16 = remains;
+        // Old-age deaths leave energy behind for the remains term to
+        // deposit; starvation deaths carry zero and would leave that
+        // term untested. Maturity must stay below the cutoff.
+        config.maturity_age_ticks = 50;
+        config.max_age_ticks = 200;
+        let mut world = World::new(config).expect("world");
+        for tick in 1..=400 {
+            world.step();
+            if tick % 100 == 0 {
+                world
+                    .check_invariants()
+                    .unwrap_or_else(|violation| panic!("tick {tick}: {violation}"));
+            }
+        }
+        let state = world.export_state();
+        let chemistry = state.chemistry.as_ref().expect("section");
+        let total: i128 = chemistry
+            .concentrations
+            .iter()
+            .map(|&value| i128::from(value))
+            .sum();
+        assert_eq!(
+            chemistry.produced_milli + chemistry.deposited_milli - chemistry.seeded_out_milli,
+            total,
+            "the C15.1 identity must hold with the coupling at ({excretion}, {remains})"
+        );
+        let deaths =
+            state.counters.deaths_starvation_total + state.counters.deaths_old_age_total;
+        (world.state_checksum(), chemistry.deposited_milli, deaths)
+    };
+    let (control_hash, control_deposited, _) = run(0, 0);
+    let (excretion_hash, excretion_deposited, _) = run(65_536, 0);
+    let (_, remains_deposited, remains_deaths) = run(0, 65_536);
+    assert_eq!(
+        control_deposited, 0,
+        "a world without the coupling must deposit nothing"
+    );
+    assert!(
+        excretion_deposited > 0,
+        "excretion never deposited, so the term is untested"
+    );
+    assert!(
+        remains_deaths > 0,
+        "nobody died, so the remains term is untested"
+    );
+    assert!(
+        remains_deposited > 0,
+        "remains never deposited despite {remains_deaths} deaths"
+    );
+    assert_ne!(
+        control_hash, excretion_hash,
+        "the coupling must actually change the world"
+    );
+}
+
 #[test]
 fn the_disabled_microbial_section_saves_nothing_and_is_absent() {
     let mut config = microbial_config(SEED ^ 0x12);

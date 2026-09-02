@@ -534,6 +534,7 @@ fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -562,6 +563,7 @@ fn migrate_format5_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -585,6 +587,7 @@ fn migrate_format6_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -607,6 +610,7 @@ fn migrate_format7_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -628,6 +632,7 @@ fn migrate_format8_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -648,6 +653,7 @@ fn migrate_format9_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -665,6 +671,7 @@ fn migrate_format10_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError>
     let (source, mut state) = codec::decode_snapshot_format10(bytes)?;
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -681,7 +688,30 @@ static FORMAT11_TO_CURRENT: Migration = Migration {
 fn migrate_format11_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
     let (source, mut state) = codec::decode_snapshot_format11(bytes)?;
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
+}
+
+/// Format 12 to current (13): what format 13 adds is the two coupling
+/// fractions, zero in every format-12 world - by construction. Invents
+/// nothing; `expected_loss` empty.
+static FORMAT12_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_12,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format12_to_current,
+};
+
+fn migrate_format12_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format12(bytes)?;
+    resolve_format13_defaults(&mut state);
+    reencode(source, state)
+}
+
+/// The resolution every pre-13 transform states for what format 13 added.
+fn resolve_format13_defaults(state: &mut sim_core::SaveState) {
+    state.config.chemistry.excretion_fraction_q16 = 0;
+    state.config.chemistry.remains_fraction_q16 = 0;
 }
 
 /// The resolution every pre-12 transform states for what format 12 added.
@@ -777,6 +807,7 @@ fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
     resolve_format12_defaults(&mut state);
+    resolve_format13_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -831,6 +862,7 @@ pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, 
         codec::FORMAT_VERSION_9 => Ok(Some(&FORMAT9_TO_CURRENT)),
         codec::FORMAT_VERSION_10 => Ok(Some(&FORMAT10_TO_CURRENT)),
         codec::FORMAT_VERSION_11 => Ok(Some(&FORMAT11_TO_CURRENT)),
+        codec::FORMAT_VERSION_12 => Ok(Some(&FORMAT12_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \

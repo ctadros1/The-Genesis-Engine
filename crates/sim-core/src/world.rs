@@ -1908,6 +1908,21 @@ impl World {
         self.microbial.as_ref()
     }
 
+    /// Coupling v1 (ADR-0031): deposit organism mass into the chemistry
+    /// field through its ledger. Every milli credited to a cell is counted
+    /// in `deposited`, so the joint identity holds with organisms attached.
+    fn deposit_field(&mut self, cell: usize, substrate: usize, amount_milli: i64) {
+        if amount_milli <= 0 {
+            return;
+        }
+        let Some(chemistry) = self.chemistry.as_mut() else {
+            return;
+        };
+        chemistry.concentrations[cell * crate::chemistry::SUBSTRATE_COUNT + substrate] +=
+            amount_milli;
+        chemistry.deposited_milli += i128::from(amount_milli);
+    }
+
     /// Read-only view of Phase 11 learned state, `None` when the plasticity
     /// section is disabled.
     ///
@@ -3279,6 +3294,7 @@ impl World {
 
         // Cost pass: basal + movement + crowding, floored at zero energy so
         // the ledger records exactly what was spent.
+        let excretion = i64::from(self.config.chemistry.excretion_fraction_q16);
         for (index, &did_move) in moved.iter().enumerate() {
             let mut cost = self.basal_cost_tick;
             if did_move {
@@ -3290,6 +3306,13 @@ impl World {
             let paid = cost.min(self.energy_milli[index]);
             self.energy_milli[index] -= paid;
             self.ledger.spent_milli += i128::from(paid);
+            // Coupling v1: a fraction of the basal share actually paid
+            // deposits as S_WASTE in the organism's cell.
+            if excretion > 0 {
+                let amount = (self.basal_cost_tick.min(paid) * excretion) >> 16;
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                self.deposit_field(cell, crate::chemistry::S_WASTE, amount);
+            }
         }
 
         // Feeding pass: shared-cell contention resolves in stable ID order.
@@ -3894,6 +3917,7 @@ impl World {
         // and from Phase 8 also with body mass (allometry) and with the
         // distance from the organism's preferred temperature.
         let physiology_config = self.config.physiology;
+        let excretion = i64::from(self.config.chemistry.excretion_fraction_q16);
         let mut allometric_added = 0_i128;
         let mut thermal_added = 0_i128;
         for (index, &did_move) in moved.iter().enumerate() {
@@ -3920,6 +3944,10 @@ impl World {
                     thermal_added += i128::from(thermal);
                 }
             }
+            // Coupling v1: the basal share is everything above - upkeep,
+            // allometry, thermal regulation - before movement, carrying
+            // and crowding join the bill.
+            let basal_component = cost;
             if did_move {
                 let speed_frac_q16 =
                     (p2.speed_milli[index] << 16) / phenotype.max_speed_milli.max(1);
@@ -3962,6 +3990,13 @@ impl World {
             let paid = cost.min(self.energy_milli[index]);
             self.energy_milli[index] -= paid;
             self.ledger.spent_milli += i128::from(paid);
+            // Coupling v1: a fraction of the basal share actually paid
+            // deposits as S_WASTE in the organism's cell.
+            if excretion > 0 {
+                let amount = (basal_component.min(paid) * excretion) >> 16;
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                self.deposit_field(cell, crate::chemistry::S_WASTE, amount);
+            }
         }
         if let Some(physiology) = self.physiology.as_mut() {
             physiology.allometric_cost_milli += allometric_added;
@@ -5260,6 +5295,15 @@ impl World {
                 }
             }
             self.ledger.removed_at_death_milli += i128::from(self.energy_milli[index]);
+            // Coupling v1 (ADR-0031): a fraction of the removed energy
+            // deposits as S_PRIMORDIAL in the death cell, through the
+            // field ledger.
+            let remains = i64::from(self.config.chemistry.remains_fraction_q16);
+            if remains > 0 {
+                let amount = (self.energy_milli[index] * remains) >> 16;
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                self.deposit_field(cell, crate::chemistry::S_PRIMORDIAL, amount);
+            }
             let id = self.ids[index];
             self.push_event(next_tick, EventKind::Death { id, cause });
             if cause == DeathCause::Damage {

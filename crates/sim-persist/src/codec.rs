@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_12;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_13;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -111,6 +111,11 @@ pub const FORMAT_VERSION_11: u16 = 11;
 /// config fields to the config body and introduces `SECTION_MICROBIAL`.
 /// Guarded by name wherever it gates, permanently (D-108).
 pub const FORMAT_VERSION_12: u16 = 12;
+
+/// Format 13 (Phase 15, ADR-0031, increment 3): appends the two coupling
+/// fractions to the config body. Byte-shaped like formats 5 and 6 - no
+/// new section. Guarded by name wherever it gates, permanently (D-108).
+pub const FORMAT_VERSION_13: u16 = 13;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -916,6 +921,11 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_12 {
         encode_microbial_config(&mut writer, config);
     }
+    // Format 13's coupling fractions. Guarded on `FORMAT_VERSION_13` by
+    // name, permanently.
+    if format >= FORMAT_VERSION_13 {
+        encode_coupling_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1194,6 +1204,26 @@ fn decode_microbial_config(
     Ok(())
 }
 
+/// The format-13 coupling block, one field per line in declaration
+/// order, swept by `config_field_coverage.rs` like every block before it.
+fn encode_coupling_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    writer.u32(config.chemistry.excretion_fraction_q16);
+    writer.u32(config.chemistry.remains_fraction_q16);
+}
+
+/// Bytes the format-13 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT13_CONFIG_BYTES: usize = 4 * 2;
+
+fn decode_coupling_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    config.chemistry.excretion_fraction_q16 = reader.u32()?;
+    config.chemistry.remains_fraction_q16 = reader.u32()?;
+    Ok(())
+}
+
 /// Decode the config section written by `encode_config` at the same version.
 ///
 /// Read the two together. A format-4 body reaching this at format 5 runs out
@@ -1445,6 +1475,9 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     }
     if format >= FORMAT_VERSION_12 {
         decode_microbial_config(&mut *reader, &mut config)?;
+    }
+    if format >= FORMAT_VERSION_13 {
+        decode_coupling_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -3092,6 +3125,7 @@ pub fn encode_snapshot_format3(
     refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format9_state(state, FORMAT_VERSION_3)?;
     refuse_format10_state(state, FORMAT_VERSION_3)?;
+    refuse_format13_state(state, FORMAT_VERSION_3)?;
     refuse_format12_state(state, FORMAT_VERSION_3)?;
     refuse_format11_state(state, FORMAT_VERSION_3)?;
     refuse_format7_state(state, FORMAT_VERSION_3)?;
@@ -3147,6 +3181,7 @@ pub fn encode_snapshot_format4(
     refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format9_state(state, FORMAT_VERSION_4)?;
     refuse_format10_state(state, FORMAT_VERSION_4)?;
+    refuse_format13_state(state, FORMAT_VERSION_4)?;
     refuse_format12_state(state, FORMAT_VERSION_4)?;
     refuse_format11_state(state, FORMAT_VERSION_4)?;
     refuse_format7_state(state, FORMAT_VERSION_4)?;
@@ -3192,6 +3227,7 @@ pub fn encode_snapshot_format5(
     refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format9_state(state, FORMAT_VERSION_5)?;
     refuse_format10_state(state, FORMAT_VERSION_5)?;
+    refuse_format13_state(state, FORMAT_VERSION_5)?;
     refuse_format12_state(state, FORMAT_VERSION_5)?;
     refuse_format11_state(state, FORMAT_VERSION_5)?;
     refuse_format7_state(state, FORMAT_VERSION_5)?;
@@ -3230,6 +3266,7 @@ pub fn encode_snapshot_format6(
     refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format9_state(state, FORMAT_VERSION_6)?;
     refuse_format10_state(state, FORMAT_VERSION_6)?;
+    refuse_format13_state(state, FORMAT_VERSION_6)?;
     refuse_format12_state(state, FORMAT_VERSION_6)?;
     refuse_format11_state(state, FORMAT_VERSION_6)?;
     refuse_format7_state(state, FORMAT_VERSION_6)?;
@@ -3267,6 +3304,7 @@ pub fn encode_snapshot_format7(
     refuse_format8_state(state, FORMAT_VERSION_7)?;
     refuse_format9_state(state, FORMAT_VERSION_7)?;
     refuse_format10_state(state, FORMAT_VERSION_7)?;
+    refuse_format13_state(state, FORMAT_VERSION_7)?;
     refuse_format12_state(state, FORMAT_VERSION_7)?;
     refuse_format11_state(state, FORMAT_VERSION_7)?;
     encode_snapshot_versioned(
@@ -3302,6 +3340,7 @@ pub fn encode_snapshot_format8(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format9_state(state, FORMAT_VERSION_8)?;
     refuse_format10_state(state, FORMAT_VERSION_8)?;
+    refuse_format13_state(state, FORMAT_VERSION_8)?;
     refuse_format12_state(state, FORMAT_VERSION_8)?;
     refuse_format11_state(state, FORMAT_VERSION_8)?;
     encode_snapshot_versioned(
@@ -3330,6 +3369,7 @@ pub fn encode_snapshot_format9(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format10_state(state, FORMAT_VERSION_9)?;
+    refuse_format13_state(state, FORMAT_VERSION_9)?;
     refuse_format12_state(state, FORMAT_VERSION_9)?;
     refuse_format11_state(state, FORMAT_VERSION_9)?;
     encode_snapshot_versioned(
@@ -3357,6 +3397,7 @@ pub fn encode_snapshot_format10(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format13_state(state, FORMAT_VERSION_10)?;
     refuse_format12_state(state, FORMAT_VERSION_10)?;
     refuse_format11_state(state, FORMAT_VERSION_10)?;
     encode_snapshot_versioned(
@@ -3390,6 +3431,7 @@ pub fn encode_snapshot_format11(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format13_state(state, FORMAT_VERSION_11)?;
     refuse_format12_state(state, FORMAT_VERSION_11)?;
     encode_snapshot_versioned(
         state,
@@ -3402,6 +3444,47 @@ pub fn encode_snapshot_format11(
         FORMAT_VERSION_11,
         SAVE_STATE_VERSION,
     )
+}
+
+/// Encode a **format 12** snapshot, retained on the terms every earlier
+/// writer is: the 12-to-13 migration's byte-identity requirement is
+/// stated against it.
+pub fn encode_snapshot_format12(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format13_state(state, FORMAT_VERSION_12)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_12,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// The write-side refusal every retained pre-13 writer shares: the two
+/// coupling fractions compared against their defaults. Format 13 adds no
+/// section, so there is nothing else to refuse.
+fn refuse_format13_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    if state.config.chemistry.excretion_fraction_q16 != 0
+        || state.config.chemistry.remains_fraction_q16 != 0
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "chemistry coupling",
+            format,
+        });
+    }
+    Ok(())
 }
 
 /// The write-side refusal every retained pre-12 writer shares, on the
@@ -3819,6 +3902,10 @@ pub fn decode_snapshot_format10(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState
 
 pub fn decode_snapshot_format11(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_11, SAVE_STATE_VERSION)
+}
+
+pub fn decode_snapshot_format12(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_12, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

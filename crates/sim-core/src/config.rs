@@ -932,6 +932,13 @@ pub struct ChemistryConfig {
     /// Mutation flow to each single-axis-step neighbour class, Q16 per
     /// field step.
     pub mutation_q16: u32,
+    /// Coupling v1 (ADR-0031): fraction of each organism's basal metabolic
+    /// payment deposited as S_WASTE in its cell, per tick, through the
+    /// field ledger's `deposited` term. Zero = no coupling.
+    pub excretion_fraction_q16: u32,
+    /// Coupling v1: fraction of the energy removed at death deposited as
+    /// S_PRIMORDIAL in the death cell. Zero = no coupling.
+    pub remains_fraction_q16: u32,
 }
 
 impl ChemistryConfig {
@@ -960,6 +967,8 @@ impl ChemistryConfig {
             death_q16: 655,              // 0.01
             death_waste_fraction_q16: 32_768, // half to waste, half recycled
             mutation_q16: 66,            // 0.001 per neighbour
+            excretion_fraction_q16: 0,
+            remains_fraction_q16: 0,
         }
     }
 }
@@ -2128,11 +2137,26 @@ impl SimConfig {
                     ));
                 }
             }
+            if chemistry.excretion_fraction_q16 > Q16_ONE
+                || chemistry.remains_fraction_q16 > Q16_ONE
+            {
+                return Err(ConfigError::PhysiologyRange(
+                    "coupling fraction outside its range",
+                    0,
+                ));
+            }
         } else if chemistry.abiogenesis_enabled {
             // A condition arm switched on with the section off is refused
             // rather than treated as off, exactly as a social condition is.
             return Err(ConfigError::PhysiologyRange(
                 "abiogenesis_enabled is set while chemistry.enabled is false",
+                0,
+            ));
+        } else if chemistry.excretion_fraction_q16 > 0 || chemistry.remains_fraction_q16 > 0 {
+            // A coupling with no field to deposit into is refused rather
+            // than inert, on the same terms.
+            return Err(ConfigError::PhysiologyRange(
+                "a coupling fraction is set while chemistry.enabled is false",
                 0,
             ));
         }
@@ -2602,6 +2626,14 @@ impl SimConfig {
                 hasher.update_u32(self.chemistry.death_q16);
                 hasher.update_u32(self.chemistry.death_waste_fraction_q16);
                 hasher.update_u32(self.chemistry.mutation_q16);
+            }
+            // Coupling v1: hashed only when a fraction is nonzero, so every
+            // hash issued before the coupling existed is unchanged.
+            if self.chemistry.excretion_fraction_q16 > 0 || self.chemistry.remains_fraction_q16 > 0
+            {
+                hasher.update(b"lifesim-chemistry-coupling");
+                hasher.update_u32(self.chemistry.excretion_fraction_q16);
+                hasher.update_u32(self.chemistry.remains_fraction_q16);
             }
         }
         // Phase 9 section: hashed only when enabled, so a schema-1 config
