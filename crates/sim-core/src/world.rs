@@ -170,7 +170,12 @@ impl DeathCause {
 /// 6 adds the nine Phase 12 object variants. Every increment is additive:
 /// earlier payloads are unchanged. Reading events never alters simulation
 /// state.
-pub const EVENT_SCHEMA_VERSION: u32 = 8;
+/// Version 9 (Phase 14): adds tag 27, `MateChoice` - one record per
+/// pairing formed under the mate-choice gate, carrying the chosen
+/// candidate's true cue values and the candidate set's true cue sums so
+/// the C14.2 assortment statistic has its opportunity denominator without
+/// re-simulation. The decoder keeps accepting older schemas.
+pub const EVENT_SCHEMA_VERSION: u32 = 9;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -383,6 +388,23 @@ pub enum EventKind {
     PerceptionFault {
         id: u64,
         faults: u32,
+    },
+    /// A pairing formed under the mate-choice gate (Phase 14, C14.2). The
+    /// cue values recorded here are the TRUE ones even under the
+    /// P-scramble arm - the choice used the scrambled assignment, the
+    /// record carries the truth, and the difference between the two is
+    /// precisely what the scramble control measures. `cue_sums_milli` sums
+    /// each cue over the whole candidate set (chosen included), which is
+    /// the opportunity denominator the offline assortment statistic
+    /// divides by; a pairing log without its opportunity set is the bias
+    /// the reviews warn about (social-org 12.1).
+    MateChoice {
+        chooser: u64,
+        chosen: u64,
+        candidates: u32,
+        scrambled: bool,
+        chosen_cues_milli: [i32; 9],
+        cue_sums_milli: [i64; 9],
     },
 }
 
@@ -748,6 +770,11 @@ pub struct MetricsSnapshot {
     pub growth_spent_milli_total: i128,
     /// Living organisms whose body is not yet fully grown.
     pub juveniles_growing: u64,
+    /// Phase 14 mate choice. All zero (and the gate false) when off, on
+    /// the same inert-observability terms as the blocks above.
+    pub mate_choice_enabled: bool,
+    pub choices_total: u64,
+    pub scrambled_choices_total: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1052,6 +1079,8 @@ pub struct World {
     /// disabled world takes the existing code paths and reproduces the
     /// Phase 13 fixture.
     ontogeny: Option<crate::ontogeny::OntogenyState>,
+    /// Phase 14 mate-choice state; `None` exactly when the gate is off.
+    matechoice: Option<crate::matechoice::MateChoiceState>,
     /// Phase 11 learned state; `None` exactly when
     /// `config.plasticity.enabled` is false, so a disabled world compiles no
     /// plastic edge, runs an empty learn phase, and appends nothing to the
@@ -1164,6 +1193,7 @@ impl World {
             schema2: None,
             morphology: None,
             ontogeny: None,
+            matechoice: None,
             learn: None,
             action_census: None,
             objects: None,
@@ -1275,6 +1305,16 @@ impl World {
                     } else {
                         genome
                     };
+                    // The preference band is layered on last, exactly as the
+                    // marker is, so a founder in a world without mate choice
+                    // is byte-identical to what it was before Phase 14.
+                    let genome = if world.config.physiology.enabled
+                        && world.config.physiology.mate_choice_enabled
+                    {
+                        crate::schema2::with_preference_loci(genome)
+                    } else {
+                        genome
+                    };
                     let traits = resolve_traits(&genome.express_traits());
                     p2.phenotypes[index] = match morphology.as_mut() {
                         Some(state) => {
@@ -1345,6 +1385,20 @@ impl World {
                     ontogeny.push_organism(body, world.config.morphology.lattice, body.len() as u32);
                 }
                 world.ontogeny = Some(ontogeny);
+            }
+            // Phase 14 mate choice: the weights cache is expressed from the
+            // stored founder genomes, exactly as genome hashes are.
+            if world.config.physiology.enabled && world.config.physiology.mate_choice_enabled {
+                let schema2 = world
+                    .schema2
+                    .as_ref()
+                    .expect("validation: mate choice requires genome2");
+                let mut matechoice =
+                    crate::matechoice::MateChoiceState::with_capacity(schema2.genomes.len());
+                for genome in &schema2.genomes {
+                    matechoice.push_organism(genome);
+                }
+                world.matechoice = Some(matechoice);
             }
             world.learn = learn;
         }
@@ -1701,6 +1755,15 @@ impl World {
                     .count() as u64,
                 _ => 0,
             },
+            mate_choice_enabled: self.matechoice.is_some(),
+            choices_total: self
+                .matechoice
+                .as_ref()
+                .map_or(0, |matechoice| matechoice.choices_total),
+            scrambled_choices_total: self
+                .matechoice
+                .as_ref()
+                .map_or(0, |matechoice| matechoice.scrambled_choices_total),
             signals_emitted_total: self
                 .social
                 .as_ref()
@@ -1794,6 +1857,10 @@ impl World {
 
     pub(crate) fn ontogeny_state(&self) -> Option<&crate::ontogeny::OntogenyState> {
         self.ontogeny.as_ref()
+    }
+
+    pub(crate) fn matechoice_state(&self) -> Option<&crate::matechoice::MateChoiceState> {
+        self.matechoice.as_ref()
     }
 
     /// Read-only view of Phase 11 learned state, `None` when the plasticity
@@ -2330,6 +2397,7 @@ impl World {
         objects: Option<crate::artifact::ObjectState>,
         social: Option<crate::social::SocialState>,
         ontogeny: Option<crate::ontogeny::OntogenyState>,
+        matechoice: Option<crate::matechoice::MateChoiceState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -2351,6 +2419,7 @@ impl World {
         self.schema2 = schema2;
         self.morphology = morphology;
         self.ontogeny = ontogeny;
+        self.matechoice = matechoice;
         // Learned state comes from the save, like every other subsystem here.
         //
         // It did not, for one stage: this rebuilt the rows from the restored
@@ -3870,6 +3939,95 @@ impl World {
         self.phase2 = Some(p2);
     }
 
+    /// The nine conspecific cue values for one perceived neighbour or
+    /// pairing candidate. **This is the single source of the cue formulas**:
+    /// the sense phase (`social_tick`) and mate choice (`resolve_pairs`)
+    /// both call it, so the two cannot drift - and the Phase 13 fixture's
+    /// byte identity is what proves the extraction preserved the sense
+    /// path's arithmetic exactly. Systems that are off contribute their
+    /// absent-system values: no social table reads contact/object-delta as
+    /// zero, no objects reads carried as zero, no contest reads health as
+    /// full.
+    #[allow(clippy::too_many_arguments)]
+    pub(crate) fn conspecific_cues(
+        &self,
+        p2: &Phase2State,
+        chooser: usize,
+        candidate: usize,
+        distance_squared: i64,
+        range_fp: i64,
+        heading_x: i64,
+        heading_y: i64,
+        social_table: Option<&crate::social::SocialTable>,
+    ) -> [f32; 9] {
+        let mut cues = [0.0_f32; 9];
+        let range = range_fp as f32;
+        let distance = (distance_squared as f32).sqrt();
+        cues[0] = 1.0;
+        cues[1] = (1.0 - distance / range).clamp(0.0, 1.0);
+        let delta_x = i64::from(self.x_fp[candidate]) - i64::from(self.x_fp[chooser]);
+        let delta_y = i64::from(self.y_fp[candidate]) - i64::from(self.y_fp[chooser]);
+        let cross = heading_x * delta_y - heading_y * delta_x;
+        let norm = (delta_x.abs() + delta_y.abs()).max(1);
+        cues[2] = (cross as f32 / (32768.0 * norm as f32)).clamp(-1.0, 1.0);
+        let phenotype = &p2.phenotypes[candidate];
+        cues[3] = (p2.speed_milli[candidate] as f32 / phenotype.max_speed_milli.max(1) as f32)
+            .clamp(0.0, 1.0);
+        if let Some(table) = social_table {
+            cues[4] = f32::from(table.prior_contact[candidate]);
+            cues[5] =
+                table.prior_object_delta_q16[candidate] as f32 / crate::config::Q16_ONE as f32;
+        }
+        cues[6] = self
+            .objects
+            .as_ref()
+            .map(|objects| {
+                (objects.held_mass_milli(candidate) as f32
+                    / self.carry_capacity_milli(candidate).max(1) as f32)
+                    .clamp(0.0, 1.0)
+            })
+            .unwrap_or(0.0);
+        cues[7] = (phenotype.body_scale_milli as f32 / 2_000.0).clamp(0.0, 1.0);
+        cues[8] = match self.contest.as_ref() {
+            Some(contest) => {
+                let max = crate::contest::ContestState::health_max_milli(
+                    &self.config.contest,
+                    phenotype.body_scale_milli,
+                );
+                (contest.health_milli[candidate] as f32 / max.max(1) as f32).clamp(0.0, 1.0)
+            }
+            None => 1.0,
+        };
+        cues
+    }
+
+    /// [`Self::conspecific_cues`] at the pairing snapshot (post-movement,
+    /// pre-pairing - every chooser reads the same completed positions, so
+    /// no within-tick order effect exists between choosers), with the
+    /// pairing range as the proximity normalizer.
+    fn pairing_cues(
+        &self,
+        p2: &Phase2State,
+        chooser: usize,
+        candidate: usize,
+        distance_squared: i64,
+        range_fp: i64,
+    ) -> [f32; 9] {
+        let heading = p2.heading_bam[chooser];
+        let heading_x = i64::from(crate::controller::cos_bam_q15(heading));
+        let heading_y = i64::from(crate::controller::sin_bam_q15(heading));
+        self.conspecific_cues(
+            p2,
+            chooser,
+            candidate,
+            distance_squared,
+            range_fp,
+            heading_x,
+            heading_y,
+            self.social.as_ref().map(|social| &social.table),
+        )
+    }
+
     /// Paired-parent selection and child creation. Requirements: mutual
     /// bounded mate intent, maturity, energy, completed cooldown, pairing
     /// range, trait compatibility, capacity, and valid placement. Energy is
@@ -3931,7 +4089,7 @@ impl World {
             let y = i64::from(self.y_fp[index]);
             let bucket_x = (self.x_fp[index] / self.bucket_size_fp).min(self.buckets_x as i32 - 1);
             let bucket_y = (self.y_fp[index] / self.bucket_size_fp).min(self.buckets_y as i32 - 1);
-            let mut best: Option<(i64, u64, usize)> = None;
+            let mut candidates: Vec<(i64, u64, usize)> = Vec::new();
             for neighbor_y in (bucket_y - 1).max(0)..=(bucket_y + 1).min(self.buckets_y as i32 - 1)
             {
                 for neighbor_x in
@@ -3971,15 +4129,93 @@ impl World {
                         if distance > compatibility {
                             continue;
                         }
-                        let key = (distance_squared, self.ids[candidate], candidate);
-                        if best.is_none_or(|current| (key.0, key.1) < (current.0, current.1)) {
-                            best = Some(key);
-                        }
+                        candidates.push((distance_squared, self.ids[candidate], candidate));
                     }
                 }
             }
-            let Some((_, _, partner)) = best else {
+            if candidates.is_empty() {
                 continue;
+            }
+            // Canonical candidate order: by (distance^2, id). This is the
+            // order scramble draw indices are keyed against, so the
+            // permutation is a function of the world and never of storage.
+            candidates.sort_unstable();
+            // Phase 14 mate choice (ADR-0030 decision 2): highest evolved
+            // preference score over the candidate's perceived cues, ties by
+            // the same (distance^2, id) key as ever - so an all-neutral
+            // preference reproduces proximity pairing exactly. Without the
+            // gate, the nearest candidate wins outright, byte-identically
+            // to the pre-Phase-14 loop.
+            let mut choice_record: Option<([i32; 9], [i64; 9], u32, bool)> = None;
+            let partner = match self.matechoice.as_ref() {
+                None => candidates[0].2,
+                Some(matechoice) => {
+                    let chooser_id = self.ids[index];
+                    let mut cue_rows: Vec<[f32; 9]> = candidates
+                        .iter()
+                        .map(|&(distance_squared, _, candidate)| {
+                            self.pairing_cues(p2, index, candidate, distance_squared, range_fp)
+                        })
+                        .collect();
+                    // TRUE cue records, taken before any scramble: the
+                    // event carries the truth even when the choice below
+                    // is made against a permuted assignment.
+                    let true_rows = cue_rows.clone();
+                    let scrambled = self.config.physiology.mate_choice_scramble
+                        && cue_rows.len() > 1;
+                    if scrambled {
+                        // Fisher-Yates over which cue vector belongs to
+                        // which candidate, keyed on the Perception stream
+                        // (reserved by ADR-0029 for exactly a later
+                        // preference mechanism); subject the chooser, draw
+                        // index the position being filled.
+                        for position in (1..cue_rows.len()).rev() {
+                            let draw = crate::rng::named_random(
+                                self.config.world_seed,
+                                next_tick,
+                                RngSystem::Perception,
+                                chooser_id,
+                                position as u32,
+                            );
+                            let other = (draw % (position as u64 + 1)) as usize;
+                            cue_rows.swap(position, other);
+                        }
+                    }
+                    let weights = &matechoice.weights[index];
+                    let mut best_position = 0_usize;
+                    let mut best_score = f32::NEG_INFINITY;
+                    for (position, row) in cue_rows.iter().enumerate() {
+                        let mut score = 0.0_f32;
+                        for (weight, cue) in weights.iter().zip(row.iter()) {
+                            score += weight * cue;
+                        }
+                        // Strictly-greater keeps the first (nearest, by the
+                        // canonical sort) candidate on ties, which is the
+                        // proximity tie-break stated above.
+                        if score > best_score {
+                            best_score = score;
+                            best_position = position;
+                        }
+                    }
+                    let chosen = candidates[best_position].2;
+                    let mut chosen_cues_milli = [0_i32; 9];
+                    let mut cue_sums_milli = [0_i64; 9];
+                    for (slot, value) in true_rows[best_position].iter().enumerate() {
+                        chosen_cues_milli[slot] = (value * 1_000.0) as i32;
+                    }
+                    for row in &true_rows {
+                        for (slot, value) in row.iter().enumerate() {
+                            cue_sums_milli[slot] += i64::from((value * 1_000.0) as i32);
+                        }
+                    }
+                    choice_record = Some((
+                        chosen_cues_milli,
+                        cue_sums_milli,
+                        candidates.len() as u32,
+                        scrambled,
+                    ));
+                    chosen
+                }
             };
 
             let parent_a = self.ids[index];
@@ -4271,6 +4507,26 @@ impl World {
             let depth = p2.depth[index].max(p2.depth[partner]).saturating_add(1);
             paired[index] = true;
             paired[partner] = true;
+            if let Some((chosen_cues_milli, cue_sums_milli, candidates, scrambled)) = choice_record
+            {
+                if let Some(matechoice) = self.matechoice.as_mut() {
+                    matechoice.choices_total += 1;
+                    if scrambled {
+                        matechoice.scrambled_choices_total += 1;
+                    }
+                }
+                self.push_event(
+                    next_tick,
+                    EventKind::MateChoice {
+                        chooser: parent_a,
+                        chosen: parent_b,
+                        candidates,
+                        scrambled,
+                        chosen_cues_milli,
+                        cue_sums_milli,
+                    },
+                );
+            }
             p2.pending.push(PendingChild {
                 parent_a,
                 parent_b,
@@ -4967,6 +5223,9 @@ impl World {
             if let Some(state) = self.ontogeny.as_mut() {
                 state.retain(&dead);
             }
+            if let Some(state) = self.matechoice.as_mut() {
+                state.retain(&dead);
+            }
             // A dead organism takes its learned state with it. There is
             // nothing for it to survive into: learned state is per-organism
             // and per-edge, and a child starts at zero.
@@ -5076,6 +5335,11 @@ impl World {
                         self.config.morphology.lattice,
                         self.config.physiology.birth_modules_min,
                     );
+                }
+                if let (Some(matechoice), Some(genome2)) =
+                    (self.matechoice.as_mut(), child.genome2.as_ref())
+                {
+                    matechoice.push_organism(genome2);
                 }
                 // **C11.4, at the only path a child can enter by.** The row
                 // is sized from the plan that was just compiled for this
@@ -5301,6 +5565,9 @@ impl World {
         }
         if let Some(ontogeny) = self.ontogeny.as_ref() {
             ontogeny.hash_into(&mut hasher);
+        }
+        if let Some(matechoice) = self.matechoice.as_ref() {
+            matechoice.hash_into(&mut hasher);
         }
         hasher.finish()
     }
@@ -5711,6 +5978,8 @@ mod tests {
     use super::*;
 
     const TEST_SEED: u64 = 0x5eed_cafe_f00d_beef;
+
+
 
     fn small_config() -> SimConfig {
         let mut config = SimConfig::phase1_default(TEST_SEED);

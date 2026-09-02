@@ -268,6 +268,9 @@ pub struct SaveState {
     /// Phase 14 ontogeny progress. Present exactly when the config's
     /// physiology section is enabled with its ontogeny gate on.
     pub ontogeny: Option<crate::ontogeny::OntogenySave>,
+    /// Phase 14 mate-choice counters. Present exactly when the config's
+    /// physiology section is enabled with its mate-choice gate on.
+    pub matechoice: Option<crate::matechoice::MateChoiceSave>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -453,6 +456,9 @@ impl World {
             objects: self.object_state().map(|objects| objects.table.clone()),
             social: self.social_state().map(|social| social.table.clone()),
             ontogeny: self.ontogeny_state().map(|ontogeny| ontogeny.to_save()),
+            matechoice: self
+                .matechoice_state()
+                .map(|matechoice| matechoice.to_save()),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -1021,6 +1027,36 @@ impl World {
                 ));
             }
         };
+        // Phase 14 mate choice. Presence must match the configuration; the
+        // weights cache is expressed from the restored genomes exactly as
+        // phenotypes are, and only the counters come from the save.
+        let matechoice_enabled = world.config().physiology.enabled
+            && world.config().physiology.mate_choice_enabled;
+        let rebuilt_matechoice = match (matechoice_enabled, state.matechoice) {
+            (true, Some(save)) => {
+                let schema2 = rebuilt_schema2.as_ref().ok_or_else(|| {
+                    RestoreError::StateInvalid(
+                        "mate choice requires the schema-2 section".to_owned(),
+                    )
+                })?;
+                let mut matechoice = crate::matechoice::MateChoiceState::with_capacity(
+                    schema2.genomes.len(),
+                );
+                for genome in &schema2.genomes {
+                    matechoice.push_organism(genome);
+                }
+                matechoice.choices_total = save.choices_total;
+                matechoice.scrambled_choices_total = save.scrambled_choices_total;
+                Some(matechoice)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "matechoice section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         // A restored organism wears its GROWN body, not its adult one. The
         // phenotypes rebuilt above came from full bodies (the only bodies
         // the morphology rebuild knows); re-applying the grown prefix here
@@ -1075,6 +1111,7 @@ impl World {
             rebuilt_objects,
             rebuilt_social,
             rebuilt_ontogeny,
+            rebuilt_matechoice,
         );
 
         // Step 5 of the restore order in

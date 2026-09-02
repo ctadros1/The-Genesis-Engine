@@ -90,6 +90,20 @@ pub const TRAIT_HOMOLOGY_LIMIT: u32 = 1 << 16;
 /// Structural innovations start above the trait block.
 pub const STRUCTURAL_HOMOLOGY_BASE: u32 = TRAIT_HOMOLOGY_LIMIT;
 
+/// Mate-choice preference loci (Phase 14, ADR-0030): nine Trait-kind loci
+/// in a reserved `trait_id` band, one per perception cue channel. They are
+/// carried, inherited, recombined and point-mutated by the ordinary trait
+/// machinery (which is what makes cue production and cue response
+/// separable, recombining genes - social-organization review 4.4), and
+/// expressed only by [`Genome2::express_preference`], only read when the
+/// mate-choice gate is on - the carried-but-inert precedent thermal
+/// preference, `PlasticityGenes` and `Regulatory` all set. The gene value
+/// lives in [0, 1] like every trait gene and maps to a signed weight in
+/// [-1, +1] at expression; 0.5 is therefore the neutral founder value, and
+/// an all-neutral genome reproduces proximity pairing exactly.
+pub const PREFERENCE_TRAIT_BASE: u16 = 100;
+pub const PREFERENCE_CUE_COUNT: usize = 9;
+
 /// Structural caps. Every one rejects deterministically and is counted;
 /// none is ever silently exceeded.
 ///
@@ -1181,7 +1195,15 @@ fn decode_locus(reader: &mut Reader<'_>, registry: u16) -> Result<Locus, Genome2
             if !dominance.is_finite() || !(0.0..=1.0).contains(&dominance) {
                 return Err(Genome2Error::ValueOutOfRange("trait dominance"));
             }
-            if usize::from(trait_id) >= crate::genome::TRAIT_COUNT {
+            let behavioral = usize::from(trait_id) < crate::genome::TRAIT_COUNT;
+            let preference = (PREFERENCE_TRAIT_BASE
+                ..PREFERENCE_TRAIT_BASE + PREFERENCE_CUE_COUNT as u16)
+                .contains(&trait_id);
+            // The behavioral block and the Phase 14 preference band are the
+            // only legal trait ids; everything between and beyond stays
+            // refused, so widening the bound accepted strictly more ids
+            // without reinterpreting any byte a genome ever stored.
+            if !behavioral && !preference {
                 return Err(Genome2Error::ValueOutOfRange("trait_id"));
             }
             LocusKind::Trait {
@@ -1452,6 +1474,7 @@ impl Genome2 {
                     value,
                     dominance,
                 } = locus.kind
+                    && usize::from(trait_id) < crate::genome::TRAIT_COUNT
                 {
                     store[usize::from(trait_id)] = Some((value, dominance));
                 }
@@ -1464,6 +1487,44 @@ impl Genome2 {
                 (Some((value, _)), None) | (None, Some((value, _))) => Some(value),
                 (None, None) => None,
             };
+        }
+        out
+    }
+
+    /// Express the mate-choice preference band: one signed weight per
+    /// perception cue channel, blended across haplotypes by dominance
+    /// exactly as behavioral traits are, mapped from the [0, 1] gene space
+    /// to [-1, +1]. A cue whose locus is absent weighs zero, so a genome
+    /// that never carried the band - every genome from before Phase 14 -
+    /// expresses the neutral preference and pairs by proximity exactly as
+    /// it always did.
+    pub fn express_preference(&self) -> [f32; PREFERENCE_CUE_COUNT] {
+        let mut left: [Option<(f32, f32)>; PREFERENCE_CUE_COUNT] = [None; PREFERENCE_CUE_COUNT];
+        let mut right = left;
+        for (slot, store) in [(0_usize, &mut left), (1, &mut right)] {
+            for locus in self.haplotypes[slot].chromosomes.iter().flatten() {
+                if let LocusKind::Trait {
+                    trait_id,
+                    value,
+                    dominance,
+                } = locus.kind
+                    && (PREFERENCE_TRAIT_BASE
+                        ..PREFERENCE_TRAIT_BASE + PREFERENCE_CUE_COUNT as u16)
+                        .contains(&trait_id)
+                {
+                    store[usize::from(trait_id - PREFERENCE_TRAIT_BASE)] =
+                        Some((value, dominance));
+                }
+            }
+        }
+        let mut out = [0.0_f32; PREFERENCE_CUE_COUNT];
+        for index in 0..PREFERENCE_CUE_COUNT {
+            let gene = match (left[index], right[index]) {
+                (Some((v0, d0)), Some((v1, d1))) => blend_by_dominance(v0, d0, v1, d1),
+                (Some((value, _)), None) | (None, Some((value, _))) => value,
+                (None, None) => 0.5,
+            };
+            out[index] = gene.clamp(0.0, 1.0) * 2.0 - 1.0;
         }
         out
     }

@@ -31,6 +31,7 @@ mod genome;
 mod genome2;
 mod learnstate;
 mod material;
+mod matechoice;
 mod meiosis;
 mod morphology;
 mod morphstate;
@@ -105,7 +106,8 @@ pub use genome2::{
     EDGE_FLAG_DELAYED, EDGE_FLAG_DISABLED, EDGE_FLAG_PLASTIC, ExpressedBinding, ExpressedEdge,
     ExpressedNetwork, ExpressedNode, GENOME2_MAGIC, GENOME2_POLICY_VERSION, GENOME2_SCHEMA_VERSION,
     Genome2, Genome2Error, GenomeCaps, Haplotype, Locus, LocusKind, MARKER_FLAG_NEUTRAL,
-    PLASTICITY_RULE_COUNT, PLOIDY, PlasticityGenes, STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE,
+    PLASTICITY_RULE_COUNT, PLOIDY, PREFERENCE_CUE_COUNT, PREFERENCE_TRAIT_BASE, PlasticityGenes,
+    STRUCTURAL_HOMOLOGY_BASE, TRAIT_HOMOLOGY_BASE,
     TRAIT_HOMOLOGY_LIMIT, VALUE_LIMIT, blend_by_dominance, derive_gene_lineage_id,
     derive_homology_id, derive_mutation_event_id, registry_versions,
 };
@@ -128,6 +130,7 @@ pub use origin::{
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
 };
 pub use phase2::{PairRejectReason, Phase2Counters, SENSOR_RANGE_MAX_M};
+pub use matechoice::{MateChoiceSave, MateChoiceState};
 pub use ontogeny::{OntogenySave, OntogenyState, derive_prefix, growth_order};
 pub use physiology::{
     HazardOutcome, PHYSIOLOGY_POLICY_VERSION, PhysiologyState, allometry_multiplier_milli,
@@ -161,6 +164,7 @@ pub use save::{
 pub use schema2::{
     ACTION_CHANNELS, MARKER_HOMOLOGY_ID, SENSE_CHANNELS, compatibility_distance,
     founder_from_traits, founder_with_morphology, outputs_from_requests, with_marker_locus,
+    with_preference_loci,
 };
 pub use similarity::{SIMILARITY_ALGORITHM_VERSION, SimilarityReport, analyze};
 pub use social::{

@@ -100,6 +100,11 @@ const TAG_PERCEPTION_FAULT: u8 = 25;
 // Event schema 8: the C13.7 phenotype record, one per birth in a
 // social-enabled world.
 const TAG_PHENOTYPE_AT_BIRTH: u8 = 26;
+/// Phase 14 (schema 9): one record per pairing formed under the
+/// mate-choice gate, carrying the chosen candidate's true cue values and
+/// the candidate set's true cue sums - the opportunity denominator the
+/// C14.2 assortment statistic divides by.
+const TAG_MATE_CHOICE: u8 = 27;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -341,6 +346,10 @@ impl ReconstructedCounters {
             // keeps no counter for it, so reconstruction has nothing to
             // reproduce.
             EventKind::PhenotypeAtBirth { .. } => {}
+            // A pure record for the assortment detector; the kernel's
+            // choice counters are world state, saved with it, so the log
+            // reconstructs nothing here either.
+            EventKind::MateChoice { .. } => {}
         }
     }
 }
@@ -807,6 +816,26 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&body_scale_milli.to_le_bytes());
             out.extend_from_slice(&max_speed_milli.to_le_bytes());
         }
+        EventKind::MateChoice {
+            chooser,
+            chosen,
+            candidates,
+            scrambled,
+            chosen_cues_milli,
+            cue_sums_milli,
+        } => {
+            out.push(TAG_MATE_CHOICE);
+            out.extend_from_slice(&chooser.to_le_bytes());
+            out.extend_from_slice(&chosen.to_le_bytes());
+            out.extend_from_slice(&candidates.to_le_bytes());
+            out.push(u8::from(scrambled));
+            for value in chosen_cues_milli {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+            for value in cue_sums_milli {
+                out.extend_from_slice(&value.to_le_bytes());
+            }
+        }
     }
 }
 
@@ -862,6 +891,9 @@ impl<'a> Cursor<'a> {
     }
     fn u64(&mut self) -> Option<u64> {
         Some(u64::from_le_bytes(self.take(8)?.try_into().ok()?))
+    }
+    fn i32(&mut self) -> Option<i32> {
+        self.take(4).map(|bytes| i32::from_le_bytes(bytes.try_into().unwrap()))
     }
     fn i64(&mut self) -> Option<i64> {
         Some(i64::from_le_bytes(self.take(8)?.try_into().ok()?))
@@ -1228,6 +1260,35 @@ fn decode_events_into(
                     id,
                     body_scale_milli,
                     max_speed_milli,
+                }
+            }
+            TAG_MATE_CHOICE => {
+                let chooser = short!(cursor.u64());
+                let chosen = short!(cursor.u64());
+                let candidates = short!(cursor.u32());
+                let scrambled = short!(cursor.u8());
+                if scrambled > 1 {
+                    return Err(EventLogError::ValueOutOfRange("mate choice scrambled"));
+                }
+                let mut chosen_cues_milli = [0_i32; 9];
+                for slot in &mut chosen_cues_milli {
+                    *slot = short!(cursor.i32());
+                }
+                let mut cue_sums_milli = [0_i64; 9];
+                for slot in &mut cue_sums_milli {
+                    *slot = short!(cursor.i64());
+                }
+                // The chooser considered at least the candidate it chose.
+                if candidates == 0 {
+                    return Err(EventLogError::ValueOutOfRange("mate choice candidates"));
+                }
+                EventKind::MateChoice {
+                    chooser,
+                    chosen,
+                    candidates,
+                    scrambled: scrambled == 1,
+                    chosen_cues_milli,
+                    cue_sums_milli,
                 }
             }
             // Fail closed. Skipping would corrupt every rate an analysis

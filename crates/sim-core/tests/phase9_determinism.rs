@@ -234,6 +234,9 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         action_census,
         social,
         ontogeny,
+        // Counters only, no per-organism array (the weights cache is
+        // derived and lives outside the save).
+        matechoice: _,
     } = state;
 
     per_organism!("ids", ids);
@@ -509,6 +512,9 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         action_census,
         social,
         ontogeny,
+        // Counters only, no per-organism array (the weights cache is
+        // derived and lives outside the save).
+        matechoice: _,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);

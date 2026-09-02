@@ -67,7 +67,12 @@ impl World {
     /// truncated to `k`: the materialized-sorted-truncated set of Rule 5.
     /// The bucket rectangle is computed from the range, so a radius wider
     /// than one bucket is still complete.
-    fn conspecifics_within(&self, index: usize, range_fp: i64, k: usize) -> Vec<(i64, usize)> {
+    pub(crate) fn conspecifics_within(
+        &self,
+        index: usize,
+        range_fp: i64,
+        k: usize,
+    ) -> Vec<(i64, usize)> {
         let x = i64::from(self.x_fp[index]);
         let y = i64::from(self.y_fp[index]);
         let range_squared = range_fp * range_fp;
@@ -131,17 +136,6 @@ impl World {
         let corruption = config.signal_corruption_q16;
         let tick = self.tick;
         let seed = self.config.world_seed;
-        let health_max: Option<Vec<i64>> = self.contest.as_ref().map(|_| {
-            p2.phenotypes
-                .iter()
-                .map(|phenotype| {
-                    crate::contest::ContestState::health_max_milli(
-                        &self.config.contest,
-                        phenotype.body_scale_milli,
-                    )
-                })
-                .collect()
-        });
         for index in 0..population {
             let mut cues = [0.0_f32; SOCIAL_CUE_COUNT];
             if config.perception_enabled {
@@ -150,43 +144,26 @@ impl World {
                 let heading_x = i64::from(crate::controller::cos_bam_q15(heading));
                 let heading_y = i64::from(crate::controller::sin_bam_q15(heading));
                 for (slot, &(distance_squared, other)) in neighbours.iter().enumerate() {
+                    // The nine formulas live in `World::conspecific_cues` -
+                    // one source shared with mate choice (ADR-0030), so the
+                    // two cannot drift. The Phase 13 fixture's byte identity
+                    // is what proves the extraction preserved this path's
+                    // arithmetic exactly. `health_max` was a per-population
+                    // precomputation of the same pure function the shared
+                    // path now calls per neighbour; the values are
+                    // identical.
                     let base = slot * 9;
-                    let range = range_fp as f32;
-                    let distance = (distance_squared as f32).sqrt();
-                    cues[base] = 1.0;
-                    cues[base + 1] = (1.0 - distance / range).clamp(0.0, 1.0);
-                    let delta_x = i64::from(self.x_fp[other]) - i64::from(self.x_fp[index]);
-                    let delta_y = i64::from(self.y_fp[other]) - i64::from(self.y_fp[index]);
-                    let cross = heading_x * delta_y - heading_y * delta_x;
-                    let norm = (delta_x.abs() + delta_y.abs()).max(1);
-                    cues[base + 2] = (cross as f32 / (32768.0 * norm as f32)).clamp(-1.0, 1.0);
-                    let phenotype = &p2.phenotypes[other];
-                    cues[base + 3] = (p2.speed_milli[other] as f32
-                        / phenotype.max_speed_milli.max(1) as f32)
-                        .clamp(0.0, 1.0);
-                    cues[base + 4] = f32::from(social.table.prior_contact[other]);
-                    cues[base + 5] =
-                        social.table.prior_object_delta_q16[other] as f32 / Q16_ONE as f32;
-                    cues[base + 6] = self
-                        .objects
-                        .as_ref()
-                        .map(|objects| {
-                            (objects.held_mass_milli(other) as f32
-                                / self.carry_capacity_milli(other).max(1) as f32)
-                                .clamp(0.0, 1.0)
-                        })
-                        .unwrap_or(0.0);
-                    cues[base + 7] = (phenotype.body_scale_milli as f32 / 2_000.0).clamp(0.0, 1.0);
-                    cues[base + 8] = match health_max.as_ref() {
-                        Some(max) => {
-                            let health = self
-                                .contest
-                                .as_ref()
-                                .map_or(0, |contest| contest.health_milli[other]);
-                            (health as f32 / max[other].max(1) as f32).clamp(0.0, 1.0)
-                        }
-                        None => 1.0,
-                    };
+                    let row = self.conspecific_cues(
+                        p2,
+                        index,
+                        other,
+                        distance_squared,
+                        range_fp,
+                        heading_x,
+                        heading_y,
+                        Some(&social.table),
+                    );
+                    cues[base..base + 9].copy_from_slice(&row);
                 }
             }
             if config.signal_enabled {

@@ -815,6 +815,21 @@ pub struct PhysiologyConfig {
     /// Ledger flow cap into growth, milli-EU per second, so growth is a
     /// metered expense over juvenile life rather than a lump sum at birth.
     pub growth_rate_milli_per_s: i64,
+
+    /// Mate choice (Phase 14, ADR-0030 decision 2): pairing selects the
+    /// candidate with the highest evolved-preference score over its
+    /// perceived cue values rather than the nearest, with the existing
+    /// `(distance^2, id)` key as the tie-break - so an all-neutral
+    /// preference reproduces proximity pairing exactly. Requires phase2
+    /// (there is no pairing otherwise) and genome2 (the preference band is
+    /// schema-2 trait loci).
+    pub mate_choice_enabled: bool,
+    /// The P-scramble arm: candidate cue vectors are permuted among the
+    /// candidates actually under consideration before scoring, preserving
+    /// eligibility, distance and cost while destroying which cues belong
+    /// to whom. Checked, never merely configured: every permuted choice
+    /// counts in `scrambled_choices_total`.
+    pub mate_choice_scramble: bool,
 }
 
 impl PhysiologyConfig {
@@ -840,6 +855,8 @@ impl PhysiologyConfig {
             birth_modules_min: 1,
             growth_cost_milli_per_mass_milli: 100,
             growth_rate_milli_per_s: 50,
+            mate_choice_enabled: false,
+            mate_choice_scramble: false,
         }
     }
 }
@@ -1899,6 +1916,30 @@ impl SimConfig {
                     return Err(ConfigError::NonPositive("growth_rate_milli_per_s"));
                 }
             }
+            // Phase 14 mate choice (ADR-0030). Refused rather than inert
+            // when its preconditions are missing, for the reason ontogeny
+            // is: a config that asks for choice and gets none would pair by
+            // proximity and read as C14.2's null.
+            if physiology.mate_choice_enabled {
+                if !self.phase2.enabled {
+                    return Err(ConfigError::PhysiologyRange(
+                        "mate choice requires phase2",
+                        0,
+                    ));
+                }
+                if !self.genome2.enabled {
+                    return Err(ConfigError::PhysiologyRange(
+                        "mate choice requires genome2",
+                        0,
+                    ));
+                }
+            }
+            if physiology.mate_choice_scramble && !physiology.mate_choice_enabled {
+                return Err(ConfigError::PhysiologyRange(
+                    "mate_choice_scramble is set while mate_choice_enabled is false",
+                    0,
+                ));
+            }
         }
         Ok(())
     }
@@ -2329,6 +2370,10 @@ impl SimConfig {
                 hasher.update_u32(self.physiology.birth_modules_min);
                 hasher.update_i64(self.physiology.growth_cost_milli_per_mass_milli);
                 hasher.update_i64(self.physiology.growth_rate_milli_per_s);
+            }
+            if self.physiology.mate_choice_enabled {
+                hasher.update(b"lifesim-physiology-v2-mate-choice");
+                hasher.update_u32(u32::from(self.physiology.mate_choice_scramble));
             }
         }
         // Phase 9 section: hashed only when enabled, so a schema-1 config

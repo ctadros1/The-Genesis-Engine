@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_9;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_10;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -96,6 +96,11 @@ pub const FORMAT_VERSION_8: u16 = 8;
 /// config fields to the config body and introduces `SECTION_ONTOGENY`.
 /// Guarded by name wherever it gates, permanently (D-108).
 pub const FORMAT_VERSION_9: u16 = 9;
+
+/// Format 10 (Phase 14, ADR-0030 decision 2): appends the two mate-choice
+/// gates to the config body and introduces `SECTION_MATECHOICE`. Guarded
+/// by name wherever it gates, permanently (D-108).
+pub const FORMAT_VERSION_10: u16 = 10;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -278,6 +283,9 @@ const SECTION_SOCIAL: u16 = 16;
 /// lengths and payments toward the next module, plus the section's two
 /// counters. Present exactly when the config's ontogeny gate is on.
 const SECTION_ONTOGENY: u16 = 17;
+/// Phase 14 mate-choice counters (format 10): the section is counters
+/// only - the weights cache is expressed from genomes on load.
+const SECTION_MATECHOICE: u16 = 18;
 /// Bytes one object's fixed fields occupy: the bound a declared object count
 /// implies before any composition list is read.
 const OBJECT_FIXED_BYTES: u64 =
@@ -879,6 +887,10 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_9 {
         encode_physiology_v2_config(&mut writer, config);
     }
+    // Format 10's block, appended after format 9's on the same terms.
+    if format >= FORMAT_VERSION_10 {
+        encode_matechoice_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1051,6 +1063,27 @@ fn decode_physiology_v2_config(
     physiology.birth_modules_min = reader.u32()?;
     physiology.growth_cost_milli_per_mass_milli = reader.i64()?;
     physiology.growth_rate_milli_per_s = reader.i64()?;
+    Ok(())
+}
+
+/// The format-10 mate-choice block: the two gates, one field per line in
+/// declaration order, swept by `config_field_coverage.rs` like every
+/// config field before them.
+fn encode_matechoice_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    writer.u8(u8::from(config.physiology.mate_choice_enabled));
+    writer.u8(u8::from(config.physiology.mate_choice_scramble));
+}
+
+/// Bytes the format-10 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT10_CONFIG_BYTES: usize = 2;
+
+fn decode_matechoice_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    config.physiology.mate_choice_enabled = reader.u8()? != 0;
+    config.physiology.mate_choice_scramble = reader.u8()? != 0;
     Ok(())
 }
 
@@ -1289,6 +1322,13 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // over a lifetime.
     if format >= FORMAT_VERSION_9 {
         decode_physiology_v2_config(&mut *reader, &mut config)?;
+    }
+    // Format 10's block. Left at its defaults for an older body - both
+    // gates off - the same resolution-not-invention every earlier appended
+    // block states: no build that could write a format-9 file chose a mate
+    // by anything but distance.
+    if format >= FORMAT_VERSION_10 {
+        decode_matechoice_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -1674,6 +1714,12 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
         section.u64(ontogeny.modules_grown_total);
         section.i128(ontogeny.growth_spent_milli_total);
         write_section(&mut payload, SECTION_ONTOGENY, 0, section.0);
+    }
+    if let Some(matechoice) = state.matechoice.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(matechoice.choices_total);
+        section.u64(matechoice.scrambled_choices_total);
+        write_section(&mut payload, SECTION_MATECHOICE, 0, section.0);
     }
     payload
 }
@@ -2124,6 +2170,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut objects: Option<sim_core::ObjectTable> = None;
     let mut social: Option<sim_core::SocialTable> = None;
     let mut ontogeny: Option<sim_core::OntogenySave> = None;
+    let mut matechoice: Option<sim_core::MateChoiceSave> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -2727,6 +2774,20 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                     growth_spent_milli_total: reader.i128()?,
                 });
             }
+            SECTION_MATECHOICE => {
+                // `FORMAT_VERSION_10` by name: the format that introduced
+                // the section, permanently (D-108).
+                if format < FORMAT_VERSION_10 {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if matechoice.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                matechoice = Some(sim_core::MateChoiceSave {
+                    choices_total: reader.u64()?,
+                    scrambled_choices_total: reader.u64()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -2756,6 +2817,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         objects,
         social,
         ontogeny,
+        matechoice,
         ids,
         x_fp,
         y_fp,
@@ -2835,6 +2897,7 @@ pub fn encode_snapshot_format3(
     }
     refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format9_state(state, FORMAT_VERSION_3)?;
+    refuse_format10_state(state, FORMAT_VERSION_3)?;
     refuse_format7_state(state, FORMAT_VERSION_3)?;
     encode_snapshot_versioned(
         state,
@@ -2887,6 +2950,7 @@ pub fn encode_snapshot_format4(
     }
     refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format9_state(state, FORMAT_VERSION_4)?;
+    refuse_format10_state(state, FORMAT_VERSION_4)?;
     refuse_format7_state(state, FORMAT_VERSION_4)?;
     encode_snapshot_versioned(
         state,
@@ -2929,6 +2993,7 @@ pub fn encode_snapshot_format5(
     }
     refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format9_state(state, FORMAT_VERSION_5)?;
+    refuse_format10_state(state, FORMAT_VERSION_5)?;
     refuse_format7_state(state, FORMAT_VERSION_5)?;
     encode_snapshot_versioned(
         state,
@@ -2964,6 +3029,7 @@ pub fn encode_snapshot_format6(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format9_state(state, FORMAT_VERSION_6)?;
+    refuse_format10_state(state, FORMAT_VERSION_6)?;
     refuse_format7_state(state, FORMAT_VERSION_6)?;
     encode_snapshot_versioned(
         state,
@@ -2998,6 +3064,7 @@ pub fn encode_snapshot_format7(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format8_state(state, FORMAT_VERSION_7)?;
     refuse_format9_state(state, FORMAT_VERSION_7)?;
+    refuse_format10_state(state, FORMAT_VERSION_7)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -3030,6 +3097,7 @@ pub fn encode_snapshot_format8(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format9_state(state, FORMAT_VERSION_8)?;
+    refuse_format10_state(state, FORMAT_VERSION_8)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -3043,12 +3111,58 @@ pub fn encode_snapshot_format8(
     )
 }
 
+/// Encode a **format 9** snapshot, retained on the terms every earlier
+/// writer is: the 9-to-10 migration's byte-identity requirement is stated
+/// against it. It refuses a state carrying anything format 10 added.
+pub fn encode_snapshot_format9(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format10_state(state, FORMAT_VERSION_9)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_9,
+        SAVE_STATE_VERSION,
+    )
+}
+
 /// The write-side refusal every retained pre-8 writer shares: a state that
 /// carries what only format 8 can express is refused with the field named,
 /// before a byte is written. The whole struct is compared against its
 /// default rather than only the gate, because a knob moved off its default
 /// with the section disabled is still a value the format has no bytes for,
 /// and restoring it at the default would alter meaning on load.
+/// The write-side refusal every retained pre-10 writer shares, on the
+/// terms `refuse_format9_state` is: the two mate-choice gates compared
+/// field by field, and the counters section refused by name.
+fn refuse_format10_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    if state.config.physiology.mate_choice_enabled || state.config.physiology.mate_choice_scramble
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "physiology mate choice",
+            format,
+        });
+    }
+    if state.matechoice.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_MATECHOICE,
+            format,
+        });
+    }
+    Ok(())
+}
+
 /// The write-side refusal every retained pre-9 writer shares: a state that
 /// carries what only format 9 can express is refused with the field or
 /// section named, before a byte is written. The ontogeny knobs are compared
@@ -3376,6 +3490,12 @@ pub fn decode_snapshot_format7(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// terms every earlier retained reader is.
 pub fn decode_snapshot_format8(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_8, SAVE_STATE_VERSION)
+}
+
+/// Decode a **format 9** snapshot. Retained for the 9-to-10 migration, on
+/// the terms every earlier retained reader is.
+pub fn decode_snapshot_format9(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_9, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

@@ -38,11 +38,12 @@ use sim_core::{
 };
 use sim_persist::{
     CodecError, FORMAT_VERSION, FORMAT_VERSION_4, FORMAT_VERSION_5, FORMAT_VERSION_6,
-    FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT_VERSION_9, FORMAT7_CONFIG_BYTES,
-    FORMAT8_CONFIG_BYTES, FORMAT9_CONFIG_BYTES, StoreError, decode_snapshot,
-    decode_snapshot_format6, decode_snapshot_format7, decode_snapshot_format8, encode_snapshot,
-    encode_snapshot_format4, encode_snapshot_format5, encode_snapshot_format6,
-    encode_snapshot_format7, encode_snapshot_format8, migration_for,
+    FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT_VERSION_9, FORMAT_VERSION_10,
+    FORMAT7_CONFIG_BYTES, FORMAT8_CONFIG_BYTES, FORMAT9_CONFIG_BYTES, FORMAT10_CONFIG_BYTES,
+    StoreError, decode_snapshot, decode_snapshot_format6, decode_snapshot_format7,
+    decode_snapshot_format8, decode_snapshot_format9, encode_snapshot, encode_snapshot_format4,
+    encode_snapshot_format5, encode_snapshot_format6, encode_snapshot_format7,
+    encode_snapshot_format8, encode_snapshot_format9, migration_for,
 };
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
@@ -203,8 +204,13 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
         ),
         (
             FORMAT_VERSION_9,
-            encode_snapshot as Writer,
+            encode_snapshot_format9 as Writer,
             FORMAT9_CONFIG_BYTES,
+        ),
+        (
+            FORMAT_VERSION_10,
+            encode_snapshot as Writer,
+            FORMAT10_CONFIG_BYTES,
         ),
     ];
 
@@ -278,10 +284,17 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
     // section.
     let (nine_version, nine_bytes, _) = &encoded[5];
     assert_eq!(*nine_version, FORMAT_VERSION_9);
-    let (_, nine_state) = decode_snapshot(nine_bytes).expect("decode format 9");
+    let (_, nine_state) = decode_snapshot_format9(nine_bytes).expect("decode format 9");
     assert_eq!(
         nine_state.config, eight_state.config,
         "the appended physiology-v2 block did not round-trip to its defaults"
+    );
+    let (ten_version, ten_bytes, _) = &encoded[6];
+    assert_eq!(*ten_version, FORMAT_VERSION_10);
+    let (_, ten_state) = decode_snapshot(ten_bytes).expect("decode format 10");
+    assert_eq!(
+        ten_state.config, nine_state.config,
+        "the appended mate-choice block did not round-trip to its defaults"
     );
 }
 
@@ -415,8 +428,11 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
     let state = world.export_state();
     let checksum = world.state_checksum();
 
-    let nine = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode format 9");
+    let ten = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+        .expect("encode format 10");
+    let nine =
+        encode_snapshot_format9(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+            .expect("encode format 9");
     let eight =
         encode_snapshot_format8(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
             .expect("encode format 8");
@@ -470,10 +486,22 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
         "a format 9 payload read as format 8 must fail on the appended ontogeny block"
     );
     assert_eq!(
-        decode_snapshot(&relabel(&eight, FORMAT_VERSION_9)).err(),
+        decode_snapshot_format9(&relabel(&eight, FORMAT_VERSION_9)).err(),
         Some(CodecError::TruncatedSection),
         "a format 8 payload read as format 9 must run out of config body inside \
          the appended physiology-v2 block"
+    );
+    // The 9/10 pair, both ways, on the same terms as every earlier pair.
+    assert_eq!(
+        decode_snapshot_format9(&relabel(&ten, FORMAT_VERSION_9)).err(),
+        Some(CodecError::ValueOutOfRange("section trailing bytes")),
+        "a format 10 payload read as format 9 must fail on the appended mate-choice block"
+    );
+    assert_eq!(
+        decode_snapshot(&relabel(&nine, FORMAT_VERSION_10)).err(),
+        Some(CodecError::TruncatedSection),
+        "a format 9 payload read as format 10 must run out of config body inside \
+         the appended mate-choice block"
     );
 }
 

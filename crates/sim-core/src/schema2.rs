@@ -279,6 +279,40 @@ pub fn founder_with_morphology(traits: &[f32; crate::genome::TRAIT_COUNT]) -> Ge
     genome
 }
 
+/// Add the Phase 14 mate-choice preference band to a founder genome: nine
+/// neutral Trait loci in the reserved band (gene 0.5 = signed weight
+/// zero), so an enabled world starts at exactly proximity pairing and any
+/// assortment that appears was selected, not seeded. Homology ids follow
+/// the trait block's `trait_id + 1` scheme, comfortably inside the trait
+/// homology range and far from the behavioral block. Kept out of
+/// [`founder_from_traits`] on the terms [`founder_with_morphology`] is.
+pub fn with_preference_loci(mut genome: Genome2) -> Genome2 {
+    for cue in 0..crate::genome2::PREFERENCE_CUE_COUNT as u16 {
+        let trait_id = crate::genome2::PREFERENCE_TRAIT_BASE + cue;
+        let locus = crate::genome2::Locus {
+            homology_id: u32::from(trait_id) + 1,
+            gene_lineage_id: u64::from(trait_id) + 1,
+            mutation_event_id: 0,
+            kind: crate::genome2::LocusKind::Trait {
+                trait_id,
+                value: 0.5,
+                dominance: 0.5,
+            },
+        };
+        for haplotype in &mut genome.haplotypes {
+            for chromosome in &mut haplotype.chromosomes {
+                chromosome.push(locus);
+            }
+        }
+    }
+    for haplotype in &mut genome.haplotypes {
+        for chromosome in &mut haplotype.chromosomes {
+            chromosome.sort_unstable_by_key(|locus| locus.homology_id);
+        }
+    }
+    genome
+}
+
 /// Homology slot of the founder's neutral marker locus.
 ///
 /// **Between the two founder edge loci** (`BASE + 4_000` and `BASE + 5_000`),
