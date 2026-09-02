@@ -1,0 +1,5 @@
+# phase16-local-20260902T195628Z
+# benchmark schema 10: PHASE16-BENCH markers, medians over 500 ticks after 100 warmup; burst = one timed tick
+PHASE16-BENCH transition-burst cells=64x64 slots1_burst_us=363.2 slots16_burst_us=572.1 slots64_burst_us=2091.7 slots64_after_us=230.8 per_organism_us=7.27
+PHASE16-BENCH transition-tick cells=64x64 classes=8 disabled_us=564.7 inert_check100_us=550.3 inert_check1_us=583.2
+PHASE16-BENCH snapshot cells=64x64 classes=8 off_bytes=428556 off_zstd3_bytes=67050 transition_bytes=559708 transition_zstd3_bytes=67073 delta_bytes=131152 delta_bytes_per_slot=4.0

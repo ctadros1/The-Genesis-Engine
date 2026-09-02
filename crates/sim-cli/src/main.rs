@@ -140,6 +140,9 @@ fn usage() -> String {
         "  signal field, and a scripted rule-5 plastic edge under condition P; --social-scramble is\n",
         "  condition D, --social-strict is condition S (rule 5 withheld), --social-corrupt turns on\n",
         "  the pinned reception corruption\n",
+        "  --transition builds the Phase 16 transition trace: a scratch world (no founders) with the\n",
+        "  Phase 15 field stack, pinned schema-2 policy, morphology, and the field-to-individual\n",
+        "  transition on, so materialization runs from the field alone; pins its whole configuration\n",
         "run also accepts: --event-log PATH"
     )
     .to_owned()
@@ -170,6 +173,8 @@ struct Options {
     physiology_v2_inert: bool,
     field: bool,
     field_scaffold: bool,
+    transition: bool,
+    transition_off: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -282,6 +287,16 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--field-scaffold" {
             options.field_scaffold = true;
+            index += 1;
+            continue;
+        }
+        if name == "--transition" {
+            options.transition = true;
+            index += 1;
+            continue;
+        }
+        if name == "--transition-off" {
+            options.transition_off = true;
             index += 1;
             continue;
         }
@@ -447,6 +462,9 @@ fn build_world(options: &Options) -> Result<World, String> {
     }
     if options.physiology_v2 {
         return physiology_trace_world(options);
+    }
+    if options.transition {
+        return transition_trace_world(options);
     }
     if options.field || options.field_scaffold {
         return field_trace_world(options);
@@ -887,6 +905,73 @@ fn field_trace_world(options: &Options) -> Result<World, String> {
         options.field_scaffold,
     );
     World::new(config).map_err(|error| format!("field trace world: {error}"))
+}
+
+// --- the Phase 16 transition trace -------------------------------------------
+
+/// The Phase 16 trace's configuration: a `scratch` world - no founders -
+/// with the whole field stack of the Phase 15 trace, schema 2 with its
+/// policy pinned literally (the Phase 9 discipline: a default revision
+/// cannot move the fixture silently), morphology, and the transition at
+/// a floor one organism's energy high with a short window, so
+/// materialization, births among the materialized, and deaths all happen
+/// inside an affordable horizon. Ages are shortened for the Phase 15
+/// trace's reason.
+fn transition_trace_config(seed: u64, transition_off: bool) -> SimConfig {
+    let mut config = SimConfig::phase2_default(seed);
+    config.cells_x = 48;
+    config.cells_y = 48;
+    config.initial_organisms = 0;
+    config.max_entities = 2_000;
+    config.origin.mode = sim_core::OriginMode::Scratch;
+    config.maturity_age_ticks = 50;
+    config.max_age_ticks = 400;
+    // No pairing knob: a materialized unicell (a slow, blind gut) starves
+    // long before its trait-derived maturity in this ecology, so the trace
+    // pins materialization, feeding, death and the deposits - not births.
+    // Lowering the pairing threshold changed nothing observable (tried at
+    // 2,000: births stayed zero), so the shipped value stays.
+    config.genome2.enabled = true;
+    apply_pinned_genome2_policy(&mut config);
+    config.morphology.enabled = true;
+    config.chemistry.enabled = true;
+    config.chemistry.field_steps_per_tick = 2;
+    config.chemistry.microbial_enabled = true;
+    config.chemistry.abiogenesis_enabled = true;
+    config.chemistry.mutation_q16 = 4_096;
+    config.chemistry.excretion_fraction_q16 = 32_768;
+    config.chemistry.remains_fraction_q16 = 32_768;
+    // Ten times the shipped abiotic input, so an eligible class reaches
+    // one organism's worth of density inside the fixture horizon; at the
+    // shipped rate that takes tens of thousands of ticks, which is the
+    // campaign's horizon, not a fixture's.
+    config.chemistry.production_milli_per_step = 20;
+    config.transition.enabled = true;
+    config.transition.check_interval_ticks = 50;
+    config.transition.density_floor_milli = 4_000;
+    config.transition.persistence_checks = 3;
+    config.transition.aggregation_step_min = 1;
+    config.transition.organism_energy_milli = 4_000;
+    config.transition.max_organisms_per_event = 4;
+    config.transition.max_materializations_per_tick = 64;
+    // The field-only control: the same scratch world with the transition
+    // gate off, so the verify script can show it stays empty and replays.
+    if transition_off {
+        config.transition.enabled = false;
+    }
+    config
+}
+
+fn transition_trace_world(options: &Options) -> Result<World, String> {
+    if options.phase2 || options.genome2 || options.field || options.field_scaffold {
+        return Err(format!(
+            "--transition pins its whole configuration; drop --phase2/--genome2/--field\n{}",
+            usage()
+        ));
+    }
+    let config =
+        transition_trace_config(options.seed.unwrap_or(DEFAULT_SEED), options.transition_off);
+    World::new(config).map_err(|error| format!("transition trace world: {error}"))
 }
 
 // --- the Phase 14 physiology-v2 trace ---------------------------------------
@@ -3631,7 +3716,64 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if metrics.chemistry_enabled {
+    if metrics.transition_enabled || options.transition {
+        // Fixture schema 12: the Phase 16 transition trace. Separate on
+        // the grounds every earlier schema was: a world that materializes
+        // organisms from a field is not comparable field-for-field to one
+        // that only carries the field. Every mechanism the phase added has
+        // a field, so the fixture cannot silently become a control (trap
+        // 1): `verify-phase16-determinism.sh` refuses the load-bearing
+        // ones at zero and closes both identities from the printed totals.
+        let counters = world.counters();
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":12,\"phase\":\"phase16\",",
+                "\"transition_policy\":\"{}\",\"genome_map_version\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},\"births\":{},",
+                "\"chemistry_total_milli\":{},\"produced_milli\":{},",
+                "\"deposited_milli\":{},\"abiogenesis_fired\":{},",
+                "\"microbial_total_milli\":{},\"occupied_cells\":{},",
+                "\"materialized\":{},\"materialized_milli\":{},",
+                "\"transition_events\":{},\"deferred_cap\":{},",
+                "\"deferred_capacity\":{},\"refused\":{},",
+                "\"organism_energy_milli\":{},\"initial_energy_milli\":{},",
+                "\"assimilated_milli\":{},\"spent_milli\":{},",
+                "\"removed_at_death_milli\":{},",
+                "\"max_modules\":{},\"multi_module\":{}}}"
+            ),
+            sim_core::TRANSITION_POLICY_VERSION,
+            sim_core::GENOME_MAP_VERSION,
+            world.config().initial_organisms,
+            metrics.tick,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            counters.births_total,
+            metrics.chemistry_total_milli,
+            metrics.chemistry_produced_milli,
+            metrics.chemistry_deposited_milli,
+            metrics.abiogenesis_fired_total,
+            metrics.microbial_total_milli,
+            metrics.microbial_occupied_cells,
+            metrics.materialized_total,
+            metrics.materialized_milli,
+            metrics.transition_events_total,
+            metrics.transition_deferred_cap_total,
+            metrics.transition_deferred_capacity_total,
+            metrics.transition_refused_total,
+            metrics.total_energy_milli,
+            world.ledger().initial_energy_milli,
+            world.ledger().assimilated_milli,
+            world.ledger().spent_milli,
+            world.ledger().removed_at_death_milli,
+            metrics.max_modules,
+            metrics.multi_module_organisms,
+        );
+    } else if metrics.chemistry_enabled {
         // Fixture schema 11: the Phase 15 field trace. Separate on the
         // grounds every earlier schema was: a world with a substrate field
         // is not comparable field-for-field to one without. Every

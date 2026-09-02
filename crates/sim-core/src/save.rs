@@ -281,6 +281,10 @@ pub struct SaveState {
     /// is on (which requires chemistry). Stored, never recomputed, like
     /// the chemistry half; the mutation scratch buffer is a rebuilt cache.
     pub microbial: Option<MicrobialSave>,
+    /// Phase 16 transition state. Present exactly when the transition
+    /// gate is on. The persistence counters are real state (ADR-0032);
+    /// the per-class eligibility table is a rebuilt cache.
+    pub transition: Option<crate::transition::TransitionSave>,
 }
 
 /// The chemistry field's saved half: concentrations plus the ledger.
@@ -502,6 +506,9 @@ impl World {
                 died_milli_total: microbial.died_milli_total,
                 mutated_milli_total: microbial.mutated_milli_total,
             }),
+            transition: self
+                .transition_state()
+                .map(|transition| transition.to_save()),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -1179,6 +1186,59 @@ impl World {
             }
         };
 
+        // Phase 16 transition. Same contract again: presence must match
+        // the gate, the counters are validated structurally, the
+        // eligibility table is a rebuilt cache. Every field of the save
+        // twin is spelled here (D-077).
+        let rebuilt_transition = match (world.config().transition.enabled, state.transition) {
+            (true, Some(save)) => {
+                let config = *world.config();
+                let cells = config.cells_x as usize * config.cells_y as usize;
+                let slots = cells * crate::microbial::class_count(&config.chemistry);
+                if save.persistence.len() != slots {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "transition carries {} persistence counters for {} slots",
+                        save.persistence.len(),
+                        slots
+                    )));
+                }
+                if save.materialized_milli < 0 {
+                    return Err(RestoreError::StateInvalid(
+                        "transition materialized_milli is negative".to_owned(),
+                    ));
+                }
+                let crate::transition::TransitionSave {
+                    persistence,
+                    materialized_total,
+                    events_total,
+                    materialized_milli,
+                    deferred_cap_total,
+                    deferred_capacity_total,
+                    refused_total,
+                } = save;
+                let mut transition = crate::transition::TransitionState::new(
+                    cells,
+                    &config.chemistry,
+                    &config.transition,
+                );
+                transition.persistence = persistence;
+                transition.materialized_total = materialized_total;
+                transition.events_total = events_total;
+                transition.materialized_milli = materialized_milli;
+                transition.deferred_cap_total = deferred_cap_total;
+                transition.deferred_capacity_total = deferred_capacity_total;
+                transition.refused_total = refused_total;
+                transition.rebuild_derived(&config.chemistry, &config.transition);
+                Some(transition)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "transition section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         // A restored organism wears its GROWN body, not its adult one. The
         // phenotypes rebuilt above came from full bodies (the only bodies
         // the morphology rebuild knows); re-applying the grown prefix here
@@ -1236,6 +1296,7 @@ impl World {
             rebuilt_matechoice,
             rebuilt_chemistry,
             rebuilt_microbial,
+            rebuilt_transition,
         );
 
         // Step 5 of the restore order in

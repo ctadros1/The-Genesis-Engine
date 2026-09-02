@@ -66,6 +66,8 @@ precedence over anything in this document that contradicts it.
 | Materials, objects, world modification | `lifesim-material-v1`, `lifesim-artifact-v2`, `lifesim-worldmod-v1` | 12 | `specifications/artifact-and-material-ontology.md`, `specifications/mutable-world-state.md` |
 | Allometry, thermoregulation, senescence, extrinsic mortality | `lifesim-demography-v1` | 8 (executes after 7) | `planning/phase-8-demography-and-life-history.md` |
 | Developmental ontogeny, sexual selection, disease | `lifesim-physiology-v2` | 14 (executes after 13) | `planning/phase-14-ontogeny-and-sexual-selection.md` |
+| Chemistry and microbial field regime | `lifesim-chemistry-v1`, `lifesim-microbial-v1` | 15 | `specifications/unicellular-regime.md`, ADR-0031 |
+| Field-to-individual transition (`scratch` end to end) | `lifesim-transition-v1` | 16 | `specifications/unicellular-regime.md`, ADR-0032 |
 
 Three sections below become live rather than documented placeholders:
 combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 8, and carcasses in Phase 7.
@@ -97,6 +99,19 @@ run at their sources (excretion inside the cost passes, remains at the
 death site), so `TickPhase::ALL` stays at 9 and benchmark schema 10 is
 unchanged. With `chemistry.enabled` false, `step_chemistry` returns
 immediately and no fixture moves.*
+*As built (2026-09-02, Phase 16): no new named phase for the transition
+either - the trigger check and materialization run inside `lifecycle`,
+after the tick's paired births and before object decay, so entity IDs
+stay strictly increasing (births, then materializations) and the density
+read is the tick's committed field. Every materialized organism is
+admitted through the same function births use (`admit_schema2_child`,
+extracted from the birth loop by pure code motion; the Phase 13, 14 and
+15 fixtures pin that nothing moved). The energy credited is the density
+debited - one number, counted in both the organism energy identity and
+the field identity, checked by `check_invariants`. With
+`transition.enabled` false, `materialize` returns immediately and no
+fixture moves; `TickPhase::ALL` stays at 9 and benchmark schema 10 is
+unchanged.*
 
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments

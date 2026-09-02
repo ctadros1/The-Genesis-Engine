@@ -33,8 +33,12 @@ PERSIST_FLOOR_MILLI = 10_000  # ten times the largest single seeding
 SAMPLE = re.compile(
     r"sample tick=(\d+) fired=(\d+) seeded_milli=(\d+) chem_milli=(-?\d+) "
     r"produced_milli=(\d+) deposited_milli=(\d+) microbial_milli=(-?\d+) "
-    r"occupied=(\d+) population=(\d+)"
+    r"occupied=(\d+) population=(\d+)(?: .*)?"
 )
+# The trailing group accepts series version 2's appended transition
+# columns (Phase 16), so the archived Phase 15 run and a re-run on a later
+# binary reduce through the same script; only the nine Phase 15 columns
+# are read.
 
 
 def read_series(path: Path):

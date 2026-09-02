@@ -157,6 +157,9 @@ pub struct SimConfig {
     /// Phase 15 chemistry field (ADR-0031). Inert when disabled; the
     /// Phase 13 fixture reproduces exactly.
     pub chemistry: ChemistryConfig,
+    /// Phase 16 field-to-individual transition (ADR-0032). Inert when
+    /// disabled; the Phase 15 fixture reproduces exactly.
+    pub transition: TransitionConfig,
 }
 
 /// Versioned Phase 12 artifact policy (`lifesim-artifact-v2`, ADR-0028;
@@ -973,6 +976,59 @@ impl ChemistryConfig {
     }
 }
 
+/// Versioned Phase 16 transition policy (`lifesim-transition-v1`,
+/// ADR-0032): when microbial density becomes individual organisms. A
+/// physical condition with a memory, not a detector of anything: a slot
+/// that has held at least `density_floor_milli` for `persistence_checks`
+/// consecutive checks, in a class at or above `aggregation_step_min`, in a
+/// cell an organism can stand on, converts `organism_energy_milli` of
+/// density per organism into one-module organisms. Nothing here reads a
+/// module count or grants anything for crossing anything.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub struct TransitionConfig {
+    pub enabled: bool,
+    /// The trigger is evaluated every this many world ticks; at least 1.
+    pub check_interval_ticks: u64,
+    /// A slot must hold at least this density (milli) at a check for the
+    /// check to count toward persistence. At least `organism_energy_milli`.
+    pub density_floor_milli: i64,
+    /// Consecutive checks at or above the floor before a slot triggers.
+    pub persistence_checks: u32,
+    /// Only classes at or above this aggregation-axis position trigger;
+    /// below `chemistry.aggregation_axis`.
+    pub aggregation_step_min: u32,
+    /// Energy credited per materialized organism, debited 1:1 from the
+    /// slot's density. Bounded above by the unicell body's energy capacity
+    /// at world construction, where the body exists.
+    pub organism_energy_milli: i64,
+    /// Organisms one `(cell, class)` trigger may produce; at least 1.
+    pub max_organisms_per_event: u32,
+    /// Organisms admitted per world tick across all triggers; the rest
+    /// defer whole to the next check, counted. At least 1.
+    pub max_materializations_per_tick: u32,
+}
+
+impl TransitionConfig {
+    pub fn transition_default() -> Self {
+        Self {
+            enabled: false,
+            check_interval_ticks: 100,
+            // Twenty seedings: reachable by growth (the Phase 15 campaign's
+            // standing densities are ~53x seeded), unreachable by a lone
+            // abiogenesis firing.
+            density_floor_milli: 20_000,
+            persistence_checks: 5,
+            // The top step of the default two-position aggregation axis.
+            aggregation_step_min: 1,
+            // `offspring_energy_milli`'s value: a materialized organism
+            // starts where a born one does.
+            organism_energy_milli: 4_000,
+            max_organisms_per_event: 4,
+            max_materializations_per_tick: 64,
+        }
+    }
+}
+
 /// Versioned Phase 7 contest policy (`contest-behavior-v1`). Every value is
 /// experimental policy, hashed only when `enabled` is true.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -1322,6 +1378,7 @@ impl SimConfig {
             artifact: ArtifactConfig::artifact_default(),
             social: SocialConfig::social_default(),
             chemistry: ChemistryConfig::chemistry_default(),
+            transition: TransitionConfig::transition_default(),
         }
     }
 
@@ -1418,7 +1475,12 @@ impl SimConfig {
         if self.max_entities == 0 || self.max_entities > ABSOLUTE_MAX_ENTITIES {
             return Err(ConfigError::MaxEntities(self.max_entities));
         }
-        if self.initial_organisms == 0 || self.initial_organisms > self.max_entities {
+        // Phase 16 (ADR-0032): a scratch world begins with no organisms
+        // and is the only origin that may; every other mode keeps the
+        // Phase 1 rule exactly.
+        let scratch = self.origin.mode == crate::origin::OriginMode::Scratch;
+        if (self.initial_organisms == 0) != scratch || self.initial_organisms > self.max_entities
+        {
             return Err(ConfigError::InitialOrganisms(self.initial_organisms));
         }
         if self.dt_ms == 0 || self.dt_ms > 10_000 {
@@ -2160,6 +2222,62 @@ impl SimConfig {
                 0,
             ));
         }
+        // Phase 16 transition (ADR-0032). Refused rather than inert on the
+        // chemistry section's terms: the organism it produces is a schema-2
+        // genome with a developed body, and nothing less can be admitted.
+        let transition = &self.transition;
+        if transition.enabled {
+            if !(chemistry.enabled && chemistry.microbial_enabled) {
+                return Err(ConfigError::TransitionRequires("chemistry.microbial_enabled"));
+            }
+            if !self.phase2.enabled {
+                return Err(ConfigError::TransitionRequires("phase2.enabled"));
+            }
+            if !self.genome2.enabled {
+                return Err(ConfigError::TransitionRequires("genome2.enabled"));
+            }
+            if !self.morphology.enabled {
+                return Err(ConfigError::TransitionRequires("morphology.enabled"));
+            }
+            if transition.check_interval_ticks == 0 {
+                return Err(ConfigError::PhysiologyRange(
+                    "transition.check_interval_ticks is zero",
+                    0,
+                ));
+            }
+            if transition.persistence_checks == 0 {
+                return Err(ConfigError::PhysiologyRange(
+                    "transition.persistence_checks is zero",
+                    0,
+                ));
+            }
+            if transition.organism_energy_milli <= 0 {
+                return Err(ConfigError::PhysiologyRange(
+                    "transition.organism_energy_milli must be positive",
+                    transition.organism_energy_milli,
+                ));
+            }
+            if transition.density_floor_milli < transition.organism_energy_milli {
+                return Err(ConfigError::PhysiologyRange(
+                    "transition.density_floor_milli is below one organism's energy",
+                    transition.density_floor_milli,
+                ));
+            }
+            if transition.aggregation_step_min >= chemistry.aggregation_axis {
+                return Err(ConfigError::PhysiologyRange(
+                    "transition.aggregation_step_min is outside the aggregation axis",
+                    i64::from(transition.aggregation_step_min),
+                ));
+            }
+            if transition.max_organisms_per_event == 0
+                || transition.max_materializations_per_tick == 0
+            {
+                return Err(ConfigError::PhysiologyRange(
+                    "a transition cap is zero",
+                    0,
+                ));
+            }
+        }
         Ok(())
     }
 
@@ -2231,6 +2349,18 @@ impl SimConfig {
             if field.1 > Q16_ONE {
                 return Err(ConfigError::FractionOutOfRange(field.0, field.1));
             }
+        }
+        // Phase 16 (ADR-0032): a scratch world needs a source of density
+        // to have anything to become. The permanently empty world is
+        // reached by disabling the *transition*, never by a scratch world
+        // with no abiogenesis - that is refused rather than silently
+        // empty.
+        if origin.mode == crate::origin::OriginMode::Scratch
+            && !(self.chemistry.enabled
+                && self.chemistry.microbial_enabled
+                && self.chemistry.abiogenesis_enabled)
+        {
+            return Err(ConfigError::ScratchRequiresAbiogenesis);
         }
         if origin.mode == crate::origin::OriginMode::Seeded {
             if origin.archetype_count == 0 {
@@ -2636,6 +2766,21 @@ impl SimConfig {
                 hasher.update_u32(self.chemistry.remains_fraction_q16);
             }
         }
+        // Phase 16 section: hashed only when enabled, so every hash issued
+        // before the transition existed is unchanged. The map version is
+        // part of what a materialized organism means, so it enters here.
+        if self.transition.enabled {
+            hasher.update(b"lifesim-transition-config");
+            hasher.update(crate::transition::TRANSITION_POLICY_VERSION.as_bytes());
+            hasher.update_u32(u32::from(crate::transition::GENOME_MAP_VERSION));
+            hasher.update_u64(self.transition.check_interval_ticks);
+            hasher.update_i64(self.transition.density_floor_milli);
+            hasher.update_u32(self.transition.persistence_checks);
+            hasher.update_u32(self.transition.aggregation_step_min);
+            hasher.update_i64(self.transition.organism_energy_milli);
+            hasher.update_u32(self.transition.max_organisms_per_event);
+            hasher.update_u32(self.transition.max_materializations_per_tick);
+        }
         // Phase 9 section: hashed only when enabled, so a schema-1 config
         // hashes exactly as it did before schema 2 existed and every earlier
         // fixture is preserved.
@@ -3016,6 +3161,11 @@ pub enum ConfigError {
         id: u16,
     },
     SeededRequiresClimate,
+    /// Phase 16: `origin.mode = scratch` without the field stack that
+    /// could ever populate it.
+    ScratchRequiresAbiogenesis,
+    /// Phase 16: the transition section enabled without a gate it needs.
+    TransitionRequires(&'static str),
     ContestRequiresPhase2,
     AttackRange(u32),
     MaxCarcasses(u32),
@@ -3111,6 +3261,15 @@ impl fmt::Display for ConfigError {
             Self::SeededRequiresClimate => formatter.write_str(
                 "origin.mode = seeded needs biomes to match against, so the climate section \
                  must be enabled",
+            ),
+            Self::ScratchRequiresAbiogenesis => formatter.write_str(
+                "origin.mode = scratch begins with no organisms, so chemistry, its microbial \
+                 half and abiogenesis must all be enabled for anything to arise",
+            ),
+            Self::TransitionRequires(gate) => write!(
+                formatter,
+                "the transition section materializes schema-2 organisms with developed bodies, \
+                 so {gate} must be true"
             ),
             Self::ContestRequiresPhase2 => formatter.write_str(
                 "the contest section wires reserved controller channels, so phase2 must be \

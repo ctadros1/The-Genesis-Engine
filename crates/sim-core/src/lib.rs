@@ -50,6 +50,7 @@ mod similarity;
 mod social;
 mod structmut;
 mod terrainmod;
+mod transition;
 mod world;
 mod worldgen;
 
@@ -72,7 +73,7 @@ pub use config::{
     ContestConfig, Genome2Config, MAX_CAPACITY_SCALE_Q16, MAX_COMPOSITION_DEPTH, MAX_FRAGMENTS,
     MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION,
     ChemistryConfig, Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig,
-    SocialConfig,
+    SocialConfig, TransitionConfig,
     WorldModConfig, WorldgenVersion,
 };
 pub use contest::{
@@ -141,6 +142,10 @@ pub use matechoice::{MateChoiceSave, MateChoiceState};
 pub use microbial::{
     CLASS_REGISTRY_VERSION, ClassParameters, MICROBIAL_POLICY_VERSION, MicrobialState,
     class_count, class_parameters, field_conservation_defect_milli,
+};
+pub use transition::{
+    GENOME_MAP_VERSION, TRANSITION_POLICY_VERSION, TransitionSave, TransitionState, Trigger,
+    synthesize_genome, unicell_body, unicell_derived, unicell_program,
 };
 pub use ontogeny::{OntogenySave, OntogenyState, derive_prefix, growth_order};
 pub use physiology::{

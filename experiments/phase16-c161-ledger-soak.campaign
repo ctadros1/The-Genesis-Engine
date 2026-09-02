@@ -1,0 +1,55 @@
+# Phase 16 C16.1 ledger soak: one scratch world, 10^6 ticks, both
+# identities enforced by World::check_invariants every 5,000 ticks (a
+# violation aborts the run loudly) - the field identity with the
+# materialized term subtracted and the organism energy identity with it
+# added. The full stack is on - chemistry, microbial, abiogenesis, both
+# coupling fractions, schema 2, morphology and the transition at its
+# defaults - so the conversion runs many times and the identities are
+# soaked under materialization, feeding, excretion, death and remains
+# (C16.1's "over a 10^6-tick run containing many transitions"). The field
+# series records the running totals every 5,000 ticks for the record.
+campaign phase16-c161-ledger-soak
+ticks 1000000
+workers 1
+seeds 17201
+check-interval 5000
+base preset phase2
+base cells_x 64
+base cells_y 64
+base initial_organisms 0
+base max_entities 4000
+base origin.mode scratch
+base genome2.enabled true
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base morphology.enabled true
+base morphology.caps.max_modules 64
+base morphology.caps.lattice_radius 8
+base morphology.caps.max_growth_steps 16
+base morphology.base_node_budget 4
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 1
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+base chemistry.excretion_fraction_q16 32768
+base chemistry.remains_fraction_q16 32768
+base transition.enabled true
+base transition.check_interval_ticks 100
+base transition.density_floor_milli 20000
+base transition.persistence_checks 5
+base transition.aggregation_step_min 1
+base transition.organism_energy_milli 4000
+base transition.max_organisms_per_event 4
+base transition.max_materializations_per_tick 64
+condition soak
+output events off
+output snapshots on
+output field 5000

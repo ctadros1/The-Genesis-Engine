@@ -177,8 +177,12 @@ impl DeathCause {
 /// re-simulation. Version 10 (Phase 14): adds tag 28, `GrowthCompleted` -
 /// the moment an organism's last module activates, which is what lets the
 /// C14.1 census know each organism's juvenile window without the analysis
-/// guessing it from config. The decoder keeps accepting older schemas.
-pub const EVENT_SCHEMA_VERSION: u32 = 10;
+/// guessing it from config. Version 11 (Phase 16): adds tag 29,
+/// `Materialized` - one record per organism the field-to-individual
+/// transition admits, carrying the cell, the class and the energy it
+/// entered with, so C16.5 and C16.1 can be read from the log without
+/// re-simulation. The decoder keeps accepting older schemas.
+pub const EVENT_SCHEMA_VERSION: u32 = 11;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -416,6 +420,17 @@ pub enum EventKind {
     GrowthCompleted {
         id: u64,
         modules: u32,
+    },
+    /// An organism entered the world by the field-to-individual transition
+    /// (Phase 16, ADR-0032): the cell and genotype class whose density it
+    /// came from and the energy it was credited - which is exactly what
+    /// the field was debited. No parent record exists because there is no
+    /// parent; the organism carries no other mark of how it arrived.
+    Materialized {
+        id: u64,
+        cell: u32,
+        class: u16,
+        energy_milli: i64,
     },
 }
 
@@ -806,6 +821,20 @@ pub struct MetricsSnapshot {
     pub microbial_occupied_cells: u64,
     /// Whole-run abiogenesis firings.
     pub abiogenesis_fired_total: u64,
+    /// Phase 16 transition. All zero (and the gate false) when off, on
+    /// the same inert-observability terms as the blocks above.
+    pub transition_enabled: bool,
+    pub materialized_total: u64,
+    pub materialized_milli: i128,
+    pub transition_events_total: u64,
+    pub transition_deferred_cap_total: u64,
+    pub transition_deferred_capacity_total: u64,
+    pub transition_refused_total: u64,
+    /// C16.6's observables: the largest module count among living
+    /// bodies, and how many living organisms carry more than one
+    /// module. Zero without the morphology section.
+    pub max_modules: u64,
+    pub multi_module_organisms: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1123,6 +1152,10 @@ pub struct World {
     /// Phase 15 microbial field; `None` exactly when the microbial gate is
     /// off. Requires the chemistry field - validation enforces it.
     microbial: Option<crate::microbial::MicrobialState>,
+    /// Phase 16 transition state; `None` exactly when the gate is off.
+    /// Requires the microbial field, phase 2, genome 2 and morphology -
+    /// validation enforces it.
+    transition: Option<crate::transition::TransitionState>,
     /// Phase 11 learned state; `None` exactly when
     /// `config.plasticity.enabled` is false, so a disabled world compiles no
     /// plastic edge, runs an empty learn phase, and appends nothing to the
@@ -1238,6 +1271,7 @@ impl World {
             matechoice: None,
             chemistry: None,
             microbial: None,
+            transition: None,
             learn: None,
             action_census: None,
             objects: None,
@@ -1505,6 +1539,41 @@ impl World {
                     &world.config.chemistry,
                 ));
             }
+        }
+        // Phase 16 (ADR-0032): the transition starts with every persistence
+        // counter at zero. The one bound validation cannot check without a
+        // body is checked here, where the body exists: an organism cannot
+        // be credited more than the unicell can hold, or the first
+        // materialization would violate the energy bound it exists inside.
+        if world.config.transition.enabled {
+            let capacity =
+                crate::transition::unicell_derived(&world.config.morphology).energy_capacity_milli;
+            if world.config.transition.organism_energy_milli > capacity {
+                return Err(NewWorldError::Config(
+                    crate::config::ConfigError::PhysiologyRange(
+                        "transition.organism_energy_milli exceeds the unicell energy capacity",
+                        capacity,
+                    ),
+                ));
+            }
+            // The synthesized genome must compile under this world's caps
+            // and budget, or every materialization would be a counted
+            // refusal: refuse the world instead, once, with a reason.
+            let genome = crate::transition::synthesize_genome(&world.config, 0);
+            if genome.validate_structure(&world.config.genome2.caps).is_err() {
+                return Err(NewWorldError::Config(
+                    crate::config::ConfigError::PhysiologyRange(
+                        "the transition's synthesized genome fails this world's structural caps",
+                        0,
+                    ),
+                ));
+            }
+            let cells = world.config.cells_x as usize * world.config.cells_y as usize;
+            world.transition = Some(crate::transition::TransitionState::new(
+                cells,
+                &world.config.chemistry,
+                &world.config.transition,
+            ));
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -1861,6 +1930,42 @@ impl World {
                 .chemistry
                 .as_ref()
                 .map_or(0, |chemistry| chemistry.abiogenesis_fired_total),
+            transition_enabled: self.transition.is_some(),
+            materialized_total: self
+                .transition
+                .as_ref()
+                .map_or(0, |transition| transition.materialized_total),
+            materialized_milli: self
+                .transition
+                .as_ref()
+                .map_or(0, |transition| transition.materialized_milli),
+            transition_events_total: self
+                .transition
+                .as_ref()
+                .map_or(0, |transition| transition.events_total),
+            transition_deferred_cap_total: self
+                .transition
+                .as_ref()
+                .map_or(0, |transition| transition.deferred_cap_total),
+            transition_deferred_capacity_total: self
+                .transition
+                .as_ref()
+                .map_or(0, |transition| transition.deferred_capacity_total),
+            transition_refused_total: self
+                .transition
+                .as_ref()
+                .map_or(0, |transition| transition.refused_total),
+            max_modules: self.morphology.as_ref().map_or(0, |state| {
+                state
+                    .bodies
+                    .iter()
+                    .map(|body| body.len() as u64)
+                    .max()
+                    .unwrap_or(0)
+            }),
+            multi_module_organisms: self.morphology.as_ref().map_or(0, |state| {
+                state.bodies.iter().filter(|body| body.len() > 1).count() as u64
+            }),
             signals_emitted_total: self
                 .social
                 .as_ref()
@@ -1966,6 +2071,10 @@ impl World {
 
     pub(crate) fn microbial_state(&self) -> Option<&crate::microbial::MicrobialState> {
         self.microbial.as_ref()
+    }
+
+    pub(crate) fn transition_state(&self) -> Option<&crate::transition::TransitionState> {
+        self.transition.as_ref()
     }
 
     /// Coupling v1 (ADR-0031): deposit organism mass into the chemistry
@@ -2528,6 +2637,7 @@ impl World {
         matechoice: Option<crate::matechoice::MateChoiceState>,
         chemistry: Option<crate::chemistry::ChemistryState>,
         microbial: Option<crate::microbial::MicrobialState>,
+        transition: Option<crate::transition::TransitionState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -2552,6 +2662,7 @@ impl World {
         self.matechoice = matechoice;
         self.chemistry = chemistry;
         self.microbial = microbial;
+        self.transition = transition;
         // Learned state comes from the save, like every other subsystem here.
         //
         // It did not, for one stage: this rebuilt the rows from the restored
@@ -5480,131 +5591,43 @@ impl World {
         if let Some(mut p2) = self.phase2.take() {
             let pending: Vec<PendingChild> = std::mem::take(&mut p2.pending);
             for child in pending {
-                // **Admit the schema-2 organism before anything else is
-                // pushed.** A child whose merged network will not compile is
-                // refused rather than admitted, exactly as a malformed
-                // genome is - but the refusal has to happen before the core
-                // arrays grow, or the refusal is itself the corruption.
-                //
-                // This block used to push `ids`, positions, energy and age
-                // first and `continue` afterwards, under a comment asserting
-                // the arrays stayed in lockstep. They did not: the organism
-                // arrays grew by one and the phase-2 arrays did not, and the
-                // next sense phase indexed `phenotypes` out of bounds. It
-                // took a merged-network zero-delay cycle to reach, which
-                // `validate_structure` now rejects outright, so this path
-                // should be unreachable - which is exactly why it must be
-                // counted rather than trusted.
-                let budget = self.config.plasticity_budget();
-                if let (Some(state), Some(genome2)) = (self.schema2.as_mut(), child.genome2.clone())
-                    && !state.push_organism(genome2, budget)
-                {
-                    // The parents already paid at pairing time and the
-                    // investment was riding on this child, so refusing the
-                    // birth without booking that energy would leave the
-                    // ledger short by exactly the child's endowment. A
-                    // failed pregnancy costs what it cost.
-                    self.ledger.spent_milli += i128::from(child.energy_milli);
-                    p2.counters.pair_rejected_nonviable_total += 1;
-                    continue;
-                }
-                if let (Some(state), Some(body)) = (self.morphology.as_mut(), child.body.clone()) {
-                    state.push_body(body);
-                }
-                if let (Some(ontogeny), Some(child_body)) =
-                    (self.ontogeny.as_mut(), child.body.as_ref())
-                {
-                    ontogeny.push_organism(
-                        child_body,
-                        self.config.morphology.lattice,
-                        self.config.physiology.birth_modules_min,
-                    );
-                    // A child whose whole body fits inside the birth
-                    // minimum is born complete and will never activate a
-                    // module, so its completion record is emitted here -
-                    // without it the C14.1 census would class the organism
-                    // juvenile for life, which is the opposite of what a
-                    // one-module body is.
-                    let total = child_body.len() as u32;
-                    if self.config.physiology.birth_modules_min >= total {
-                        let id = self.next_entity_id;
-                        self.push_event(
-                            self.tick + 1,
-                            EventKind::GrowthCompleted { id, modules: total },
-                        );
+                // Copied out ahead of the move: the birth record needs them
+                // after admission, and admission takes the child whole.
+                let parent_a = child.parent_a;
+                let parent_b = child.parent_b;
+                let genome_hash = child.genome_hash;
+                let invest_a_milli = child.invest_a_milli;
+                let invest_b_milli = child.invest_b_milli;
+                let mutated_trait_genes = child.variation.mutated_trait_genes;
+                let mutated_neural_genes = child.variation.mutated_neural_genes;
+                let body_scale_milli = child.phenotype.body_scale_milli;
+                let max_speed_milli = child.phenotype.max_speed_milli;
+                let id = match self.admit_schema2_child(&mut p2, child, next_tick) {
+                    Ok(id) => id,
+                    Err(child) => {
+                        // The parents already paid at pairing time and the
+                        // investment was riding on this child, so refusing
+                        // the birth without booking that energy would leave
+                        // the ledger short by exactly the child's endowment.
+                        // A failed pregnancy costs what it cost.
+                        self.ledger.spent_milli += i128::from(child.energy_milli);
+                        p2.counters.pair_rejected_nonviable_total += 1;
+                        continue;
                     }
-                }
-                if let (Some(matechoice), Some(genome2)) =
-                    (self.matechoice.as_mut(), child.genome2.as_ref())
-                {
-                    matechoice.push_organism(genome2);
-                }
-                // **C11.4, at the only path a child can enter by.** The row
-                // is sized from the plan that was just compiled for this
-                // child and is zero on every plastic edge, whatever its
-                // parents had learned. `LearnState::push_organism` takes no
-                // initial value, so there is nowhere for a parent's delta to
-                // be passed even by mistake - which is what makes "reset at
-                // birth" an invariant rather than a default someone could
-                // later parameterize.
-                if let (Some(state), Some(schema2)) = (self.learn.as_mut(), self.schema2.as_ref()) {
-                    state.push_organism(schema2.plastic_edges(schema2.len() - 1));
-                }
-                // Pushed **after** the schema-2 refusal above and before the
-                // core arrays grow, for the reason the block's own comment
-                // gives: a refusal that happens after the arrays have grown
-                // is itself the corruption.
-                if let Some(state) = self.action_census.as_mut() {
-                    state.push_organism();
-                }
-                let birth_capacity =
-                    self.terrain.capacity_milli[self.cell_of(child.x_fp, child.y_fp)];
-                if let Some(state) = self.objects.as_mut() {
-                    let band = state.band_of(birth_capacity);
-                    state.push_organism(band);
-                }
-                if let Some(state) = self.social.as_mut() {
-                    state.push_organism();
-                }
-                let id = self.next_entity_id;
-                self.next_entity_id += 1;
-                self.ids.push(id);
-                self.x_fp.push(child.x_fp);
-                self.y_fp.push(child.y_fp);
-                self.energy_milli.push(child.energy_milli);
-                self.age_ticks.push(0);
-                self.cooldown_ticks.push(0);
-                p2.push_organism(
-                    child.genome,
-                    child.genome_hash,
-                    child.phenotype,
-                    child.heading_bam,
-                    [child.parent_a, child.parent_b],
-                    child.depth,
-                    next_tick,
-                );
-                if let Some(physiology) = self.physiology.as_mut() {
-                    physiology.push_organism();
-                }
-                if let Some(contest) = self.contest.as_mut() {
-                    contest.push_organism(ContestState::health_max_milli(
-                        &self.config.contest,
-                        child.phenotype.body_scale_milli,
-                    ));
-                }
+                };
                 self.counters.births_total += 1;
                 p2.counters.paired_births_total += 1;
                 self.push_event(
                     next_tick,
                     EventKind::PairedBirth {
                         id,
-                        parent_a: child.parent_a,
-                        parent_b: child.parent_b,
-                        genome_hash: child.genome_hash,
-                        invest_a_milli: child.invest_a_milli,
-                        invest_b_milli: child.invest_b_milli,
-                        mutated_trait_genes: child.variation.mutated_trait_genes,
-                        mutated_neural_genes: child.variation.mutated_neural_genes,
+                        parent_a,
+                        parent_b,
+                        genome_hash,
+                        invest_a_milli,
+                        invest_b_milli,
+                        mutated_trait_genes,
+                        mutated_neural_genes,
                     },
                 );
                 if self.config.social.enabled {
@@ -5612,12 +5635,16 @@ impl World {
                         next_tick,
                         EventKind::PhenotypeAtBirth {
                             id,
-                            body_scale_milli: child.phenotype.body_scale_milli,
-                            max_speed_milli: child.phenotype.max_speed_milli,
+                            body_scale_milli,
+                            max_speed_milli,
                         },
                     );
                 }
             }
+            // Phase 16 (ADR-0032): the field-to-individual transition, after
+            // the tick's births so IDs stay strictly increasing. Empty and
+            // free when the section is disabled.
+            self.materialize(next_tick, &mut p2);
             self.phase2 = Some(p2);
         }
 
@@ -5631,6 +5658,337 @@ impl World {
             self.extinct = true;
             self.push_event(next_tick, EventKind::Extinction);
         }
+    }
+
+    /// One admission path for every schema-2 organism that enters the
+    /// world mid-run. Phase 16 (ADR-0032) extracted it from the birth loop
+    /// by pure code motion, so a materialized organism and a born one are
+    /// built by the same code - C16.2's structural half - and the Phase
+    /// 13/14/15 fixtures pin that the extraction moved nothing.
+    ///
+    /// Returns the entity ID on success. On refusal **nothing has been
+    /// pushed anywhere** and the child comes back to the caller, which
+    /// books what the refusal costs it: the schema-2 refusal is checked
+    /// before any array grows, for the reason the block's own comment
+    /// gives.
+    fn admit_schema2_child(
+        &mut self,
+        p2: &mut Phase2State,
+        child: PendingChild,
+        next_tick: u64,
+    ) -> Result<u64, PendingChild> {
+        // **Admit the schema-2 organism before anything else is
+        // pushed.** A child whose merged network will not compile is
+        // refused rather than admitted, exactly as a malformed
+        // genome is - but the refusal has to happen before the core
+        // arrays grow, or the refusal is itself the corruption.
+        //
+        // This block used to push `ids`, positions, energy and age
+        // first and `continue` afterwards, under a comment asserting
+        // the arrays stayed in lockstep. They did not: the organism
+        // arrays grew by one and the phase-2 arrays did not, and the
+        // next sense phase indexed `phenotypes` out of bounds. It
+        // took a merged-network zero-delay cycle to reach, which
+        // `validate_structure` now rejects outright, so this path
+        // should be unreachable - which is exactly why it must be
+        // counted rather than trusted.
+        let budget = self.config.plasticity_budget();
+        if let (Some(state), Some(genome2)) = (self.schema2.as_mut(), child.genome2.clone())
+            && !state.push_organism(genome2, budget)
+        {
+            // Nothing has been pushed anywhere yet; the caller
+            // books whatever the refusal costs it.
+            return Err(child);
+        }
+        if let (Some(state), Some(body)) = (self.morphology.as_mut(), child.body.clone()) {
+            state.push_body(body);
+        }
+        if let (Some(ontogeny), Some(child_body)) =
+            (self.ontogeny.as_mut(), child.body.as_ref())
+        {
+            ontogeny.push_organism(
+                child_body,
+                self.config.morphology.lattice,
+                self.config.physiology.birth_modules_min,
+            );
+            // A child whose whole body fits inside the birth
+            // minimum is born complete and will never activate a
+            // module, so its completion record is emitted here -
+            // without it the C14.1 census would class the organism
+            // juvenile for life, which is the opposite of what a
+            // one-module body is.
+            let total = child_body.len() as u32;
+            if self.config.physiology.birth_modules_min >= total {
+                let id = self.next_entity_id;
+                self.push_event(
+                    self.tick + 1,
+                    EventKind::GrowthCompleted { id, modules: total },
+                );
+            }
+        }
+        if let (Some(matechoice), Some(genome2)) =
+            (self.matechoice.as_mut(), child.genome2.as_ref())
+        {
+            matechoice.push_organism(genome2);
+        }
+        // **C11.4, at the only path a child can enter by.** The row
+        // is sized from the plan that was just compiled for this
+        // child and is zero on every plastic edge, whatever its
+        // parents had learned. `LearnState::push_organism` takes no
+        // initial value, so there is nowhere for a parent's delta to
+        // be passed even by mistake - which is what makes "reset at
+        // birth" an invariant rather than a default someone could
+        // later parameterize.
+        if let (Some(state), Some(schema2)) = (self.learn.as_mut(), self.schema2.as_ref()) {
+            state.push_organism(schema2.plastic_edges(schema2.len() - 1));
+        }
+        // Pushed **after** the schema-2 refusal above and before the
+        // core arrays grow, for the reason the block's own comment
+        // gives: a refusal that happens after the arrays have grown
+        // is itself the corruption.
+        if let Some(state) = self.action_census.as_mut() {
+            state.push_organism();
+        }
+        let birth_capacity =
+            self.terrain.capacity_milli[self.cell_of(child.x_fp, child.y_fp)];
+        if let Some(state) = self.objects.as_mut() {
+            let band = state.band_of(birth_capacity);
+            state.push_organism(band);
+        }
+        if let Some(state) = self.social.as_mut() {
+            state.push_organism();
+        }
+        let id = self.next_entity_id;
+        self.next_entity_id += 1;
+        self.ids.push(id);
+        self.x_fp.push(child.x_fp);
+        self.y_fp.push(child.y_fp);
+        self.energy_milli.push(child.energy_milli);
+        self.age_ticks.push(0);
+        self.cooldown_ticks.push(0);
+        p2.push_organism(
+            child.genome,
+            child.genome_hash,
+            child.phenotype,
+            child.heading_bam,
+            [child.parent_a, child.parent_b],
+            child.depth,
+            next_tick,
+        );
+        if let Some(physiology) = self.physiology.as_mut() {
+            physiology.push_organism();
+        }
+        if let Some(contest) = self.contest.as_mut() {
+            contest.push_organism(ContestState::health_max_milli(
+                &self.config.contest,
+                child.phenotype.body_scale_milli,
+            ));
+        }
+        Ok(id)
+    }
+
+    /// Phase 16 (ADR-0032): the field-to-individual transition.
+    ///
+    /// At every check tick the trigger advances each slot's persistence
+    /// counter and returns the slots that meet the whole condition, in
+    /// ascending `(cell, class)`; each converts `organism_energy_milli` of
+    /// density per organism, the lowest new ID carrying the rounding
+    /// remainder (capped at what the unicell can hold), and every organism
+    /// is admitted through the same function births use. What is debited
+    /// from the slot is exactly what was credited, and the one number is
+    /// counted on both sides of the conversion (C16.1). A slot the caps
+    /// defer is deferred whole and keeps its persistence.
+    fn materialize(&mut self, next_tick: u64, p2: &mut Phase2State) {
+        let Some(mut transition) = self.transition.take() else {
+            return;
+        };
+        let config = self.config.transition;
+        if next_tick % config.check_interval_ticks != 0 {
+            self.transition = Some(transition);
+            return;
+        }
+        let classes = crate::microbial::class_count(&self.config.chemistry);
+        let cells = self.terrain.cell_count();
+        // Traversability is read once per check, ahead of the field borrow,
+        // so the trigger sees one consistent map.
+        let traversable: Vec<bool> = (0..cells)
+            .map(|cell| self.effective_traversable(cell))
+            .collect();
+        let triggers = match self.microbial.as_ref() {
+            Some(microbial) => {
+                transition.check(&microbial.densities, classes, &config, |cell| traversable[cell])
+            }
+            None => Vec::new(),
+        };
+        let energy = config.organism_energy_milli;
+        let capacity =
+            crate::transition::unicell_derived(&self.config.morphology).energy_capacity_milli;
+        let mut admitted_this_tick = 0_u32;
+        let mut repopulated = false;
+        for trigger in triggers {
+            let slot = trigger.cell * classes + trigger.class;
+            let density = self
+                .microbial
+                .as_ref()
+                .map_or(0, |microbial| microbial.densities[slot]);
+            let biomass = density.min(i64::from(config.max_organisms_per_event) * energy);
+            let count = biomass / energy;
+            if count <= 0 {
+                continue;
+            }
+            let count = count as u32;
+            if admitted_this_tick + count > config.max_materializations_per_tick {
+                transition.deferred_cap_total += 1;
+                continue;
+            }
+            if self.ids.len() + count as usize > self.config.max_entities as usize {
+                transition.deferred_capacity_total += 1;
+                continue;
+            }
+            let remainder = biomass - i64::from(count) * energy;
+            let remainder_credit = remainder.min(capacity - energy).max(0);
+            let mut credited = 0_i64;
+            let mut admitted = 0_u32;
+            for ordinal in 0..count {
+                let child_energy = energy + if ordinal == 0 { remainder_credit } else { 0 };
+                let Some(child) = self.synthesize_materialized_child(
+                    trigger,
+                    slot,
+                    ordinal,
+                    next_tick,
+                    child_energy,
+                ) else {
+                    transition.refused_total += 1;
+                    continue;
+                };
+                let body_scale_milli = child.phenotype.body_scale_milli;
+                let max_speed_milli = child.phenotype.max_speed_milli;
+                match self.admit_schema2_child(p2, child, next_tick) {
+                    Ok(id) => {
+                        admitted += 1;
+                        credited += child_energy;
+                        self.push_event(
+                            next_tick,
+                            EventKind::Materialized {
+                                id,
+                                cell: trigger.cell as u32,
+                                class: trigger.class as u16,
+                                energy_milli: child_energy,
+                            },
+                        );
+                        if self.config.social.enabled {
+                            self.push_event(
+                                next_tick,
+                                EventKind::PhenotypeAtBirth {
+                                    id,
+                                    body_scale_milli,
+                                    max_speed_milli,
+                                },
+                            );
+                        }
+                    }
+                    Err(_) => transition.refused_total += 1,
+                }
+            }
+            if let Some(microbial) = self.microbial.as_mut() {
+                microbial.densities[slot] -= credited;
+            }
+            transition.materialized_milli += i128::from(credited);
+            transition.materialized_total += u64::from(admitted);
+            if admitted > 0 {
+                transition.events_total += 1;
+                transition.persistence[slot] = 0;
+                admitted_this_tick += admitted;
+                repopulated = true;
+            }
+        }
+        // The extinction latch clears only here: materialization is the one
+        // path that can repopulate an empty world (ADR-0032).
+        if repopulated && self.extinct && !self.ids.is_empty() {
+            self.extinct = false;
+        }
+        self.transition = Some(transition);
+    }
+
+    /// Build the pending record for one materialized organism: the map's
+    /// genome, its developed unicell body and the phenotype derived from
+    /// it by the birth path's arithmetic, at a position inside the cell
+    /// drawn on the `Transition` stream keyed on the slot and the ordinal -
+    /// never on the entity ID or a running count, so a cell's organisms are
+    /// identical whether or not another cell triggered this tick (C16.3).
+    /// `None` when the body or the controller fails this world's caps,
+    /// which the caller counts as a refusal.
+    fn synthesize_materialized_child(
+        &mut self,
+        trigger: crate::transition::Trigger,
+        slot: usize,
+        ordinal: u32,
+        next_tick: u64,
+        energy_milli: i64,
+    ) -> Option<PendingChild> {
+        let morphology_config = self.config.morphology;
+        let genome2 = crate::transition::synthesize_genome(&self.config, trigger.class);
+        let state = self.morphology.as_mut()?;
+        let body = crate::develop::develop(
+            &genome2,
+            morphology_config.lattice,
+            &morphology_config.caps,
+            &mut state.counters,
+        )
+        .ok()?;
+        let derived = body.derive();
+        // C10.7, exactly as the birth path applies it: brain costs body.
+        let budget = morphology_config.base_node_budget + derived.node_budget();
+        if genome2.express_network().nodes.len() as u32 > budget {
+            state.counters.refused_node_budget += 1;
+            return None;
+        }
+        let traits = resolve_traits(&genome2.express_traits());
+        let mut phenotype = Phenotype::from_body(&traits, &derived, &state.reference);
+        if self.ontogeny.is_some() {
+            let order = crate::ontogeny::growth_order(&body, morphology_config.lattice);
+            let grown = self
+                .config
+                .physiology
+                .birth_modules_min
+                .min(body.len() as u32);
+            let prefix = crate::ontogeny::derive_prefix(&body, &order, grown);
+            phenotype.apply_body(&prefix, &state.reference);
+        }
+        let genome_hash = crate::checksum::fnv1a64(&genome2.encode());
+        let seed = self.config.world_seed;
+        let cell_fp = i64::from(self.config.cell_size_fp());
+        let cell_x = (trigger.cell % self.terrain.cells_x as usize) as i64;
+        let cell_y = (trigger.cell / self.terrain.cells_x as usize) as i64;
+        let draw = |index: u32| {
+            named_random(
+                seed,
+                next_tick,
+                RngSystem::Transition,
+                slot as u64,
+                ordinal * 4 + index,
+            )
+        };
+        let x = cell_x * cell_fp + 1 + (draw(0) % (cell_fp - 2) as u64) as i64;
+        let y = cell_y * cell_fp + 1 + (draw(1) % (cell_fp - 2) as u64) as i64;
+        let heading = (draw(2) & 0xffff) as u16;
+        Some(PendingChild {
+            parent_a: 0,
+            parent_b: 0,
+            genome: None,
+            genome2: Some(genome2),
+            genome_hash,
+            body: Some(body),
+            phenotype,
+            x_fp: x as i32,
+            y_fp: y as i32,
+            heading_bam: heading,
+            energy_milli,
+            invest_a_milli: 0,
+            invest_b_milli: 0,
+            depth: 0,
+            variation: VariationSummary::default(),
+        })
     }
 
     fn push_event(&mut self, tick: u64, kind: EventKind) {
@@ -5773,6 +6131,12 @@ impl World {
         if let Some(microbial) = self.microbial.as_ref() {
             microbial.hash_into(&mut hasher);
         }
+        // Phase 16, appended after Phase 15's on the terms every section
+        // before it was: present only when the gate is on, so every fixture
+        // without a transition hashes exactly as it did.
+        if let Some(transition) = self.transition.as_ref() {
+            transition.hash_into(&mut hasher);
+        }
         hasher.finish()
     }
 
@@ -5831,8 +6195,16 @@ impl World {
             }
         }
         // Energy conservation: offspring transfers are internal to the
-        // organism pool, so only external sources/sinks appear here.
-        let expected_energy = self.ledger.initial_energy_milli + self.ledger.assimilated_milli
+        // organism pool, so only external sources/sinks appear here. Phase
+        // 16 adds one source - energy materialized from the field - which
+        // is the same number the field identity below subtracts (C16.1).
+        let materialized_milli = self
+            .transition
+            .as_ref()
+            .map_or(0, |transition| transition.materialized_milli);
+        let expected_energy = self.ledger.initial_energy_milli
+            + self.ledger.assimilated_milli
+            + materialized_milli
             - self.ledger.spent_milli
             - self.ledger.removed_at_death_milli;
         let actual_energy: i128 = self
@@ -5852,11 +6224,16 @@ impl World {
         // `check_interval` and every test's invariant sweep enforces
         // C15.1 rather than trusting the construction.
         if let Some(chemistry) = self.chemistry.as_ref() {
-            let defect = match self.microbial.as_ref() {
-                Some(microbial) => {
+            let defect = match (self.microbial.as_ref(), self.transition.as_ref()) {
+                (Some(microbial), Some(transition)) => {
+                    crate::transition::field_conservation_defect_milli(
+                        chemistry, microbial, transition,
+                    )
+                }
+                (Some(microbial), None) => {
                     crate::microbial::field_conservation_defect_milli(chemistry, microbial)
                 }
-                None => chemistry.conservation_defect_milli(),
+                (None, _) => chemistry.conservation_defect_milli(),
             };
             if defect != 0 {
                 return Err(InvariantViolation::FieldConservation {
@@ -5905,8 +6282,15 @@ impl World {
         let hazard_deaths = self.physiology.as_ref().map_or(0, |physiology| {
             physiology.deaths_senescence_total + physiology.deaths_extrinsic_total
         });
+        // Phase 16: materialized organisms are a second way in, counted on
+        // the same terms as births.
+        let materialized_total = self
+            .transition
+            .as_ref()
+            .map_or(0, |transition| transition.materialized_total);
         let expected_population = i128::from(self.config.initial_organisms)
             + i128::from(self.counters.births_total)
+            + i128::from(materialized_total)
             - i128::from(self.counters.deaths_starvation_total)
             - i128::from(self.counters.deaths_old_age_total)
             - i128::from(damage_deaths)
@@ -5925,6 +6309,7 @@ impl World {
             .map_or(0, |objects| objects.table.objects_allocated_total);
         let expected_next = u64::from(self.config.initial_organisms)
             + self.counters.births_total
+            + materialized_total
             + objects_allocated
             + 1;
         if expected_next != self.next_entity_id {

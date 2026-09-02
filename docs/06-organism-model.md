@@ -64,6 +64,18 @@ All initial organisms share one simple body plan: a top-down mobile creature wit
 
 This keeps early evolution interpretable. It does not claim a biological species model or promise dramatic morphology evolution.
 
+*As built (2026-09-02, Phase 16, ADR-0032): a `scratch` world has no
+initial body plan at all. Its organisms enter by materialization from
+the microbial field as one-module bodies - a single digestive module,
+the unicellular case of the Phase 10 morphospace - with the minimal
+schema-2 founder genome at every trait's midpoint, built by the same
+admission code a born organism is and carrying no mark of how they
+arrived (parents `[0, 0]` and depth 0 are a founder's values). A gut
+with no motor and no sensor sits at the speed and sensing floors; that
+is the honest state of a unicell here, not a penalty, and leaving it is
+ordinary structural mutation under ordinary selection - there is no
+second multicellularity mechanic anywhere in the kernel.*
+
 ## State
 
 | Category | Required State | Boundaries |

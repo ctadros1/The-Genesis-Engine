@@ -138,6 +138,7 @@ macro_rules! config_fields {
                     config.origin.mode = match value {
                         "random" => sim_core::OriginMode::Random,
                         "seeded" => sim_core::OriginMode::Seeded,
+                        "scratch" => sim_core::OriginMode::Scratch,
                         _ => {
                             return Err(FieldError::BadValue {
                                 field: name.to_owned(),
@@ -305,6 +306,14 @@ config_fields! {
     "chemistry.mutation_q16" => chemistry.mutation_q16: u32,
     "chemistry.excretion_fraction_q16" => chemistry.excretion_fraction_q16: u32,
     "chemistry.remains_fraction_q16" => chemistry.remains_fraction_q16: u32,
+    "transition.enabled" => transition.enabled: bool,
+    "transition.check_interval_ticks" => transition.check_interval_ticks: u64,
+    "transition.density_floor_milli" => transition.density_floor_milli: i64,
+    "transition.persistence_checks" => transition.persistence_checks: u32,
+    "transition.aggregation_step_min" => transition.aggregation_step_min: u32,
+    "transition.organism_energy_milli" => transition.organism_energy_milli: i64,
+    "transition.max_organisms_per_event" => transition.max_organisms_per_event: u32,
+    "transition.max_materializations_per_tick" => transition.max_materializations_per_tick: u32,
     "genome2.enabled" => genome2.enabled: bool,
     "genome2.caps.max_loci_per_chromosome" => genome2.caps.max_loci_per_chromosome: u32,
     "genome2.caps.max_nodes" => genome2.caps.max_nodes: u32,

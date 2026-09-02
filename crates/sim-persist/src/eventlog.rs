@@ -108,6 +108,10 @@ const TAG_MATE_CHOICE: u8 = 27;
 /// Phase 14 (schema 10): the moment an organism's last module activates -
 /// the C14.1 census's juvenile-window close. Founders never emit one.
 const TAG_GROWTH_COMPLETED: u8 = 28;
+/// Phase 16 (schema 11): an organism admitted by the field-to-individual
+/// transition, with the cell and class it came from and the energy it
+/// entered with.
+const TAG_MATERIALIZED: u8 = 29;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -355,6 +359,9 @@ impl ReconstructedCounters {
             EventKind::MateChoice { .. } => {}
             // A pure record for the C14.1 census, on the same terms.
             EventKind::GrowthCompleted { .. } => {}
+            // The transition's own counters are world state, saved with
+            // it; the log carries the per-organism record for C16.5.
+            EventKind::Materialized { .. } => {}
         }
     }
 }
@@ -846,6 +853,18 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&modules.to_le_bytes());
         }
+        EventKind::Materialized {
+            id,
+            cell,
+            class,
+            energy_milli,
+        } => {
+            out.push(TAG_MATERIALIZED);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&cell.to_le_bytes());
+            out.extend_from_slice(&class.to_le_bytes());
+            out.extend_from_slice(&energy_milli.to_le_bytes());
+        }
     }
 }
 
@@ -1310,6 +1329,24 @@ fn decode_events_into(
                 }
                 EventKind::GrowthCompleted { id, modules }
             }
+            TAG_MATERIALIZED => {
+                let id = short!(cursor.u64());
+                let cell = short!(cursor.u32());
+                let class = short!(cursor.u16());
+                let energy_milli = short!(cursor.i64());
+                // An organism enters with the energy the field paid for
+                // it; zero or negative would mean the conversion moved
+                // nothing, which the kernel never emits.
+                if energy_milli <= 0 {
+                    return Err(EventLogError::ValueOutOfRange("materialized energy"));
+                }
+                EventKind::Materialized {
+                    id,
+                    cell,
+                    class,
+                    energy_milli,
+                }
+            }
             // Fail closed. Skipping would corrupt every rate an analysis
             // computes, so an unknown type is never tolerated.
             other => return Err(EventLogError::UnknownEventType { tick, tag: other }),
@@ -1732,6 +1769,15 @@ mod tests {
                 tick,
                 kind: EventKind::GrowthCompleted { id: 29, modules: 6 },
             },
+            Event {
+                tick,
+                kind: EventKind::Materialized {
+                    id: 30,
+                    cell: 4_095,
+                    class: 7,
+                    energy_milli: 4_000,
+                },
+            },
         ]
     }
 
@@ -1748,7 +1794,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 45);
+        assert_eq!(scan.events, 48);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());

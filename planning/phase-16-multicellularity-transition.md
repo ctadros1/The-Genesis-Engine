@@ -1,8 +1,10 @@
 # Phase 16: The Multicellularity Transition
 
-Status: planned, not started. Policy version `lifesim-transition-v1`.
+Status: in progress (2026-09-02). Policy version `lifesim-transition-v1`.
 Specification: `specifications/unicellular-regime.md`. Decisions: ADR-0020,
-ADR-0019, ADR-0018.
+ADR-0019, ADR-0018, and ADR-0032 (the concrete design: the trigger's
+persistence window, the constant class-to-genome map, the admission path,
+the ledger terms, formats and schemas).
 
 ## Problem
 
@@ -82,19 +84,42 @@ scaffolded condition paired with its unscaffolded control.
       invariant to the milli-unit across every materialization, verified
       over a 10^6-tick run containing many transitions. Extends C15.1 to the
       conversion itself, which is where a defect is most likely.
-- [ ] **C16.2 Transition neutrality.** An organism produced by
+      *Status 2026-09-02: the short-horizon half is closed - both identities
+      (field with the materialized term subtracted, organism energy with it
+      added) are enforced by `check_invariants` and re-derived from the
+      save in `phase16_transition.rs`, and closed from the fixture's printed
+      totals by `verify-phase16-determinism.sh`; the 10^6-tick clause is
+      `experiments/phase16-c161-ledger-soak.campaign`, not yet run.*
+- [x] **C16.2 Transition neutrality.** An organism produced by
       materialization has no advantage over an otherwise identical organism
       born normally. Verified by direct comparison of derived attributes,
       starting energy, and subsequent survival distribution. **This is the
       criterion that proves the threshold is a representation change and not
       an authored achievement**, and a failure here means the phase has
       accidentally implemented authored progress.
-- [ ] **C16.3 Materialization is order-independent.** Two cells triggering
+      *Met 2026-09-02 (ADR-0032, D-130): one admission function for births
+      and materializations (code motion, fixtures intact); the
+      founder-path phenotype twin equals the materialized phenotype field
+      for field and the organism carries no provenance; the relabelled
+      twin (same state, materialized term folded into the founders'
+      endowment) shares an identical 600-tick future. The survival clause
+      leans on coupling v1's narrowness, as the ADR records.*
+- [x] **C16.3 Materialization is order-independent.** Two cells triggering
       in the same tick materialize identically regardless of storage or
       iteration order, verified under storage permutation.
-- [ ] **C16.4 The map is deterministic and versioned.** The same genotype
+      *Met 2026-09-02: draws are keyed on the slot and ordinal, never the
+      entity ID; the test materializes a cell alone and beside another and
+      requires identical organisms (and caught the mutation that keys on
+      the ID). The field's storage is canonical by construction, so there
+      is no alternative layout to permute - the invariance to which other
+      cells trigger is the falsifiable content (trap 13/14).*
+- [x] **C16.4 The map is deterministic and versioned.** The same genotype
       class under the same config always synthesizes the same genome, across
       clean processes.
+      *Met 2026-09-02: `GENOME_MAP_VERSION` 1 in the config hash; the unit
+      clause pins the encoded genome equal across classes and its body
+      equal to the unicell; the fixture's two-process replay pins it across
+      clean processes.*
 - [ ] **C16.5 `scratch` runs end to end**, or reports precisely where it
       stops. A run from chemistry to at least one materialized individual
       organism, in at least N of 30 seeds under the best scaffold condition,
@@ -106,14 +131,24 @@ scaffolded condition paired with its unscaffolded control.
       unscaffolded conditions. **This is expected to return null and is
       stated so in advance.** A null here is a measured result about
       reachability, reported as such and not weakened after the fact.
-- [ ] **C16.7 No multicellularity mechanic exists.** A code review criterion
+- [x] **C16.7 No multicellularity mechanic exists.** A code review criterion
       stated as an acceptance criterion because it is the phase's central
       claim: no rule reads module count to grant, deny, reward, or penalize
       anything beyond the ordinary structural costs Phase 10 already
       specifies.
-- [ ] **C16.8 Determinism and fixtures.** Clean-process fixture replay; save
+      *Met 2026-09-02 (D-130): the transition code reads no module count;
+      the only new module-count reads are the two metrics gauges
+      (`max_modules`, `multi_module_organisms`), which nothing in the tick
+      reads. The independent review pass re-checks this claim.*
+- [x] **C16.8 Determinism and fixtures.** Clean-process fixture replay; save
       round trip with a mid-transition world; transition disabled reproduces
       the Phase 15 fixture exactly.
+      *Met 2026-09-02: `verify-phase16-determinism.sh` (two-process replay
+      of `lifesim fixture --transition`, pinned constants; the
+      `--transition-off` control replays and stays empty; the Phase 15
+      fixture's constants unchanged), the mid-transition round trip with a
+      hashed-counter mutation check in `phase16_transition.rs`, and
+      verify-phase13/14/15 green after the admission refactor.*
 
 ## Test Plan
 

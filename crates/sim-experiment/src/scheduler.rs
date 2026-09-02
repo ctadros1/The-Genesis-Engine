@@ -291,7 +291,7 @@ fn execute_unit(
     let mut field_series: Option<String> =
         (output_dir.is_some() && campaign.output.field_interval > 0).then(|| {
             format!(
-                "field-series 1 policy {} seed {:#018x} interval {}\n",
+                "field-series 2 policy {} seed {:#018x} interval {}\n",
                 sim_core::CHEMISTRY_POLICY_VERSION,
                 unit.seed,
                 campaign.output.field_interval
@@ -376,9 +376,15 @@ fn execute_unit(
             && world.tick_number() % campaign.output.field_interval == 0
         {
             let metrics = world.metrics();
+            // Series version 2 (Phase 16, ADR-0032): the Phase 15 columns
+            // unchanged, then the transition's four appended - the
+            // Phase 15 reduction accepts the trailing columns so the
+            // archived run stays recomputable.
             series.push_str(&format!(
                 "sample tick={} fired={} seeded_milli={} chem_milli={} produced_milli={} \
-                 deposited_milli={} microbial_milli={} occupied={} population={}\n",
+                 deposited_milli={} microbial_milli={} occupied={} population={} \
+                 materialized={} materialized_milli={} max_modules={} multi_module={} \
+                 births={}\n",
                 metrics.tick,
                 metrics.abiogenesis_fired_total,
                 metrics.chemistry_seeded_out_milli,
@@ -388,6 +394,11 @@ fn execute_unit(
                 metrics.microbial_total_milli,
                 metrics.microbial_occupied_cells,
                 metrics.population,
+                metrics.materialized_total,
+                metrics.materialized_milli,
+                metrics.max_modules,
+                metrics.multi_module_organisms,
+                metrics.births_total,
             ));
         }
         if let Some(writer) = actions.as_mut()

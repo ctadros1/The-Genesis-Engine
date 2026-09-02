@@ -241,6 +241,8 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         chemistry: _,
         // Per cell per class, not per organism (Phase 15).
         microbial: _,
+        // Per cell per class plus counters, not per organism (Phase 16).
+        transition: _,
     } = state;
 
     per_organism!("ids", ids);
@@ -523,6 +525,8 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         chemistry: _,
         // Per cell per class, not per organism (Phase 15).
         microbial: _,
+        // Per cell per class plus counters, not per organism (Phase 16).
+        transition: _,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);

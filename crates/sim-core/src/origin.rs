@@ -57,6 +57,10 @@ pub enum OriginMode {
     Random,
     /// Biome-matched founder archetypes: the head start.
     Seeded,
+    /// No organisms: a chemistry field from which protocells may arise
+    /// and, under the Phase 16 transition, individuals (ADR-0021,
+    /// ADR-0032). Zero founders, `next_entity_id` starts at 1.
+    Scratch,
 }
 
 impl OriginMode {
@@ -64,6 +68,7 @@ impl OriginMode {
         match self {
             OriginMode::Random => "random",
             OriginMode::Seeded => "seeded",
+            OriginMode::Scratch => "scratch",
         }
     }
 }
@@ -254,6 +259,11 @@ pub fn generate_founders(
             generate_seeded(config, biome, &habitable)
         }
         OriginMode::Random => generate_demes(config, terrain, &habitable),
+        // A scratch world has founders only in the sense that the field
+        // may later make some; there is nothing to place at tick 0. The
+        // habitable-cells check above still applies - a world with no
+        // land is invalid whatever its origin.
+        OriginMode::Scratch => Ok(Vec::new()),
     }
 }
 

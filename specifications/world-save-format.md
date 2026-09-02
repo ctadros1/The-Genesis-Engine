@@ -304,6 +304,18 @@ the appended fields to the defaults every older world actually ran with:
   implementation split it across three increments exactly as Phase 14
   split ADR-0030 across formats 9 and 10, and each landed with its own
   retained writer, refusal, and migration.
+- **Format 14** (Phase 16, ADR-0032): the transition config block
+  (`FORMAT14_CONFIG_BYTES`, 41 bytes: gate, check interval, density
+  floor, persistence checks, aggregation step, organism energy, the two
+  caps), the origin-mode byte's third value (`scratch` = 3, accepted only
+  at format 14 and above), and `SECTION_TRANSITION` (21) - the per-slot
+  persistence counters (`u32` each, real state: the trigger's window
+  cannot be recomputed from densities) plus the six transition counters.
+  The per-class eligibility table is a rebuilt cache. Retained format-13
+  writer and reader, `refuse_format14_state` (a non-default transition
+  config, a transition section, or a scratch origin is refused by every
+  pre-14 writer), `FORMAT13_TO_CURRENT` resolving the section absent and
+  the config default - no build that wrote format 13 could materialize.
 
 ## Planned Successor: ALIF Format 2 (Phase 12)
 

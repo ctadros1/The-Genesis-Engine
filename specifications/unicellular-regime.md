@@ -1,8 +1,10 @@
 # Abiogenesis And The Unicellular Regime Specification
 
-Status: design specification, not implemented. Phases 15 and 16. Policy
-versions `lifesim-chemistry-v1`, `lifesim-microbial-v1`,
-`lifesim-transition-v1`. Decision: ADR-0020.
+Status: Phase 15 implemented (ADR-0031, as built 2026-09-02); Phase 16 in
+progress (ADR-0032). Policy versions `lifesim-chemistry-v1`,
+`lifesim-microbial-v1`, `lifesim-transition-v1`. Decision: ADR-0020; the
+concrete choices are pinned in ADR-0031 (field) and ADR-0032 (transition),
+and where those records and this text disagree, the records own it.
 
 ## Problem
 
