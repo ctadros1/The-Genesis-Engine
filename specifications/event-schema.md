@@ -81,8 +81,9 @@ events carry tick and typed payload only.
 `EVENT_SCHEMA_VERSION` reached 3 with Phase 7, **4 with Phase 9's
 `StructuralMutationRejected`**, 5 with Phase 11's `PlasticityFault` (tag
 13), **6 with Phase 12's artifact half** (tags 14-23), **7 with
-Phase 13's social channel** (tags 24-25, below), and **8 with the C13.7
-phenotype record** (tag 26). Earlier payloads are unchanged at every
+Phase 13's social channel** (tags 24-25, below), **8 with the C13.7
+phenotype record** (tag 26), and **9 with Phase 14's mate-choice record**
+(tag 27). Earlier payloads are unchanged at every
 step; each increment is additive. A reader that encounters an unknown
 event type fails closed rather than skipping it, because a silently skipped
 event would corrupt any analysis that counts rates. Because increments are
@@ -112,6 +113,7 @@ New bounded payloads, grouped by the phase that adds them:
 | 13 | `SignalEmitted` **(shipped, tag 24, version 7)** | emitter, channel mask (4 channels), peak amplitude (Q16, capped at 65,536 - one whole), whole-milli cost charged (non-negative) |
 | 13 | `PerceptionFault` **(shipped, tag 25, version 7)** | organism, neutralized non-finite count |
 | 13 | `PhenotypeAtBirth` **(shipped, tag 26, version 8)** | newborn, body scale (milli), max speed (milli) - the cue-visible values, once at birth, only with `social.enabled`; founders carry none and the recognition classifier excludes them by construction |
+| 14 | `MateChoice` **(shipped, tag 27, version 9)** | chooser, chosen, candidate count (>= 1), scrambled flag, the chosen candidate's nine TRUE cue values (milli, truncated toward zero), and the candidate set's nine TRUE cue sums (milli) - one record per pairing formed under `mate_choice_enabled`; the sums are the opportunity denominator the C14.2 assortment statistic divides by, and the truth is recorded even under the P-scramble arm, whose choice used the permuted assignment (ADR-0030) |
 | 12 | `ObjectCreated` **(shipped, tag 14, version 6)** | object id, material, `DestroyCause`-style create cause (extracted, fractured, combined, carcass), mass, energy, parent id |
 | 12 | `ObjectDestroyed` **(tag 15)** | object id, `DestroyCause` id (consumed, fractured, combined-into, decayed, disassembled, ephemeral) |
 | 12 | `ObjectPickedUp` **(tag 16)** | object id, holder, cell it was taken from |

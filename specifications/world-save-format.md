@@ -268,6 +268,28 @@ call. None of that is stored twice.
 The Phase 1, 2, 9 and 11 fixtures are unmoved: a world without the section
 hashes no artifact block (D-014) and reports channel-registry version 1.
 
+## Phase 13 And 14 Implementation Notes: Formats 8, 9 And 10
+
+Each follows the pattern formats 5 through 7 established - the config body
+stays a byte prefix of its successor's, the delta is a constant asserted
+by the chain test in `format7.rs`, every retained writer refuses a state
+carrying what only a later format can express, and each migration resolves
+the appended fields to the defaults every older world actually ran with:
+
+- **Format 8** (Phase 13): the social config block
+  (`FORMAT8_CONFIG_BYTES`) and `SECTION_SOCIAL` (16), the committed signal
+  field and per-organism social table.
+- **Format 9** (Phase 14, ADR-0030): the physiology-v2 ontogeny block
+  (`FORMAT9_CONFIG_BYTES`, 21 bytes) and `SECTION_ONTOGENY` (17) - the
+  per-organism grown-prefix counts and payments, D-091 allocation
+  discipline on the count-led arrays. The growth *order* is not stored: it
+  is a pure BFS function of the body, rebuilt on load exactly as bodies
+  are.
+- **Format 10** (Phase 14, ADR-0030): the two mate-choice gates
+  (`FORMAT10_CONFIG_BYTES`, 2 bytes) and `SECTION_MATECHOICE` (18),
+  counters only - the preference weights are expressed from the genomes on
+  load, on the terms phenotypes are.
+
 ## Planned Successor: ALIF Format 2 (Phase 12)
 
 Design: `specifications/mutable-world-state.md`. Decision: ADR-0015.

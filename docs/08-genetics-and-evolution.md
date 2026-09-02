@@ -20,6 +20,24 @@ and inherited but behaviorally inert until their mechanics exist
 (analysis-only, documented). Founders derive from named `GenomeInit`
 streams; all child-keyed draws use the prospective child entity ID.
 
+## Phase 14 Addition: The Mate-Choice Preference Band (ADR-0030)
+
+Schema 2 gains no new locus kind for sexual selection. The preference is
+nine ordinary Trait-kind loci in a reserved `trait_id` band (100..108,
+`PREFERENCE_TRAIT_BASE`), one per perception cue channel: carried,
+inherited, dominance-blended, recombined and point-mutated by exactly the
+machinery every behavioral trait already uses - which is what makes cue
+production and cue response separable, recombining genes (the
+social-organization review's 4.4 constraint). `Genome2::express_preference`
+maps the [0, 1] gene space to signed weights in [-1, +1]; 0.5 is the
+neutral founder value, an absent locus weighs zero, and an all-neutral
+genome pairs by proximity exactly as before the band existed. Founders
+carry the band (at neutral) only when `mate_choice_enabled` is set at
+world creation, on the same terms the growth program and the marker locus
+are layered on. Nothing in config or code names the weights "quality" or
+"fitness"; they are traits whose meaning is whatever selection makes of
+them.
+
 ## Planned Successor: `lifesim-genome-v2` (Phase 9)
 
 Schema 1 is a flat haploid vector: no chromosomes, no linkage, no dominance,

@@ -137,7 +137,7 @@ No system reads a shared mutable RNG. Adding a random draw in one system must no
 
 Energy uses arbitrary Energy Units (EU), not calories. For organism i:
 
-    E_next = clamp(E + I_food + I_carcass - C_basal - C_move - C_thermal - C_action - D_damage, 0, E_max)
+    E_next = clamp(E + I_food + I_carcass - C_basal - C_move - C_thermal - C_action - C_growth - D_damage, 0, E_max)
 
 | Variable | Unit | Default/Range | Meaning |
 |---|---|---|---|
@@ -148,6 +148,7 @@ Energy uses arbitrary Energy Units (EU), not calories. For organism i:
 | C_move | EU/tick | >= 0 | Movement cost |
 | C_thermal | EU/tick | >= 0 | Climate discomfort cost |
 | C_action | EU/tick | >= 0 | Attack/reproduction/other action cost |
+| C_growth | EU/tick | >= 0 | Phase 14 ontogeny: metered payment toward the next module of the developed body, capped at `growth_rate_milli_per_s` and priced per module mass; spends only energy above one milli-EU, so growth stalls under starvation instead of causing it, and `E_max` itself is the grown prefix's capacity, rising as the body does |
 | D_damage | EU/tick | >= 0 | Damage converted to energy/health loss |
 
 Proposed forms:

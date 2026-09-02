@@ -28,13 +28,31 @@ section is disabled:
 | Morphology | Module lattice; body derived from the genome, never stored | 10 |
 | Inventory | Held object IDs, carried mass | 12 - *as built: `ObjectState::held[i]`, ascending ids, capped by `artifact.max_held_objects`; carried mass is summed from the table, never stored; movement is scaled by `carry_move_cost_q16` and holding costs `hold_cost_milli_per_s`; what a dead organism held is dropped where it died* |
 | Demography | Accumulated hazard (fixed point) | 8 |
-| Development | Developmental clock, disease load (fixed point) | 14 |
+| Development | Grown-module prefix count and payment toward the next module (fixed point, `lifesim-ontogeny-state-v1`); the growth *order* is a pure BFS function of the body and is never stored. Disease load deferred with its slice (ADR-0030 decision 3) | 14 - *as built: `OntogenyState`; founders admitted fully grown, children at `birth_modules_min`* |
 
 Three documented gaps in this file close: health and carcasses become real
 in Phase 7, and the "health input channel reads a neutral 1.0" note stops
 being true in the same phase. Ontogeny replaces the age-threshold maturity
 model and senescence replaces the hard `max_age_ticks` cutoff in Phase 8,
 with developmental growth of a module body following in Phase 14.
+
+*As built, 2026-09-02 (ADR-0030, D-127):* the developed body is revealed
+one module at a time in canonical BFS order from the origin, each
+activation paid through the ledger, and every juvenile constraint - speed,
+sensor range, carry, energy capacity - is the partially grown body's own
+derived attribute recomputed through the same `Phenotype::apply_body` the
+birth path uses. Maturity requires a fully grown body on top of the Phase
+8 age gate, so growth stalled by energy shortage delays reproduction. The
+controller is the recorded exception: compiled at birth from the adult
+body's neural budget (lifetime topology change is a first-policy non-goal
+of the learning stack). Mate choice, in the same phase: pairing selects
+the candidate with the highest evolved-preference score over its nine
+perceived cue values (the sense path's own formulas, one shared function)
+rather than the nearest, ties and the all-neutral preference reproducing
+proximity pairing exactly; the preference is nine trait-band loci
+(`docs/08`), the act is the unchanged `intent_mate` output, and each
+formed pairing is recorded with its true cues and candidate-set cue sums
+(event tag 27).
 
 Carrying is a genuine tradeoff rather than a free ability: capacity scales
 with body scale, and carried mass adds to movement cost through the existing

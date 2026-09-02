@@ -63,7 +63,8 @@ bounded label enumerations, no high-cardinality labels.
 | 12 | `lifesim_objects{material}`, `lifesim_object_actions_total{action,result}`, `lifesim_composition_depth`, `lifesim_terrain_modified_cells` | gauge, counter, gauge, gauge. *Status 2026-08-16: not exported by `sim-server` yet (it exports the base gauges only, as for every phase since 7); the kernel-side numbers exist and reach the operator through the run manifest - `artifact_<counter>` for all 30 `ObjectCounters`, `artifact_ledger_<term>` for the ten ledger terms, `artifact_objects_total/free`, `artifact_composites_depth2`, `artifact_placed_total`, `artifact_organism_ticks` - and through `lifesim artifact`* |
 | 8 | `lifesim_median_lifespan_ticks`, `lifesim_juvenile_fraction`, `lifesim_deaths_total{cause}` distribution | gauge, gauge, counter |
 | 10 | `lifesim_modules`, `lifesim_nonviable_births_total` | gauge, counter |
-| 14 | `lifesim_disease_load` | gauge |
+| 14 | `lifesim_modules_grown_total`, `lifesim_growth_energy_spent_milli_total`, `lifesim_juveniles_growing`, `lifesim_mate_choices_total`, `lifesim_scrambled_choices_total` | counter, counter, gauge, counter, counter. *Status 2026-09-02: kernel-side in `MetricsSnapshot` (`modules_grown_total`, `growth_spent_milli_total`, `juveniles_growing`, `choices_total`, `scrambled_choices_total`), exported through the run manifest and the schema-10 fixture line; `sim-server` export follows the phase-12 note above* |
+| 14 | `lifesim_disease_load` | gauge. *Deferred with the disease slice (ADR-0030 decision 3)* |
 
 Two label rules specific to the new goal:
 

@@ -81,16 +81,28 @@ permutation (§3.3.D, §7.2).
 ## Decision 1 - Ontogeny is a paid unfolding of the developed body
 
 Development (`develop.rs`) still runs **at birth**, deterministically,
-producing the organism's **adult body** and, with it, the module
-emission order that provenance already records. Ontogeny does not re-run
-development over a lifetime; it *reveals* the developed body in emission
-order, one module at a time, each activation paid for through the
-ledger.
+producing the organism's **adult body**. Ontogeny does not re-run
+development over a lifetime; it *reveals* the developed body one module
+at a time, each activation paid for through the ledger.
+
+The growth order is a **canonical breadth-first traversal from the
+body's origin module** (lowest canonical lattice index as the root,
+neighbours visited in canonical index order). Not emission order, for
+two structural reasons discovered against the as-built representation:
+`Body::from_modules` deliberately sorts modules into canonical lattice
+order so the body is order-free (the C10.1 property), which means
+emission order does not survive into the body and reviving it would
+mean carrying extra state that breaks that property; and an
+emission-order prefix has no connectivity guarantee, while a BFS prefix
+is connected by construction - every partially grown body satisfies the
+same contiguity a full body does. The traversal is a pure function of
+the body, so the growth *order* needs no saving; only the progress
+does.
 
 - New per-organism state (fixed point, Rule 7, in the
   `lifesim-physiology-state-v1` checksum section): `grown_modules: u32`
-  (a prefix length of the emission order) and a `growth_paid_milli`
-  accumulator toward the next module's cost.
+  (a prefix length of the canonical growth order) and a
+  `growth_paid_milli` accumulator toward the next module's cost.
 - Config (`PhysiologyConfig`, gated by a new `ontogeny_enabled`,
   policy `lifesim-physiology-v2`): `birth_modules_min` (the grown prefix
   at birth; at least 1 - the origin module), `growth_cost_milli_per_mass_milli`
