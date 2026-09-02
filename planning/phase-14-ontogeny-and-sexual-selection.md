@@ -132,10 +132,17 @@ Criteria:
       epidemic curve whose shape depends on contact rate in the direction
       the transmission model predicts, and disease load never produces
       energy from nothing.
-- [ ] **C14.5 Exactness and determinism.** Ledger exact to the milli-unit
+- [x] **C14.5 Exactness and determinism.** Ledger exact to the milli-unit
       over a 10^6-tick run with growth and, if enabled, disease;
       clean-process fixture replay; storage-permutation equality;
       disabled configs reproduce the Phase 13 fixture exactly.
+      **PASSED, 2026-09-02**: the soak (seed 14201, both gates, ledger
+      checked every 5,000 ticks) exited 0 over 10^6 ticks at 251 t/s,
+      archived at `runs/phase14-c145-ledger-soak-0xc70295da8c538506`;
+      fixture replay, storage permutation and disabled-gate equality
+      carried by the committed suite and
+      `scripts/verify-phase14-determinism.sh` (green on both hosts at
+      bc11ba7). Disease deferred with its slice.
 
 ## Test Plan
 
