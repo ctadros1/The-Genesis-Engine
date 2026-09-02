@@ -104,10 +104,18 @@ CRITERIA STATUS AFTER THIS CAMPAIGN
 -------------------------------------------------------------------------
 - C15.3 MEASURED - this file. Formation occurs and persists in N and
   every S; the curve and its differences are the record.
-- C15.1: exact in-run and in-reduction across all 150 campaign worlds;
-  the 10^6-tick soak (phase15-c151-ledger-soak, full stack including
-  both coupling fractions, invariant checked every 5,000 ticks) is
-  running on the server - its result completes this criterion.
+- C15.1 CLOSED (soak addendum, 2026-09-02): the 10^6-tick full-stack
+  soak (phase15-c151-ledger-soak, hash 0x82555bebedb6d153, run on the
+  server host) completed with 0 failures, the invariant checked every
+  5,000 ticks (200 in-run checks), and the final identity exact to the
+  milli-unit: produced 8,192,000,000 + deposited 4,348,962 ==
+  chemistry 3,046,344,651 + microbial 5,150,004,311. The deposited term
+  is nonzero - the ecology lived, excreted and died through the
+  coupling (maturity 50 / max age 400) before going extinct, so the
+  identity was soaked under organism-field exchange and then over a
+  long extinct-world tail (the C15.5 shape at scale: the field runs on,
+  savable and invariant-clean, in a world with no organisms). Archived
+  at runs/phase15-c151-soak-0x82555bebedb6d153.
 - C15.2: the benchmark record (phase15-benchmark-measurements.txt)
   shows field cost tracking cells, not population (deltas 75 vs 85 us
   across a 16x population spread at 128x128).

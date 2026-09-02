@@ -87,10 +87,11 @@ scaffolded condition runs its unscaffolded control on the same seeds.
 
 Criteria:
 
-- [~] **C15.1 Exact conservation.** *(2026-09-02: exact by construction and
+- [x] **C15.1 Exact conservation.** *(2026-09-02: exact by construction,
       enforced as a World invariant; exact in-run and in-reduction across all
-      150 campaign worlds; the 10^6-tick full-stack soak is running on the
-      server and completes this box.)* Total mass and energy across chemistry,
+      150 campaign worlds; the 10^6-tick full-stack soak completed on the
+      server with the identity exact to the milli-unit under live coupling
+      and an extinct-world tail - see the findings' soak addendum.)* Total mass and energy across chemistry,
       field populations, and individuals is invariant to the milli-unit over
       a 10^6-tick run. Diffusion conserves exactly under adversarial
       gradients. This is the most important criterion in the phase: a
