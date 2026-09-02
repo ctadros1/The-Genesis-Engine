@@ -128,3 +128,43 @@ condition 4; every S arm runs its N control on the same seeds.
   minimal; the cost is that C15.6 in this phase certifies a narrower
   exchange than the specification's eventual full coupling, and the
   findings must say so.
+
+## As built (2026-09-02 amendment)
+
+Where the implementation and this record's letter diverged, the record
+owns it here rather than silently:
+
+- **Formats.** This record said "ALIF format 11" for the whole phase.
+  Implementation shipped three: 11 (chemistry, `SECTION_CHEMISTRY` 19),
+  12 (microbial, `SECTION_MICROBIAL` 20), 13 (the coupling fractions,
+  byte-shaped, no section) - the Phase 14 precedent (ADR-0030 across
+  formats 9 and 10), each with its own retained writer, refusal and
+  migration. Benchmark schema stayed at 10: the phase adds no tick
+  phase, and the marker-record format is unchanged (the "schema 9" line
+  above was stale when written).
+- **Aggregation term.** The update order names an aggregation pass; v1
+  ships the aggregation *axis* as a heritable class dimension (mutation
+  flows across it) with no separate spatial aggregation pass - the axis
+  is registry-real, behaviourally inert until a later increment gives it
+  a pass of its own. Nothing hashed changes when that lands; the pass
+  will be config-gated.
+- **Abiogenesis rate inputs.** The temperature term ships at weight
+  zero implicitly: the rate function reads the three substrate
+  concentrations only. Wiring the climate field in is a config change
+  (a fourth weight) for a phase that needs it.
+- **Excretion's basal share.** "Fraction of basal cost" is implemented
+  as the cost before movement, carrying and crowding join the bill -
+  which includes the allometric and thermal terms - floored by what the
+  organism actually paid. Starvation deaths deposit zero remains
+  (energy floors at zero before death).
+- **A truncation floor worth knowing.** The default `mutation_q16` (66,
+  0.001) moves nothing below 993 milli of density; abiogenesis seeds at
+  most 1,000 with death applied first, so campaigns that want the
+  mutation term live must set the rate above the floor (the fixture and
+  the pre-registered campaign use 4096) or seed harder. Declared in the
+  pre-registration, not discovered after.
+- **C15.1 as an invariant.** The exact field identity (joint with the
+  microbial half, chemistry-only without) is enforced by
+  `World::check_invariants`, so campaign check-intervals and every
+  test's invariant sweep carry it; the reduction re-checks it
+  independently from the recorded series.

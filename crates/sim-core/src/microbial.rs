@@ -82,6 +82,14 @@ pub struct MicrobialState {
     /// Scratch for the mutation pass (the only pass that moves density
     /// between slots of the same cell); never saved or hashed.
     scratch: Vec<i64>,
+    /// Derived per-class caches, built once from the config: the field
+    /// runs these lookups per occupied slot per step, and recomputing
+    /// the id decode (and allocating neighbour lists) there dominated
+    /// the saturated-field tick. Same arithmetic, hoisted - never saved
+    /// or hashed.
+    class_substrate: Vec<usize>,
+    class_growth_rate_q16: Vec<i64>,
+    class_neighbours: Vec<Vec<usize>>,
 
     /// Counters: internal transfers, so they do not enter the joint
     /// identity - they exist so a census can attribute what moved.
@@ -92,10 +100,22 @@ pub struct MicrobialState {
 
 impl MicrobialState {
     pub fn new(cells: usize, config: &ChemistryConfig) -> Self {
-        let slots = cells * class_count(config);
+        let classes = class_count(config);
+        let slots = cells * classes;
         Self {
             densities: vec![0; slots],
             scratch: vec![0; slots],
+            class_substrate: (0..classes)
+                .map(|class| class_parameters(config, class).substrate)
+                .collect(),
+            class_growth_rate_q16: (0..classes)
+                .map(|class| {
+                    growth_rate_q16(config, class_parameters(config, class).replication_step)
+                })
+                .collect(),
+            class_neighbours: (0..classes)
+                .map(|class| neighbour_classes(config, class))
+                .collect(),
             grown_milli_total: 0,
             died_milli_total: 0,
             mutated_milli_total: 0,
@@ -121,15 +141,14 @@ impl MicrobialState {
         let waste_fraction = i64::from(config.death_waste_fraction_q16);
         for cell in 0..cells {
             for class in 0..classes {
-                let parameters = class_parameters(config, class);
                 let slot = cell * classes + class;
                 let density = self.densities[slot];
                 if density > 0 {
                     // Growth: consume preferred substrate, bounded by what
                     // the cell holds; yield becomes density, the remainder
                     // is metabolic loss into waste - same cell, same step.
-                    let rate = growth_rate_q16(config, parameters.replication_step);
-                    let substrate_slot = cell * SUBSTRATE_COUNT + parameters.substrate;
+                    let rate = self.class_growth_rate_q16[class];
+                    let substrate_slot = cell * SUBSTRATE_COUNT + self.class_substrate[class];
                     let appetite = (density * rate) >> 16;
                     let consumed = appetite.min(chemistry.concentrations[substrate_slot]);
                     if consumed > 0 {
@@ -180,7 +199,7 @@ impl MicrobialState {
                 if flow == 0 {
                     continue;
                 }
-                for target in neighbour_classes(config, source) {
+                for &target in &self.class_neighbours[source] {
                     self.scratch[cell * classes + source] -= flow;
                     self.scratch[cell * classes + target] += flow;
                     self.mutated_milli_total += i128::from(flow);

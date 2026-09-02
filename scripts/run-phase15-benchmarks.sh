@@ -17,6 +17,8 @@ trap 'rm -f "$tmp"' EXIT HUP INT TERM
 
 cargo test --release -p sim-core --test bench_phase15 -- --ignored --nocapture --test-threads 1 \
   > "$tmp" 2>&1 || { cat "$tmp" >&2; exit 1; }
+cargo test --release -p sim-persist --test bench_phase15_snapshot -- --ignored --nocapture --test-threads 1 \
+  >> "$tmp" 2>&1 || { cat "$tmp" >&2; exit 1; }
 
 {
   printf '# phase15-local-%s\n' "$stamp"
@@ -25,8 +27,8 @@ cargo test --release -p sim-core --test bench_phase15 -- --ignored --nocapture -
 } > "$out"
 
 lines=$(grep -c '^PHASE15-BENCH' "$out")
-if [ "$lines" -ne 2 ]; then
-  printf 'phase15 benchmark record is short: %s of 2 marker lines (D-113)\n' "$lines" >&2
+if [ "$lines" -ne 3 ]; then
+  printf 'phase15 benchmark record is short: %s of 3 marker lines (D-113)\n' "$lines" >&2
   cat "$out" >&2
   exit 1
 fi

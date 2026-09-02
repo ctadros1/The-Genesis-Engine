@@ -89,6 +89,15 @@ signal field, alongside the one-tick cue records - runs in `finalize`
 tick (Rule 4's one-tick lag), never this tick's own emission. With
 `social.enabled` false, `sense_social`, `social_emit_phase`, and
 `commit_social` each return immediately and no fixture moves.*
+*As built (2026-09-02): no new named phase for the Phase 15 field regime
+either - the chemistry and microbial field steps run inside `environment`
+beside climate (`step_climate` then `step_chemistry`, the microbial
+passes and abiogenesis inside each field step), and the coupling deposits
+run at their sources (excretion inside the cost passes, remains at the
+death site), so `TickPhase::ALL` stays at 9 and benchmark schema 10 is
+unchanged. With `chemistry.enabled` false, `step_chemistry` returns
+immediately and no fixture moves.*
+
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

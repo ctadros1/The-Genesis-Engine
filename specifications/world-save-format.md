@@ -289,6 +289,21 @@ the appended fields to the defaults every older world actually ran with:
   (`FORMAT10_CONFIG_BYTES`, 2 bytes) and `SECTION_MATECHOICE` (18),
   counters only - the preference weights are expressed from the genomes on
   load, on the terms phenotypes are.
+- **Format 11** (Phase 15, ADR-0031): the chemistry config block
+  (`FORMAT11_CONFIG_BYTES`) and `SECTION_CHEMISTRY` (19) - per-cell
+  substrate concentrations plus the field ledger, stored never recomputed
+  (ADR-0020). The scratch buffer and production-weight map are rebuilt
+  caches.
+- **Format 12** (Phase 15, ADR-0031): the microbial config fields
+  (`FORMAT12_CONFIG_BYTES`, 33 bytes) and `SECTION_MICROBIAL` (20) -
+  per-cell per-class densities plus the attribution counters. The
+  mutation scratch buffer is a rebuilt cache.
+- **Format 13** (Phase 15, ADR-0031): the two coupling fractions
+  (`FORMAT13_CONFIG_BYTES`, 8 bytes). Byte-shaped like formats 5 and 6 -
+  no new section. ADR-0031 wrote "format 11" for the whole phase;
+  implementation split it across three increments exactly as Phase 14
+  split ADR-0030 across formats 9 and 10, and each landed with its own
+  retained writer, refusal, and migration.
 
 ## Planned Successor: ALIF Format 2 (Phase 12)
 
