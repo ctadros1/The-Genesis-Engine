@@ -168,6 +168,8 @@ struct Options {
     physiology_v2: bool,
     physiology_v2_scramble: bool,
     physiology_v2_inert: bool,
+    field: bool,
+    field_scaffold: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -270,6 +272,16 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--physiology-v2-inert" {
             options.physiology_v2_inert = true;
+            index += 1;
+            continue;
+        }
+        if name == "--field" {
+            options.field = true;
+            index += 1;
+            continue;
+        }
+        if name == "--field-scaffold" {
+            options.field_scaffold = true;
             index += 1;
             continue;
         }
@@ -435,6 +447,9 @@ fn build_world(options: &Options) -> Result<World, String> {
     }
     if options.physiology_v2 {
         return physiology_trace_world(options);
+    }
+    if options.field || options.field_scaffold {
+        return field_trace_world(options);
     }
     if options.social_scramble || options.social_strict || options.social_corrupt {
         return Err(format!(
@@ -827,6 +842,51 @@ fn social_trace_world_from(config: SimConfig) -> Result<World, String> {
         learn.edges = learn_rows;
     }
     World::from_state(state).map_err(|error| format!("scripted founders do not restore: {error}"))
+}
+
+// --- the Phase 15 field trace ------------------------------------------------
+
+/// The Phase 15 trace's configuration: a phase-1 ecology with the whole
+/// field stack on - chemistry, the microbial classes, abiogenesis, and
+/// both coupling fractions - so every mechanism ADR-0031 shipped runs
+/// inside an affordable horizon. Ages are shortened so old-age deaths
+/// carry energy into the remains term (starvation deaths deposit zero),
+/// and the mutation rate sits above its truncation floor for seeded
+/// densities (the default 0.001 per neighbour moves nothing below 993
+/// milli).
+fn field_trace_config(seed: u64, scaffold: bool) -> SimConfig {
+    let mut config = SimConfig::phase1_default(seed);
+    config.cells_x = 48;
+    config.cells_y = 48;
+    config.initial_organisms = 60;
+    config.maturity_age_ticks = 50;
+    config.max_age_ticks = 400;
+    config.chemistry.enabled = true;
+    config.chemistry.field_steps_per_tick = 2;
+    config.chemistry.microbial_enabled = true;
+    config.chemistry.abiogenesis_enabled = true;
+    config.chemistry.mutation_q16 = 4_096;
+    config.chemistry.excretion_fraction_q16 = 32_768;
+    config.chemistry.remains_fraction_q16 = 32_768;
+    if scaffold {
+        config.chemistry.scaffold_patch_radius_cells = 3;
+        config.chemistry.scaffold_patch_contrast_q16 = 4 * 65_536;
+    }
+    config
+}
+
+fn field_trace_world(options: &Options) -> Result<World, String> {
+    if options.phase2 || options.genome2 {
+        return Err(format!(
+            "--field runs a phase-1 ecology; drop --phase2/--genome2\n{}",
+            usage()
+        ));
+    }
+    let config = field_trace_config(
+        options.seed.unwrap_or(DEFAULT_SEED),
+        options.field_scaffold,
+    );
+    World::new(config).map_err(|error| format!("field trace world: {error}"))
 }
 
 // --- the Phase 14 physiology-v2 trace ---------------------------------------
@@ -3571,7 +3631,41 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if metrics.ontogeny_enabled || metrics.mate_choice_enabled {
+    if metrics.chemistry_enabled {
+        // Fixture schema 11: the Phase 15 field trace. Separate on the
+        // grounds every earlier schema was: a world with a substrate field
+        // is not comparable field-for-field to one without. Every
+        // mechanism the phase added has a field, so the fixture cannot
+        // silently become a control (trap 1):
+        // `verify-phase15-determinism.sh` refuses the load-bearing ones at
+        // zero.
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":11,\"phase\":\"phase15\",",
+                "\"chemistry_policy\":\"lifesim-chemistry-v1\",",
+                "\"microbial_policy\":\"lifesim-microbial-v1\",",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},",
+                "\"chemistry_total_milli\":{},\"produced_milli\":{},",
+                "\"deposited_milli\":{},\"abiogenesis_fired\":{},",
+                "\"microbial_total_milli\":{},\"occupied_cells\":{}}}"
+            ),
+            world.config().initial_organisms,
+            metrics.tick,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            metrics.chemistry_total_milli,
+            metrics.chemistry_produced_milli,
+            metrics.chemistry_deposited_milli,
+            metrics.abiogenesis_fired_total,
+            metrics.microbial_total_milli,
+            metrics.microbial_occupied_cells,
+        );
+    } else if metrics.ontogeny_enabled || metrics.mate_choice_enabled {
         // Fixture schema 10: the Phase 14 physiology-v2 trace. Separate on
         // the grounds every earlier schema was: a world that grows bodies
         // and chooses mates is not comparable field-for-field to one that

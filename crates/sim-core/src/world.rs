@@ -786,6 +786,26 @@ pub struct MetricsSnapshot {
     pub mate_choice_enabled: bool,
     pub choices_total: u64,
     pub scrambled_choices_total: u64,
+    /// Phase 15 field regime. All zero (and the gates false) when off,
+    /// on the same inert-observability terms as the blocks above.
+    pub chemistry_enabled: bool,
+    /// Substrate mass currently in the field, milli.
+    pub chemistry_total_milli: i128,
+    /// Whole-run abiotic production, milli.
+    pub chemistry_produced_milli: i128,
+    /// Whole-run organism deposits (coupling v1), milli.
+    pub chemistry_deposited_milli: i128,
+    /// Whole-run mass abiogenesis moved from substrate into density,
+    /// milli - the denominator of a sustainment ratio.
+    pub chemistry_seeded_out_milli: i128,
+    pub microbial_enabled: bool,
+    /// Microbial density currently in the field, milli.
+    pub microbial_total_milli: i128,
+    /// Cells holding any microbial density - the campaign's persistence
+    /// observable.
+    pub microbial_occupied_cells: u64,
+    /// Whole-run abiogenesis firings.
+    pub abiogenesis_fired_total: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -809,6 +829,12 @@ pub enum InvariantViolation {
     EnergyLedgerMismatch {
         expected: i128,
         actual: i128,
+    },
+    /// Phase 15: the field identity `chemistry + microbial == produced +
+    /// deposited` broke - the two-representation design's classic defect
+    /// (C15.1), checked wherever invariants are.
+    FieldConservation {
+        defect_milli: i128,
     },
     BiomassLedgerMismatch {
         expected: i128,
@@ -1801,6 +1827,40 @@ impl World {
                 .matechoice
                 .as_ref()
                 .map_or(0, |matechoice| matechoice.scrambled_choices_total),
+            chemistry_enabled: self.chemistry.is_some(),
+            chemistry_total_milli: self
+                .chemistry
+                .as_ref()
+                .map_or(0, |chemistry| chemistry.total_milli()),
+            chemistry_produced_milli: self
+                .chemistry
+                .as_ref()
+                .map_or(0, |chemistry| chemistry.produced_milli),
+            chemistry_deposited_milli: self
+                .chemistry
+                .as_ref()
+                .map_or(0, |chemistry| chemistry.deposited_milli),
+            chemistry_seeded_out_milli: self
+                .chemistry
+                .as_ref()
+                .map_or(0, |chemistry| chemistry.seeded_out_milli),
+            microbial_enabled: self.microbial.is_some(),
+            microbial_total_milli: self
+                .microbial
+                .as_ref()
+                .map_or(0, |microbial| microbial.total_milli()),
+            microbial_occupied_cells: self.microbial.as_ref().map_or(0, |microbial| {
+                let classes = crate::microbial::class_count(&self.config.chemistry);
+                microbial
+                    .densities
+                    .chunks(classes)
+                    .filter(|cell| cell.iter().any(|&value| value > 0))
+                    .count() as u64
+            }),
+            abiogenesis_fired_total: self
+                .chemistry
+                .as_ref()
+                .map_or(0, |chemistry| chemistry.abiogenesis_fired_total),
             signals_emitted_total: self
                 .social
                 .as_ref()
@@ -5785,6 +5845,24 @@ impl World {
                 expected: expected_energy,
                 actual: actual_energy,
             });
+        }
+        // Phase 15: the field's own conservation identity, exact. With the
+        // microbial half present the joint identity governs; without it,
+        // the chemistry-only one. Checked here so every campaign
+        // `check_interval` and every test's invariant sweep enforces
+        // C15.1 rather than trusting the construction.
+        if let Some(chemistry) = self.chemistry.as_ref() {
+            let defect = match self.microbial.as_ref() {
+                Some(microbial) => {
+                    crate::microbial::field_conservation_defect_milli(chemistry, microbial)
+                }
+                None => chemistry.conservation_defect_milli(),
+            };
+            if defect != 0 {
+                return Err(InvariantViolation::FieldConservation {
+                    defect_milli: defect,
+                });
+            }
         }
         // Capacity loss is a genuine sink: biomass removed because a cell's
         // biome became less productive. It is ledgered rather than

@@ -1,0 +1,41 @@
+# Phase 15 field-scaffold campaign (C15.3). Pre-registered in
+# experiments/phase15-field-preregistration.md BEFORE this file ran; the
+# observables, persistence window, thresholds and expectations are fixed
+# there. Production total is identical in every condition by
+# construction; only its placement varies. Both coupling fractions stay
+# zero so organisms and field cannot touch each other and every
+# between-condition difference is the production placement's alone.
+# Seeds 16001..16030, disjoint from every prior decision range.
+campaign phase15-field-scaffold
+ticks 60000
+workers 8
+seeds 16001..16030
+check-interval 5000
+base preset phase1
+base cells_x 64
+base cells_y 64
+base initial_organisms 40
+base max_entities 4000
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 1
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+condition N
+condition S1
+condition S2
+condition S3
+condition S4
+set S1 chemistry.scaffold_patch_radius_cells 3
+set S1 chemistry.scaffold_patch_contrast_q16 131072
+set S2 chemistry.scaffold_patch_radius_cells 3
+set S2 chemistry.scaffold_patch_contrast_q16 262144
+set S3 chemistry.scaffold_patch_radius_cells 3
+set S3 chemistry.scaffold_patch_contrast_q16 524288
+set S4 chemistry.scaffold_patch_radius_cells 3
+set S4 chemistry.scaffold_patch_contrast_q16 1048576
+vary chemistry.scaffold_patch_radius_cells
+vary chemistry.scaffold_patch_contrast_q16
+output events off
+output snapshots on
+output field 500

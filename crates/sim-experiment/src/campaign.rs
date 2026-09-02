@@ -119,6 +119,16 @@ pub struct OutputPolicy {
     /// the artifact that justified a readable series does not apply. See
     /// `sim_persist::actionlog`.
     pub action_interval: u64,
+    /// Ticks between field-regime samples; `0` writes no `.alfd` file.
+    ///
+    /// Off by default, on the same terms as the three above. C15.3's
+    /// persistence clause is the reason it exists: "the formed population
+    /// persists beyond a stated window" is a statement about a series, and
+    /// a campaign that records only its final tick cannot tell a durable
+    /// microbial population from one that happened to be there at the end.
+    /// Text like the morphology series - a sample is eight world-level
+    /// scalars.
+    pub field_interval: u64,
 }
 
 impl Default for OutputPolicy {
@@ -130,6 +140,7 @@ impl Default for OutputPolicy {
             spatial_interval: 0,
             morphology_interval: 0,
             action_interval: 0,
+            field_interval: 0,
         }
     }
 }
@@ -537,9 +548,24 @@ impl Campaign {
                             interval
                         };
                     }
+                    ["field", value] => {
+                        output.field_interval = if *value == "off" {
+                            0
+                        } else {
+                            let interval: u64 = value
+                                .parse()
+                                .map_err(|_| syntax("field takes a tick interval or off"))?;
+                            if interval == 0 {
+                                return Err(syntax(
+                                    "field interval must be positive; use 'off' to disable",
+                                ));
+                            }
+                            interval
+                        };
+                    }
                     _ => {
                         return Err(syntax(
-                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off | output morphology <ticks>|off | output actions <ticks>|off",
+                            "usage: output events on|off | output snapshots on|off | output compress <level>|off | output spatial <ticks>|off | output morphology <ticks>|off | output actions <ticks>|off | output field <ticks>|off",
                         ));
                     }
                 },

@@ -285,6 +285,18 @@ fn execute_unit(
                 campaign.output.morphology_interval
             )
         });
+    // Field series. Text for the morphology series' reason: a sample is
+    // eight world-level scalars read through the metrics accessor, so the
+    // kernel is untouched and the record is auditable by eye.
+    let mut field_series: Option<String> =
+        (output_dir.is_some() && campaign.output.field_interval > 0).then(|| {
+            format!(
+                "field-series 1 policy {} seed {:#018x} interval {}\n",
+                sim_core::CHEMISTRY_POLICY_VERSION,
+                unit.seed,
+                campaign.output.field_interval
+            )
+        });
     // Per-individual action sampling. Reads `World::action_census`, which is
     // an observation accessor returning owned values (ADR-0016), so this
     // block cannot reach the kernel any more than the spatial block can -
@@ -360,6 +372,24 @@ fn execute_unit(
                 metrics.refused_node_budget,
             ));
         }
+        if let Some(series) = field_series.as_mut()
+            && world.tick_number() % campaign.output.field_interval == 0
+        {
+            let metrics = world.metrics();
+            series.push_str(&format!(
+                "sample tick={} fired={} seeded_milli={} chem_milli={} produced_milli={} \
+                 deposited_milli={} microbial_milli={} occupied={} population={}\n",
+                metrics.tick,
+                metrics.abiogenesis_fired_total,
+                metrics.chemistry_seeded_out_milli,
+                metrics.chemistry_total_milli,
+                metrics.chemistry_produced_milli,
+                metrics.chemistry_deposited_milli,
+                metrics.microbial_total_milli,
+                metrics.microbial_occupied_cells,
+                metrics.population,
+            ));
+        }
         if let Some(writer) = actions.as_mut()
             && world.tick_number() % campaign.output.action_interval == 0
         {
@@ -400,6 +430,10 @@ fn execute_unit(
     };
     if let (Some(directory), Some(series)) = (output_dir, morphology_series.as_ref()) {
         std::fs::write(directory.join(format!("{stem}.almo")), series)
+            .map_err(|error| error.to_string())?;
+    }
+    if let (Some(directory), Some(series)) = (output_dir, field_series.as_ref()) {
+        std::fs::write(directory.join(format!("{stem}.alfd")), series)
             .map_err(|error| error.to_string())?;
     }
     world

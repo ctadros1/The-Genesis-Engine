@@ -1,0 +1,31 @@
+# Phase 15 C15.1 ledger soak: one world, 10^6 ticks, the exact field
+# conservation identity enforced by World::check_invariants every 5,000
+# ticks (a violation aborts the run loudly). The full stack is on -
+# chemistry, microbial, abiogenesis, and BOTH coupling fractions, with
+# shortened ages so old-age deaths keep the remains term busy - so the
+# identity is soaked under heavy organism-field exchange (C15.6's long
+# half), not on an idle field. The field series records the running
+# totals every 5,000 ticks for the record.
+campaign phase15-c151-ledger-soak
+ticks 1000000
+workers 1
+seeds 16101
+check-interval 5000
+base preset phase1
+base cells_x 64
+base cells_y 64
+base initial_organisms 40
+base max_entities 4000
+base maturity_age_ticks 50
+base max_age_ticks 400
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 1
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+base chemistry.excretion_fraction_q16 32768
+base chemistry.remains_fraction_q16 32768
+condition soak
+output events off
+output snapshots on
+output field 5000

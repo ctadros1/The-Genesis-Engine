@@ -183,8 +183,10 @@ fn a_populated_microbial_field_survives_a_save_round_trip_with_the_same_future()
         "the saved field is empty, so the round trip would prove nothing"
     );
     // Mutation verification: the checksum equality below is only evidence
-    // if the checksum actually covers the densities. Perturb one saved
-    // value and the restored world must hash differently.
+    // if the checksum actually covers the densities. Move one milli
+    // between slots - conserving, so the restore's C15.1 invariant holds
+    // and only the hash can object - and the restored world must hash
+    // differently.
     let mut perturbed = saved.clone();
     let slot = perturbed
         .microbial
@@ -194,7 +196,10 @@ fn a_populated_microbial_field_survives_a_save_round_trip_with_the_same_future()
         .iter()
         .position(|&value| value > 0)
         .unwrap();
-    perturbed.microbial.as_mut().unwrap().densities[slot] += 1;
+    let densities = &mut perturbed.microbial.as_mut().unwrap().densities;
+    densities[slot] -= 1;
+    let other = (slot + 1) % densities.len();
+    densities[other] += 1;
     let perturbed_world = World::from_state(perturbed).expect("perturbed restores");
     assert_ne!(
         perturbed_world.state_checksum(),

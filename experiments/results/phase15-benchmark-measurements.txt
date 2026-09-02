@@ -1,0 +1,4 @@
+# phase15-local-20260902T120151Z
+# benchmark schema 10: PHASE15-BENCH markers, medians over 500 ticks after 100 warmup
+PHASE15-BENCH field-scale cells64_micro8_us=282.3 organisms50_disabled_us=43.6 organisms50_micro8_us=1015.0 organisms800_disabled_us=108.0 organisms800_micro8_us=1042.8
+PHASE15-BENCH field-tick cells=128x128 organisms=200 disabled_us=54.8 chem_us=160.5 micro8_us=1021.6 micro8_steps4_us=11386.6 micro32_us=1015.5
