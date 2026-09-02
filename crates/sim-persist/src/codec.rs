@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_11;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_12;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -106,6 +106,11 @@ pub const FORMAT_VERSION_10: u16 = 10;
 /// introduces `SECTION_CHEMISTRY`. Guarded by name wherever it gates,
 /// permanently (D-108).
 pub const FORMAT_VERSION_11: u16 = 11;
+
+/// Format 12 (Phase 15, ADR-0031, increment 2): appends the microbial
+/// config fields to the config body and introduces `SECTION_MICROBIAL`.
+/// Guarded by name wherever it gates, permanently (D-108).
+pub const FORMAT_VERSION_12: u16 = 12;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -294,6 +299,9 @@ const SECTION_MATECHOICE: u16 = 18;
 /// Phase 15 chemistry field (format 11): per-cell substrate
 /// concentrations plus the chemistry ledger. Stored, never recomputed.
 const SECTION_CHEMISTRY: u16 = 19;
+/// Phase 15 microbial field (format 12): per-cell per-class densities
+/// plus the attribution counters. Stored, never recomputed.
+const SECTION_MICROBIAL: u16 = 20;
 /// Bytes one object's fixed fields occupy: the bound a declared object count
 /// implies before any composition list is read.
 const OBJECT_FIXED_BYTES: u64 =
@@ -903,6 +911,11 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_11 {
         encode_chemistry_config(&mut writer, config);
     }
+    // Format 12's microbial fields. Guarded on `FORMAT_VERSION_12` by
+    // name, permanently.
+    if format >= FORMAT_VERSION_12 {
+        encode_microbial_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1142,6 +1155,42 @@ fn decode_chemistry_config(
     chemistry.abiogenesis_weight_polymer_q16 = reader.u32()?;
     chemistry.abiogenesis_cap_q16 = reader.u32()?;
     chemistry.abiogenesis_seed_milli = reader.i64()?;
+    Ok(())
+}
+
+/// The format-12 microbial block, one field per line in declaration
+/// order, swept by `config_field_coverage.rs` like every block before it.
+fn encode_microbial_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    let chemistry = &config.chemistry;
+    writer.u8(u8::from(chemistry.microbial_enabled));
+    writer.u32(chemistry.replication_axis);
+    writer.u32(chemistry.aggregation_axis);
+    writer.u32(chemistry.growth_rate_low_q16);
+    writer.u32(chemistry.growth_rate_high_q16);
+    writer.u32(chemistry.growth_yield_q16);
+    writer.u32(chemistry.death_q16);
+    writer.u32(chemistry.death_waste_fraction_q16);
+    writer.u32(chemistry.mutation_q16);
+}
+
+/// Bytes the format-12 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT12_CONFIG_BYTES: usize = 1 + 4 * 8;
+
+fn decode_microbial_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    let chemistry = &mut config.chemistry;
+    chemistry.microbial_enabled = reader.u8()? != 0;
+    chemistry.replication_axis = reader.u32()?;
+    chemistry.aggregation_axis = reader.u32()?;
+    chemistry.growth_rate_low_q16 = reader.u32()?;
+    chemistry.growth_rate_high_q16 = reader.u32()?;
+    chemistry.growth_yield_q16 = reader.u32()?;
+    chemistry.death_q16 = reader.u32()?;
+    chemistry.death_waste_fraction_q16 = reader.u32()?;
+    chemistry.mutation_q16 = reader.u32()?;
     Ok(())
 }
 
@@ -1393,6 +1442,9 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // build that could write a format-10 file held a chemistry field.
     if format >= FORMAT_VERSION_11 {
         decode_chemistry_config(&mut *reader, &mut config)?;
+    }
+    if format >= FORMAT_VERSION_12 {
+        decode_microbial_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -1796,6 +1848,17 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
         section.i128(chemistry.seeded_out_milli);
         section.u64(chemistry.abiogenesis_fired_total);
         write_section(&mut payload, SECTION_CHEMISTRY, 0, section.0);
+    }
+    if let Some(microbial) = state.microbial.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(microbial.densities.len() as u64);
+        for &value in &microbial.densities {
+            section.i64(value);
+        }
+        section.i128(microbial.grown_milli_total);
+        section.i128(microbial.died_milli_total);
+        section.i128(microbial.mutated_milli_total);
+        write_section(&mut payload, SECTION_MICROBIAL, 0, section.0);
     }
     payload
 }
@@ -2248,6 +2311,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut ontogeny: Option<sim_core::OntogenySave> = None;
     let mut matechoice: Option<sim_core::MateChoiceSave> = None;
     let mut chemistry: Option<sim_core::ChemistrySave> = None;
+    let mut microbial: Option<sim_core::MicrobialSave> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -2891,6 +2955,31 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                     abiogenesis_fired_total: reader.u64()?,
                 });
             }
+            SECTION_MICROBIAL => {
+                // `FORMAT_VERSION_12` by name (D-108).
+                if format < FORMAT_VERSION_12 {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if microbial.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let values = reader.u64()?;
+                // Cap before allocating: 8 bytes per value plus the three
+                // trailing counter terms (D-091's discipline).
+                if !allocation_fits(values, 8, 48, body.len()) {
+                    return Err(CodecError::ValueOutOfRange("microbial values"));
+                }
+                let mut densities = Vec::with_capacity(values as usize);
+                for _ in 0..values {
+                    densities.push(reader.i64()?);
+                }
+                microbial = Some(sim_core::MicrobialSave {
+                    densities,
+                    grown_milli_total: reader.i128()?,
+                    died_milli_total: reader.i128()?,
+                    mutated_milli_total: reader.i128()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -2922,6 +3011,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         ontogeny,
         matechoice,
         chemistry,
+        microbial,
         ids,
         x_fp,
         y_fp,
@@ -3002,6 +3092,7 @@ pub fn encode_snapshot_format3(
     refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format9_state(state, FORMAT_VERSION_3)?;
     refuse_format10_state(state, FORMAT_VERSION_3)?;
+    refuse_format12_state(state, FORMAT_VERSION_3)?;
     refuse_format11_state(state, FORMAT_VERSION_3)?;
     refuse_format7_state(state, FORMAT_VERSION_3)?;
     encode_snapshot_versioned(
@@ -3056,6 +3147,7 @@ pub fn encode_snapshot_format4(
     refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format9_state(state, FORMAT_VERSION_4)?;
     refuse_format10_state(state, FORMAT_VERSION_4)?;
+    refuse_format12_state(state, FORMAT_VERSION_4)?;
     refuse_format11_state(state, FORMAT_VERSION_4)?;
     refuse_format7_state(state, FORMAT_VERSION_4)?;
     encode_snapshot_versioned(
@@ -3100,6 +3192,7 @@ pub fn encode_snapshot_format5(
     refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format9_state(state, FORMAT_VERSION_5)?;
     refuse_format10_state(state, FORMAT_VERSION_5)?;
+    refuse_format12_state(state, FORMAT_VERSION_5)?;
     refuse_format11_state(state, FORMAT_VERSION_5)?;
     refuse_format7_state(state, FORMAT_VERSION_5)?;
     encode_snapshot_versioned(
@@ -3137,6 +3230,7 @@ pub fn encode_snapshot_format6(
     refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format9_state(state, FORMAT_VERSION_6)?;
     refuse_format10_state(state, FORMAT_VERSION_6)?;
+    refuse_format12_state(state, FORMAT_VERSION_6)?;
     refuse_format11_state(state, FORMAT_VERSION_6)?;
     refuse_format7_state(state, FORMAT_VERSION_6)?;
     encode_snapshot_versioned(
@@ -3173,6 +3267,7 @@ pub fn encode_snapshot_format7(
     refuse_format8_state(state, FORMAT_VERSION_7)?;
     refuse_format9_state(state, FORMAT_VERSION_7)?;
     refuse_format10_state(state, FORMAT_VERSION_7)?;
+    refuse_format12_state(state, FORMAT_VERSION_7)?;
     refuse_format11_state(state, FORMAT_VERSION_7)?;
     encode_snapshot_versioned(
         state,
@@ -3207,6 +3302,7 @@ pub fn encode_snapshot_format8(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format9_state(state, FORMAT_VERSION_8)?;
     refuse_format10_state(state, FORMAT_VERSION_8)?;
+    refuse_format12_state(state, FORMAT_VERSION_8)?;
     refuse_format11_state(state, FORMAT_VERSION_8)?;
     encode_snapshot_versioned(
         state,
@@ -3234,6 +3330,7 @@ pub fn encode_snapshot_format9(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format10_state(state, FORMAT_VERSION_9)?;
+    refuse_format12_state(state, FORMAT_VERSION_9)?;
     refuse_format11_state(state, FORMAT_VERSION_9)?;
     encode_snapshot_versioned(
         state,
@@ -3260,6 +3357,7 @@ pub fn encode_snapshot_format10(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format12_state(state, FORMAT_VERSION_10)?;
     refuse_format11_state(state, FORMAT_VERSION_10)?;
     encode_snapshot_versioned(
         state,
@@ -3280,8 +3378,68 @@ pub fn encode_snapshot_format10(
 /// default rather than only the gate, because a knob moved off its default
 /// with the section disabled is still a value the format has no bytes for,
 /// and restoring it at the default would alter meaning on load.
+/// Encode a **format 11** snapshot, retained on the terms every earlier
+/// writer is: the 11-to-12 migration's byte-identity requirement is
+/// stated against it.
+pub fn encode_snapshot_format11(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format12_state(state, FORMAT_VERSION_11)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_11,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// The write-side refusal every retained pre-12 writer shares, on the
+/// terms `refuse_format9_state` is: the microbial fields compared field
+/// by field against their defaults (the rest of the chemistry struct is
+/// format 11's and legitimately non-default there), and the densities
+/// section refused by name.
+fn refuse_format12_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    let defaults = sim_core::ChemistryConfig::chemistry_default();
+    let chemistry = &state.config.chemistry;
+    if chemistry.microbial_enabled != defaults.microbial_enabled
+        || chemistry.replication_axis != defaults.replication_axis
+        || chemistry.aggregation_axis != defaults.aggregation_axis
+        || chemistry.growth_rate_low_q16 != defaults.growth_rate_low_q16
+        || chemistry.growth_rate_high_q16 != defaults.growth_rate_high_q16
+        || chemistry.growth_yield_q16 != defaults.growth_yield_q16
+        || chemistry.death_q16 != defaults.death_q16
+        || chemistry.death_waste_fraction_q16 != defaults.death_waste_fraction_q16
+        || chemistry.mutation_q16 != defaults.mutation_q16
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "chemistry microbial",
+            format,
+        });
+    }
+    if state.microbial.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_MICROBIAL,
+            format,
+        });
+    }
+    Ok(())
+}
+
 /// The write-side refusal every retained pre-11 writer shares, on the
-/// terms its predecessors are.
+/// terms its predecessors are. The whole-struct comparison predates the
+/// format-12 microbial fields; `refuse_format12_state` names those first
+/// wherever both run, so this arm answers for format 11's own fields.
 fn refuse_format11_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
     if state.config.chemistry != sim_core::ChemistryConfig::chemistry_default() {
         return Err(CodecError::FieldNotInFormat {
@@ -3657,6 +3815,10 @@ pub fn decode_snapshot_format9(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// on the terms every earlier retained reader is.
 pub fn decode_snapshot_format10(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_10, SAVE_STATE_VERSION)
+}
+
+pub fn decode_snapshot_format11(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_11, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

@@ -277,6 +277,10 @@ pub struct SaveState {
     /// only logical state - the scratch buffer and the production weight
     /// map are caches rebuilt on load.
     pub chemistry: Option<ChemistrySave>,
+    /// Phase 15 microbial field. Present exactly when the microbial gate
+    /// is on (which requires chemistry). Stored, never recomputed, like
+    /// the chemistry half; the mutation scratch buffer is a rebuilt cache.
+    pub microbial: Option<MicrobialSave>,
 }
 
 /// The chemistry field's saved half: concentrations plus the ledger.
@@ -287,6 +291,16 @@ pub struct ChemistrySave {
     pub deposited_milli: i128,
     pub seeded_out_milli: i128,
     pub abiogenesis_fired_total: u64,
+}
+
+/// The microbial field's saved half: per-cell per-class densities plus
+/// the attribution counters.
+#[derive(Clone, Debug, PartialEq)]
+pub struct MicrobialSave {
+    pub densities: Vec<i64>,
+    pub grown_milli_total: i128,
+    pub died_milli_total: i128,
+    pub mutated_milli_total: i128,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -481,6 +495,12 @@ impl World {
                 deposited_milli: chemistry.deposited_milli,
                 seeded_out_milli: chemistry.seeded_out_milli,
                 abiogenesis_fired_total: chemistry.abiogenesis_fired_total,
+            }),
+            microbial: self.microbial_state().map(|microbial| MicrobialSave {
+                densities: microbial.densities.clone(),
+                grown_milli_total: microbial.grown_milli_total,
+                died_milli_total: microbial.died_milli_total,
+                mutated_milli_total: microbial.mutated_milli_total,
             }),
             physiology: self
                 .physiology_state()
@@ -1120,6 +1140,45 @@ impl World {
             }
         };
 
+        // Phase 15 microbial. Same contract as the chemistry half: presence
+        // must match the gate, the densities are validated structurally, and
+        // the mutation scratch buffer is a rebuilt cache.
+        let microbial_enabled =
+            world.config().chemistry.enabled && world.config().chemistry.microbial_enabled;
+        let rebuilt_microbial = match (microbial_enabled, state.microbial) {
+            (true, Some(save)) => {
+                let config = *world.config();
+                let cells = config.cells_x as usize * config.cells_y as usize;
+                let slots = cells * crate::microbial::class_count(&config.chemistry);
+                if save.densities.len() != slots {
+                    return Err(RestoreError::StateInvalid(format!(
+                        "microbial carries {} densities for {} slots",
+                        save.densities.len(),
+                        slots
+                    )));
+                }
+                if save.densities.iter().any(|&value| value < 0) {
+                    return Err(RestoreError::StateInvalid(
+                        "microbial density is negative".to_owned(),
+                    ));
+                }
+                let mut microbial =
+                    crate::microbial::MicrobialState::new(cells, &config.chemistry);
+                microbial.densities = save.densities;
+                microbial.grown_milli_total = save.grown_milli_total;
+                microbial.died_milli_total = save.died_milli_total;
+                microbial.mutated_milli_total = save.mutated_milli_total;
+                microbial.rebuild_derived();
+                Some(microbial)
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "microbial section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+
         // A restored organism wears its GROWN body, not its adult one. The
         // phenotypes rebuilt above came from full bodies (the only bodies
         // the morphology rebuild knows); re-applying the grown prefix here
@@ -1176,6 +1235,7 @@ impl World {
             rebuilt_ontogeny,
             rebuilt_matechoice,
             rebuilt_chemistry,
+            rebuilt_microbial,
         );
 
         // Step 5 of the restore order in

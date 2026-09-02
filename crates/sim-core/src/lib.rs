@@ -33,6 +33,7 @@ mod genome2;
 mod learnstate;
 mod material;
 mod matechoice;
+mod microbial;
 mod meiosis;
 mod morphology;
 mod morphstate;
@@ -137,6 +138,10 @@ pub use chemistry::{
     SUBSTRATE_COUNT, SUBSTRATE_REGISTRY_VERSION,
 };
 pub use matechoice::{MateChoiceSave, MateChoiceState};
+pub use microbial::{
+    CLASS_REGISTRY_VERSION, ClassParameters, MICROBIAL_POLICY_VERSION, MicrobialState,
+    class_count, class_parameters, field_conservation_defect_milli,
+};
 pub use ontogeny::{OntogenySave, OntogenyState, derive_prefix, growth_order};
 pub use physiology::{
     HazardOutcome, PHYSIOLOGY_POLICY_VERSION, PhysiologyState, allometry_multiplier_milli,
@@ -164,6 +169,7 @@ pub use registry::{
 pub use rng::{RNG_ALGORITHM_VERSION, RngSystem, named_random};
 pub use save::{
     ActionCensusSaveState, ChemistrySave, ClimateSaveState, ContestSaveState, LearnSaveState,
+    MicrobialSave,
     LearnedEdgeSave,
     MorphologySaveState, Phase2SaveState, PhysiologySaveState, RestoreError, SAVE_STATE_VERSION,
     SaveState, Schema2SaveState,

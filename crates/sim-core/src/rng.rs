@@ -83,6 +83,20 @@ pub enum RngSystem {
     /// those indices are as permanent as the stream value itself, because
     /// renumbering them would silently change every world.
     Mortality = 16,
+    /// Abiogenesis draws (Phase 15, ADR-0031): whether a cell's protocell
+    /// rate fires, keyed on the cell index with the field-step ordinal as
+    /// the draw index - the only randomness the field regime has, and it
+    /// is per cell, never per individual (ADR-0020's affordability
+    /// property).
+    Abiogenesis = 18,
+    /// Microbial-field draws (Phase 15). Allocated and **unused** under
+    /// the shipped deterministic policy; exists so a stochastic microbial
+    /// term later cannot renumber (the develop.rs lesson, done properly
+    /// this time).
+    MicrobialField = 19,
+    /// The field-to-individual transition (Phase 16). Reserved now so the
+    /// materialization draws cannot renumber anything when they land.
+    Transition = 20,
     /// Optional bounded stochastic climate component (Phase 6). Allocated
     /// now and unused under the default deterministic policy, so adopting a
     /// stochastic policy later cannot renumber an existing stream.

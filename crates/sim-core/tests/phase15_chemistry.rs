@@ -112,3 +112,118 @@ fn the_scaffold_arm_is_a_distinct_lineage_with_the_same_production_total() {
         "the scaffold redistributes production and must never add to it"
     );
 }
+
+// --- increment 2: the microbial field, in-world ------------------------------
+
+fn microbial_config(seed: u64) -> SimConfig {
+    let mut config = chemistry_config(seed);
+    config.chemistry.microbial_enabled = true;
+    config.chemistry.abiogenesis_enabled = true;
+    // The default mutation rate (0.001 per neighbour) truncates to zero
+    // below 993 milli of density; abiogenesis seeds at most 1000 with
+    // death running first, so the default would leave the mutation term
+    // untested. Still inside the Q16/8 validation cap.
+    config.chemistry.mutation_q16 = 4_096;
+    config
+}
+
+#[test]
+fn a_microbial_world_runs_and_the_joint_identity_holds() {
+    let mut world = World::new(microbial_config(SEED ^ 0x10)).expect("world");
+    for tick in 1..=600 {
+        world.step();
+        if tick % 100 == 0 {
+            world
+                .check_invariants()
+                .unwrap_or_else(|violation| panic!("tick {tick}: {violation}"));
+        }
+    }
+    let state = world.export_state();
+    let chemistry = state.chemistry.as_ref().expect("chemistry section");
+    let microbial = state.microbial.as_ref().expect("microbial section");
+    let chem_total: i128 = chemistry
+        .concentrations
+        .iter()
+        .map(|&value| i128::from(value))
+        .sum();
+    let microbial_total: i128 = microbial
+        .densities
+        .iter()
+        .map(|&value| i128::from(value))
+        .sum();
+    // Non-vacuity: every term of the joint identity must actually have
+    // moved, or the equality below pins nothing about the microbial half.
+    assert!(
+        chemistry.abiogenesis_fired_total > 0,
+        "abiogenesis never fired, so no density ever existed"
+    );
+    assert!(microbial_total > 0, "no microbial density at the end");
+    assert!(microbial.grown_milli_total > 0, "growth never ran");
+    assert!(microbial.died_milli_total > 0, "death never ran");
+    assert!(microbial.mutated_milli_total > 0, "mutation never flowed");
+    assert_eq!(
+        chemistry.produced_milli + chemistry.deposited_milli,
+        chem_total + microbial_total,
+        "the joint C15.1 identity must hold to the milli-unit at the world level"
+    );
+}
+
+#[test]
+fn a_populated_microbial_field_survives_a_save_round_trip_with_the_same_future() {
+    let mut world = World::new(microbial_config(SEED ^ 0x11)).expect("world");
+    for _ in 0..300 {
+        world.step();
+    }
+    let saved = world.export_state();
+    assert!(
+        saved
+            .microbial
+            .as_ref()
+            .is_some_and(|microbial| microbial.densities.iter().any(|&value| value > 0)),
+        "the saved field is empty, so the round trip would prove nothing"
+    );
+    // Mutation verification: the checksum equality below is only evidence
+    // if the checksum actually covers the densities. Perturb one saved
+    // value and the restored world must hash differently.
+    let mut perturbed = saved.clone();
+    let slot = perturbed
+        .microbial
+        .as_ref()
+        .unwrap()
+        .densities
+        .iter()
+        .position(|&value| value > 0)
+        .unwrap();
+    perturbed.microbial.as_mut().unwrap().densities[slot] += 1;
+    let perturbed_world = World::from_state(perturbed).expect("perturbed restores");
+    assert_ne!(
+        perturbed_world.state_checksum(),
+        world.state_checksum(),
+        "a perturbed density hashed identically, so the checksum does not cover it"
+    );
+    let mut restored = World::from_state(saved).expect("restores");
+    assert_eq!(restored.state_checksum(), world.state_checksum());
+    for _ in 0..100 {
+        world.step();
+        restored.step();
+    }
+    assert_eq!(
+        restored.state_checksum(),
+        world.state_checksum(),
+        "the restored microbial field must advance identically"
+    );
+}
+
+#[test]
+fn the_disabled_microbial_section_saves_nothing_and_is_absent() {
+    let mut config = microbial_config(SEED ^ 0x12);
+    config.chemistry.microbial_enabled = false;
+    config.chemistry.abiogenesis_enabled = false;
+    let mut world = World::new(config).expect("world");
+    for _ in 0..50 {
+        world.step();
+    }
+    let state = world.export_state();
+    assert!(state.chemistry.is_some(), "chemistry itself stays on");
+    assert!(state.microbial.is_none());
+}

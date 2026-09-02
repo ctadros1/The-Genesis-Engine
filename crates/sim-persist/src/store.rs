@@ -533,6 +533,7 @@ fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format9_defaults(&mut state);
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -560,6 +561,7 @@ fn migrate_format5_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format9_defaults(&mut state);
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -582,6 +584,7 @@ fn migrate_format6_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format9_defaults(&mut state);
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -603,6 +606,7 @@ fn migrate_format7_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format9_defaults(&mut state);
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -623,6 +627,7 @@ fn migrate_format8_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format9_defaults(&mut state);
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -642,12 +647,13 @@ fn migrate_format9_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     let (source, mut state) = codec::decode_snapshot_format9(bytes)?;
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
-/// Format 10 to current (11): what format 11 adds is the chemistry
-/// section; a format-10 world had none - by construction. Invents
-/// nothing; `expected_loss` empty.
+/// Format 10 to current: what formats 11 and 12 add are the chemistry
+/// and microbial sections; a format-10 world had neither - by
+/// construction. Invents nothing; `expected_loss` empty.
 static FORMAT10_TO_CURRENT: Migration = Migration {
     from_format: codec::FORMAT_VERSION_10,
     to_format: codec::FORMAT_VERSION,
@@ -658,7 +664,42 @@ static FORMAT10_TO_CURRENT: Migration = Migration {
 fn migrate_format10_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
     let (source, mut state) = codec::decode_snapshot_format10(bytes)?;
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
+}
+
+/// Format 11 to current (12): what format 12 adds is the microbial
+/// section; a format-11 world had none - by construction. Invents
+/// nothing; `expected_loss` empty.
+static FORMAT11_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_11,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format11_to_current,
+};
+
+fn migrate_format11_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format11(bytes)?;
+    resolve_format12_defaults(&mut state);
+    reencode(source, state)
+}
+
+/// The resolution every pre-12 transform states for what format 12 added.
+/// Field by field rather than the whole chemistry struct, because the rest
+/// of that struct is format 11's and legitimately non-default there.
+fn resolve_format12_defaults(state: &mut sim_core::SaveState) {
+    let defaults = sim_core::ChemistryConfig::chemistry_default();
+    let chemistry = &mut state.config.chemistry;
+    chemistry.microbial_enabled = defaults.microbial_enabled;
+    chemistry.replication_axis = defaults.replication_axis;
+    chemistry.aggregation_axis = defaults.aggregation_axis;
+    chemistry.growth_rate_low_q16 = defaults.growth_rate_low_q16;
+    chemistry.growth_rate_high_q16 = defaults.growth_rate_high_q16;
+    chemistry.growth_yield_q16 = defaults.growth_yield_q16;
+    chemistry.death_q16 = defaults.death_q16;
+    chemistry.death_waste_fraction_q16 = defaults.death_waste_fraction_q16;
+    chemistry.mutation_q16 = defaults.mutation_q16;
+    state.microbial = None;
 }
 
 /// The resolution every pre-11 transform states for what format 11 added.
@@ -735,6 +776,7 @@ fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format9_defaults(&mut state);
     resolve_format10_defaults(&mut state);
     resolve_format11_defaults(&mut state);
+    resolve_format12_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -788,6 +830,7 @@ pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, 
         codec::FORMAT_VERSION_8 => Ok(Some(&FORMAT8_TO_CURRENT)),
         codec::FORMAT_VERSION_9 => Ok(Some(&FORMAT9_TO_CURRENT)),
         codec::FORMAT_VERSION_10 => Ok(Some(&FORMAT10_TO_CURRENT)),
+        codec::FORMAT_VERSION_11 => Ok(Some(&FORMAT11_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \

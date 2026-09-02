@@ -908,6 +908,30 @@ pub struct ChemistryConfig {
     /// mass is debited from S_PRIMORDIAL, so genesis conserves. A firing
     /// with less S_PRIMORDIAL present than this seeds nothing.
     pub abiogenesis_seed_milli: i64,
+
+    /// The microbial half of the field regime (ADR-0031): per-cell
+    /// densities over the genotype-class registry. Requires the chemistry
+    /// half - classes eat substrates.
+    pub microbial_enabled: bool,
+    /// Class-axis sizes. Substrate preference is fixed at two (primordial,
+    /// monomer); these two are config-swept per the plan. Class count =
+    /// 2 * replication_axis * aggregation_axis, bounded by validation.
+    pub replication_axis: u32,
+    pub aggregation_axis: u32,
+    /// Growth rate at the lowest and highest replication-axis position,
+    /// Q16 per field step; intermediate positions interpolate linearly.
+    pub growth_rate_low_q16: u32,
+    pub growth_rate_high_q16: u32,
+    /// Fraction of consumed substrate that becomes density; the remainder
+    /// is metabolic loss deposited as S_WASTE in the same step.
+    pub growth_yield_q16: u32,
+    /// Death rate, Q16 per field step; the died mass splits between
+    /// S_WASTE and S_PRIMORDIAL by `death_waste_fraction_q16`.
+    pub death_q16: u32,
+    pub death_waste_fraction_q16: u32,
+    /// Mutation flow to each single-axis-step neighbour class, Q16 per
+    /// field step.
+    pub mutation_q16: u32,
 }
 
 impl ChemistryConfig {
@@ -927,6 +951,15 @@ impl ChemistryConfig {
             abiogenesis_weight_polymer_q16: 262,
             abiogenesis_cap_q16: 655, // 0.01 per cell per step at the cap
             abiogenesis_seed_milli: 1_000,
+            microbial_enabled: false,
+            replication_axis: 2,
+            aggregation_axis: 2,
+            growth_rate_low_q16: 1_311,  // 0.02 per step
+            growth_rate_high_q16: 3_932, // 0.06
+            growth_yield_q16: 39_322,    // 0.6 of consumed substrate
+            death_q16: 655,              // 0.01
+            death_waste_fraction_q16: 32_768, // half to waste, half recycled
+            mutation_q16: 66,            // 0.001 per neighbour
         }
     }
 }
@@ -2056,6 +2089,36 @@ impl SimConfig {
             if chemistry.abiogenesis_enabled && chemistry.abiogenesis_seed_milli <= 0 {
                 return Err(ConfigError::NonPositive("abiogenesis_seed_milli"));
             }
+            if chemistry.microbial_enabled {
+                if chemistry.replication_axis == 0
+                    || chemistry.aggregation_axis == 0
+                    || 2 * chemistry.replication_axis * chemistry.aggregation_axis > 64
+                {
+                    return Err(ConfigError::PhysiologyRange(
+                        "microbial class axes outside 1..=64 classes",
+                        i64::from(2 * chemistry.replication_axis * chemistry.aggregation_axis),
+                    ));
+                }
+                if chemistry.growth_rate_low_q16 > chemistry.growth_rate_high_q16
+                    || chemistry.growth_rate_high_q16 > Q16_ONE
+                    || chemistry.growth_yield_q16 > Q16_ONE
+                    || chemistry.death_q16 > Q16_ONE
+                    || chemistry.death_waste_fraction_q16 > Q16_ONE
+                    || chemistry.mutation_q16 > Q16_ONE / 8
+                {
+                    return Err(ConfigError::PhysiologyRange(
+                        "microbial rate outside its range",
+                        0,
+                    ));
+                }
+            } else if chemistry.abiogenesis_enabled {
+                // Abiogenesis seeds a CLASS density; with no microbial half
+                // there is nothing to seed - refused rather than inert.
+                return Err(ConfigError::PhysiologyRange(
+                    "abiogenesis_enabled requires microbial_enabled",
+                    0,
+                ));
+            }
             if chemistry.scaffold_patch_radius_cells > 0 {
                 let span = 4 * chemistry.scaffold_patch_radius_cells;
                 if span >= self.cells_x || span >= self.cells_y {
@@ -2527,6 +2590,19 @@ impl SimConfig {
             hasher.update_u32(self.chemistry.abiogenesis_weight_polymer_q16);
             hasher.update_u32(self.chemistry.abiogenesis_cap_q16);
             hasher.update_i64(self.chemistry.abiogenesis_seed_milli);
+            if self.chemistry.microbial_enabled {
+                hasher.update(b"lifesim-microbial-config");
+                hasher.update(crate::microbial::MICROBIAL_POLICY_VERSION.as_bytes());
+                hasher.update_u32(u32::from(crate::microbial::CLASS_REGISTRY_VERSION));
+                hasher.update_u32(self.chemistry.replication_axis);
+                hasher.update_u32(self.chemistry.aggregation_axis);
+                hasher.update_u32(self.chemistry.growth_rate_low_q16);
+                hasher.update_u32(self.chemistry.growth_rate_high_q16);
+                hasher.update_u32(self.chemistry.growth_yield_q16);
+                hasher.update_u32(self.chemistry.death_q16);
+                hasher.update_u32(self.chemistry.death_waste_fraction_q16);
+                hasher.update_u32(self.chemistry.mutation_q16);
+            }
         }
         // Phase 9 section: hashed only when enabled, so a schema-1 config
         // hashes exactly as it did before schema 2 existed and every earlier

@@ -1094,6 +1094,9 @@ pub struct World {
     matechoice: Option<crate::matechoice::MateChoiceState>,
     /// Phase 15 chemistry field; `None` exactly when the section is off.
     chemistry: Option<crate::chemistry::ChemistryState>,
+    /// Phase 15 microbial field; `None` exactly when the microbial gate is
+    /// off. Requires the chemistry field - validation enforces it.
+    microbial: Option<crate::microbial::MicrobialState>,
     /// Phase 11 learned state; `None` exactly when
     /// `config.plasticity.enabled` is false, so a disabled world compiles no
     /// plastic edge, runs an empty learn phase, and appends nothing to the
@@ -1208,6 +1211,7 @@ impl World {
             ontogeny: None,
             matechoice: None,
             chemistry: None,
+            microbial: None,
             learn: None,
             action_census: None,
             objects: None,
@@ -1466,6 +1470,15 @@ impl World {
                 world.config.cells_y,
                 &world.config.chemistry,
             ));
+            // The microbial field starts empty too: density arrives only
+            // through abiogenesis (or a restore), never by fiat.
+            if world.config.chemistry.microbial_enabled {
+                let cells = world.config.cells_x as usize * world.config.cells_y as usize;
+                world.microbial = Some(crate::microbial::MicrobialState::new(
+                    cells,
+                    &world.config.chemistry,
+                ));
+            }
         }
         world.ledger.initial_energy_milli = world
             .energy_milli
@@ -1889,6 +1902,10 @@ impl World {
 
     pub(crate) fn chemistry_state(&self) -> Option<&crate::chemistry::ChemistryState> {
         self.chemistry.as_ref()
+    }
+
+    pub(crate) fn microbial_state(&self) -> Option<&crate::microbial::MicrobialState> {
+        self.microbial.as_ref()
     }
 
     /// Read-only view of Phase 11 learned state, `None` when the plasticity
@@ -2435,6 +2452,7 @@ impl World {
         ontogeny: Option<crate::ontogeny::OntogenyState>,
         matechoice: Option<crate::matechoice::MateChoiceState>,
         chemistry: Option<crate::chemistry::ChemistryState>,
+        microbial: Option<crate::microbial::MicrobialState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -2458,6 +2476,7 @@ impl World {
         self.ontogeny = ontogeny;
         self.matechoice = matechoice;
         self.chemistry = chemistry;
+        self.microbial = microbial;
         // Learned state comes from the save, like every other subsystem here.
         //
         // It did not, for one stage: this rebuilt the rows from the restored
@@ -2623,7 +2642,7 @@ impl World {
 
         observer.phase_started(TickPhase::Environment);
         self.step_climate(next_tick);
-        self.step_chemistry();
+        self.step_chemistry(next_tick);
         self.grow_food();
         // Phase 12 artifact half: material yield regenerates on its cadence.
         // Empty and free when the section is disabled.
@@ -3045,13 +3064,22 @@ impl World {
     /// Phase 15: the chemistry field's steps for one world tick. Runs in
     /// the environment phase beside climate; `field_steps_per_tick` field
     /// steps advance per world tick (ADR-0020's abstraction, hashed).
-    fn step_chemistry(&mut self) {
+    fn step_chemistry(&mut self, next_tick: u64) {
         let Some(chemistry) = self.chemistry.as_mut() else {
             return;
         };
         let config = self.config.chemistry;
-        for _ in 0..config.field_steps_per_tick {
+        let seed = self.config.world_seed;
+        let mut microbial = self.microbial.as_mut();
+        for step_index in 0..config.field_steps_per_tick {
             chemistry.step(self.config.cells_x, self.config.cells_y, &config);
+            // The microbial passes run inside the same field step, after
+            // the abiotic ones, so the two halves share one clock and the
+            // joint identity holds at every step boundary.
+            if let Some(microbial) = microbial.as_deref_mut() {
+                microbial.step(chemistry, &config);
+                microbial.abiogenesis(chemistry, &config, seed, next_tick, step_index);
+            }
         }
     }
 
@@ -5637,6 +5665,9 @@ impl World {
         }
         if let Some(chemistry) = self.chemistry.as_ref() {
             chemistry.hash_into(&mut hasher);
+        }
+        if let Some(microbial) = self.microbial.as_ref() {
+            microbial.hash_into(&mut hasher);
         }
         hasher.finish()
     }

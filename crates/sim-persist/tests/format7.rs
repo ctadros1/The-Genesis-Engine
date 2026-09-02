@@ -39,12 +39,15 @@ use sim_core::{
 use sim_persist::{
     CodecError, FORMAT_VERSION, FORMAT_VERSION_4, FORMAT_VERSION_5, FORMAT_VERSION_6,
     FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT_VERSION_9, FORMAT_VERSION_10, FORMAT_VERSION_11,
+    FORMAT_VERSION_12,
     FORMAT7_CONFIG_BYTES, FORMAT8_CONFIG_BYTES, FORMAT9_CONFIG_BYTES, FORMAT10_CONFIG_BYTES,
-    FORMAT11_CONFIG_BYTES, StoreError, decode_snapshot, decode_snapshot_format6,
+    FORMAT11_CONFIG_BYTES, FORMAT12_CONFIG_BYTES, StoreError, decode_snapshot,
+    decode_snapshot_format6,
     decode_snapshot_format7, decode_snapshot_format8, decode_snapshot_format9,
-    decode_snapshot_format10, encode_snapshot, encode_snapshot_format4, encode_snapshot_format5,
+    decode_snapshot_format10, decode_snapshot_format11, encode_snapshot, encode_snapshot_format4,
+    encode_snapshot_format5,
     encode_snapshot_format6, encode_snapshot_format7, encode_snapshot_format8,
-    encode_snapshot_format9, encode_snapshot_format10, migration_for,
+    encode_snapshot_format9, encode_snapshot_format10, encode_snapshot_format11, migration_for,
 };
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
@@ -215,8 +218,13 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
         ),
         (
             FORMAT_VERSION_11,
-            encode_snapshot as Writer,
+            encode_snapshot_format11 as Writer,
             FORMAT11_CONFIG_BYTES,
+        ),
+        (
+            FORMAT_VERSION_12,
+            encode_snapshot as Writer,
+            FORMAT12_CONFIG_BYTES,
         ),
     ];
 
@@ -304,10 +312,17 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
     );
     let (eleven_version, eleven_bytes, _) = &encoded[7];
     assert_eq!(*eleven_version, FORMAT_VERSION_11);
-    let (_, eleven_state) = decode_snapshot(eleven_bytes).expect("decode format 11");
+    let (_, eleven_state) = decode_snapshot_format11(eleven_bytes).expect("decode format 11");
     assert_eq!(
         eleven_state.config, ten_state.config,
         "the appended chemistry block did not round-trip to its defaults"
+    );
+    let (twelve_version, twelve_bytes, _) = &encoded[8];
+    assert_eq!(*twelve_version, FORMAT_VERSION_12);
+    let (_, twelve_state) = decode_snapshot(twelve_bytes).expect("decode format 12");
+    assert_eq!(
+        twelve_state.config, eleven_state.config,
+        "the appended microbial block did not round-trip to its defaults"
     );
 }
 
@@ -441,8 +456,11 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
     let state = world.export_state();
     let checksum = world.state_checksum();
 
-    let eleven = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode format 11");
+    let twelve = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+        .expect("encode format 12");
+    let eleven =
+        encode_snapshot_format11(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+            .expect("encode format 11");
     let ten =
         encode_snapshot_format10(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
             .expect("encode format 10");
@@ -526,10 +544,22 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
         "a format 11 payload read as format 10 must fail on the appended chemistry block"
     );
     assert_eq!(
-        decode_snapshot(&relabel(&ten, FORMAT_VERSION_11)).err(),
+        decode_snapshot_format11(&relabel(&ten, FORMAT_VERSION_11)).err(),
         Some(CodecError::TruncatedSection),
         "a format 10 payload read as format 11 must run out of config body inside \
          the appended chemistry block"
+    );
+    // The 11/12 pair, both ways, on the same terms.
+    assert_eq!(
+        decode_snapshot_format11(&relabel(&twelve, FORMAT_VERSION_11)).err(),
+        Some(CodecError::ValueOutOfRange("section trailing bytes")),
+        "a format 12 payload read as format 11 must fail on the appended microbial block"
+    );
+    assert_eq!(
+        decode_snapshot(&relabel(&eleven, FORMAT_VERSION_12)).err(),
+        Some(CodecError::TruncatedSection),
+        "a format 11 payload read as format 12 must run out of config body inside \
+         the appended microbial block"
     );
 }
 
