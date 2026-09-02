@@ -34,6 +34,7 @@ mod material;
 mod meiosis;
 mod morphology;
 mod morphstate;
+mod ontogeny;
 mod origin;
 mod phase2;
 mod physiology;
@@ -127,6 +128,7 @@ pub use origin::{
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,
 };
 pub use phase2::{PairRejectReason, Phase2Counters, SENSOR_RANGE_MAX_M};
+pub use ontogeny::{OntogenySave, OntogenyState, derive_prefix, growth_order};
 pub use physiology::{
     HazardOutcome, PHYSIOLOGY_POLICY_VERSION, PhysiologyState, allometry_multiplier_milli,
     hazard_draw, pow_quarter_milli, preferred_temperature_milli, senescence_hazard_q16_per_s,

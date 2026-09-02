@@ -738,6 +738,16 @@ pub struct MetricsSnapshot {
     /// gauge. Counted from the present cue (slot base, set to exactly 1.0),
     /// so it is the count the controllers actually saw, not a recount.
     pub perceived_neighbours: u64,
+    /// Phase 14 ontogeny. All zero (and `ontogeny_enabled` false) when the
+    /// gate is off, on the same inert-observability terms as the social
+    /// block above.
+    pub ontogeny_enabled: bool,
+    /// Module activations, all organisms, whole run.
+    pub modules_grown_total: u64,
+    /// Whole milli-EU debited for growth, whole run.
+    pub growth_spent_milli_total: i128,
+    /// Living organisms whose body is not yet fully grown.
+    pub juveniles_growing: u64,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -1038,6 +1048,10 @@ pub struct World {
     physiology: Option<PhysiologyState>,
     schema2: Option<Schema2State>,
     morphology: Option<MorphologyState>,
+    /// Phase 14 ontogeny state; `None` exactly when the gate is off, so a
+    /// disabled world takes the existing code paths and reproduces the
+    /// Phase 13 fixture.
+    ontogeny: Option<crate::ontogeny::OntogenyState>,
     /// Phase 11 learned state; `None` exactly when
     /// `config.plasticity.enabled` is false, so a disabled world compiles no
     /// plastic edge, runs an empty learn phase, and appends nothing to the
@@ -1149,6 +1163,7 @@ impl World {
             physiology: None,
             schema2: None,
             morphology: None,
+            ontogeny: None,
             learn: None,
             action_census: None,
             objects: None,
@@ -1315,6 +1330,22 @@ impl World {
             }
             world.schema2 = Some(schema2);
             world.morphology = morphology;
+            // Phase 14 ontogeny: founders are admitted fully grown - they
+            // seed the population, exactly as in every phase before this
+            // one - so a fresh ontogeny world starts from the same adults a
+            // non-ontogeny world does and diverges only as children are
+            // born small.
+            if world.config.physiology.enabled && world.config.physiology.ontogeny_enabled {
+                let state = world
+                    .morphology
+                    .as_ref()
+                    .expect("validation: ontogeny requires morphology");
+                let mut ontogeny = crate::ontogeny::OntogenyState::with_capacity(state.len());
+                for body in &state.bodies {
+                    ontogeny.push_organism(body, world.config.morphology.lattice, body.len() as u32);
+                }
+                world.ontogeny = Some(ontogeny);
+            }
             world.learn = learn;
         }
         if world.config.physiology.enabled {
@@ -1653,6 +1684,23 @@ impl World {
                 .map_or(0, |s| s.counters.cells_trimmed),
             worldmod_refusals: self.worldmod.as_ref().map_or(0, |s| s.counters.refusals()),
             social_enabled: self.social.is_some(),
+            ontogeny_enabled: self.ontogeny.is_some(),
+            modules_grown_total: self
+                .ontogeny
+                .as_ref()
+                .map_or(0, |ontogeny| ontogeny.modules_grown_total),
+            growth_spent_milli_total: self
+                .ontogeny
+                .as_ref()
+                .map_or(0, |ontogeny| ontogeny.growth_spent_milli_total),
+            juveniles_growing: match (self.ontogeny.as_ref(), self.morphology.as_ref()) {
+                (Some(ontogeny), Some(morphology)) => (0..ontogeny.len())
+                    .filter(|&index| {
+                        !ontogeny.fully_grown(index, morphology.bodies[index].len() as u32)
+                    })
+                    .count() as u64,
+                _ => 0,
+            },
             signals_emitted_total: self
                 .social
                 .as_ref()
@@ -1744,6 +1792,10 @@ impl World {
         self.morphology.as_ref()
     }
 
+    pub(crate) fn ontogeny_state(&self) -> Option<&crate::ontogeny::OntogenyState> {
+        self.ontogeny.as_ref()
+    }
+
     /// Read-only view of Phase 11 learned state, `None` when the plasticity
     /// section is disabled.
     ///
@@ -1780,9 +1832,85 @@ impl World {
     /// morphospace would simply exclude a tissue type the registry claims to
     /// offer.
     fn energy_capacity_of(&self, index: usize) -> i64 {
+        // Phase 14: a juvenile holds what its grown prefix holds. The
+        // partial body has less tissue and fewer storage modules, so the
+        // capacity constraint is a consequence of the body rather than a
+        // configured penalty (C14.1's distinction).
+        if let Some(ontogeny) = self.ontogeny.as_ref()
+            && index < ontogeny.derived_grown.len()
+        {
+            return ontogeny.derived_grown[index].energy_capacity_milli;
+        }
         match self.morphology.as_ref() {
             Some(state) if index < state.derived.len() => state.energy_capacity_milli(index),
             _ => self.config.energy_max_milli,
+        }
+    }
+
+    /// Phase 14 growth pass (ADR-0030). The developed body is revealed in
+    /// canonical BFS order, each activation paid through the ledger:
+    /// `spent_milli` gets exactly what organisms lose, and the ontogeny
+    /// counters carry the attribution, so the two agree to the milli-unit.
+    ///
+    /// Growth yields to survival: it spends only energy above one milli-EU,
+    /// so a starving juvenile stalls instead of being killed by its own
+    /// growth - the life-history tradeoff as a mechanism, not a multiplier.
+    /// Deterministic, no draws.
+    fn step_ontogeny(&mut self, p2: &mut Phase2State) {
+        let (Some(ontogeny), Some(morphology)) =
+            (self.ontogeny.as_mut(), self.morphology.as_ref())
+        else {
+            return;
+        };
+        let config = self.config.physiology;
+        let budget_per_tick =
+            config.growth_rate_milli_per_s * i64::from(self.config.dt_ms) / 1_000;
+        if budget_per_tick <= 0 {
+            return;
+        }
+        for index in 0..ontogeny.grown_modules.len() {
+            let body = &morphology.bodies[index];
+            let total = body.len() as u32;
+            if ontogeny.grown_modules[index] >= total {
+                continue;
+            }
+            let mut budget = budget_per_tick;
+            let mut activated = false;
+            while budget > 0 && ontogeny.grown_modules[index] < total {
+                let next = usize::from(
+                    ontogeny.order[index][ontogeny.grown_modules[index] as usize],
+                );
+                let next_cost = (body.modules()[next].mass_milli()
+                    * config.growth_cost_milli_per_mass_milli
+                    / 1_000)
+                    .max(1);
+                let remaining = next_cost - ontogeny.growth_paid_milli[index];
+                let available = (self.energy_milli[index] - 1).max(0);
+                let pay = budget.min(remaining).min(available);
+                if pay <= 0 {
+                    break;
+                }
+                self.energy_milli[index] -= pay;
+                self.ledger.spent_milli += i128::from(pay);
+                ontogeny.growth_spent_milli_total += i128::from(pay);
+                ontogeny.growth_paid_milli[index] += pay;
+                budget -= pay;
+                if ontogeny.growth_paid_milli[index] >= next_cost {
+                    ontogeny.growth_paid_milli[index] = 0;
+                    ontogeny.grown_modules[index] += 1;
+                    ontogeny.modules_grown_total += 1;
+                    activated = true;
+                }
+            }
+            if activated {
+                let derived = crate::ontogeny::derive_prefix(
+                    body,
+                    &ontogeny.order[index],
+                    ontogeny.grown_modules[index],
+                );
+                ontogeny.derived_grown[index] = derived;
+                p2.phenotypes[index].apply_body(&derived, &morphology.reference);
+            }
         }
     }
 
@@ -2201,6 +2329,7 @@ impl World {
         action_census: Option<ActionCensus>,
         objects: Option<crate::artifact::ObjectState>,
         social: Option<crate::social::SocialState>,
+        ontogeny: Option<crate::ontogeny::OntogenyState>,
     ) {
         self.tick = tick;
         self.paused = paused;
@@ -2221,6 +2350,7 @@ impl World {
         self.physiology = physiology;
         self.schema2 = schema2;
         self.morphology = morphology;
+        self.ontogeny = ontogeny;
         // Learned state comes from the save, like every other subsystem here.
         //
         // It did not, for one stage: this rebuilt the rows from the restored
@@ -3720,6 +3850,11 @@ impl World {
             self.note_contact(index);
         }
 
+        // Growth pass (Phase 14 ontogeny): between feeding and pairing,
+        // so growth spends the surplus feeding just created and a module
+        // completed this tick is the phenotype pairing eligibility reads.
+        self.step_ontogeny(&mut p2);
+
         // Pairing pass: deterministic greedy selection in stable ID order.
         p2.pending.clear();
         if self.config.reproduction_enabled {
@@ -3749,6 +3884,20 @@ impl World {
         let range_squared = range_fp * range_fp;
         let compatibility = phase2_config.compatibility_threshold_q16 as f32 / 65536.0;
         let mut paired = vec![false; population];
+        // Phase 14: under ontogeny, maturity requires a fully grown body on
+        // top of the age gate. Growth stalled by energy shortage delays
+        // reproduction - a life-history consequence, not an error.
+        let growth_ready: Option<Vec<bool>> =
+            match (self.ontogeny.as_ref(), self.morphology.as_ref()) {
+                (Some(ontogeny), Some(morphology)) => Some(
+                    (0..population)
+                        .map(|index| {
+                            ontogeny.fully_grown(index, morphology.bodies[index].len() as u32)
+                        })
+                        .collect(),
+                ),
+                _ => None,
+            };
 
         let eligible = |p2: &Phase2State,
                         cooldowns: &[u64],
@@ -3760,6 +3909,9 @@ impl World {
                 && ages[index] >= p2.phenotypes[index].maturity_ticks
                 && cooldowns[index] == 0
                 && energies[index] >= phase2_config.pairing_energy_threshold_milli
+                && growth_ready
+                    .as_ref()
+                    .is_none_or(|ready| ready[index])
         };
 
         for index in 0..population {
@@ -4064,6 +4216,22 @@ impl World {
                         }
                         let traits = resolve_traits(&child.express_traits());
                         phenotype = Phenotype::from_body(&traits, &derived, &state.reference);
+                        // Phase 14: a child is born as its birth prefix, not
+                        // as its adult body. The node-budget check above
+                        // stays on the adult body deliberately - the
+                        // controller compiles at birth from the adult
+                        // neural budget (ADR-0030's recorded deviation).
+                        if self.ontogeny.is_some() {
+                            let order =
+                                crate::ontogeny::growth_order(&body, morphology_config.lattice);
+                            let grown = self
+                                .config
+                                .physiology
+                                .birth_modules_min
+                                .min(body.len() as u32);
+                            let prefix = crate::ontogeny::derive_prefix(&body, &order, grown);
+                            phenotype.apply_body(&prefix, &state.reference);
+                        }
                         child_body = Some(body);
                     }
                     Err(_) => {
@@ -4796,6 +4964,9 @@ impl World {
             if let Some(state) = self.morphology.as_mut() {
                 state.retain(&dead);
             }
+            if let Some(state) = self.ontogeny.as_mut() {
+                state.retain(&dead);
+            }
             // A dead organism takes its learned state with it. There is
             // nothing for it to survive into: learned state is per-organism
             // and per-edge, and a child starts at zero.
@@ -4896,6 +5067,15 @@ impl World {
                 }
                 if let (Some(state), Some(body)) = (self.morphology.as_mut(), child.body.clone()) {
                     state.push_body(body);
+                }
+                if let (Some(ontogeny), Some(child_body)) =
+                    (self.ontogeny.as_mut(), child.body.as_ref())
+                {
+                    ontogeny.push_organism(
+                        child_body,
+                        self.config.morphology.lattice,
+                        self.config.physiology.birth_modules_min,
+                    );
                 }
                 // **C11.4, at the only path a child can enter by.** The row
                 // is sized from the plan that was just compiled for this
@@ -5118,6 +5298,9 @@ impl World {
         // ADR-0028), so every earlier fixture is unmoved by its absence.
         if let Some(social) = self.social.as_ref() {
             social.table.hash_into(&mut hasher);
+        }
+        if let Some(ontogeny) = self.ontogeny.as_ref() {
+            ontogeny.hash_into(&mut hasher);
         }
         hasher.finish()
     }

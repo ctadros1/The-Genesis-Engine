@@ -435,27 +435,40 @@ impl Phenotype {
         reference: &crate::morphology::BodyReference,
     ) -> Self {
         let mut phenotype = Self::from_traits(traits);
-        phenotype.body_scale_milli =
+        phenotype.apply_body(derived, reference);
+        phenotype
+    }
+
+    /// Overwrite the body-derived fields from a derived body, leaving every
+    /// trait-derived field untouched. `from_body` routes through this at
+    /// birth, and Phase 14 ontogeny calls it again on each module
+    /// activation with the grown prefix's derivation - one code path, so a
+    /// juvenile's phenotype and a newborn's are computed by the same
+    /// arithmetic.
+    pub fn apply_body(
+        &mut self,
+        derived: &crate::morphology::DerivedBody,
+        reference: &crate::morphology::BodyReference,
+    ) {
+        self.body_scale_milli =
             (derived.mass_milli * 1_000 / reference.mass_milli).clamp(600, 1_600);
-        phenotype.basal_mult_milli =
+        self.basal_mult_milli =
             (derived.basal_cost_milli * 1_000 / reference.upkeep_milli).clamp(600, 1_600);
-        phenotype.intake_mult_milli =
+        self.intake_mult_milli =
             (derived.intake_milli * 1_000 / reference.intake_milli).clamp(800, 1_200);
         // Speed is thrust per unit mass relative to the founder's, centred so
         // a founder sits mid-range and can move either way from there. A body
         // with no motor still has zero thrust and lands on the floor, which
         // is correct: it cannot move.
         let ratio = derived.thrust_milli * 1_000 / derived.mass_milli.max(1);
-        phenotype.max_speed_milli =
-            (1_500 * ratio / reference.thrust_ratio_milli).clamp(500, 3_000);
+        self.max_speed_milli = (1_500 * ratio / reference.thrust_ratio_milli).clamp(500, 3_000);
         // Sensing comes from the best sensory module. A body with none is
         // blind, which is a real morphology and lands on the floor.
-        phenotype.sensor_range_milli = if derived.sensory_modules == 0 {
+        self.sensor_range_milli = if derived.sensory_modules == 0 {
             4_000
         } else {
             derived.sensor_range_milli.clamp(4_000, 12_000)
         };
-        phenotype
     }
 }
 

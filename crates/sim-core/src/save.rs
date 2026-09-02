@@ -265,6 +265,9 @@ pub struct SaveState {
     /// field out of. Untrusted until `from_state` has run
     /// `SocialTable::violation` over it.
     pub social: Option<crate::social::SocialTable>,
+    /// Phase 14 ontogeny progress. Present exactly when the config's
+    /// physiology section is enabled with its ontogeny gate on.
+    pub ontogeny: Option<crate::ontogeny::OntogenySave>,
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
@@ -449,6 +452,7 @@ impl World {
                 }),
             objects: self.object_state().map(|objects| objects.table.clone()),
             social: self.social_state().map(|social| social.table.clone()),
+            ontogeny: self.ontogeny_state().map(|ontogeny| ontogeny.to_save()),
             physiology: self
                 .physiology_state()
                 .map(|physiology| PhysiologySaveState {
@@ -601,7 +605,7 @@ impl World {
         };
 
         // Replace the freshly spawned population with the saved one.
-        let rebuilt_phase2 = match phase2_state {
+        let mut rebuilt_phase2 = match phase2_state {
             Some(phase2) => {
                 let mut rebuilt = Phase2State::with_capacity(population);
                 for index in 0..population {
@@ -988,6 +992,52 @@ impl World {
             }
         };
 
+        // Phase 14 ontogeny progress. Presence must match the configuration,
+        // and the save is validated structurally against the *restored*
+        // bodies before it reaches the world; the caches are rebuilt from
+        // those bodies exactly as the bodies themselves were rebuilt from
+        // genomes.
+        let ontogeny_enabled = world.config().physiology.enabled
+            && world.config().physiology.ontogeny_enabled;
+        let rebuilt_ontogeny = match (ontogeny_enabled, state.ontogeny) {
+            (true, Some(save)) => {
+                let bodies = rebuilt_morphology
+                    .as_ref()
+                    .map(|state| state.bodies.as_slice())
+                    .unwrap_or(&[]);
+                Some(
+                    crate::ontogeny::OntogenyState::from_save(
+                        save,
+                        bodies,
+                        world.config().morphology.lattice,
+                    )
+                    .map_err(|reason| RestoreError::StateInvalid(format!("ontogeny: {reason}")))?,
+                )
+            }
+            (false, None) => None,
+            _ => {
+                return Err(RestoreError::StateInvalid(
+                    "ontogeny section presence does not match configuration".to_owned(),
+                ));
+            }
+        };
+        // A restored organism wears its GROWN body, not its adult one. The
+        // phenotypes rebuilt above came from full bodies (the only bodies
+        // the morphology rebuild knows); re-applying the grown prefix here
+        // is the same `apply_body` arithmetic the birth path and the growth
+        // pass use, so a saved juvenile resumes with the phenotype it was
+        // saved with rather than its adult's until the next activation.
+        if let (Some(ontogeny), Some(morphology), Some(phase2)) = (
+            rebuilt_ontogeny.as_ref(),
+            rebuilt_morphology.as_ref(),
+            rebuilt_phase2.as_mut(),
+        ) {
+            for index in 0..ontogeny.len() {
+                phase2.phenotypes[index]
+                    .apply_body(&ontogeny.derived_grown[index], &morphology.reference);
+            }
+        }
+
         world.replace_logical_state(
             state.tick,
             state.paused,
@@ -1024,6 +1074,7 @@ impl World {
             rebuilt_census,
             rebuilt_objects,
             rebuilt_social,
+            rebuilt_ontogeny,
         );
 
         // Step 5 of the restore order in

@@ -586,8 +586,25 @@ impl Body {
     /// Every derived attribute, in one pass over modules in ascending
     /// lattice index.
     pub fn derive(&self) -> DerivedBody {
+        self.derive_where(|_| true)
+    }
+
+    /// Derived attributes of the masked subset of modules, in the same
+    /// ascending-lattice-index pass `derive` makes. Phase 14 ontogeny uses
+    /// this for the grown prefix; `derive` is the all-true case, so there
+    /// is exactly one accumulation to keep correct.
+    pub fn derive_masked(&self, mask: &[bool]) -> DerivedBody {
+        self.derive_where(|index| mask.get(index).copied().unwrap_or(false))
+    }
+
+    fn derive_where(&self, include: impl Fn(usize) -> bool) -> DerivedBody {
         let mut derived = DerivedBody::default();
-        for module in &self.modules {
+        let mut included = 0_u32;
+        for (index, module) in self.modules.iter().enumerate() {
+            if !include(index) {
+                continue;
+            }
+            included += 1;
             derived.mass_milli += module.mass_milli();
             derived.basal_cost_milli += module.upkeep_milli();
             let capability = module.capability_milli();
@@ -604,7 +621,7 @@ impl Body {
                 ModuleType::Neural => derived.node_budget_milli += capability,
             }
         }
-        derived.modules = self.modules.len() as u32;
+        derived.modules = included;
         // Tissue capacity is a function of the whole body, so it is computed
         // after the loop rather than accumulated inside it.
         derived.energy_capacity_milli = derived.mass_milli * TISSUE_CAPACITY_PER_MASS_MILLI / 1_000

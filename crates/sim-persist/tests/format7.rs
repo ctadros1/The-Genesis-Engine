@@ -38,10 +38,11 @@ use sim_core::{
 };
 use sim_persist::{
     CodecError, FORMAT_VERSION, FORMAT_VERSION_4, FORMAT_VERSION_5, FORMAT_VERSION_6,
-    FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT7_CONFIG_BYTES, FORMAT8_CONFIG_BYTES, StoreError,
-    decode_snapshot, decode_snapshot_format6, decode_snapshot_format7, encode_snapshot,
+    FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT_VERSION_9, FORMAT7_CONFIG_BYTES,
+    FORMAT8_CONFIG_BYTES, FORMAT9_CONFIG_BYTES, StoreError, decode_snapshot,
+    decode_snapshot_format6, decode_snapshot_format7, decode_snapshot_format8, encode_snapshot,
     encode_snapshot_format4, encode_snapshot_format5, encode_snapshot_format6,
-    encode_snapshot_format7, migration_for,
+    encode_snapshot_format7, encode_snapshot_format8, migration_for,
 };
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
@@ -197,8 +198,13 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
         ),
         (
             FORMAT_VERSION_8,
-            encode_snapshot as Writer,
+            encode_snapshot_format8 as Writer,
             FORMAT8_CONFIG_BYTES,
+        ),
+        (
+            FORMAT_VERSION_9,
+            encode_snapshot as Writer,
+            FORMAT9_CONFIG_BYTES,
         ),
     ];
 
@@ -262,10 +268,20 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
     // decodes back to its field's default for a world without the section.
     let (eight_version, eight_bytes, _) = &encoded[4];
     assert_eq!(*eight_version, FORMAT_VERSION_8);
-    let (_, eight_state) = decode_snapshot(eight_bytes).expect("decode format 8");
+    let (_, eight_state) = decode_snapshot_format8(eight_bytes).expect("decode format 8");
     assert_eq!(
         eight_state.config, seven_state.config,
         "the appended social block did not round-trip to its defaults"
+    );
+    // And the 8-to-9 pair on the same terms: every appended physiology-v2
+    // byte decodes back to its field's default for a world without the
+    // section.
+    let (nine_version, nine_bytes, _) = &encoded[5];
+    assert_eq!(*nine_version, FORMAT_VERSION_9);
+    let (_, nine_state) = decode_snapshot(nine_bytes).expect("decode format 9");
+    assert_eq!(
+        nine_state.config, eight_state.config,
+        "the appended physiology-v2 block did not round-trip to its defaults"
     );
 }
 
@@ -399,8 +415,11 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
     let state = world.export_state();
     let checksum = world.state_checksum();
 
-    let eight = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode format 8");
+    let nine = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+        .expect("encode format 9");
+    let eight =
+        encode_snapshot_format8(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+            .expect("encode format 8");
     let seven =
         encode_snapshot_format7(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
             .expect("encode format 7");
@@ -436,10 +455,25 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
         "a format 8 payload read as format 7 must fail on the appended social block"
     );
     assert_eq!(
-        decode_snapshot(&relabel(&seven, FORMAT_VERSION_8)).err(),
+        decode_snapshot_format8(&relabel(&seven, FORMAT_VERSION_8)).err(),
         Some(CodecError::TruncatedSection),
         "a format 7 payload read as format 8 must run out of config body inside \
          the appended social block"
+    );
+    // The 8/9 pair, both ways, on the same terms as every earlier adjacent
+    // pair: a format-9 body read as 8 leaves the ontogeny block over; a
+    // format-8 body read as 9 runs out inside
+    // `decode_physiology_v2_config`.
+    assert_eq!(
+        decode_snapshot_format8(&relabel(&nine, FORMAT_VERSION_8)).err(),
+        Some(CodecError::ValueOutOfRange("section trailing bytes")),
+        "a format 9 payload read as format 8 must fail on the appended ontogeny block"
+    );
+    assert_eq!(
+        decode_snapshot(&relabel(&eight, FORMAT_VERSION_9)).err(),
+        Some(CodecError::TruncatedSection),
+        "a format 8 payload read as format 9 must run out of config body inside \
+         the appended physiology-v2 block"
     );
 }
 

@@ -233,6 +233,7 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         learn,
         action_census,
         social,
+        ontogeny,
     } = state;
 
     per_organism!("ids", ids);
@@ -315,6 +316,17 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         per_organism!("social.prior_object_delta_q16", prior_object_delta_q16);
         per_organism!("social.emission_remainder_milli", emission_remainder_milli);
     }
+    if let Some(ontogeny) = ontogeny {
+        let sim_core::OntogenySave {
+            grown_modules,
+            growth_paid_milli,
+            // Aggregate, not per organism.
+            modules_grown_total: _,
+            growth_spent_milli_total: _,
+        } = ontogeny;
+        per_organism!("ontogeny.grown_modules", grown_modules);
+        per_organism!("ontogeny.growth_paid_milli", growth_paid_milli);
+    }
     if let Some(schema2) = schema2 {
         let sim_core::Schema2SaveState {
             genomes,
@@ -366,6 +378,17 @@ fn rotate_one_array(state: &mut SaveState, target: Option<&str>) -> Vec<(&'stati
         per_organism!("social.prior_contact", prior_contact);
         per_organism!("social.prior_object_delta_q16", prior_object_delta_q16);
         per_organism!("social.emission_remainder_milli", emission_remainder_milli);
+    }
+    if let Some(ontogeny) = ontogeny {
+        let sim_core::OntogenySave {
+            grown_modules,
+            growth_paid_milli,
+            // Aggregate, not per organism.
+            modules_grown_total: _,
+            growth_spent_milli_total: _,
+        } = ontogeny;
+        per_organism!("ontogeny.grown_modules", grown_modules);
+        per_organism!("ontogeny.growth_paid_milli", growth_paid_milli);
     }
     // `permutation_config` is a **Phase 9** world and leaves plasticity off,
     // so the branch above does not run here and these two arrays contribute
@@ -485,6 +508,7 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
         learn,
         action_census,
         social,
+        ontogeny,
     } = state;
     reorder(ids, order);
     reorder(x_fp, order);
@@ -583,6 +607,10 @@ fn apply_order(state: &mut SaveState, order: &[usize]) {
             counters: _,
         } = census;
         reorder(counts, order);
+    }
+    if let Some(ontogeny) = ontogeny.as_mut() {
+        reorder(&mut ontogeny.grown_modules, order);
+        reorder(&mut ontogeny.growth_paid_milli, order);
     }
     if let Some(social) = social.as_mut() {
         reorder(&mut social.prior_contact, order);

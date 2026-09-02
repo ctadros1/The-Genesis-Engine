@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_8;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_9;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -91,6 +91,11 @@ pub const FORMAT_VERSION: u16 = FORMAT_VERSION_8;
 /// that introduces something at format 8 says `FORMAT_VERSION_8`, never
 /// `FORMAT_VERSION` (D-108's trap, closed structurally).
 pub const FORMAT_VERSION_8: u16 = 8;
+
+/// Format 9 (Phase 14, ADR-0030): appends the physiology-v2 ontogeny
+/// config fields to the config body and introduces `SECTION_ONTOGENY`.
+/// Guarded by name wherever it gates, permanently (D-108).
+pub const FORMAT_VERSION_9: u16 = 9;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -269,6 +274,10 @@ const SECTION_OBJECTS: u16 = 15;
 /// the social counters. Guarded on `FORMAT_VERSION_8` by name, permanently
 /// (D-108).
 const SECTION_SOCIAL: u16 = 16;
+/// Phase 14 ontogeny progress (format 9): per-organism grown-prefix
+/// lengths and payments toward the next module, plus the section's two
+/// counters. Present exactly when the config's ontogeny gate is on.
+const SECTION_ONTOGENY: u16 = 17;
 /// Bytes one object's fixed fields occupy: the bound a declared object count
 /// implies before any composition list is read.
 const OBJECT_FIXED_BYTES: u64 =
@@ -864,6 +873,12 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_8 {
         encode_social_config(&mut writer, config);
     }
+    // Format 9's block: the physiology-v2 ontogeny fields, appended after
+    // format 8's block for the reason format 8's was appended after format
+    // 7's. Guarded on `FORMAT_VERSION_9` by name, permanently.
+    if format >= FORMAT_VERSION_9 {
+        encode_physiology_v2_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1006,6 +1021,36 @@ fn decode_social_config(
     social.signal_cost_milli = reader.i64()?;
     social.signal_retain_q16 = reader.u32()?;
     social.signal_corruption_q16 = reader.u32()?;
+    Ok(())
+}
+
+/// The format-9 physiology-v2 block, one field per line in declaration
+/// order. `config_field_coverage.rs` sweeps every one of these through the
+/// real codec, so a field added to the ontogeny group and not written here
+/// fails a test rather than restoring at its default.
+fn encode_physiology_v2_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    let physiology = &config.physiology;
+    writer.u8(u8::from(physiology.ontogeny_enabled));
+    writer.u32(physiology.birth_modules_min);
+    writer.i64(physiology.growth_cost_milli_per_mass_milli);
+    writer.i64(physiology.growth_rate_milli_per_s);
+}
+
+/// Bytes the format-9 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT9_CONFIG_BYTES: usize = 1 // the gate
+    + 4 // birth_modules_min
+    + 8 + 8; // growth cost, growth rate
+
+fn decode_physiology_v2_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    let physiology = &mut config.physiology;
+    physiology.ontogeny_enabled = reader.u8()? != 0;
+    physiology.birth_modules_min = reader.u32()?;
+    physiology.growth_cost_milli_per_mass_milli = reader.i64()?;
+    physiology.growth_rate_milli_per_s = reader.i64()?;
     Ok(())
 }
 
@@ -1236,6 +1281,14 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     }
     if format >= FORMAT_VERSION_8 {
         decode_social_config(&mut *reader, &mut config)?;
+    }
+    // Format 9's block. Left at its defaults for an older body - ontogeny
+    // off, its knobs at their documented defaults - and that is a
+    // resolution rather than an invention on the same terms as formats 5
+    // through 8: no build that could write a format-8 file grew a body
+    // over a lifetime.
+    if format >= FORMAT_VERSION_9 {
+        decode_physiology_v2_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -1608,6 +1661,19 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
     }
     if let Some(social) = state.social.as_ref() {
         write_section(&mut payload, SECTION_SOCIAL, 0, encode_social(social));
+    }
+    if let Some(ontogeny) = state.ontogeny.as_ref() {
+        let mut section = Writer(Vec::new());
+        section.u64(ontogeny.grown_modules.len() as u64);
+        for &grown in &ontogeny.grown_modules {
+            section.u32(grown);
+        }
+        for &paid in &ontogeny.growth_paid_milli {
+            section.i64(paid);
+        }
+        section.u64(ontogeny.modules_grown_total);
+        section.i128(ontogeny.growth_spent_milli_total);
+        write_section(&mut payload, SECTION_ONTOGENY, 0, section.0);
     }
     payload
 }
@@ -2057,6 +2123,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
     let mut action_census: Option<sim_core::ActionCensusSaveState> = None;
     let mut objects: Option<sim_core::ObjectTable> = None;
     let mut social: Option<sim_core::SocialTable> = None;
+    let mut ontogeny: Option<sim_core::OntogenySave> = None;
     type WorldMeta = (u64, bool, bool, u64, u64, Option<u64>);
     let mut meta: Option<WorldMeta> = None;
     type OrganismColumns = (Vec<u64>, Vec<i32>, Vec<i32>, Vec<i64>, Vec<u64>, Vec<u64>);
@@ -2630,6 +2697,36 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                 }
                 social = Some(decode_social(&mut reader)?);
             }
+            SECTION_ONTOGENY => {
+                // `FORMAT_VERSION_9` by name: the format that introduced the
+                // section, permanently (D-108).
+                if format < FORMAT_VERSION_9 {
+                    return Err(CodecError::SectionNotInFormat { tag, format });
+                }
+                if ontogeny.is_some() {
+                    return Err(CodecError::DuplicateSection(tag));
+                }
+                let organisms = reader.u64()?;
+                // Cap before allocating: 12 bytes per organism plus the two
+                // trailing counters (D-091's discipline).
+                if !allocation_fits(organisms, 12, 24, body.len()) {
+                    return Err(CodecError::ValueOutOfRange("ontogeny organisms"));
+                }
+                let mut grown_modules = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    grown_modules.push(reader.u32()?);
+                }
+                let mut growth_paid_milli = Vec::with_capacity(organisms as usize);
+                for _ in 0..organisms {
+                    growth_paid_milli.push(reader.i64()?);
+                }
+                ontogeny = Some(sim_core::OntogenySave {
+                    grown_modules,
+                    growth_paid_milli,
+                    modules_grown_total: reader.u64()?,
+                    growth_spent_milli_total: reader.i128()?,
+                });
+            }
             unknown => return Err(CodecError::UnknownSection(unknown)),
         }
         if !reader.done() {
@@ -2658,6 +2755,7 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
         action_census,
         objects,
         social,
+        ontogeny,
         ids,
         x_fp,
         y_fp,
@@ -2736,6 +2834,7 @@ pub fn encode_snapshot_format3(
         });
     }
     refuse_format8_state(state, FORMAT_VERSION_3)?;
+    refuse_format9_state(state, FORMAT_VERSION_3)?;
     refuse_format7_state(state, FORMAT_VERSION_3)?;
     encode_snapshot_versioned(
         state,
@@ -2787,6 +2886,7 @@ pub fn encode_snapshot_format4(
         });
     }
     refuse_format8_state(state, FORMAT_VERSION_4)?;
+    refuse_format9_state(state, FORMAT_VERSION_4)?;
     refuse_format7_state(state, FORMAT_VERSION_4)?;
     encode_snapshot_versioned(
         state,
@@ -2828,6 +2928,7 @@ pub fn encode_snapshot_format5(
         });
     }
     refuse_format8_state(state, FORMAT_VERSION_5)?;
+    refuse_format9_state(state, FORMAT_VERSION_5)?;
     refuse_format7_state(state, FORMAT_VERSION_5)?;
     encode_snapshot_versioned(
         state,
@@ -2862,6 +2963,7 @@ pub fn encode_snapshot_format6(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format8_state(state, FORMAT_VERSION_6)?;
+    refuse_format9_state(state, FORMAT_VERSION_6)?;
     refuse_format7_state(state, FORMAT_VERSION_6)?;
     encode_snapshot_versioned(
         state,
@@ -2895,6 +2997,7 @@ pub fn encode_snapshot_format7(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format8_state(state, FORMAT_VERSION_7)?;
+    refuse_format9_state(state, FORMAT_VERSION_7)?;
     encode_snapshot_versioned(
         state,
         world_id,
@@ -2908,12 +3011,73 @@ pub fn encode_snapshot_format7(
     )
 }
 
+/// Encode a **format 8** snapshot.
+///
+/// Retained on the same terms as every earlier writer: the acceptance
+/// requirement for the 8-to-9 migration is byte identity against a real
+/// legacy file, and a legacy file has to be constructible. It refuses a
+/// state carrying anything format 9 added, because a format-8 file has no
+/// bytes for the ontogeny section and writing one anyway would describe a
+/// world whose juveniles were never juveniles - a different experiment,
+/// silently.
+pub fn encode_snapshot_format8(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format9_state(state, FORMAT_VERSION_8)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_8,
+        SAVE_STATE_VERSION,
+    )
+}
+
 /// The write-side refusal every retained pre-8 writer shares: a state that
 /// carries what only format 8 can express is refused with the field named,
 /// before a byte is written. The whole struct is compared against its
 /// default rather than only the gate, because a knob moved off its default
 /// with the section disabled is still a value the format has no bytes for,
 /// and restoring it at the default would alter meaning on load.
+/// The write-side refusal every retained pre-9 writer shares: a state that
+/// carries what only format 9 can express is refused with the field or
+/// section named, before a byte is written. The ontogeny knobs are compared
+/// field by field against their documented defaults rather than the whole
+/// physiology struct, because the rest of that struct existed long before
+/// format 9 and is legitimately non-default in older files.
+fn refuse_format9_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    let defaults = sim_core::PhysiologyConfig::physiology_default();
+    let physiology = &state.config.physiology;
+    if physiology.ontogeny_enabled != defaults.ontogeny_enabled
+        || physiology.birth_modules_min != defaults.birth_modules_min
+        || physiology.growth_cost_milli_per_mass_milli
+            != defaults.growth_cost_milli_per_mass_milli
+        || physiology.growth_rate_milli_per_s != defaults.growth_rate_milli_per_s
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "physiology ontogeny",
+            format,
+        });
+    }
+    if state.ontogeny.is_some() {
+        return Err(CodecError::SectionNotInFormat {
+            tag: SECTION_ONTOGENY,
+            format,
+        });
+    }
+    Ok(())
+}
+
 fn refuse_format8_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
     if state.config.social != sim_core::SocialConfig::social_default() {
         return Err(CodecError::FieldNotInFormat {
@@ -3206,6 +3370,12 @@ pub fn decode_snapshot_format6(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState)
 /// terms every earlier retained reader is.
 pub fn decode_snapshot_format7(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_7, SAVE_STATE_VERSION)
+}
+
+/// Decode a **format 8** snapshot. Retained for the 8-to-9 migration, on the
+/// terms every earlier retained reader is.
+pub fn decode_snapshot_format8(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_8, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

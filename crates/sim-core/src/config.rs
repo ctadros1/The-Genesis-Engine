@@ -797,6 +797,24 @@ pub struct PhysiologyConfig {
 
     /// Hazard multiplier applied before maturity. `Q16_ONE` is no penalty.
     pub juvenile_hazard_multiplier_q16: u32,
+
+    /// Ontogeny (Phase 14, ADR-0030): the developed body is revealed one
+    /// module at a time in canonical BFS order from the origin module,
+    /// each activation paid through the ledger, and every juvenile
+    /// constraint is a consequence of the partially grown body's own
+    /// derived attributes. Requires morphology - there is no body to grow
+    /// otherwise. Founders start fully grown (they seed the population,
+    /// as in every phase before this one); children start at
+    /// `birth_modules_min`.
+    pub ontogeny_enabled: bool,
+    /// Modules already grown at birth. At least 1: a zero-module organism
+    /// is the `Empty` viability failure, not a newborn.
+    pub birth_modules_min: u32,
+    /// Milli-EU paid per milli-unit of module mass to activate it.
+    pub growth_cost_milli_per_mass_milli: i64,
+    /// Ledger flow cap into growth, milli-EU per second, so growth is a
+    /// metered expense over juvenile life rather than a lump sum at birth.
+    pub growth_rate_milli_per_s: i64,
 }
 
 impl PhysiologyConfig {
@@ -818,6 +836,10 @@ impl PhysiologyConfig {
             senescence_hazard_q16_per_s: 655, // 0.01 per second at scale
             extrinsic_hazard_q16_per_s: 13,   // ~0.0002 per second
             juvenile_hazard_multiplier_q16: 2 * Q16_ONE,
+            ontogeny_enabled: false,
+            birth_modules_min: 1,
+            growth_cost_milli_per_mass_milli: 100,
+            growth_rate_milli_per_s: 50,
         }
     }
 }
@@ -1856,6 +1878,27 @@ impl SimConfig {
                     i64::from(physiology.thermal_neutral_band_milli),
                 ));
             }
+            // Phase 14 ontogeny (ADR-0030). Refused rather than inert when
+            // its preconditions are missing: a config that asks for growth
+            // and gets none would report adult-shaped juveniles and read as
+            // C14.1's null.
+            if physiology.ontogeny_enabled {
+                if !self.morphology.enabled {
+                    return Err(ConfigError::PhysiologyRange(
+                        "ontogeny requires morphology",
+                        0,
+                    ));
+                }
+                if physiology.birth_modules_min == 0 {
+                    return Err(ConfigError::PhysiologyRange("birth_modules_min is zero", 0));
+                }
+                if physiology.growth_cost_milli_per_mass_milli < 0 {
+                    return Err(ConfigError::Negative("growth_cost_milli_per_mass_milli"));
+                }
+                if physiology.growth_rate_milli_per_s <= 0 {
+                    return Err(ConfigError::NonPositive("growth_rate_milli_per_s"));
+                }
+            }
         }
         Ok(())
     }
@@ -2277,6 +2320,16 @@ impl SimConfig {
             hasher.update_u32(self.physiology.senescence_hazard_q16_per_s);
             hasher.update_u32(self.physiology.extrinsic_hazard_q16_per_s);
             hasher.update_u32(self.physiology.juvenile_hazard_multiplier_q16);
+            // Phase 14 ontogeny: hashed only when its own gate is on, so
+            // every physiology-enabled hash issued before ontogeny existed
+            // is unchanged - the same nesting discipline the artifact and
+            // social sections use (smallest covering version).
+            if self.physiology.ontogeny_enabled {
+                hasher.update(b"lifesim-physiology-v2-ontogeny");
+                hasher.update_u32(self.physiology.birth_modules_min);
+                hasher.update_i64(self.physiology.growth_cost_milli_per_mass_milli);
+                hasher.update_i64(self.physiology.growth_rate_milli_per_s);
+            }
         }
         // Phase 9 section: hashed only when enabled, so a schema-1 config
         // hashes exactly as it did before schema 2 existed and every earlier

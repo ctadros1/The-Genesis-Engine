@@ -35,8 +35,12 @@
 //!   locus that emitted it.
 //!
 //! The default development policy is **fully deterministic and draws no
-//! randomness at all**. The `Morphogenesis` stream exists so that adopting a
-//! stochastic developmental term later cannot renumber the streams.
+//! randomness at all**, and no RNG stream is allocated for it: a stochastic
+//! developmental term, if one is ever adopted, allocates the next free
+//! stream number at that point. (An earlier version of this comment claimed
+//! a `Morphogenesis` stream existed; it never did, and ADR-0030 records the
+//! correction rather than allocating an unused stream to make the comment
+//! true.)
 
 use crate::genome2::Genome2;
 use crate::morphology::{

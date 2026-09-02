@@ -530,6 +530,7 @@ fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     state.config.plasticity.live_rule_zero = false;
     resolve_format7_defaults(&mut state);
     resolve_format8_defaults(&mut state);
+    resolve_format9_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -554,6 +555,7 @@ fn migrate_format5_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     state.config.plasticity.price_moved_edges_only = false;
     resolve_format7_defaults(&mut state);
     resolve_format8_defaults(&mut state);
+    resolve_format9_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -573,6 +575,7 @@ fn migrate_format6_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     let (source, mut state) = codec::decode_snapshot_format6(bytes)?;
     resolve_format7_defaults(&mut state);
     resolve_format8_defaults(&mut state);
+    resolve_format9_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -591,7 +594,39 @@ static FORMAT7_TO_CURRENT: Migration = Migration {
 fn migrate_format7_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
     let (source, mut state) = codec::decode_snapshot_format7(bytes)?;
     resolve_format8_defaults(&mut state);
+    resolve_format9_defaults(&mut state);
     reencode(source, state)
+}
+
+/// Format 8 to current (9). What format 9 adds is the physiology-v2
+/// ontogeny config block and the ontogeny progress section; a format-8
+/// world had neither - not by default but by construction, since no build
+/// that wrote a format-8 file grew a body over a lifetime. So this
+/// transform invents nothing, and `expected_loss` is empty.
+static FORMAT8_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_8,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format8_to_current,
+};
+
+fn migrate_format8_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format8(bytes)?;
+    resolve_format9_defaults(&mut state);
+    reencode(source, state)
+}
+
+/// The resolution every pre-9 transform states for what format 9 added.
+/// Unobservable in the same sense as `resolve_format8_defaults` - the
+/// readers already resolve it this way - and kept for the same reason.
+fn resolve_format9_defaults(state: &mut sim_core::SaveState) {
+    let defaults = sim_core::PhysiologyConfig::physiology_default();
+    state.config.physiology.ontogeny_enabled = defaults.ontogeny_enabled;
+    state.config.physiology.birth_modules_min = defaults.birth_modules_min;
+    state.config.physiology.growth_cost_milli_per_mass_milli =
+        defaults.growth_cost_milli_per_mass_milli;
+    state.config.physiology.growth_rate_milli_per_s = defaults.growth_rate_milli_per_s;
+    state.ontogeny = None;
 }
 
 /// The resolution every pre-8 transform states for what format 8 added.
@@ -638,6 +673,7 @@ fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     state.config.plasticity.price_moved_edges_only = false;
     resolve_format7_defaults(&mut state);
     resolve_format8_defaults(&mut state);
+    resolve_format9_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -688,6 +724,7 @@ pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, 
         codec::FORMAT_VERSION_5 => Ok(Some(&FORMAT5_TO_CURRENT)),
         codec::FORMAT_VERSION_6 => Ok(Some(&FORMAT6_TO_CURRENT)),
         codec::FORMAT_VERSION_7 => Ok(Some(&FORMAT7_TO_CURRENT)),
+        codec::FORMAT_VERSION_8 => Ok(Some(&FORMAT8_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \
