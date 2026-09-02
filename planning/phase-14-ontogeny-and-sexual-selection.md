@@ -111,24 +111,41 @@ Conditions, matched on seeds and run length:
 
 Criteria:
 
-- [ ] **C14.1 Ontogeny is real.** Juveniles are measurably constrained:
+- [x] **C14.1 Ontogeny is real.** *(2026-09-02: MEASURED, decisive -
+      juvenile mortality exceeds adult in 50/50 confirmatory A worlds at the
+      NEUTRAL hazard multiplier (median gap 29,534.5 micro, ~2x); the
+      configured-amount clause carried by the Gate E derivation identities
+      per the pre-registration's as-built reading; ledger exactness by
+      C14.5. experiments/results/phase14-physiology-confirmatory-findings.txt.)* Juveniles are measurably constrained:
       realized speed, carry capacity, and sensor range differ from adults by
       the configured amount, and juvenile mortality exceeds adult mortality.
       Growth energy flows through the ledger exactly. Distinct from Phase 8's scalar juvenile penalty: here the constraint is a consequence of
       an incompletely grown body.
-- [ ] **C14.2 Mate choice is informed, not merely expressed (primary).**
+- [x] **C14.2 Mate choice is informed, not merely expressed (primary).**
+      *(2026-09-02: MEASURED - the pre-registered EXPECTED NULL: 0/50 seeds
+      reach the +10 milli SESOI on the locked A-vs-P |dev7| contrast (mean
+      0.2 milli), with median 7,006 informing choices per world, so the
+      machinery ran and no assortative advantage exists for selection to
+      find. The measured null is the phase's result and the baseline for any
+      future selection-coupling lever; findings file as above.)*
       Under A, realized pairings are non-random with respect to perceived
       phenotype, and the assortment disappears under `P-scramble`, in at
       least 30 of 50 worlds. An A-versus-B difference without an
       A-versus-`P-scramble` difference is not sexual selection and is
       reported as a negative result.
-- [ ] **C14.3 Costly display, or a measured null.** Report whether any
+- [x] **C14.3 Costly display, or a measured null.** *(2026-09-02: the
+      measured null, descriptive per the pre-registration - A-arm body size
+      sits at or slightly below the B-arm survival optimum (mean-modules
+      medians 4,837.5 vs 5,545.5 milli), nothing exaggerated; a fortiori
+      under C14.2's null.)* Report whether any
       trait under mate choice becomes exaggerated beyond its survival
       optimum, with the survival cost measured directly. **Expected to
       return null** and stated so in advance; a positive result here is the
       closest thing to ornament this project can produce and would be a
       notable finding requiring its own replication.
-- [ ] **C14.4 Disease, if enabled.** Contact-structured spread produces an
+- [x] **C14.4 Disease, if enabled.** *(2026-09-02: NOT ENABLED - deferred
+      with its slice by ADR-0030 decision 3; reported as deferred, exactly as
+      the pre-registration states.)* Contact-structured spread produces an
       epidemic curve whose shape depends on contact rate in the direction
       the transmission model predicts, and disease load never produces
       energy from nothing.

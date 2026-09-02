@@ -1,0 +1,93 @@
+PHASE 14 PHYSIOLOGY-V2 CONFIRMATORY FINDINGS (C14.1, C14.2, C14.3)
+=========================================================================
+Campaign phase14-physiology-confirmatory, hash 0xe0395f5b3865b65a:
+3 conditions (A ontogeny+choice, B both gates off, P ontogeny+choice
+with the perception scramble) x 50 matched seeds 15001..15050, 60,000
+ticks, 128x128 cells, 150 worlds, 0 failed, 0 extinct (population
+medians ~3,300 in every arm). Run on the server host after it verified
+the tree (suite + all three fixture scripts green); raw run archived on
+the server at ~/runs/phase14-physiology-confirmatory (21 GB). Read ONLY
+through experiments/phase14-physiology-preregistration.md (LOCKED at
+5eddaa7 before any confirmatory world ran); the juvenile hazard
+multiplier is 1.0 in this campaign, the one stated change from the
+pilot base. Censuses: phase14-confirmatory-{development,assortment}.txt
+beside this file; every number below is printed by
+phase14-confirmatory-reduction.py (committed before the campaign) and
+recomputable by hand from the report lines.
+
+C14.2 PRIMARY - THE PRE-REGISTERED EXPECTED NULL, CLEANLY
+-------------------------------------------------------------------------
+Locked form: D(s) = |dev7_A(s)| - |dev7_P(s)| per matched seed, SESOI
++10 milli, bar 30/50.
+
+  reaching_absolute_directed 0/50 (bar 30/50); exact binomial tail
+  p = 1.000; positive 16/50; mean D = 0.2 milli; median 0.0.
+
+The informed arm carries NO more absolute scale-assortment than its
+cue-blind twin. Every per-cue A-vs-P delta is within a few milli of
+zero (largest mean magnitude: cue2 at -4.7 milli; cue7, the primary,
+at +0.3). The null is NOT for lack of opportunity or machinery:
+
+- informing (multi-candidate) choices median 7,006 per A world (min
+  1,462), with single-candidate choices excluded AND counted (median
+  118,152) per the locked rules;
+- the neutral-equivalence signature is 0/50 - no A/P pair is literally
+  identical, so preference genotypes did drift off exact neutrality
+  and the scramble did bite; the drifted preferences simply produce no
+  directed assortment;
+- expressed preference weight is nonzero at scale (per-world weight
+  sums in the tens of thousands of milli).
+
+Reading, per the pre-registration's own words: preference has not left
+neutral within the horizon in any direction selection cares about,
+because no authored assortative advantage exists for selection to find
+- the project authors physics, never progress. This measured null is
+the controlled baseline any future selection-coupling lever will be
+contrasted against.
+
+C14.1 - ONTOGENY IS REAL: 50/50, DECISIVE
+-------------------------------------------------------------------------
+Within-A, at the NEUTRAL juvenile hazard multiplier (1.0, the campaign's
+one change from the pilot), juvenile mortality exceeds adult mortality
+in 50 of 50 worlds (exact binomial tail p ~ 8.9e-16): gap median 29,534.5
+micro per observation, min 4,625, max 65,191 - juveniles die at roughly
+twice the adult rate, and the excess is the partially grown body's OWN
+(no config knob supplies it; Phase 8's authored multiplier is
+neutralized). Growth ran at scale: completions median 115,428 per
+world. The pilot's speed signature replicated exactly as the
+pre-registration recorded the mechanism: juveniles are FASTER (median
+88 vs 59 milli-m/tick, 50/50 worlds) because a prefix-grown body is
+small and light under the allometry - quick and fragile, which is a
+mechanistic consequence, not a criterion direction (the criterion's
+"differ by the configured amount" was satisfied by the Gate E
+derivation identities, as-built reading recorded in the
+pre-registration before data). B-arm juvenile columns are zero by
+construction (the checked-never-configured rule).
+
+C14.3 - COSTLY DISPLAY: THE EXPECTED NULL, DESCRIPTIVE
+-------------------------------------------------------------------------
+Body size under choice does not exceed the no-choice survival optimum:
+per-world mean modules (milli) median 4,837.5 under A versus 5,545.5
+under B and 5,072.5 under P (ranges overlapping; median module count
+3.0 in all three arms). If anything the choice arms sit slightly
+BELOW the B optimum - nothing is exaggerated. Consistent a fortiori
+with C14.2: with zero directed assortment on any cue there is no
+preference-driven pull for any trait to be exaggerated by. As-built
+deviation, recorded: this reads the manifest's per-world module-count
+census rather than a tag-26 phenotype trajectory; with the upstream
+null, the trajectory version could only measure drift.
+
+C14.4 - DISEASE: DEFERRED, as ADR-0030 decision 3 deferred its slice.
+C14.5 - PASSED EARLIER (the 10^6-tick growth-and-choice ledger soak,
+  fixture replay, storage permutation, disabled-gate equality; see the
+  planning file's box and runs/phase14-c145-ledger-soak-*).
+
+STATUS
+-------------------------------------------------------------------------
+All Phase 14 criteria are now measured or closed: C14.1 decisively
+positive, C14.2 the pre-registered expected null, C14.3 the expected
+null (descriptive), C14.4 deferred with its slice, C14.5 passed. The
+named lever for any future sexual-selection iteration remains what the
+pre-registration stated: couple a real survival or fecundity advantage
+to a perceivable cue and re-pre-register; this campaign is the
+baseline it will be read against.
