@@ -127,6 +127,17 @@ the materialized term. Two organisms in one cell take in ID order. With
 the fraction zero the loops do not run and the Phase 16 fixture is
 byte-identical (verify-phase19 clause 3).*
 
+*As built (2026-09-03, Phase 20, ADR-0035): one observation record and
+one fact. `BodyComposition` (event tag 30, schema 12) carries a body's
+module counts by type at every admission, so a campaign with ontogeny
+off - every campaign since Phase 16 - has a body record at all; no rule
+reads it and no checksum moves. The fact, pinned by a test: the
+phenotype's basal multiplier is the body's summed upkeep relative to the
+founder body's (750), clamped to [0.6, 1.6], so a one-module unicell
+(200) sits on the floor and a second module of five of the seven types
+leaves it there while conferring capability. Price is not what stops a
+second module; the phase measures transmission instead.*
+
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

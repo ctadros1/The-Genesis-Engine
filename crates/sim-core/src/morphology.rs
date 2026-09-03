@@ -52,6 +52,19 @@ pub const TYPE_REPRODUCTIVE: u8 = 5;
 pub const TYPE_NEURAL: u8 = 6;
 pub const MODULE_TYPE_COUNT: usize = 7;
 
+/// A body's module counts by type, indexed by `ModuleType::id()` in
+/// registry order - the payload of the Phase 20 `BodyComposition` record.
+/// Read from the body, never from the genome, so the record says what
+/// developed rather than what was encoded.
+pub fn composition_counts(body: &Body) -> [u16; MODULE_TYPE_COUNT] {
+    let mut counts = [0_u16; MODULE_TYPE_COUNT];
+    for module in body.modules() {
+        let slot = usize::from(module.module_type.id());
+        counts[slot] = counts[slot].saturating_add(1);
+    }
+    counts
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Ord, PartialOrd, Hash)]
 pub enum ModuleType {
     Structural,

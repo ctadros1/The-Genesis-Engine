@@ -20,6 +20,7 @@ mod conjunction;
 mod demography;
 mod era;
 mod fidelity;
+mod lineage;
 mod morph;
 mod paired;
 mod plasticity;
@@ -63,6 +64,7 @@ pub use demography::{
     DEMOGRAPHY_INDEX_VERSION, WorldDemography, spearman_milli, thermal_match_rho_milli,
     world_demography,
 };
+pub use lineage::{LINEAGE_INDEX_VERSION, WorldLineage, world_lineage};
 pub use era::{
     Boundary as EraBoundary, ERA_VERSION, EraError, EraPlan, FEATURE_COUNT, FEATURE_NAMES,
     FeatureGates, SYNTHETIC_FIXTURE_VERSION, SyntheticSpec, WindowFeatures, WorldEra,

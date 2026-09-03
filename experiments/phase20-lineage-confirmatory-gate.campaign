@@ -1,0 +1,55 @@
+# Phase 20 confirmatory, two-arm shape (Branch A): U1, the shipped world,
+# against P5, the pairing energy gate lowered from 7,000 to 5,000 milli
+# (an existing field; the only difference between arms), fifty matched
+# seeds, 100,000 ticks, events on. Which shape runs is recorded in
+# experiments/phase20-lineage-preregistration.md, LOCKED before this file
+# runs.
+campaign phase20-lineage-confirmatory
+ticks 100000
+workers 6
+seeds 20001..20039 20041..20051
+check-interval 10000
+base preset phase2
+base cells_x 64
+base cells_y 64
+base initial_organisms 0
+base max_entities 4000
+base origin.mode scratch
+base genome2.enabled true
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base morphology.enabled true
+base morphology.caps.max_modules 64
+base morphology.caps.lattice_radius 8
+base morphology.caps.max_growth_steps 16
+base morphology.base_node_budget 4
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 1
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+base chemistry.excretion_fraction_q16 32768
+base chemistry.remains_fraction_q16 32768
+base transition.enabled true
+base transition.check_interval_ticks 100
+base transition.density_floor_milli 4000
+base transition.persistence_checks 5
+base transition.aggregation_step_min 1
+base transition.organism_energy_milli 4000
+base transition.max_organisms_per_event 4
+base transition.max_materializations_per_tick 64
+base chemistry.consumption_fraction_q16 65536
+condition U1
+condition P5
+set P5 phase2.pairing_energy_threshold_milli 5000
+vary phase2.pairing_energy_threshold_milli
+output events on
+output snapshots on
+output field 1000

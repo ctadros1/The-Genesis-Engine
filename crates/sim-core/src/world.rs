@@ -182,7 +182,7 @@ impl DeathCause {
 /// transition admits, carrying the cell, the class and the energy it
 /// entered with, so C16.5 and C16.1 can be read from the log without
 /// re-simulation. The decoder keeps accepting older schemas.
-pub const EVENT_SCHEMA_VERSION: u32 = 11;
+pub const EVENT_SCHEMA_VERSION: u32 = 12;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -420,6 +420,18 @@ pub enum EventKind {
     GrowthCompleted {
         id: u64,
         modules: u32,
+    },
+    /// A body's module counts by type at admission, and again when
+    /// ontogeny completes a grown body (Phase 20, ADR-0035, schema 12).
+    /// Indexed by `ModuleType::id()` in registry order. Observation only:
+    /// no rule reads it, and the reconciliation walk ignores it. Emitted
+    /// for births and materializations alike, so the record never says
+    /// where a body came from; without it a campaign with ontogeny off
+    /// (every Phase 16 and 19 campaign) has no body record at all,
+    /// because `GrowthCompleted` is emitted only on the ontogeny path.
+    BodyComposition {
+        id: u64,
+        counts: [u16; crate::morphology::MODULE_TYPE_COUNT],
     },
     /// An organism entered the world by the field-to-individual transition
     /// (Phase 16, ADR-0032): the cell and genotype class whose density it
@@ -2186,7 +2198,7 @@ impl World {
     /// growth - the life-history tradeoff as a mechanism, not a multiplier.
     /// Deterministic, no draws.
     fn step_ontogeny(&mut self, p2: &mut Phase2State) {
-        let mut completions: Vec<(u64, u32)> = Vec::new();
+        let mut completions: Vec<(u64, u32, [u16; crate::morphology::MODULE_TYPE_COUNT])> = Vec::new();
         let (Some(ontogeny), Some(morphology)) =
             (self.ontogeny.as_mut(), self.morphology.as_ref())
         else {
@@ -2231,7 +2243,11 @@ impl World {
                     ontogeny.modules_grown_total += 1;
                     activated = true;
                     if ontogeny.grown_modules[index] >= total {
-                        completions.push((self.ids[index], total));
+                        completions.push((
+                            self.ids[index],
+                            total,
+                            crate::morphology::composition_counts(body),
+                        ));
                     }
                 }
             }
@@ -2246,8 +2262,11 @@ impl World {
             }
         }
         let tick = self.tick + 1;
-        for (id, modules) in completions {
+        for (id, modules, counts) in completions {
             self.push_event(tick, EventKind::GrowthCompleted { id, modules });
+            // Phase 20: the completed body's composition beside its
+            // completion record (ADR-0035).
+            self.push_event(tick, EventKind::BodyComposition { id, counts });
         }
     }
 
@@ -5808,6 +5827,13 @@ impl World {
         }
         if let (Some(state), Some(body)) = (self.morphology.as_mut(), child.body.clone()) {
             state.push_body(body);
+        }
+        // Phase 20: the body's composition, once per admission, from the
+        // body just stored - births and materializations alike.
+        if let Some(child_body) = child.body.as_ref() {
+            let id = self.next_entity_id;
+            let counts = crate::morphology::composition_counts(child_body);
+            self.push_event(next_tick, EventKind::BodyComposition { id, counts });
         }
         if let (Some(ontogeny), Some(child_body)) =
             (self.ontogeny.as_mut(), child.body.as_ref())

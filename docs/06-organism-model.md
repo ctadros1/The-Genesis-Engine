@@ -85,6 +85,20 @@ under coupling v1 is, under v2, an organism with a food source; whether
 that carries it to maturity is Phase 19's measurement, not a design
 choice.*
 
+*As built (2026-09-03, Phase 20, ADR-0035): what a second module costs,
+in the units the world charges. A unicell pays ~6 milli per tick of
+basal cost (the founder-referenced multiplier's floor, 0.6, on the
+config's basal rate) against ~200 per tick of intake when fed. Adding a
+structural, sensory, digestive, storage or reproductive module leaves
+the multiplier on the floor - the increment is zero; a motor lifts it
+to 0.8 and a neural module to 0.93, at most ~3 milli per tick. Mass
+multiplies movement cost with speed squared and a motorless body sits
+at the speed floor. The second module confers a second gut's intake
+(x1.2), a storage module's capacity (x5), a sensor's range or a motor's
+speed (x4). A reader who reasons about a second module's "price" in
+registry upkeep units repeats the mistake this phase's first draft
+made; the numbers above are the ones that run, and a test pins them.*
+
 ## State
 
 | Category | Required State | Boundaries |

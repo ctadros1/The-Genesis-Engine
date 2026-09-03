@@ -37,6 +37,7 @@ mod microbial;
 mod meiosis;
 mod morphology;
 mod morphstate;
+pub use morphstate::founder_reference;
 mod ontogeny;
 mod origin;
 mod phase2;
@@ -127,8 +128,7 @@ pub use meiosis::{
 pub use morphology::{
     Body, DerivedBody, LatticeKind, LatticePos, MAX_SCALE_MILLI, MIN_SCALE_MILLI,
     MODULE_REGISTRY_VERSION, MODULE_TYPE_COUNT, MORPHOLOGY_POLICY_VERSION, Module, ModuleType,
-    MorphologyCaps, TypeEntry, ViabilityFailure, registry_entry,
-};
+    MorphologyCaps, TypeEntry, ViabilityFailure, registry_entry, composition_counts, BodyReference};
 pub use origin::{
     Archetype, Founder, MAX_ARCHETYPES, MAX_DEMES, ORIGIN_POLICY_VERSION, OriginError, OriginMode,
     affinity_biomes, all_biomes_mask, is_default_origin, mean_trait_distance,

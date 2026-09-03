@@ -112,6 +112,8 @@ const TAG_GROWTH_COMPLETED: u8 = 28;
 /// transition, with the cell and class it came from and the energy it
 /// entered with.
 const TAG_MATERIALIZED: u8 = 29;
+/// Phase 20 (schema 12): a body's module counts by type at admission.
+const TAG_BODY_COMPOSITION: u8 = 30;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -362,6 +364,8 @@ impl ReconstructedCounters {
             // The transition's own counters are world state, saved with
             // it; the log carries the per-organism record for C16.5.
             EventKind::Materialized { .. } => {}
+            // Observation only: a body's composition changes no counter.
+            EventKind::BodyComposition { .. } => {}
         }
     }
 }
@@ -853,6 +857,13 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
             out.extend_from_slice(&id.to_le_bytes());
             out.extend_from_slice(&modules.to_le_bytes());
         }
+        EventKind::BodyComposition { id, counts } => {
+            out.push(TAG_BODY_COMPOSITION);
+            out.extend_from_slice(&id.to_le_bytes());
+            for count in counts {
+                out.extend_from_slice(&count.to_le_bytes());
+            }
+        }
         EventKind::Materialized {
             id,
             cell,
@@ -1329,6 +1340,19 @@ fn decode_events_into(
                 }
                 EventKind::GrowthCompleted { id, modules }
             }
+            TAG_BODY_COMPOSITION => {
+                let id = short!(cursor.u64());
+                let mut counts = [0_u16; sim_core::MODULE_TYPE_COUNT];
+                for slot in counts.iter_mut() {
+                    *slot = short!(cursor.u16());
+                }
+                // A body has at least one module; an all-zero record
+                // would be a body that does not exist.
+                if counts.iter().all(|&c| c == 0) {
+                    return Err(EventLogError::ValueOutOfRange("body composition"));
+                }
+                EventKind::BodyComposition { id, counts }
+            }
             TAG_MATERIALIZED => {
                 let id = short!(cursor.u64());
                 let cell = short!(cursor.u32());
@@ -1778,6 +1802,15 @@ mod tests {
                     energy_milli: 4_000,
                 },
             },
+            // Phase 20 (schema 12): a body's composition - a sensory and a
+            // digestive module - so the fixed-width u16 array round-trips.
+            Event {
+                tick,
+                kind: EventKind::BodyComposition {
+                    id: 31,
+                    counts: [0, 1, 0, 1, 0, 0, 0],
+                },
+            },
         ]
     }
 
@@ -1794,7 +1827,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 48);
+        assert_eq!(scan.events, 51);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());

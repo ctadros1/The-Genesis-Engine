@@ -45,7 +45,7 @@ pub(crate) struct MorphologyState {
 /// constants, so this is the same value in every world and does not need
 /// saving. It is computed rather than hard-coded so that changing a registry
 /// coefficient re-centres the phenotype instead of silently biasing it.
-pub(crate) fn founder_reference() -> BodyReference {
+pub fn founder_reference() -> BodyReference {
     let config = crate::config::MorphologyConfig::morphology_default();
     let mut counters = DevelopCounters::default();
     let body = crate::develop::grow(

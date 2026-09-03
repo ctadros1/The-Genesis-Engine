@@ -80,6 +80,7 @@ fn run() -> Result<(), String> {
         Some("report") => command_report(parse_options(args.collect())?),
         Some("spatial") => command_spatial(parse_options(args.collect())?),
         Some("demography") => command_demography(parse_options(args.collect())?),
+        Some("lineage") => command_lineage(parse_options(args.collect())?),
         Some("structure") => command_structure(parse_options(args.collect())?),
         Some("morph") => command_morph(parse_options(args.collect())?),
         Some("plasticity") => command_plasticity(parse_options(args.collect())?),
@@ -103,7 +104,7 @@ fn run() -> Result<(), String> {
 fn usage() -> String {
     concat!(
         "usage: lifesim run --ticks N [config flags] [--pause-at T --pause-ticks M] [--metrics-out PATH|-] [--check-interval N] [--save-path P [--compress L]] [--load-save P] [--csv-out P [--csv-interval N]]\n",
-        "       lifesim fixture --ticks N [config flags]\n",
+        "       lifesim fixture --ticks N [config flags] [--transition [--coupled|--composition]]\n",
         "       lifesim inspect [config flags]\n",
         "       lifesim benchmark --benchmark-id ID --output DIR [config flags] [--warmup N --samples N --ticks-per-sample N]\n",
         "       lifesim analyze --ticks N [config flags]   (requires --phase2)\n",
@@ -113,6 +114,7 @@ fn usage() -> String {
         "       lifesim report --manifest FILE [--baseline CONDITION]\n",
         "       lifesim spatial --manifest FILE --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX] [--power]\n",
         "       lifesim demography --manifest FILE\n",
+        "       lifesim lineage --manifest FILE   (multi-module organism census; no threshold, no verdict)\n",
         "       lifesim structure --manifest FILE --baseline CONDITION\n",
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim plasticity --manifest FILE --treatment CONDITION --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX]\n",
@@ -179,6 +181,9 @@ struct Options {
     transition: bool,
     transition_off: bool,
     coupled: bool,
+    /// Phase 20: the coupled trace at fixture schema 14, counting the
+    /// body-composition records as the world emits them.
+    composition: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -305,6 +310,13 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--transition-off" {
             options.transition_off = true;
+            index += 1;
+            continue;
+        }
+        if name == "--composition" {
+            options.composition = true;
+            options.coupled = true;
+            options.transition = true;
             index += 1;
             continue;
         }
@@ -2657,6 +2669,67 @@ fn command_demography(options: Options) -> Result<(), String> {
     Ok(())
 }
 
+/// Phase 19: a per-world census of multi-module organisms, computed from
+/// each run's event log. Whether the bodies that reach two or more modules
+/// under "coupling v2" reproduce, and whether their children keep the
+/// second module, is exactly what `WorldLineage` reports and nothing more
+/// -- no threshold, no verdict (ADR-0016).
+fn command_lineage(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("lineage requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    println!("lineage-report 1 campaign {}", manifest.campaign.id);
+    println!("index_version {}", sim_analysis::LINEAGE_INDEX_VERSION);
+    for run in &manifest.runs {
+        let stem = sim_experiment::run_stem(&run.condition, run.seed);
+        let log_path = directory.join(format!("{stem}.alev"));
+        let bytes =
+            fs::read(&log_path).map_err(|error| format!("{}: {error}", log_path.display()))?;
+        let (_, events) =
+            sim_persist::decode_log_events(&bytes).map_err(|error| error.to_string())?;
+        let summary = sim_analysis::world_lineage(&events);
+
+        println!(
+            "world condition={} seed={:#018x} multi_total={} multi_born={} \
+             multi_materialized={} multi_unknown={} multi_completed_lifespans={} \
+             multi_median_lifespan_ticks={} multi_censored={} \
+             one_module_born_median_lifespan_ticks={} one_module_born_completed={} \
+             multi_offspring_total={} multi_parents={} second_generation={} max_modules={} \
+             first_multi_tick={} last_multi_death_tick={} \
+             cohort_completed={} cohort_censored={} cohort_median_lifespan_ticks={} \
+             multi_compositions={} added_modules={}",
+            run.condition,
+            run.seed,
+            summary.multi_total,
+            summary.multi_born,
+            summary.multi_materialized,
+            summary.multi_unknown,
+            summary.multi_completed_lifespans,
+            summary.multi_median_lifespan_ticks,
+            summary.multi_censored,
+            summary.one_module_born_median_lifespan_ticks,
+            summary.one_module_born_completed,
+            summary.multi_offspring_total,
+            summary.multi_parents,
+            summary.second_generation,
+            summary.max_modules,
+            summary.first_multi_tick,
+            summary.last_multi_death_tick,
+            summary.cohort_completed,
+            summary.cohort_censored,
+            summary.cohort_median_lifespan_ticks,
+            if summary.multi_compositions.is_empty() { "-" } else { summary.multi_compositions.as_str() },
+            if summary.added_modules.is_empty() { "-" } else { summary.added_modules.as_str() },
+        );
+    }
+    Ok(())
+}
+
 /// The Phase 13 observer report: C13.1's arrival census and the social
 /// reachability census, one line per world, no threshold and no verdict
 /// (ADR-0016). The A-versus-C and A-versus-D decisions belong to the
@@ -3816,14 +3889,77 @@ fn active_policy(world: &World) -> &'static str {
 fn command_fixture(options: Options) -> Result<(), String> {
     let ticks = options.ticks.unwrap_or(500);
     let mut world = build_world(&options)?;
+    // Phase 20 (schema 14): the composition records, counted as the world
+    // emits them, and the largest body any record described.
+    let mut composition_records: u64 = 0;
+    let mut max_modules_seen: u32 = 0;
     for _ in 0..ticks {
         world.step();
+        if options.composition {
+            for event in world.events() {
+                if let sim_core::EventKind::BodyComposition { counts, .. } = event.kind {
+                    composition_records += 1;
+                    let total: u32 = counts.iter().map(|&c| u32::from(c)).sum();
+                    max_modules_seen = max_modules_seen.max(total);
+                }
+            }
+        }
     }
     world
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if world.config().chemistry.consumption_fraction_q16 > 0 {
+    if options.composition {
+        // Fixture schema 14: the Phase 19 coupled trace with the Phase 20
+        // body-composition record counted (ADR-0035). The schema-13 line
+        // stays as it is for `verify-phase19`; this one adds two fields
+        // and `verify-phase20` asserts its state checksum equals the
+        // schema-13 line's, because the record is not hashed.
+        let counters = world.counters();
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":14,\"phase\":\"phase20\",",
+                "\"coupling_policy\":\"lifesim-chemistry-coupling-v2\",",
+                "\"event_schema_version\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},\"births\":{},",
+                "\"chemistry_total_milli\":{},\"produced_milli\":{},",
+                "\"deposited_milli\":{},\"consumed_milli\":{},",
+                "\"microbial_total_milli\":{},\"materialized\":{},",
+                "\"materialized_milli\":{},\"refused\":{},",
+                "\"organism_energy_milli\":{},\"initial_energy_milli\":{},",
+                "\"assimilated_milli\":{},\"spent_milli\":{},",
+                "\"removed_at_death_milli\":{},\"max_modules\":{},",
+                "\"composition_records\":{},\"max_modules_seen\":{}}}"
+            ),
+            sim_core::EVENT_SCHEMA_VERSION,
+            world.config().initial_organisms,
+            metrics.tick,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            counters.births_total,
+            metrics.chemistry_total_milli,
+            metrics.chemistry_produced_milli,
+            metrics.chemistry_deposited_milli,
+            metrics.chemistry_consumed_milli,
+            metrics.microbial_total_milli,
+            metrics.materialized_total,
+            metrics.materialized_milli,
+            metrics.transition_refused_total,
+            metrics.total_energy_milli,
+            world.ledger().initial_energy_milli,
+            world.ledger().assimilated_milli,
+            world.ledger().spent_milli,
+            world.ledger().removed_at_death_milli,
+            metrics.max_modules,
+            composition_records,
+            max_modules_seen,
+        );
+    } else if world.config().chemistry.consumption_fraction_q16 > 0 {
         // Fixture schema 13: the Phase 19 coupled trace - the transition
         // trace's record plus the consumed term, on the same non-control
         // terms (`verify-phase19-determinism.sh` refuses `consumed_milli`
