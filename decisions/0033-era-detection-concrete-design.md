@@ -157,6 +157,25 @@ bounded by the vector, and that bound is what the record states.
   features and is a `lifesim-era-v2`.
 - Every number the detector prints is an integer with a stated unit.
 
-## As built
+## As built (2026-09-03 amendment)
 
-(Amended at the end of the phase with every divergence.)
+- **`Boundary` is exported as `EraBoundary`**: the crate already exports
+  `plasticity::Boundary` unaliased, on the `ArtifactVerdict` precedent.
+- **The synthetic generator drives four features, not five.** Starvation
+  deaths in a synthetic log are matched one-for-one to births so the
+  population stays exactly constant; an independently driven death rate
+  would let population drift to `NegativePopulation` over long fixtures.
+  A test that wants a deaths step gets it through the births step.
+- **The synthetic founder dump is a real boundary.** Tick 1 of window 0
+  seeds the population, so window 0 differs from every later window;
+  fixture tests exclude window 1 explicitly rather than through the
+  burn-in, which is pinned at zero there.
+- **Two mutations survived the first test set** (the tie rule preferring
+  more segments; absence treated as zero) and were killed by two added
+  tests; one production defect was found by the agent's own rate test
+  (organism-ticks were skipped for a tick whose events netted to zero)
+  and fixed before any campaign was read.
+- **The locked penalty needs steps above ~4,500 in a single feature**
+  (10 x step^2 over twenty windows a side against 2 x 10^8); the
+  pre-registration's first draft said 4,000 and the fixture test caught
+  the arithmetic - recorded in the locked record before the campaign.
