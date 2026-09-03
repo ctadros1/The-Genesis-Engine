@@ -92,8 +92,15 @@ CRITERIA STATUS AFTER THIS CAMPAIGN
 -------------------------------------------------------------------------
 - C16.5 MET - this file.
 - C16.6 MEASURED, the expected null - this file.
-- C16.1: the short-horizon half closed by the suite, the verify script
-  and this campaign's 120 in-run identity checks; the 10^6-tick soak
-  (phase16-c161-ledger-soak.campaign) is running and is recorded in its
-  own addendum below when it completes.
+- C16.1 CLOSED (soak addendum, 2026-09-02): the 10^6-tick scratch soak
+  (phase16-c161-ledger-soak, hash 0x6a0aa12f9ac5ce54, seed 17201, run
+  locally in 343 s at 2,913 ticks/s) completed with 0 failures, both
+  identities checked every 5,000 ticks (200 in-run checks) and exact to
+  the milli-unit at the horizon: produced 8,192,000,000 + deposited
+  255,686,154 - materialized 2,624,681,608 == chemistry 2,164,366,022 +
+  microbial 3,658,638,524. The conversion ran 623,597 times (organisms
+  materialized) under live excretion and remains, with 33 births and a
+  standing population of 128 at the horizon - the identity was soaked
+  under the whole cycle, not on an idle field. Archived at
+  runs/phase16-c161-soak-0x6a0aa12f9ac5ce54.
 - C16.2, C16.3, C16.4, C16.7, C16.8: met at the build increment (D-130).

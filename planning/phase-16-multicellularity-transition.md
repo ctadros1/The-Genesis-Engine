@@ -1,6 +1,6 @@
 # Phase 16: The Multicellularity Transition
 
-Status: in progress (2026-09-02). Policy version `lifesim-transition-v1`.
+Status: COMPLETE 2026-09-02 (D-130, D-131): every criterion decided. Policy version `lifesim-transition-v1`.
 Specification: `specifications/unicellular-regime.md`. Decisions: ADR-0020,
 ADR-0019, ADR-0018, and ADR-0032 (the concrete design: the trigger's
 persistence window, the constant class-to-genome map, the admission path,
@@ -80,16 +80,17 @@ argument that justified it.
 Conditions per ADR-0018, matched on seeds (30) and run length, every
 scaffolded condition paired with its unscaffolded control.
 
-- [ ] **C16.1 Conservation across the conversion.** Mass and energy are
+- [x] **C16.1 Conservation across the conversion.** Mass and energy are
       invariant to the milli-unit across every materialization, verified
       over a 10^6-tick run containing many transitions. Extends C15.1 to the
       conversion itself, which is where a defect is most likely.
-      *Status 2026-09-02: the short-horizon half is closed - both identities
-      (field with the materialized term subtracted, organism energy with it
-      added) are enforced by `check_invariants` and re-derived from the
-      save in `phase16_transition.rs`, and closed from the fixture's printed
-      totals by `verify-phase16-determinism.sh`; the 10^6-tick clause is
-      `experiments/phase16-c161-ledger-soak.campaign`, not yet run.*
+      *Met 2026-09-02 (D-131 addendum): both identities (field with the
+      materialized term subtracted, organism energy with it added) are
+      enforced by `check_invariants`, re-derived from the save in
+      `phase16_transition.rs`, closed from the fixture's printed totals by
+      `verify-phase16-determinism.sh`, and soaked exact over 10^6 ticks
+      with 623,597 materializations under live excretion and remains
+      (`phase16-c161-ledger-soak`, 200 in-run checks, 0 failures).*
 - [x] **C16.2 Transition neutrality.** An organism produced by
       materialization has no advantage over an otherwise identical organism
       born normally. Verified by direct comparison of derived attributes,
