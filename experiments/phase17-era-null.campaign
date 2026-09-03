@@ -19,7 +19,7 @@
 campaign phase17-era-null
 ticks 60000
 workers 8
-seeds 18001..18030
+seeds 18001..18018 18020..18030 18035
 check-interval 5000
 base preset phase2
 base cells_x 64

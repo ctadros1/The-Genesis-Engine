@@ -56,6 +56,13 @@ a step of ~4,000 in one feature over twenty windows on each side does
 (20 x 20 / 40 x 4,000^2 = 1.6 x 10^8, plus the other features that move
 with it) and a step of ~2,000 alone does not.
 
+*Seed amendment, recorded 2026-09-02 before any validation-campaign
+world ran:* the preflight refused seed 18019 (no land at 64x64 - the
+generability probe had listed it) and refused to run the design; zero
+worlds and zero data existed at amendment time. 18019 is replaced by
+18035, the next generable value disjoint from the pilot's 18031..18034.
+Nothing else changed.
+
 ## Decision rules, stated in advance
 
 - **C17.5**: at the locked parameters, the count of NULL worlds (of 30)
