@@ -536,6 +536,7 @@ fn migrate_format3_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -566,6 +567,7 @@ fn migrate_format5_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -591,6 +593,7 @@ fn migrate_format6_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -615,6 +618,7 @@ fn migrate_format7_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -638,6 +642,7 @@ fn migrate_format8_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -660,6 +665,7 @@ fn migrate_format9_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -679,6 +685,7 @@ fn migrate_format10_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError>
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -697,14 +704,16 @@ fn migrate_format11_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError>
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
-/// Format 12 to current (14): what format 13 adds is the two coupling
+/// Format 12 to current (15): what format 13 adds is the two coupling
 /// fractions, zero in every format-12 world - by construction; what format
 /// 14 further adds is the transition config and section, off and absent in
-/// every format-12 world on the same terms. Invents nothing; `expected_loss`
-/// empty.
+/// every format-12 world on the same terms; what format 15 further adds is
+/// the two consumption fields and `consumed_milli` (ADR-0034), zero/off on
+/// the same terms again. Invents nothing; `expected_loss` empty.
 static FORMAT12_TO_CURRENT: Migration = Migration {
     from_format: codec::FORMAT_VERSION_12,
     to_format: codec::FORMAT_VERSION,
@@ -716,14 +725,17 @@ fn migrate_format12_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError>
     let (source, mut state) = codec::decode_snapshot_format12(bytes)?;
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
-/// Format 13 to current (14): what format 14 adds is the transition config
-/// block and `SECTION_TRANSITION`; a format-13 world had neither - not by
-/// default but by construction, since no build that wrote a format-13 file
-/// had a transition policy to run or a scratch origin to start from.
-/// Invents nothing; `expected_loss` empty.
+/// Format 13 to current (15): what format 14 adds is the transition config
+/// block and `SECTION_TRANSITION`; what format 15 further adds is the two
+/// consumption fields and `consumed_milli` (ADR-0034). A format-13 world
+/// had none of it - not by default but by construction, since no build
+/// that wrote a format-13 file had a transition policy to run, a scratch
+/// origin to start from, or a mouth to consume with. Invents nothing;
+/// `expected_loss` empty.
 static FORMAT13_TO_CURRENT: Migration = Migration {
     from_format: codec::FORMAT_VERSION_13,
     to_format: codec::FORMAT_VERSION,
@@ -734,7 +746,40 @@ static FORMAT13_TO_CURRENT: Migration = Migration {
 fn migrate_format13_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
     let (source, mut state) = codec::decode_snapshot_format13(bytes)?;
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
+}
+
+/// Format 14 to current (15): what format 15 adds is the two consumption
+/// fields (ADR-0034) and one trailing i128 on `SECTION_CHEMISTRY`; a
+/// format-14 world had neither - not by default but by construction, since
+/// no build that wrote a format-14 file had a mouth to consume with.
+/// Invents nothing; `expected_loss` empty.
+static FORMAT14_TO_CURRENT: Migration = Migration {
+    from_format: codec::FORMAT_VERSION_14,
+    to_format: codec::FORMAT_VERSION,
+    expected_loss: "",
+    transform: migrate_format14_to_current,
+};
+
+fn migrate_format14_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> {
+    let (source, mut state) = codec::decode_snapshot_format14(bytes)?;
+    resolve_format15_defaults(&mut state);
+    reencode(source, state)
+}
+
+/// The resolution every pre-15 transform states for what format 15 added
+/// (ADR-0034): the two consumption fields at their defaults, and a
+/// nonzero `consumed_milli` resolved to zero when a chemistry section is
+/// present - not by default but by construction, since no build that
+/// wrote a pre-15 file had a mouth to consume with.
+fn resolve_format15_defaults(state: &mut sim_core::SaveState) {
+    let defaults = sim_core::ChemistryConfig::chemistry_default();
+    state.config.chemistry.consumption_fraction_q16 = defaults.consumption_fraction_q16;
+    state.config.chemistry.consumption_yield_q16 = defaults.consumption_yield_q16;
+    if let Some(chemistry) = state.chemistry.as_mut() {
+        chemistry.consumed_milli = 0;
+    }
 }
 
 /// The resolution every pre-14 transform states for what format 14 added.
@@ -844,6 +889,7 @@ fn migrate_format4_to_current(bytes: &[u8]) -> Result<MigratedSave, StoreError> 
     resolve_format12_defaults(&mut state);
     resolve_format13_defaults(&mut state);
     resolve_format14_defaults(&mut state);
+    resolve_format15_defaults(&mut state);
     reencode(source, state)
 }
 
@@ -900,6 +946,7 @@ pub fn migration_for(format_version: u16) -> Result<Option<&'static Migration>, 
         codec::FORMAT_VERSION_11 => Ok(Some(&FORMAT11_TO_CURRENT)),
         codec::FORMAT_VERSION_12 => Ok(Some(&FORMAT12_TO_CURRENT)),
         codec::FORMAT_VERSION_13 => Ok(Some(&FORMAT13_TO_CURRENT)),
+        codec::FORMAT_VERSION_14 => Ok(Some(&FORMAT14_TO_CURRENT)),
         older if older < codec::FORMAT_VERSION => Err(format!(
             "no registered migration from format {older} to {}; a format 1 or 2 file does not \
              contain the state later formats require and cannot be transformed without \

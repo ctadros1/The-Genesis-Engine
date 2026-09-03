@@ -76,6 +76,15 @@ is the honest state of a unicell here, not a penalty, and leaving it is
 ordinary structural mutation under ordinary selection - there is no
 second multicellularity mechanic anywhere in the kernel.*
 
+*As built (2026-09-03, Phase 19, ADR-0034): the same gut can eat the
+field. One gut, one intake rate: biomass fills the digestive capability
+first and the substrate only what biomass leaves, at a yield below one.
+Nothing about the body changes - the pass reads the capability every
+body already has - so a one-module unicell that starved at ~200 ticks
+under coupling v1 is, under v2, an organism with a food source; whether
+that carries it to maturity is Phase 19's measurement, not a design
+choice.*
+
 ## State
 
 | Category | Required State | Boundaries |

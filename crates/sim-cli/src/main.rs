@@ -178,6 +178,7 @@ struct Options {
     field_scaffold: bool,
     transition: bool,
     transition_off: bool,
+    coupled: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -304,6 +305,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--transition-off" {
             options.transition_off = true;
+            index += 1;
+            continue;
+        }
+        if name == "--coupled" {
+            options.coupled = true;
             index += 1;
             continue;
         }
@@ -932,7 +938,7 @@ fn field_trace_world(options: &Options) -> Result<World, String> {
 /// materialization, births among the materialized, and deaths all happen
 /// inside an affordable horizon. Ages are shortened for the Phase 15
 /// trace's reason.
-fn transition_trace_config(seed: u64, transition_off: bool) -> SimConfig {
+fn transition_trace_config(seed: u64, transition_off: bool, coupled: bool) -> SimConfig {
     let mut config = SimConfig::phase2_default(seed);
     config.cells_x = 48;
     config.cells_y = 48;
@@ -974,6 +980,11 @@ fn transition_trace_config(seed: u64, transition_off: bool) -> SimConfig {
     if transition_off {
         config.transition.enabled = false;
     }
+    // Phase 19 (ADR-0034): the same trace with the mouth open - organisms
+    // may fill their whole digestive capability from the field.
+    if coupled {
+        config.chemistry.consumption_fraction_q16 = 65_536;
+    }
     config
 }
 
@@ -985,7 +996,11 @@ fn transition_trace_world(options: &Options) -> Result<World, String> {
         ));
     }
     let config =
-        transition_trace_config(options.seed.unwrap_or(DEFAULT_SEED), options.transition_off);
+        transition_trace_config(
+            options.seed.unwrap_or(DEFAULT_SEED),
+            options.transition_off,
+            options.coupled,
+        );
     World::new(config).map_err(|error| format!("transition trace world: {error}"))
 }
 
@@ -2558,7 +2573,9 @@ fn command_demography(options: Options) -> Result<(), String> {
     let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
     let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
 
-    println!("demography-report 1 campaign {}", manifest.campaign.id);
+    // Report 2 (Phase 19): index v2 plus the three materialized_* columns.
+    // Every earlier column keeps its name and position.
+    println!("demography-report 2 campaign {}", manifest.campaign.id);
     println!("index_version {}", sim_analysis::DEMOGRAPHY_INDEX_VERSION);
     for run in &manifest.runs {
         let stem = sim_experiment::run_stem(&run.condition, run.seed);
@@ -2613,7 +2630,8 @@ fn command_demography(options: Options) -> Result<(), String> {
              deaths_total={} starvation_share_milli={} \
              causes_above_5pct={} median_lifespan={} completed={} censored={} \
              investment_offspring_rho_milli={} parents={} max_age_observed={} \
-             thermal_rho_milli={} thermal_n={}",
+             thermal_rho_milli={} thermal_n={} \
+             materialized_completed={} materialized_median_lifespan={} materialized_censored={}",
             run.condition,
             run.seed,
             run.population,
@@ -2631,6 +2649,9 @@ fn command_demography(options: Options) -> Result<(), String> {
             run.max_age_ticks_observed,
             thermal_rho,
             thermal_n,
+            summary.materialized_completed_lifespans,
+            summary.materialized_median_lifespan_ticks,
+            summary.materialized_censored,
         );
     }
     Ok(())
@@ -3802,7 +3823,51 @@ fn command_fixture(options: Options) -> Result<(), String> {
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if metrics.transition_enabled || options.transition {
+    if world.config().chemistry.consumption_fraction_q16 > 0 {
+        // Fixture schema 13: the Phase 19 coupled trace - the transition
+        // trace's record plus the consumed term, on the same non-control
+        // terms (`verify-phase19-determinism.sh` refuses `consumed_milli`
+        // at zero and closes both identities with it).
+        let counters = world.counters();
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":13,\"phase\":\"phase19\",",
+                "\"coupling_policy\":\"lifesim-chemistry-coupling-v2\",",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},\"births\":{},",
+                "\"chemistry_total_milli\":{},\"produced_milli\":{},",
+                "\"deposited_milli\":{},\"consumed_milli\":{},",
+                "\"microbial_total_milli\":{},\"materialized\":{},",
+                "\"materialized_milli\":{},\"refused\":{},",
+                "\"organism_energy_milli\":{},\"initial_energy_milli\":{},",
+                "\"assimilated_milli\":{},\"spent_milli\":{},",
+                "\"removed_at_death_milli\":{},\"max_modules\":{}}}"
+            ),
+            world.config().initial_organisms,
+            metrics.tick,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            counters.births_total,
+            metrics.chemistry_total_milli,
+            metrics.chemistry_produced_milli,
+            metrics.chemistry_deposited_milli,
+            metrics.chemistry_consumed_milli,
+            metrics.microbial_total_milli,
+            metrics.materialized_total,
+            metrics.materialized_milli,
+            metrics.transition_refused_total,
+            metrics.total_energy_milli,
+            world.ledger().initial_energy_milli,
+            world.ledger().assimilated_milli,
+            world.ledger().spent_milli,
+            world.ledger().removed_at_death_milli,
+            metrics.max_modules,
+        );
+    } else if metrics.transition_enabled || options.transition {
         // Fixture schema 12: the Phase 16 transition trace. Separate on
         // the grounds every earlier schema was: a world that materializes
         // organisms from a field is not comparable field-for-field to one

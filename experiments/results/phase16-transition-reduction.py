@@ -38,7 +38,7 @@ SAMPLE = re.compile(
     r"sample tick=(\d+) fired=(\d+) seeded_milli=(\d+) chem_milli=(-?\d+) "
     r"produced_milli=(\d+) deposited_milli=(\d+) microbial_milli=(-?\d+) "
     r"occupied=(\d+) population=(\d+) materialized=(\d+) "
-    r"materialized_milli=(-?\d+) max_modules=(\d+) multi_module=(\d+) births=(\d+)"
+    r"materialized_milli=(-?\d+) max_modules=(\d+) multi_module=(\d+) births=(\d+)(?: .*)?"
 )
 COLUMNS = [
     "tick", "fired", "seeded", "chem", "produced", "deposited", "microbial",
@@ -89,8 +89,8 @@ def main() -> int:
                 failures.append(f"missing series {path.name}")
                 continue
             header = path.read_text().splitlines()[0] if path.stat().st_size else ""
-            if not header.startswith("field-series 2 "):
-                failures.append(f"{path.name}: not a version-2 field series ({header[:32]!r})")
+            if not (header.startswith("field-series 2 ") or header.startswith("field-series 3 ")):
+                failures.append(f"{path.name}: not a version-2/3 field series ({header[:32]!r})")
                 continue
             rows = read_series(path)
             if len(rows) != expected_samples:

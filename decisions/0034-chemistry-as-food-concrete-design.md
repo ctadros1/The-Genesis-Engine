@@ -112,4 +112,55 @@ the measurement.
 
 ## As built
 
-(Amended at the end of the phase with every divergence.)
+Amended 2026-09-03 with every divergence from the design above.
+
+- **Appetite and the loops.** As designed: appetite = intake capability
+  x fraction - biomass eaten this tick, bounded by room; S_MONOMER then
+  S_PRIMORDIAL; yield credited through `assimilated_milli`, loss to
+  S_WASTE through `deposit_field`; `consumed_milli` (i128) on
+  `ChemistryState`, subtracted in `conservation_defect_milli` and in the
+  microbial joint identity, hashed under `lifesim-chemistry-consumed-v1`
+  only when nonzero. `World::consume_substrate(cell, want) -> i64` is the
+  one function both feeding passes call.
+- **Config.** `chemistry.consumption_fraction_q16` (default 0) and
+  `consumption_yield_q16` (default 39,322); validation refuses a yield
+  above Q16_ONE and a fraction above Q16_ONE; the pair enters the hash
+  under `lifesim-chemistry-consumption` only when the fraction is
+  nonzero, so every existing hash is unchanged (verify clause 3).
+- **Format 15.** `SECTION_CHEMISTRY` carries `consumed_milli` at format
+  >= 15 only (8 config bytes, trailing bound 56 -> 72); the retained
+  format-14 writer refuses a nonzero fraction, a non-default yield
+  ("chemistry consumption") and a nonzero consumed total ("chemistry
+  consumed"); format 14 files migrate with the pair at its defaults.
+  Four mutations killed (skip the write, read unconditionally, ignore
+  consumed in the refusal, drop the config guard).
+- **Fixture and series.** `lifesim fixture --transition --coupled`,
+  schema 13, prints `consumed_milli`; pinned in
+  `scripts/verify-phase19-determinism.sh` (config 0x7cfe66d39cda2e2b,
+  state 0x2137b2286076cd63, consumed 44,119,239 at 4,000 ticks) with both
+  identities re-derived from the printed totals and the v1 fixture
+  asserted equal to the Phase 16 pins. Field series 3 adds the
+  `consumed_milli` column; the Phase 16 reduction accepts series 2 or 3.
+- **Demography index v2.** Not in the design: index v1 started a life
+  only at a birth record, so a scratch world had no lifespans and C19.3
+  was uncomputable. v2 starts a life at `Materialized` too and reports a
+  materialized-only median beside the all-organism one (report 2). Made
+  after the pilot, before the lock, recorded in the pre-registration.
+- **Tests.** `crates/sim-core/tests/phase19_consumption.rs`, nine
+  clauses: the coupled scratch world eats and both identities hold; the
+  disabled coupling is the Phase 16 world on every measured quantity;
+  ID-order intake, monomer first; the room bound and a full organism
+  eating nothing; the loss returning as waste; one gut, one intake rate;
+  the relabelled twin sharing one future under v2 and the founder-path
+  rows equal under v2 (C19.2); the four-arm exchange test alone and
+  together (C19.6). Eight kernel mutations killed, three of them only by
+  tests added for the purpose.
+- **Seeds.** 19902, 19009 and 19023 are ungenerable at 64x64; 19905,
+  19031 and 19032 replaced them before any world ran.
+- **C19.5's expectation.** The design and the plan expected a null
+  again. The pilot showed a body above one module in 3 of 4 v2 worlds
+  (none under v1) and the locked pre-registration states that
+  expectation instead; the mechanism reading (a born offspring's genome
+  duplication) is a reading, not a criterion.
+- **Cost (C19.8).** See `experiments/results/phase19-benchmark-
+  measurements.txt` and the findings.

@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_14;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_15;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -121,6 +121,11 @@ pub const FORMAT_VERSION_13: u16 = 13;
 /// the config body and introduces `SECTION_TRANSITION`. Guarded by name
 /// wherever it gates, permanently (D-108).
 pub const FORMAT_VERSION_14: u16 = 14;
+
+/// Format 15 (Phase 19, ADR-0034): appends the two consumption fields to
+/// the config body and one trailing i128 to `SECTION_CHEMISTRY`'s body.
+/// Guarded by name wherever it gates, permanently (D-108).
+pub const FORMAT_VERSION_15: u16 = 15;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -946,6 +951,10 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_14 {
         encode_transition_config(&mut writer, config);
     }
+    // Format 15's consumption fields (ADR-0034), on the same terms again.
+    if format >= FORMAT_VERSION_15 {
+        encode_consumption_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1279,6 +1288,27 @@ fn decode_transition_config(
     Ok(())
 }
 
+/// The format-15 consumption block (ADR-0034), one field per line in
+/// declaration order, swept by `config_field_coverage.rs` like every block
+/// before it.
+fn encode_consumption_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    writer.u32(config.chemistry.consumption_fraction_q16);
+    writer.u32(config.chemistry.consumption_yield_q16);
+}
+
+/// Bytes the format-15 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT15_CONFIG_BYTES: usize = 4 * 2;
+
+fn decode_consumption_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    config.chemistry.consumption_fraction_q16 = reader.u32()?;
+    config.chemistry.consumption_yield_q16 = reader.u32()?;
+    Ok(())
+}
+
 /// Decode the config section written by `encode_config` at the same version.
 ///
 /// Read the two together. A format-4 body reaching this at format 5 runs out
@@ -1541,6 +1571,13 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     }
     if format >= FORMAT_VERSION_14 {
         decode_transition_config(&mut *reader, &mut config)?;
+    }
+    // Format 15's block (ADR-0034). Left at its defaults for an older body -
+    // fraction zero, yield at its default - the same resolution-not-
+    // invention as always: no build that could write a format-14 file had a
+    // mouth to consume with.
+    if format >= FORMAT_VERSION_15 {
+        decode_consumption_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -1943,6 +1980,13 @@ fn encode_payload(state: &SaveState, format: u16) -> Vec<u8> {
         section.i128(chemistry.deposited_milli);
         section.i128(chemistry.seeded_out_milli);
         section.u64(chemistry.abiogenesis_fired_total);
+        // Format 15 (ADR-0034): the gross substrate consumed as food,
+        // appended to the section's body only at format 15 and above - the
+        // Phase 12 precedent of extending a section under a format guard
+        // (format 7's counter word on the schema-2 section).
+        if format >= FORMAT_VERSION_15 {
+            section.i128(chemistry.consumed_milli);
+        }
         write_section(&mut payload, SECTION_CHEMISTRY, 0, section.0);
     }
     if let Some(microbial) = state.microbial.as_ref() {
@@ -3049,9 +3093,12 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                     return Err(CodecError::DuplicateSection(tag));
                 }
                 let values = reader.u64()?;
-                // Cap before allocating: 8 bytes per value plus the four
-                // trailing ledger terms (D-091's discipline).
-                if !allocation_fits(values, 8, 56, body.len()) {
+                // Cap before allocating: 8 bytes per value plus the trailing
+                // ledger terms - 56 before format 15 (three i128 plus one
+                // u64), 72 at format 15 and above once `consumed_milli`
+                // (i128) is appended (D-091's discipline).
+                let chemistry_trailing = if format >= FORMAT_VERSION_15 { 72 } else { 56 };
+                if !allocation_fits(values, 8, chemistry_trailing, body.len()) {
                     return Err(CodecError::ValueOutOfRange("chemistry values"));
                 }
                 let mut concentrations = Vec::with_capacity(values as usize);
@@ -3064,6 +3111,14 @@ fn decode_payload(bytes: &[u8], format: u16, state_checksum: u64) -> Result<Save
                     deposited_milli: reader.i128()?,
                     seeded_out_milli: reader.i128()?,
                     abiogenesis_fired_total: reader.u64()?,
+                    // Format 15 (ADR-0034). Left at zero for an older body -
+                    // resolution rather than invention, since no build that
+                    // could write a pre-15 file had a mouth to consume with.
+                    consumed_milli: if format >= FORMAT_VERSION_15 {
+                        reader.i128()?
+                    } else {
+                        0
+                    },
                 });
             }
             SECTION_MICROBIAL => {
@@ -3235,6 +3290,7 @@ pub fn encode_snapshot_format3(
     refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format9_state(state, FORMAT_VERSION_3)?;
     refuse_format10_state(state, FORMAT_VERSION_3)?;
+    refuse_format15_state(state, FORMAT_VERSION_3)?;
     refuse_format14_state(state, FORMAT_VERSION_3)?;
     refuse_format13_state(state, FORMAT_VERSION_3)?;
     refuse_format12_state(state, FORMAT_VERSION_3)?;
@@ -3292,6 +3348,7 @@ pub fn encode_snapshot_format4(
     refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format9_state(state, FORMAT_VERSION_4)?;
     refuse_format10_state(state, FORMAT_VERSION_4)?;
+    refuse_format15_state(state, FORMAT_VERSION_4)?;
     refuse_format14_state(state, FORMAT_VERSION_4)?;
     refuse_format13_state(state, FORMAT_VERSION_4)?;
     refuse_format12_state(state, FORMAT_VERSION_4)?;
@@ -3339,6 +3396,7 @@ pub fn encode_snapshot_format5(
     refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format9_state(state, FORMAT_VERSION_5)?;
     refuse_format10_state(state, FORMAT_VERSION_5)?;
+    refuse_format15_state(state, FORMAT_VERSION_5)?;
     refuse_format14_state(state, FORMAT_VERSION_5)?;
     refuse_format13_state(state, FORMAT_VERSION_5)?;
     refuse_format12_state(state, FORMAT_VERSION_5)?;
@@ -3379,6 +3437,7 @@ pub fn encode_snapshot_format6(
     refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format9_state(state, FORMAT_VERSION_6)?;
     refuse_format10_state(state, FORMAT_VERSION_6)?;
+    refuse_format15_state(state, FORMAT_VERSION_6)?;
     refuse_format14_state(state, FORMAT_VERSION_6)?;
     refuse_format13_state(state, FORMAT_VERSION_6)?;
     refuse_format12_state(state, FORMAT_VERSION_6)?;
@@ -3418,6 +3477,7 @@ pub fn encode_snapshot_format7(
     refuse_format8_state(state, FORMAT_VERSION_7)?;
     refuse_format9_state(state, FORMAT_VERSION_7)?;
     refuse_format10_state(state, FORMAT_VERSION_7)?;
+    refuse_format15_state(state, FORMAT_VERSION_7)?;
     refuse_format14_state(state, FORMAT_VERSION_7)?;
     refuse_format13_state(state, FORMAT_VERSION_7)?;
     refuse_format12_state(state, FORMAT_VERSION_7)?;
@@ -3455,6 +3515,7 @@ pub fn encode_snapshot_format8(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format9_state(state, FORMAT_VERSION_8)?;
     refuse_format10_state(state, FORMAT_VERSION_8)?;
+    refuse_format15_state(state, FORMAT_VERSION_8)?;
     refuse_format14_state(state, FORMAT_VERSION_8)?;
     refuse_format13_state(state, FORMAT_VERSION_8)?;
     refuse_format12_state(state, FORMAT_VERSION_8)?;
@@ -3485,6 +3546,7 @@ pub fn encode_snapshot_format9(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format10_state(state, FORMAT_VERSION_9)?;
+    refuse_format15_state(state, FORMAT_VERSION_9)?;
     refuse_format14_state(state, FORMAT_VERSION_9)?;
     refuse_format13_state(state, FORMAT_VERSION_9)?;
     refuse_format12_state(state, FORMAT_VERSION_9)?;
@@ -3514,6 +3576,7 @@ pub fn encode_snapshot_format10(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format15_state(state, FORMAT_VERSION_10)?;
     refuse_format14_state(state, FORMAT_VERSION_10)?;
     refuse_format13_state(state, FORMAT_VERSION_10)?;
     refuse_format12_state(state, FORMAT_VERSION_10)?;
@@ -3549,6 +3612,7 @@ pub fn encode_snapshot_format11(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format15_state(state, FORMAT_VERSION_11)?;
     refuse_format14_state(state, FORMAT_VERSION_11)?;
     refuse_format13_state(state, FORMAT_VERSION_11)?;
     refuse_format12_state(state, FORMAT_VERSION_11)?;
@@ -3577,6 +3641,7 @@ pub fn encode_snapshot_format12(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format15_state(state, FORMAT_VERSION_12)?;
     refuse_format14_state(state, FORMAT_VERSION_12)?;
     refuse_format13_state(state, FORMAT_VERSION_12)?;
     encode_snapshot_versioned(
@@ -3604,6 +3669,7 @@ pub fn encode_snapshot_format13(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format15_state(state, FORMAT_VERSION_13)?;
     refuse_format14_state(state, FORMAT_VERSION_13)?;
     encode_snapshot_versioned(
         state,
@@ -3616,6 +3682,61 @@ pub fn encode_snapshot_format13(
         FORMAT_VERSION_13,
         SAVE_STATE_VERSION,
     )
+}
+
+/// Encode a **format 14** snapshot, retained on the terms every earlier
+/// writer is: the 14-to-15 migration's byte-identity requirement is
+/// stated against it.
+pub fn encode_snapshot_format14(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format15_state(state, FORMAT_VERSION_14)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_14,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// The write-side refusal every retained pre-15 writer shares (ADR-0034):
+/// the two consumption fields compared against their defaults - fraction
+/// zero, yield at its documented default - and a nonzero `consumed_milli`
+/// refused by name. A pre-15 file has no byte for either and writing one
+/// anyway would describe a world whose mouths ran on arithmetic it never
+/// had, silently.
+fn refuse_format15_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    let defaults = sim_core::ChemistryConfig::chemistry_default();
+    if state.config.chemistry.consumption_fraction_q16 != 0
+        || state.config.chemistry.consumption_yield_q16 != defaults.consumption_yield_q16
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "chemistry consumption",
+            format,
+        });
+    }
+    if state
+        .chemistry
+        .as_ref()
+        .is_some_and(|chemistry| chemistry.consumed_milli != 0)
+    {
+        return Err(CodecError::FieldNotInFormat {
+            field: "chemistry consumed",
+            format,
+        });
+    }
+    Ok(())
 }
 
 /// The write-side refusal every retained pre-14 writer shares: the
@@ -4085,6 +4206,12 @@ pub fn decode_snapshot_format12(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState
 /// the terms every earlier retained reader is.
 pub fn decode_snapshot_format13(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_13, SAVE_STATE_VERSION)
+}
+
+/// Decode a **format 14** snapshot. Retained for the 14-to-15 migration, on
+/// the terms every earlier retained reader is.
+pub fn decode_snapshot_format14(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_14, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

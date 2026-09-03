@@ -1,0 +1,57 @@
+# Phase 19 C19.1 ledger soak: one scratch world with coupling v2, 10^6
+# ticks, both identities enforced by World::check_invariants every 10,000
+# ticks (a violation aborts the run loudly) - the field identity with the
+# materialized AND consumed terms subtracted, the organism energy identity
+# with materialization added (the yield sits inside assimilation, the loss
+# inside the deposits). The full stack is on - chemistry, microbial,
+# abiogenesis, both coupling fractions, consumption at Q16_ONE, schema 2,
+# morphology and the transition at its defaults - so materialization,
+# feeding from the field, excretion, death and remains all run and the
+# closed loop is soaked (C19.1's "over a 10^6-tick scratch run"). The
+# field series records the running totals every 10,000 ticks.
+campaign phase19-c191-ledger-soak
+ticks 1000000
+workers 1
+seeds 19201
+check-interval 10000
+base preset phase2
+base cells_x 64
+base cells_y 64
+base initial_organisms 0
+base max_entities 4000
+base origin.mode scratch
+base genome2.enabled true
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base morphology.enabled true
+base morphology.caps.max_modules 64
+base morphology.caps.lattice_radius 8
+base morphology.caps.max_growth_steps 16
+base morphology.base_node_budget 4
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 1
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+base chemistry.excretion_fraction_q16 32768
+base chemistry.remains_fraction_q16 32768
+base transition.enabled true
+base transition.check_interval_ticks 100
+base transition.density_floor_milli 4000
+base transition.persistence_checks 5
+base transition.aggregation_step_min 1
+base transition.organism_energy_milli 4000
+base transition.max_organisms_per_event 4
+base transition.max_materializations_per_tick 64
+base chemistry.consumption_fraction_q16 65536
+condition soak
+output events off
+output snapshots on
+output field 10000

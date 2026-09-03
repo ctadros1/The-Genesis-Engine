@@ -93,12 +93,13 @@ question, D-128 having made it rich enough).
       a 10^6-tick scratch run in which materialization, feeding from the
       field, excretion, death and remains all run. Extends C15.1 and C16.1
       to the closed loop.
-- [ ] **C19.2 Neutrality with a coupled field.** ADR-0032's obligation:
+- [x] **C19.2 Neutrality with a coupled field.** ADR-0032's obligation:
       the C16.2 tests re-run with both fractions and consumption nonzero -
       the materialized organism's rows equal the founder path's for the
       same genome, no provenance survives admission, and the relabelled
       twin shares one future. Any divergence is authored progress and
       fails the phase.
+      *Met 2026-09-03: `phase19_consumption.rs` - the relabelled twin shares one future for 400 ticks while eating (consumed > 0 asserted), and the materialized organism under v2 has the founder path's phenotype and trait genes with parents [0, 0], depth 0, age 0.*
 - [ ] **C19.3 The unicell ecology is viable, or reported as not.** The
       primary endpoint: median completed lifespan of materialized
       organisms (from the event log's `Materialized` and `Death` records)
@@ -117,12 +118,14 @@ question, D-128 having made it rich enough).
       distribution over time. **Expected to return null again, stated in
       advance**; reported with the birth counts beside it so a null with
       reproduction is distinguishable from the Phase 16 null without it.
-- [ ] **C19.6 The exchange test in full.** Excretion, remains,
+- [x] **C19.6 The exchange test in full.** Excretion, remains,
       materialization and consumption each move a counted term, all four
       arms exercised alone and together, identities exact.
-- [ ] **C19.7 Determinism and fixtures.** Clean-process fixture replay
+      *Met 2026-09-03: `every_exchange_arm_moves_its_own_counted_term_alone_and_together` - control moves nothing; excretion, remains (old-age deaths > 0), materialization and consumption each move only their own term; all four together; both identities exact at every 100-tick check in every arm.*
+- [x] **C19.7 Determinism and fixtures.** Clean-process fixture replay
       with consumption live; consumption disabled reproduces the Phase 16
       fixture exactly.
+      *Met 2026-09-03: `scripts/verify-phase19-determinism.sh` - two-process replay of `--transition --coupled` (config 0x7cfe66d39cda2e2b, state 0x2137b2286076cd63), every mechanism refused at zero, both identities from the printed totals, the v1 fixture equal to the Phase 16 pins, the Phase 15 fixture untouched.*
 - [ ] **C19.8 Cost.** The consumption pass priced per organism and per
       tick against the v1 world; the field's cost stays per-cell.
 

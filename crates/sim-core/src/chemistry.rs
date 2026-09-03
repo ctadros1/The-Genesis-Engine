@@ -52,6 +52,9 @@ pub struct ChemistryState {
     pub produced_milli: i128,
     pub deposited_milli: i128,
     pub seeded_out_milli: i128,
+    /// Phase 19 (ADR-0034): gross substrate organisms took as food, whole
+    /// run; the metabolic loss returns through `deposited_milli`.
+    pub consumed_milli: i128,
     /// Abiogenesis draws that fired (increment 2 consumes this; counted
     /// from the start so the counter's meaning never moves).
     pub abiogenesis_fired_total: u64,
@@ -67,6 +70,7 @@ impl ChemistryState {
             produced_milli: 0,
             deposited_milli: 0,
             seeded_out_milli: 0,
+            consumed_milli: 0,
             abiogenesis_fired_total: 0,
         }
     }
@@ -87,7 +91,10 @@ impl ChemistryState {
 
     /// The C15.1 identity's defect: exactly zero in a correct world.
     pub fn conservation_defect_milli(&self) -> i128 {
-        self.produced_milli + self.deposited_milli - self.seeded_out_milli - self.total_milli()
+        self.produced_milli + self.deposited_milli
+            - self.seeded_out_milli
+            - self.consumed_milli
+            - self.total_milli()
     }
 
     /// One field step: diffusion, then the abiotic reactions, then
@@ -199,6 +206,12 @@ impl ChemistryState {
         hasher.update_i128(self.deposited_milli);
         hasher.update_i128(self.seeded_out_milli);
         hasher.update_u64(self.abiogenesis_fired_total);
+        // Phase 19: hashed only once something was consumed, so every
+        // fixture without consumption hashes exactly as it did.
+        if self.consumed_milli != 0 {
+            hasher.update(b"lifesim-chemistry-consumed-v1");
+            hasher.update_i128(self.consumed_milli);
+        }
     }
 }
 

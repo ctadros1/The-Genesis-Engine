@@ -305,6 +305,7 @@ pub fn field_conservation_defect_milli(
     microbial: &MicrobialState,
 ) -> i128 {
     chemistry.produced_milli + chemistry.deposited_milli
+        - chemistry.consumed_milli
         - chemistry.total_milli()
         - microbial.total_milli()
 }

@@ -295,6 +295,8 @@ pub struct ChemistrySave {
     pub deposited_milli: i128,
     pub seeded_out_milli: i128,
     pub abiogenesis_fired_total: u64,
+    /// Phase 19: gross substrate taken as food (format 15 and above).
+    pub consumed_milli: i128,
 }
 
 /// The microbial field's saved half: per-cell per-class densities plus
@@ -499,6 +501,7 @@ impl World {
                 deposited_milli: chemistry.deposited_milli,
                 seeded_out_milli: chemistry.seeded_out_milli,
                 abiogenesis_fired_total: chemistry.abiogenesis_fired_total,
+                consumed_milli: chemistry.consumed_milli,
             }),
             microbial: self.microbial_state().map(|microbial| MicrobialSave {
                 densities: microbial.densities.clone(),
@@ -1136,6 +1139,12 @@ impl World {
                 chemistry.deposited_milli = save.deposited_milli;
                 chemistry.seeded_out_milli = save.seeded_out_milli;
                 chemistry.abiogenesis_fired_total = save.abiogenesis_fired_total;
+                if save.consumed_milli < 0 {
+                    return Err(RestoreError::StateInvalid(
+                        "chemistry consumed_milli is negative".to_owned(),
+                    ));
+                }
+                chemistry.consumed_milli = save.consumed_milli;
                 chemistry.rebuild_derived(config.cells_x, config.cells_y, &config.chemistry);
                 Some(chemistry)
             }

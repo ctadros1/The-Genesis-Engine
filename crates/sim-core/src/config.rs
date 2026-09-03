@@ -942,6 +942,14 @@ pub struct ChemistryConfig {
     /// Coupling v1: fraction of the energy removed at death deposited as
     /// S_PRIMORDIAL in the death cell. Zero = no coupling.
     pub remains_fraction_q16: u32,
+    /// Coupling v2 (Phase 19, ADR-0034): the fraction of an organism's
+    /// per-tick intake capability that substrate from its own cell may
+    /// fill after biomass has had its turn (one gut, one intake rate).
+    /// Zero = organisms cannot eat the field (the Phase 16 world).
+    pub consumption_fraction_q16: u32,
+    /// Energy gained per milli of substrate taken, Q16; the remainder is
+    /// metabolic loss deposited as S_WASTE in the same cell.
+    pub consumption_yield_q16: u32,
 }
 
 impl ChemistryConfig {
@@ -972,6 +980,8 @@ impl ChemistryConfig {
             mutation_q16: 66,            // 0.001 per neighbour
             excretion_fraction_q16: 0,
             remains_fraction_q16: 0,
+            consumption_fraction_q16: 0,
+            consumption_yield_q16: 39_322, // 0.6, the microbial growth yield
         }
     }
 }
@@ -2211,6 +2221,15 @@ impl SimConfig {
                     0,
                 ));
             }
+            if chemistry.consumption_fraction_q16 > Q16_ONE
+                || chemistry.consumption_yield_q16 > Q16_ONE
+                || chemistry.consumption_yield_q16 == 0
+            {
+                return Err(ConfigError::PhysiologyRange(
+                    "consumption fraction or yield outside its range",
+                    0,
+                ));
+            }
         } else if chemistry.abiogenesis_enabled {
             // A condition arm switched on with the section off is refused
             // rather than treated as off, exactly as a social condition is.
@@ -2218,7 +2237,10 @@ impl SimConfig {
                 "abiogenesis_enabled is set while chemistry.enabled is false",
                 0,
             ));
-        } else if chemistry.excretion_fraction_q16 > 0 || chemistry.remains_fraction_q16 > 0 {
+        } else if chemistry.excretion_fraction_q16 > 0
+            || chemistry.remains_fraction_q16 > 0
+            || chemistry.consumption_fraction_q16 > 0
+        {
             // A coupling with no field to deposit into is refused rather
             // than inert, on the same terms.
             return Err(ConfigError::PhysiologyRange(
@@ -2768,6 +2790,13 @@ impl SimConfig {
                 hasher.update(b"lifesim-chemistry-coupling");
                 hasher.update_u32(self.chemistry.excretion_fraction_q16);
                 hasher.update_u32(self.chemistry.remains_fraction_q16);
+            }
+            // Coupling v2 (Phase 19, ADR-0034): hashed only when the fraction is
+            // nonzero, so every hash issued before it existed is unchanged.
+            if self.chemistry.consumption_fraction_q16 > 0 {
+                hasher.update(b"lifesim-chemistry-consumption");
+                hasher.update_u32(self.chemistry.consumption_fraction_q16);
+                hasher.update_u32(self.chemistry.consumption_yield_q16);
             }
         }
         // Phase 16 section: hashed only when enabled, so every hash issued

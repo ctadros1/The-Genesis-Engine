@@ -813,6 +813,8 @@ pub struct MetricsSnapshot {
     /// Whole-run mass abiogenesis moved from substrate into density,
     /// milli - the denominator of a sustainment ratio.
     pub chemistry_seeded_out_milli: i128,
+    /// Phase 19: gross substrate organisms took as food, whole run.
+    pub chemistry_consumed_milli: i128,
     pub microbial_enabled: bool,
     /// Microbial density currently in the field, milli.
     pub microbial_total_milli: i128,
@@ -1913,6 +1915,10 @@ impl World {
                 .chemistry
                 .as_ref()
                 .map_or(0, |chemistry| chemistry.seeded_out_milli),
+            chemistry_consumed_milli: self
+                .chemistry
+                .as_ref()
+                .map_or(0, |chemistry| chemistry.consumed_milli),
             microbial_enabled: self.microbial.is_some(),
             microbial_total_milli: self
                 .microbial
@@ -2080,6 +2086,33 @@ impl World {
     /// Coupling v1 (ADR-0031): deposit organism mass into the chemistry
     /// field through its ledger. Every milli credited to a cell is counted
     /// in `deposited`, so the joint identity holds with organisms attached.
+    /// Phase 19 (ADR-0034): take up to `want` milli of substrate from a
+    /// cell as food, S_MONOMER first (ADR-0031's richer input) and then
+    /// S_PRIMORDIAL, counting the gross amount in the chemistry ledger's
+    /// `consumed_milli` - the term the field identity subtracts. Returns
+    /// what was taken; the caller credits the yield and deposits the loss.
+    fn consume_substrate(&mut self, cell: usize, want: i64) -> i64 {
+        let Some(chemistry) = self.chemistry.as_mut() else {
+            return 0;
+        };
+        if want <= 0 {
+            return 0;
+        }
+        let base = cell * crate::chemistry::SUBSTRATE_COUNT;
+        let mut taken = 0_i64;
+        for substrate in [crate::chemistry::S_MONOMER, crate::chemistry::S_PRIMORDIAL] {
+            let slot = base + substrate;
+            let take = (want - taken).min(chemistry.concentrations[slot]).max(0);
+            chemistry.concentrations[slot] -= take;
+            taken += take;
+            if taken >= want {
+                break;
+            }
+        }
+        chemistry.consumed_milli += i128::from(taken);
+        taken
+    }
+
     fn deposit_field(&mut self, cell: usize, substrate: usize, amount_milli: i64) {
         if amount_milli <= 0 {
             return;
@@ -3488,6 +3521,8 @@ impl World {
 
         // Feeding pass: shared-cell contention resolves in stable ID order.
         let assimilation = i64::from(self.config.assimilation_q16);
+        let consumption = self.chemistry.is_some() && self.config.chemistry.consumption_fraction_q16 > 0;
+        let mut eaten: Vec<i64> = if consumption { vec![0; population] } else { Vec::new() };
         for index in 0..population {
             if self.energy_milli[index] <= 0 {
                 continue;
@@ -3511,8 +3546,42 @@ impl World {
             self.energy_milli[index] += gain;
             self.ledger.consumed_biomass_milli += i128::from(intake);
             self.ledger.assimilated_milli += i128::from(gain);
+            if consumption {
+                eaten[index] = intake;
+            }
             // Phase 13 cue: feeding is contact.
             self.note_contact(index);
+        }
+
+        // Phase 19 (ADR-0034): substrate from the chemistry field fills what
+        // biomass left of the organism's per-tick capability. Empty and free
+        // when the consumption fraction is zero, so no earlier fixture moves.
+        if consumption {
+            let fraction = i64::from(self.config.chemistry.consumption_fraction_q16);
+            let yield_q16 = i64::from(self.config.chemistry.consumption_yield_q16);
+            for index in 0..population {
+                if self.energy_milli[index] <= 0 {
+                    continue;
+                }
+                let appetite = (self.intake_tick * fraction >> 16) - eaten[index];
+                if appetite <= 0 {
+                    continue;
+                }
+                let room = self.energy_capacity_of(index) - self.energy_milli[index];
+                if room <= 0 {
+                    continue;
+                }
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                let gross = self.consume_substrate(cell, appetite.min(room * Q16 / yield_q16));
+                if gross <= 0 {
+                    continue;
+                }
+                let gained = gross * yield_q16 / Q16;
+                self.energy_milli[index] += gained;
+                self.ledger.assimilated_milli += i128::from(gained);
+                self.deposit_field(cell, crate::chemistry::S_WASTE, gross - gained);
+                self.note_contact(index);
+            }
         }
 
         // Reproduction pass: energy is debited only after a valid placement
@@ -4177,6 +4246,8 @@ impl World {
         // Feeding pass: requires an eat request; intake scales with the
         // diet-affinity multiplier. Stable ID order resolves contention.
         let assimilation = i64::from(self.config.assimilation_q16);
+        let consumption = self.chemistry.is_some() && self.config.chemistry.consumption_fraction_q16 > 0;
+        let mut eaten: Vec<i64> = if consumption { vec![0; population] } else { Vec::new() };
         for index in 0..population {
             if !p2.intent_eat[index] || self.energy_milli[index] <= 0 {
                 continue;
@@ -4201,8 +4272,43 @@ impl World {
             self.energy_milli[index] += gain;
             self.ledger.consumed_biomass_milli += i128::from(intake);
             self.ledger.assimilated_milli += i128::from(gain);
+            if consumption {
+                eaten[index] = intake;
+            }
             // Phase 13 cue: feeding is contact.
             self.note_contact(index);
+        }
+
+        // Phase 19 (ADR-0034): substrate from the chemistry field fills what
+        // biomass left of the organism's per-tick capability. Empty and free
+        // when the consumption fraction is zero, so no earlier fixture moves.
+        if consumption {
+            let fraction = i64::from(self.config.chemistry.consumption_fraction_q16);
+            let yield_q16 = i64::from(self.config.chemistry.consumption_yield_q16);
+            for index in 0..population {
+                if !p2.intent_eat[index] || self.energy_milli[index] <= 0 {
+                    continue;
+                }
+                let capability = self.intake_tick * p2.phenotypes[index].intake_mult_milli / 1000;
+                let appetite = (capability * fraction >> 16) - eaten[index];
+                if appetite <= 0 {
+                    continue;
+                }
+                let room = self.energy_capacity_of(index) - self.energy_milli[index];
+                if room <= 0 {
+                    continue;
+                }
+                let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+                let gross = self.consume_substrate(cell, appetite.min(room * Q16 / yield_q16));
+                if gross <= 0 {
+                    continue;
+                }
+                let gained = gross * yield_q16 / Q16;
+                self.energy_milli[index] += gained;
+                self.ledger.assimilated_milli += i128::from(gained);
+                self.deposit_field(cell, crate::chemistry::S_WASTE, gross - gained);
+                self.note_contact(index);
+            }
         }
 
         // Growth pass (Phase 14 ontogeny): between feeding and pairing,

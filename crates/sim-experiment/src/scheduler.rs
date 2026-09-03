@@ -291,7 +291,7 @@ fn execute_unit(
     let mut field_series: Option<String> =
         (output_dir.is_some() && campaign.output.field_interval > 0).then(|| {
             format!(
-                "field-series 2 policy {} seed {:#018x} interval {}\n",
+                "field-series 3 policy {} seed {:#018x} interval {}\n",
                 sim_core::CHEMISTRY_POLICY_VERSION,
                 unit.seed,
                 campaign.output.field_interval
@@ -384,7 +384,7 @@ fn execute_unit(
                 "sample tick={} fired={} seeded_milli={} chem_milli={} produced_milli={} \
                  deposited_milli={} microbial_milli={} occupied={} population={} \
                  materialized={} materialized_milli={} max_modules={} multi_module={} \
-                 births={}\n",
+                 births={} consumed_milli={}\n",
                 metrics.tick,
                 metrics.abiogenesis_fired_total,
                 metrics.chemistry_seeded_out_milli,
@@ -399,6 +399,7 @@ fn execute_unit(
                 metrics.max_modules,
                 metrics.multi_module_organisms,
                 metrics.births_total,
+                metrics.chemistry_consumed_milli,
             ));
         }
         if let Some(writer) = actions.as_mut()

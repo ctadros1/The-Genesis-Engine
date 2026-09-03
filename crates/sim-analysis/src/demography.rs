@@ -1,4 +1,12 @@
-//! World-level demography statistics (`lifesim-demography-index-v1`).
+//! World-level demography statistics (`lifesim-demography-index-v2`).
+//!
+//! Index v2 (Phase 19, ADR-0034): a `Materialized` record starts a life
+//! exactly as a `Birth` or `PairedBirth` does, so a scratch world's
+//! organisms (Phase 16, ADR-0032) have lifespans at all. v1 saw only
+//! born organisms and reported a scratch world as "0 completed" over
+//! tens of thousands of deaths. Worlds without materialization reduce to
+//! the same numbers under both versions; the materialized-only median
+//! below is new.
 //!
 //! Phase 8's campaign criteria are claims about a *distribution* over
 //! organisms -- the mix of death causes, evolved lifespan, the relation
@@ -21,7 +29,7 @@
 use sim_core::{DeathCause, Event, EventKind};
 use std::collections::BTreeMap;
 
-pub const DEMOGRAPHY_INDEX_VERSION: &str = "lifesim-demography-index-v1";
+pub const DEMOGRAPHY_INDEX_VERSION: &str = "lifesim-demography-index-v2";
 
 /// One world's demographic summary.
 #[derive(Clone, Debug, Default, PartialEq)]
@@ -50,6 +58,14 @@ pub struct WorldDemography {
     pub investment_offspring_rho_milli: i64,
     /// Parents with at least one recorded paired birth.
     pub parents_observed: u64,
+    /// The subset of the above that started as a `Materialized` record
+    /// (Phase 16): completed lifespans from materialization to death, the
+    /// median of those, and the ones still alive at the end. C19.3's
+    /// quantity is the median; it asks what a materialized unicell's life
+    /// is, which the all-organism median hides once births dominate.
+    pub materialized_completed_lifespans: u64,
+    pub materialized_median_lifespan_ticks: u64,
+    pub materialized_censored: u64,
 }
 
 /// Reduce one world's event log to its demographic summary.
@@ -62,7 +78,7 @@ pub fn world_demography(events: &[Event]) -> WorldDemography {
 
     for event in events.iter().map(|event| event.kind) {
         match event {
-            EventKind::Birth { id, .. } => {
+            EventKind::Birth { id, .. } | EventKind::Materialized { id, .. } => {
                 birth_tick.insert(id, 0);
             }
             EventKind::PairedBirth {
@@ -99,28 +115,40 @@ pub fn world_demography(events: &[Event]) -> WorldDemography {
 
     // Lifespans need the ticks, which the iterator above discards; a second
     // pass keyed on tick is clearer than threading it through the match.
-    let mut born_at: BTreeMap<u64, u64> = BTreeMap::new();
+    // The bool marks a materialized start, so the materialized-only
+    // statistics come from the same single index rather than a second one
+    // that could disagree with it.
+    let mut born_at: BTreeMap<u64, (u64, bool)> = BTreeMap::new();
+    let mut materialized_lifespans: Vec<u64> = Vec::new();
     for (tick, kind) in events.iter().map(|event| (event.tick, event.kind)) {
         match kind {
             EventKind::Birth { id, .. } | EventKind::PairedBirth { id, .. } => {
-                born_at.insert(id, tick);
+                born_at.insert(id, (tick, false));
+            }
+            EventKind::Materialized { id, .. } => {
+                born_at.insert(id, (tick, true));
             }
             EventKind::Death { id, .. } => {
-                if let Some(born) = born_at.remove(&id) {
-                    lifespans.push(tick.saturating_sub(born));
+                if let Some((born, materialized)) = born_at.remove(&id) {
+                    let lifespan = tick.saturating_sub(born);
+                    lifespans.push(lifespan);
+                    if materialized {
+                        materialized_lifespans.push(lifespan);
+                    }
                 }
             }
             _ => {}
         }
     }
     summary.censored_individuals = born_at.len() as u64;
+    summary.materialized_censored =
+        born_at.values().filter(|(_, materialized)| *materialized).count() as u64;
     summary.completed_lifespans = lifespans.len() as u64;
+    summary.materialized_completed_lifespans = materialized_lifespans.len() as u64;
     lifespans.sort_unstable();
-    summary.median_lifespan_ticks = if lifespans.is_empty() {
-        0
-    } else {
-        lifespans[(lifespans.len() - 1) / 2]
-    };
+    materialized_lifespans.sort_unstable();
+    summary.median_lifespan_ticks = median_completed(&lifespans);
+    summary.materialized_median_lifespan_ticks = median_completed(&materialized_lifespans);
 
     if summary.deaths_total > 0 {
         summary.starvation_share_milli = (i128::from(summary.deaths_starvation) * 1_000
@@ -148,6 +176,16 @@ pub fn world_demography(events: &[Event]) -> WorldDemography {
     summary.parents_observed = points.len() as u64;
     summary.investment_offspring_rho_milli = spearman_milli(&points);
     summary
+}
+
+/// The lower median of a sorted, completed list; zero when nothing
+/// completed (reported beside the count, never read as "instant").
+fn median_completed(sorted: &[u64]) -> u64 {
+    if sorted.is_empty() {
+        0
+    } else {
+        sorted[(sorted.len() - 1) / 2]
+    }
 }
 
 /// Spearman rank correlation in milli-units. Ties take average ranks, which
@@ -297,6 +335,55 @@ mod tests {
         assert_eq!(summary.completed_lifespans, 2);
         assert_eq!(summary.censored_individuals, 1);
         assert_eq!(summary.median_lifespan_ticks, 100);
+    }
+
+    #[test]
+    fn a_materialized_life_starts_at_its_materialization_and_is_counted_apart() {
+        // Index v2 (Phase 19): the Phase 16 scratch world's organisms
+        // begin with a `Materialized` record, not a birth. They enter the
+        // all-organism statistics AND the materialized-only ones; born
+        // organisms enter only the former; a materialized survivor is
+        // censored in both counts.
+        let materialized = |id: u64| EventKind::Materialized {
+            id,
+            cell: 7,
+            class: 1,
+            energy_milli: 4_000,
+        };
+        let summary = world_demography(&scan(vec![
+            (100, materialized(1)),
+            (100, materialized(2)),
+            (100, materialized(3)),
+            (150, birth(4)),
+            (300, death(1, DeathCause::Starvation)),
+            (700, death(2, DeathCause::Starvation)),
+            (250, death(4, DeathCause::Starvation)),
+            // Organism 3 never dies.
+        ]));
+        assert_eq!(summary.deaths_total, 3);
+        assert_eq!(summary.completed_lifespans, 3);
+        assert_eq!(summary.censored_individuals, 1);
+        // All three completed: 100, 200, 600 -> lower median 200.
+        assert_eq!(summary.median_lifespan_ticks, 200);
+        assert_eq!(summary.materialized_completed_lifespans, 2);
+        // Materialized only: 200, 600 -> lower median 200.
+        assert_eq!(summary.materialized_median_lifespan_ticks, 200);
+        assert_eq!(summary.materialized_censored, 1);
+    }
+
+    #[test]
+    fn a_world_without_materialization_reduces_as_under_index_v1() {
+        let summary = world_demography(&scan(vec![
+            (10, birth(1)),
+            (10, birth(2)),
+            (110, death(1, DeathCause::Extrinsic)),
+            (310, death(2, DeathCause::Extrinsic)),
+        ]));
+        assert_eq!(summary.completed_lifespans, 2);
+        assert_eq!(summary.median_lifespan_ticks, 100);
+        assert_eq!(summary.materialized_completed_lifespans, 0);
+        assert_eq!(summary.materialized_median_lifespan_ticks, 0);
+        assert_eq!(summary.materialized_censored, 0);
     }
 
     #[test]

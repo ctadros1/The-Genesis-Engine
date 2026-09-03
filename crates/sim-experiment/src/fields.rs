@@ -306,6 +306,8 @@ config_fields! {
     "chemistry.mutation_q16" => chemistry.mutation_q16: u32,
     "chemistry.excretion_fraction_q16" => chemistry.excretion_fraction_q16: u32,
     "chemistry.remains_fraction_q16" => chemistry.remains_fraction_q16: u32,
+    "chemistry.consumption_fraction_q16" => chemistry.consumption_fraction_q16: u32,
+    "chemistry.consumption_yield_q16" => chemistry.consumption_yield_q16: u32,
     "transition.enabled" => transition.enabled: bool,
     "transition.check_interval_ticks" => transition.check_interval_ticks: u64,
     "transition.density_floor_milli" => transition.density_floor_milli: i64,

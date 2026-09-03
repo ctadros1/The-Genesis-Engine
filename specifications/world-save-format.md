@@ -316,6 +316,15 @@ the appended fields to the defaults every older world actually ran with:
   config, a transition section, or a scratch origin is refused by every
   pre-14 writer), `FORMAT13_TO_CURRENT` resolving the section absent and
   the config default - no build that wrote format 13 could materialize.
+- **Format 15** (Phase 19, ADR-0034): the chemistry consumption config
+  pair (`FORMAT15_CONFIG_BYTES`, 8 bytes: `consumption_fraction_q16`,
+  `consumption_yield_q16`) and `consumed_milli` (i128) appended to
+  `SECTION_CHEMISTRY` (trailing bound 56 -> 72 bytes). Retained
+  format-14 writer and reader, `refuse_format15_state` (a nonzero
+  fraction or non-default yield is "chemistry consumption", a nonzero
+  consumed total is "chemistry consumed" - refused by every pre-15
+  writer), `FORMAT14_TO_CURRENT` resolving the pair to its defaults and
+  the counter to zero - no build that wrote format 14 could eat.
 
 ## Planned Successor: ALIF Format 2 (Phase 12)
 

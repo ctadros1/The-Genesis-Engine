@@ -68,6 +68,7 @@ precedence over anything in this document that contradicts it.
 | Developmental ontogeny, sexual selection, disease | `lifesim-physiology-v2` | 14 (executes after 13) | `planning/phase-14-ontogeny-and-sexual-selection.md` |
 | Chemistry and microbial field regime | `lifesim-chemistry-v1`, `lifesim-microbial-v1` | 15 | `specifications/unicellular-regime.md`, ADR-0031 |
 | Field-to-individual transition (`scratch` end to end) | `lifesim-transition-v1` | 16 | `specifications/unicellular-regime.md`, ADR-0032 |
+| Chemistry as food (coupling v2: organisms eat the substrate) | `lifesim-chemistry-coupling-v2` | 19 | `specifications/unicellular-regime.md`, ADR-0034 |
 
 Three sections below become live rather than documented placeholders:
 combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 8, and carcasses in Phase 7.
@@ -112,6 +113,19 @@ the field identity, checked by `check_invariants`. With
 `transition.enabled` false, `materialize` returns immediately and no
 fixture moves; `TickPhase::ALL` stays at 9 and benchmark schema 10 is
 unchanged.*
+
+*As built (2026-09-03, Phase 19, ADR-0034): the field feeds back. Inside
+the same feeding passes, after biomass has had its turn, an organism
+whose digestive capability is not yet filled takes substrate from its
+own cell - S_MONOMER first, then S_PRIMORDIAL - at
+`chemistry.consumption_fraction_q16` of what remains of that capability,
+bounded by the room left under its energy capacity; the yield fraction
+is credited through the ordinary assimilation term and the rest lands in
+the cell as S_WASTE through the ordinary deposit term. The gross taken is
+one counter, `consumed_milli`, subtracted in the field identity beside
+the materialized term. Two organisms in one cell take in ID order. With
+the fraction zero the loops do not run and the Phase 16 fixture is
+byte-identical (verify-phase19 clause 3).*
 
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments

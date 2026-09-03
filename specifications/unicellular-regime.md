@@ -1,10 +1,13 @@
 # Abiogenesis And The Unicellular Regime Specification
 
-Status: Phase 15 implemented (ADR-0031, as built 2026-09-02); Phase 16 in
-progress (ADR-0032). Policy versions `lifesim-chemistry-v1`,
-`lifesim-microbial-v1`, `lifesim-transition-v1`. Decision: ADR-0020; the
-concrete choices are pinned in ADR-0031 (field) and ADR-0032 (transition),
-and where those records and this text disagree, the records own it.
+Status: Phase 15 implemented (ADR-0031, as built 2026-09-02); Phase 16
+implemented (ADR-0032, D-130/D-131); Phase 19 implemented (ADR-0034,
+coupling v2 - organisms eat the substrate; as built 2026-09-03). Policy
+versions `lifesim-chemistry-v1`, `lifesim-microbial-v1`,
+`lifesim-transition-v1`, `lifesim-chemistry-coupling-v2`. Decision:
+ADR-0020; the concrete choices are pinned in ADR-0031 (field), ADR-0032
+(transition) and ADR-0034 (the mouth), and where those records and this
+text disagree, the records own it.
 
 ## Problem
 
