@@ -36,7 +36,7 @@ and none has started:
 | 17 | Offline era and tradition detection - **COMPLETE 2026-09-02 (D-132)** | `phase-17-era-and-tradition-detection.md` |
 | 18 | Intra-world parallelism - **cross-cutting; after 8, before 13** | `phase-18-intra-world-parallelism.md` |
 | 19 | Chemistry as food (coupling v2) and the unicell ecology - COMPLETE 2026-09-03 (D-133) | `phase-19-chemistry-as-food.md` |
-| 20 | The second module: why no lineage - planned 2026-09-03 | `phase-20-second-module-lineage.md` |
+| 20 | The second module: why no lineage - COMPLETE 2026-09-03 (D-134): lineages exist in 8 of 50 worlds | `phase-20-second-module-lineage.md` |
 
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under

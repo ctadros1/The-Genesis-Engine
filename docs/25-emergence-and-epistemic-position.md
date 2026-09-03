@@ -124,6 +124,35 @@ itself in this ecology, which is a question about the physics of the
 body (a gut that cannot move against a field it has grazed flat), not
 about any mechanism this project might add.
 
+*Status after the second module (2026-09-03, D-134).* The question
+D-133 left open - why a body above one module never founds a lineage -
+was answered in the order the method requires: arithmetic first, tests
+second, the campaign last. Arithmetic: under the founder-referenced
+clamps a second module of five of seven types is free in upkeep and
+confers capability, so price is not the reason and the knob that would
+have tested price was withdrawn unbuilt. Tests: the shipped genetics
+transmits a duplicated gut to half of a carrier's children against a
+unicell and three quarters against another carrier, refuses none, and
+bars none from mating. The pilot's census: every body above one module
+is a born organism, and born organisms in this ecology live ~250 ticks
+against a maturity of at least 400 - one in twelve reproduces - so a
+second module is dealt only to the short-lived half of the population;
+Phase 19's "one at a time" was the 500-tick series missing ~200-tick
+lives, about eightfold. The campaign, fifty worlds of the shipped physics with nothing
+added: 127 second-generation two-module organisms in 8 of 50 worlds,
+1.94 per 10,000 births against a smallest effect of 0.5, one lineage
+reaching 80 members - lineages exist, and they compound. **Individual
+to multicellular, in the narrow sense of a body of two modules
+inherited across generations, is reached**; in the broad sense (a body
+that divides labour, a third module, a lineage that outlives its
+world) it is not asked yet, and no body reached three modules in fifty
+worlds. The prior stays unfavorable
+and the chain's next link is stated honestly: the rate-limiting term of every lineage is
+not the module but the born organism's life - ~250 ticks against a
+maturity floor of 400, one in fourteen reproducing - and that is a
+question about the ecology's energy budget for a newborn, not about
+any mechanism this project might add.
+
 ### The corollary: analysis observes, it never instructs
 
 This project already holds this line for similarity clustering

@@ -86,9 +86,85 @@ four worlds could not settle and the fifty were run to.
 
 Confirmatory (C20.1, C20.2, C20.3)
 ----------------------------------
-PENDING - experiments/phase20-lineage-confirmatory-alone.campaign, 50
-seeds, the shipped world alone; SESOI 0.5 per 10,000 births; the three
-pre-stated readings.
+experiments/phase20-lineage-confirmatory-alone.campaign: the shipped
+world alone, 50 seeds (20001..20039 20041..20051), 100,000 ticks,
+events on. 50 worlds, 0 failed, 444 s at 6 workers; the in-run identity
+check every 10,000 ticks silent everywhere; no world at the entity cap
+(population median 457). Archived at
+runs/phase20-lineage-confirmatory-0xa8d0b4c2ab68ba74 with lineage.txt
+and reduction.txt beside the manifest.
+
+C20.1 (primary) - the equivalence null is REJECTED: multi-module
+  lineages exist.
+    multi-module organisms: 238 in 653,536 births (3.64 per 10,000),
+      in 45 of 50 worlds; first appearance median tick 39,067.
+    multi-module parents: 13 (5.5 percent of the 238), in 9 worlds;
+      their offspring: 221.
+    second-generation organisms (born, two modules, a two-module parent,
+      inherited): 127, in 8 worlds - 1.943 per 10,000 births, exact
+      97.5 percent upper bound 2.312 - against the SESOI of 0.5. The
+      pre-stated cohort prediction, computed by the reduction from the
+      campaign's own numbers (3.64e-4 x born-parent fraction 0.0687 x
+      9.62 offspring per born parent x 0.5), is 1.204 per 10,000 - 78.7
+      expected against 127 observed. Of the three pre-stated readings
+      this is (i) - multi-module organisms reproduce like their cohort
+      (13 of 238 became parents, 5.5 percent, against 6.9 percent of
+      born organisms) - with an addendum the prediction's one-step
+      arithmetic could not carry: a lineage compounds. The eight
+      lineage worlds hold 2, 6, 17, 13, 75, 1, 2 and 11 second-
+      generation organisms; seed 20024's lineage, founded at tick
+      54,996, reached 80 multi-module organisms (4 parents, 130
+      offspring) inside 45,000 ticks and had 3 alive at the horizon;
+      seeds 20009 and 20014 reached 20 and 17. At the horizon 7 of the
+      238 were alive.
+  Read with D-133: Phase 19's "one at a time, never a lineage" was the
+  500-tick series missing ~200-tick lives (about eightfold) and thirty
+  worlds at 60,000 ticks being too few and too short for an event of
+  this rarity - the first lineage in this campaign was founded at tick
+  27,901 and the median first appearance is 39,067. Individual to
+  multicellular, in the narrow sense of a body of two modules inherited
+  across generations, is reached in 8 of 50 worlds of the shipped
+  physics with nothing added.
+
+C20.2 - what a second module costs, measured: the multi-module median
+  lifespan against the matched one-module cohort's, per world, differs
+  by a median of -23 ticks (range -229 to +263, n = 45); no systematic
+  cost, as the clamp arithmetic said. In the two largest lineages the
+  multi-module median (133) sits below the cohort's (172, 189) and in
+  seeds 20005 and 20009 above it (465 vs 229, 477 vs 242): the
+  difference is world noise, not a price.
+
+C20.3 - what the extra module is: 221 of 238 multi-module bodies are a
+  doubled gut and 17 a gut plus a structural module (added types over
+  the 127 second-generation bodies with a parent record: digestive 111,
+  structural 17); no body reached three modules in any world
+  (max_modules 2 in all 45). The duplication that survives development
+  and transmission is, with few exceptions, a copy of the gut's own
+  regulatory locus - the one module whose second copy raises intake.
+
+Free-lunch gate clear: no world at the cap.
+
+Observation, no criterion: the Phase 17 era detector at its locked
+penalty (2 x 10^8, window 1,000, burn-in 10,000) reports one segment
+in each of the three largest lineage worlds (seeds 20009, 20014,
+20024): a lineage of 80 two-gut bodies inside a population of ~450 is
+below what the era instrument sees at this scale, which is the right
+answer for an instrument built to refuse false eras, and a fact to
+carry into any later claim that "eras" begin with bodies.
+
+What the phase found, in one paragraph
+--------------------------------------
+Nothing stops a second module: it is nearly free, it transmits to half
+a carrier's children, no gate refuses its carrier, and in 8 of 50
+worlds a lineage of two-gut bodies established itself - once with 80
+members. What makes it rare is the ecology's own arithmetic: a second
+module arises about 3.6 times per 10,000 births, only in born
+organisms, and a born organism in this world reproduces with
+probability ~0.07 before it starves; the product is a lineage every few
+worlds per 100,000 ticks, below what a 500-tick series over thirty
+60,000-tick worlds could see. The honest prior stated in docs/25 held
+in its direction (rare, late, mostly transient) and was wrong in its
+strength (never): the chain's next link exists and is measured.
 
 Decided outside the campaign
 ----------------------------

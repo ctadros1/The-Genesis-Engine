@@ -196,7 +196,7 @@ energy gate refused 0 pairings in all four worlds (capacity 0,
 placement 0-1) - and the census's born-parent counts say what does
 bind: born organisms reproduce (1,803 / 1,303 / 834 / 822 distinct
 born parents; 72 percent of births have a born parent) but each one
-rarely - about one in eight - with world-wide born median lifespans of
+rarely - about one in twelve, 8.3 percent pooled - with world-wide born median lifespans of
 210-293 ticks against a trait-derived maturity of at least 400. A
 two-module organism (lifespans 133-261, matched cohort 140-259) has the
 reproductive prospects of any born organism, and 0 of 17 reproducing
@@ -245,7 +245,7 @@ mutation-checked, not yet reading the composition record).
 **Primary endpoint: C20.1.** Acceptance is conjunctive; C20.2-C20.4 are
 reported beside it and never rescue it.
 
-- [ ] **C20.1 Second-generation multi-module organisms (primary).**
+- [x] **C20.1 Second-generation multi-module organisms (primary).**
       Per world, from `lifesim lineage`: born organisms with two or more
       modules whose parent had two or more **and whose module count does
       not exceed that parent's** - inherited, not a fresh duplication in a
@@ -268,7 +268,8 @@ reported beside it and never rescue it.
       the confirmatory decides whether multi-module organisms reproduce
       like their cohort (the prediction holds), less (the second module
       costs reproduction), or not at all (a gate).*
-- [ ] **C20.2 What a second module costs, measured.** Within the shipped
+      *DECIDED 2026-09-03 (`runs/phase20-lineage-confirmatory-0xa8d0b4c2ab68ba74`, 50 worlds, the shipped world alone): 127 second-generation organisms in 8 worlds, 1.943 per 10,000 births with an upper bound of 2.312 against the SESOI of 0.5 - the equivalence null is rejected and lineages exist; the cohort prediction 1.204 per 10,000 (78.7) is exceeded because lineages compound (seed 20024: 80 multi-module organisms from one founding at tick 54,996). Multi-module organisms reproduce like their cohort (5.5 vs 6.9 percent). Findings: `experiments/results/phase20-lineage-findings.txt`.*
+- [x] **C20.2 What a second module costs, measured.** Within the shipped
       world, the completed lifespan of multi-module organisms against
       their **matched one-module cohort**: born one-module organisms
       whose admission tick lies within 2,000 ticks of a multi-module
@@ -279,7 +280,8 @@ reported beside it and never rescue it.
       more censored, so the matching removes the epoch and the counts
       show the censoring; the arithmetic above predicts a difference near
       zero for five of seven types and the measurement tests it.
-- [ ] **C20.3 What the extra module is.** From the composition
+      *MEASURED 2026-09-03: median gap -23 ticks (range -229..+263, n = 45) between multi-module and matched-cohort lifespans - no systematic cost, as the arithmetic predicted.*
+- [x] **C20.3 What the extra module is.** From the composition
       records: the composition multiset of every multi-module body per
       arm (a count array carries no order, so "the second module" is not
       a fact the record can name), and wherever a child's and a parent's
@@ -288,6 +290,7 @@ reported beside it and never rescue it.
       Descriptive; no expectation is stated because any stated one would
       be a guess about which duplication is viable, which is what the
       census exists to replace.
+      *MEASURED 2026-09-03: 221 of 238 multi-module bodies are a doubled gut, 17 a gut plus a structural module; added types over second-generation bodies digestive 111, structural 17; no body above two modules in any world.*
 - [x] **C20.4 The starting fact and the reproduction test.** The
       pilot's U1 census recorded in the pre-registration before the
       lock, the branch taken and the tree it was read against; on

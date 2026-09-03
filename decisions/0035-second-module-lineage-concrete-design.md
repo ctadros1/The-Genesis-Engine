@@ -192,3 +192,13 @@ paragraph is appended when it is measured.
 - **Two confirmatory shapes** are committed (`-alone` and `-gate`); the
   locked pre-registration names which runs.
 - **Cost (C20.7).** 23 bytes per admission; no tick-path change.
+- **The campaign** (`runs/phase20-lineage-confirmatory-0xa8d0b4c2ab68ba74`):
+  the one-arm shape, chosen at the pilot because the energy gate
+  refused nobody (the two-arm file was removed with the reading, 2b39ac5).
+  127 second-generation organisms in 8 of 50 worlds, 1.943 per 10,000
+  births against the SESOI of 0.5 - lineages exist and compound (one
+  reached 80); multi-module organisms reproduce like their cohort;
+  every body two modules, 221 of 238 a doubled gut. D-134. The decision
+  tree's Branch A was read by its letter and its lever discarded on the
+  counters; the plan records both, which is the tree working as a
+  pre-commitment rather than as a script.
