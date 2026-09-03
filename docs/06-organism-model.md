@@ -110,6 +110,19 @@ second ~1,784 against a trait maturity of 400-1,200 (D-134); what that
 difference is made of - place, order, company - is Phase 21's
 measurement, and the record says the difference is not the start.*
 
+*Measured (2026-09-03, D-135): the difference is the order. The median
+born organism starts in a cell its parents and every older occupant
+have just grazed - no primordial, no monomer, no biomass - and eats
+last in it; born into company of two or more, almost none reaches
+maturity. Visiting co-located organisms youngest-first - a permutation
+of who takes first, nothing granted, run as a probe beside the shipped
+order - lifts the born median life from ~220 to ~2,190 ticks in all 30
+of 30 matched worlds, lowers the materialized median by ~550, and
+erases the associations with ground and company. The shipped order
+stays the shipped order; the record says what it costs the young, and
+that the cost is a fact of an ordered loop over a shared cell, not of
+any rule written for the purpose.*
+
 ## State
 
 | Category | Required State | Boundaries |

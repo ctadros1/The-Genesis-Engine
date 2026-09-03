@@ -37,7 +37,7 @@ and none has started:
 | 18 | Intra-world parallelism - **cross-cutting; after 8, before 13** | `phase-18-intra-world-parallelism.md` |
 | 19 | Chemistry as food (coupling v2) and the unicell ecology - COMPLETE 2026-09-03 (D-133) | `phase-19-chemistry-as-food.md` |
 | 20 | The second module: why no lineage - COMPLETE 2026-09-03 (D-134): lineages exist in 8 of 50 worlds | `phase-20-second-module-lineage.md` |
-| 21 | The born cohort's life - planned 2026-09-03 | `phase-21-born-cohort.md` |
+| 21 | The born cohort's life - COMPLETE 2026-09-03 (D-135): the order in which co-located organisms eat is the term, 30 of 30 | `phase-21-born-cohort.md` |
 
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under

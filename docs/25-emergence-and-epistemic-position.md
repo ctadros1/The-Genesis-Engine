@@ -153,6 +153,35 @@ maturity floor of 400, one in fourteen reproducing - and that is a
 question about the ecology's energy budget for a newborn, not about
 any mechanism this project might add.
 
+*Status after the born cohort (2026-09-03, D-135).* The term that limits
+every lineage - a born organism's ~250-tick life against a materialized
+one's ~1,800 - was taken apart in the order the method requires. A
+newborn is placed beside its parents and, holding the highest entity ID
+in the world, eats after every older occupant of its cell in both
+feeding passes: the youngest eats last, a fact of an ordered loop over
+a shared cell that nobody wrote for the purpose. Measured, the median
+born organism starts in a cell with no food at all, and its life
+tracks the company it is born into more than the ground. Reversing the
+order - youngest first, a permutation of who takes first and nothing
+else, run as a probe beside the shipped order - lifts the born median
+tenfold and erases the associations, and the expectation this document
+had stated (that place carried most of it) was wrong: the order is the
+term, and place was its shadow. Thirty matched seeds confirmed it (`runs/phase21-born-cohort-
+confirmatory-gate-0xca1805044815a9f2`): 30 of 30 pairs clear a
+pre-registered smallest effect of 971 ticks (median +1,969), the
+materialized median falls by ~549, born organisms reaching their own
+maturity go from ~1,600 to ~10,200 per world, and under the probe
+neither ground nor company predicts a born life any more. The honest reading
+does not change the prior about what this project can show; it changes
+what the shipped physics turns out to contain: an age-structured famine
+that no rule authored and that a single permutation removes. The chain's next link is stated
+honestly: which order a shared cell should be eaten in is not a
+question this project can answer from physics alone - both orders are
+equally unauthored - so the record keeps the shipped order and names
+the cost; what a phase may ask is whether the ecology's own dynamics
+ever make the order matter less (a cell that refills faster than a tick
+feeds), which is a question about the field, not about a rule.
+
 ### The corollary: analysis observes, it never instructs
 
 This project already holds this line for similarity clustering

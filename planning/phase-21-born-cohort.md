@@ -174,7 +174,7 @@ Phase 20 complete (D-134); the record-at-admission seam
 **Primary endpoint: C21.1.** Acceptance is conjunctive; C21.2-C21.4
 are reported beside it and never rescue it.
 
-- [ ] **C21.1 What the born cohort's life is made of (primary).**
+- [x] **C21.1 What the born cohort's life is made of (primary).**
       Observational shape: per world, the Spearman rho (milli) between
       a born organism's completed lifespan and the **food** in its birth
       cell (primordial + monomer + biomass; waste, polymer and microbial
@@ -199,18 +199,21 @@ are reported beside it and never rescue it.
       (field-at-birth rho positive and large, occupants rho negative and
       smaller); if the probe runs, the born median rises but stays well
       below the materialized median.
-- [ ] **C21.2 The site contrast.** Born-versus-materialized birth-site
+      *MET 2026-09-03 (`runs/phase21-born-cohort-confirmatory-gate-0xca1805044815a9f2`, O1 vs O2, 30 matched seeds): 30 of 30 pairs above the SESOI of 971 ticks (born median delta median +1,969, range +1,850..+2,243; bar 22); the O1 arm clears both observational bars 30 of 30 (food rho min 224 vs 128; occupants max -281 vs -140); under O2 both associations vanish. Findings: `experiments/results/phase21-born-cohort-findings.txt`.*
+- [x] **C21.2 The site contrast.** Born-versus-materialized birth-site
       field mass per world (medians and their ratio), with the
       occupancy distributions; descriptive.
-- [ ] **C21.3 Maturity and reproduction by site.** The fraction of born
+      *MEASURED 2026-09-03: 29 of 30 shipped-order worlds have a born-site food median of zero against a materialized ~11,800; occupants born 1 vs materialized 0; the same under O2 - what differs is who ate the cell, not the cell.*
+- [x] **C21.3 Maturity and reproduction by site.** The fraction of born
       organisms living to their **own** trait-derived maturity (the
       record carries it) and reproducing, by birth-site food quartile
       and by occupant count; descriptive.
+      *MEASURED 2026-09-03: born organisms reaching their own maturity by occupants 0/1/2/3+ pooled over 30 worlds: shipped 21,005 / 25,176 / 2,314 / 87; youngest-first 54,529 / 220,518 / 26,072 / 1,082; food quartiles collapse in the shipped order (the first two are zero).*
 - [x] **C21.4 The order fact.** The kernel test: the older co-located
       organism takes first in both passes; under the probe order (if
       built) the youngest takes first and the identities are exact.
       *MET 2026-09-03: `tests/phase21_cohort.rs` - an elder (ID 1, aged 30) and a newcomer (ID 2, aged 0) in one cell, both hungry: the elder takes planted substrate first and planted biomass first; reversing the two substrate loops fails the first clause, reversing the two biomass loops the second (mutation-checked).*
-- [ ] **C21.5 Neutrality and determinism.** The record moves no
+- [x] **C21.5 Neutrality and determinism.** The record moves no
       checksum: every pinned fixture's config hash, terrain checksum and
       state checksum unchanged (the schema-14 `--composition` line's
       literal `event_schema_version` moves 12 -> 13 and
@@ -219,6 +222,7 @@ are reported beside it and never rescue it.
       schema-13 logs verify and reconcile; if the probe is built, its
       fixture is pinned and the `Ascending` line is byte-identical to
       schema 15's.
+      *MET 2026-09-03: the record moves no checksum (schema-15 fixture state == the Phase 19 pin; events on and off, one checksum; save round trip); every pinned fixture's config, terrain and state unchanged (verify 13-21 PASS on the probe kernel); the probe replays and hashes as its own experiment (verify-phase21 clause 6); verify-phase20's event-schema literal 12 -> 13 recorded in the script and in D-135.*
 - [x] **C21.6 Cost.** The record's bytes per admission and the spatial
       count's cost per admission, recorded.
       *RECORDED 2026-09-03: 67 bytes per admission (tag, u64 id, u32 cell, u16 occupants, u32 maturity, four i64 substrates, i64 microbial, i64 biomass); the occupant count is one O(population) pass per tick at the top of `lifecycle` and one increment per admission.*

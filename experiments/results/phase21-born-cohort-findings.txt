@@ -89,8 +89,76 @@ difference, by a rule fixed before the pilot), bar 22 of 30.
 
 Confirmatory (C21.1, C21.2, C21.3)
 ----------------------------------
-PENDING - experiments/phase21-born-cohort-confirmatory-gate.campaign,
-30 matched seeds, O1 against O2.
+experiments/phase21-born-cohort-confirmatory-gate.campaign: O1 (the
+shipped intake order) against O2 (youngest-first), 30 matched seeds
+21002..21031, 100,000 ticks, events on; 60 worlds, 0 failed, 519 s at
+6 workers; no world at the entity cap. Archived at
+runs/phase21-born-cohort-confirmatory-gate-0xca1805044815a9f2 with
+cohort.txt and reduction.txt beside the manifest.
+
+C21.1 (primary) MET, 30 of 30. The born cohort's median completed
+  lifespan: O1 median over worlds 222 ticks; O2 2,191. Seed-paired
+  delta median +1,969 (min +1,850, max +2,243), every pair above the
+  SESOI of 971 (bar 22). The materialized median falls from 1,752 to
+  1,190 (delta median -549): what the youngest now take, the eldest no
+  longer get. Born organisms reaching their own maturity per world:
+  O1 median ~1,586, O2 ~10,241; reproducing: ~899 to ~8,825. Births
+  per world fall slightly (13,044 to 11,914) while far more of them
+  live to breed.
+  The O1 arm's observational bars, fixed from the first pilot: worlds
+  with food rho >= 128: 30 of 30 (median 279, min 224); worlds with
+  occupants rho <= -140: 30 of 30 (median -310, max -281); both bars
+  of 22 met. Under O2 both associations vanish: food rho median 1
+  (range -38..46), occupants -3 (-50..35); the within-block partials
+  fall from 127 / -178 to 10 / 13.
+
+C21.2 - the site contrast: in 29 of 30 shipped-order worlds the median
+  born organism starts in a cell with zero food (primordial + monomer +
+  biomass) against a materialized median of ~11,800; waste ~10,300 and
+  microbial ~15,200 milli sit in that cell. The same under O2 (the
+  record reads the cell after the tick's feeding in both arms): what
+  differs between arms is not the ground a newborn is born on but who
+  ate it. Occupants at birth: born median 1, materialized 0, in both
+  arms.
+
+C21.3 - maturity and reproduction by site: pooled over the 30
+  shipped-order worlds, born organisms reaching their own maturity by
+  occupants at birth 0 / 1 / 2 / 3+ are 21,005 / 25,176 / 2,314 / 87;
+  under youngest-first 54,529 / 220,518 / 26,072 / 1,082 - the company
+  a newborn is born into stops deciding whether it grows up once it
+  eats first. Food quartiles collapse in the shipped order (the first
+  two are zero) and the record reports them as such.
+
+Observation, no criterion: the lineage census (lifesim lineage, Phase
+20's instrument) over the same 60 logs, which this campaign was not
+pre-registered to decide. Under the shipped order: 61 multi-module
+organisms in 25 of 30 worlds, 3 multi-module parents, 2 second-
+generation organisms in 1 world (Phase 20 found 8 of 50). Under
+youngest-first: 313 multi-module organisms in 26 of 30 worlds, 214
+multi-module parents in 23 worlds, 244 second-generation organisms in
+16 of 30 worlds (one lineage of 77); compositions 252 gut+gut, 60
+structural+gut, and one gut+neural. The born cohort is the only cohort
+a second module ever appears in, and once it lives long enough to
+breed, the lineages Phase 20 found once per six worlds appear in half
+of them. Recorded here as the next phase's pilot, not as a result: a
+directed contrast on disjoint seeds with its own pre-registration is
+the claim's price (planning/phase-22-*.md).
+
+What the phase found, in one paragraph
+--------------------------------------
+A born organism's short life is made of the order it eats in. Placed
+beside its parents and holding the highest ID in the world, it feeds
+after every older occupant of its cell in both passes, into a cell they
+have just emptied; the ground and the company that seemed to explain
+its life were the shadow of that order. Youngest-first - a permutation
+of who takes first and nothing else - gives the born cohort a tenfold
+life and takes a third from the materialized one, in 30 of 30 matched
+worlds. Nothing in the shipped physics wrote this; it is what an
+ordered loop over a shared cell does, and it was the rate-limiting term
+of every multicellular lineage Phase 20 found. The shipped order stays
+the shipped order - both orders are equally unauthored, and choosing
+between them is not a question physics answers - but the record now
+carries what the young pay for it, in ticks.
 
 Decided outside the campaign
 ----------------------------

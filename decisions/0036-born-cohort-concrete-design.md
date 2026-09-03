@@ -235,3 +235,14 @@ paragraph is appended when it is measured.
   extended; four codec mutations killed (skip the byte, read
   unconditionally, ignore the order in the refusal, drop the format
   guard). The field-coverage sweep passes with the field carried.
+- **The campaign** (`runs/phase21-born-cohort-confirmatory-gate-
+  0xca1805044815a9f2`, O1 against O2 on 30 matched seeds, 60 worlds, 0
+  failed, 519 s): C21.1 met 30 of 30 pairs above the SESOI of 971 ticks
+  (born median delta median +1,969, range +1,850 to +2,243; bar 22); the
+  materialized median -549; born organisms reaching their own maturity
+  ~1,600 -> ~10,200 per world; both associations vanish under O2 while
+  the O1 arm reproduces the pilot's (food 279, occupants -310). D-135.
+  The design's expectation was wrong in the direction the record names
+  and right in nothing it would have been convenient to be right about;
+  the pre-registration's rules, fixed before each pilot, carried the
+  decision anyway.
