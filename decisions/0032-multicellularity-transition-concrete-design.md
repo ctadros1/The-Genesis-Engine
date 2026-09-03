@@ -71,10 +71,10 @@ admitted.
 | `max_organisms_per_event` | organisms one `(cell, class)` trigger may produce | >= 1 |
 | `max_materializations_per_tick` | organisms admitted per world tick across all triggers; the rest defer | >= 1 |
 
-Defaults (used only when enabled): interval 100, floor 20,000 milli
-(twenty seedings; the Phase 15 campaign's standing densities are ~53x
-seeded, so the floor is reachable by growth and unreachable by a lone
-firing), persistence 5, `aggregation_step_min` 1 (the top step of the
+Defaults (used only when enabled): interval 100, floor 4,000 milli (one
+organism's energy - the minimal physical condition; see the as-built
+amendment for the pilot measurement that moved it from 20,000),
+persistence 5, `aggregation_step_min` 1 (the top step of the
 default two-position axis - the plan's "aggregation-tendency value above
 a threshold"), energy 4,000 milli (`offspring_energy_milli`'s value, so a
 materialized organism starts where a born one does), 4 organisms per
@@ -282,6 +282,17 @@ owns it here rather than silently:
   loses about a third to death and mutation flow before the trigger
   reads it in the same tick. The surgical tests freeze the field
   (death, mutation and growth rates zero); the dynamic tests do not.
+- **The floor, re-calibrated by the pilot.** This record first set
+  `density_floor_milli` to 20,000, reading D-128's "~53x seeded" as a
+  per-slot density. It is a total: the Stage B pilot (four seeds, 60,000
+  ticks, shipped rates) measured ~9,400 milli per slot on average at the
+  horizon, growing linearly, and no slot in any arm reached 20,000 - zero
+  materializations in every world. The default is now 4,000, one
+  organism's energy, which is the minimal physical condition the trigger
+  can state (a slot converts when it holds at least what one organism
+  costs, sustained over the window). Recorded before the confirmatory's
+  pre-registration was locked, from the pilot, which is what Stage B is
+  for.
 - **Field series.** `field-series 2` appends five columns, not four:
   `materialized`, `materialized_milli`, `max_modules`, `multi_module`,
   `births`.

@@ -1,17 +1,18 @@
-# Phase 16 C16.1 ledger soak: one scratch world, 10^6 ticks, both
-# identities enforced by World::check_invariants every 5,000 ticks (a
-# violation aborts the run loudly) - the field identity with the
-# materialized term subtracted and the organism energy identity with it
-# added. The full stack is on - chemistry, microbial, abiogenesis, both
-# coupling fractions, schema 2, morphology and the transition at its
-# defaults - so the conversion runs many times and the identities are
-# soaked under materialization, feeding, excretion, death and remains
-# (C16.1's "over a 10^6-tick run containing many transitions"). The field
-# series records the running totals every 5,000 ticks for the record.
-campaign phase16-c161-ledger-soak
-ticks 1000000
-workers 1
-seeds 17201
+# Phase 16 confirmatory campaign (C16.5, C16.6). Pre-registered in
+# experiments/phase16-transition-preregistration.md BEFORE this file ran;
+# the observables, decision rules and expectations are fixed there, from
+# the Stage B pilot on disjoint seeds. Seeds 17001..17030 (30, disjoint
+# from every prior decision range; every one probed generable at 64x64
+# on 2026-09-02). The four arms differ from N in exactly their declared
+# variables; production TOTAL is identical by construction.
+#
+# EXPECTED OUTCOME, STATED IN ADVANCE: materialization in 28+ of 30 under
+# N, S2 and S4 (first at 20-30k ticks), none under T0; the influx rate is
+# the per-tick cap; births rare; C16.6 null (0 of 30 above one module).
+campaign phase16-transition-confirmatory
+ticks 60000
+workers 8
+seeds 17001..17030
 check-interval 5000
 base preset phase2
 base cells_x 64
@@ -49,7 +50,18 @@ base transition.aggregation_step_min 1
 base transition.organism_energy_milli 4000
 base transition.max_organisms_per_event 4
 base transition.max_materializations_per_tick 64
-condition soak
+condition T0
+condition N
+condition S2
+condition S4
+set T0 transition.enabled false
+set S2 chemistry.scaffold_patch_radius_cells 3
+set S2 chemistry.scaffold_patch_contrast_q16 131072
+set S4 chemistry.scaffold_patch_radius_cells 3
+set S4 chemistry.scaffold_patch_contrast_q16 262144
+vary transition.enabled
+vary chemistry.scaffold_patch_radius_cells
+vary chemistry.scaffold_patch_contrast_q16
 output events off
 output snapshots on
-output field 5000
+output field 500

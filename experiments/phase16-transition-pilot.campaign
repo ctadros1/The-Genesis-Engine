@@ -24,7 +24,7 @@
 campaign phase16-transition-pilot
 ticks 60000
 workers 8
-seeds 17901..17904
+seeds 17901 17902 17903 17905
 check-interval 5000
 base preset phase2
 base cells_x 64
@@ -56,7 +56,7 @@ base chemistry.excretion_fraction_q16 32768
 base chemistry.remains_fraction_q16 32768
 base transition.enabled true
 base transition.check_interval_ticks 100
-base transition.density_floor_milli 20000
+base transition.density_floor_milli 4000
 base transition.persistence_checks 5
 base transition.aggregation_step_min 1
 base transition.organism_energy_milli 4000

@@ -1,0 +1,71 @@
+# Phase 17 Stage B pilot for the era detector (ADR-0033): four NULL worlds
+# and four FULL worlds on seeds disjoint from the validation campaign's
+# (18031..18034 here; the campaign draws 18001..18030), events on. The
+# pilot calibrates the window, the burn-in and the penalty that the
+# pre-registration then locks; nothing about the detector's definitions
+# is read from it (Stage B, ADR-0022). Base and arms are byte-for-byte
+# the validation campaign's.
+campaign phase17-era-pilot
+ticks 60000
+workers 8
+seeds 18031..18034
+check-interval 5000
+base preset phase2
+base cells_x 64
+base cells_y 64
+base initial_organisms 100
+base max_entities 10000
+base cell_capacity_milli 240000
+base genome2.enabled true
+base physiology.enabled true
+base physiology.extrinsic_hazard_q16_per_s 13
+base genome2.mutation.point_q16 65535
+base genome2.mutation.point_delta_q16 3277
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.mutation.max_run 3
+base genome2.mutation.binding_q16 16384
+base genome2.mutation.plasticity_enabled true
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base plasticity.enabled true
+base plasticity.max_plastic_edges 32
+base plasticity.plastic_edge_cost_milli_per_s 2
+base plasticity.lamarckian_fraction_q16 0
+base plasticity.live_rule_zero true
+condition NULL
+condition FULL
+set FULL contest.enabled true
+set FULL worldmod.enabled true
+set FULL worldmod.patch_enabled true
+set FULL worldmod.relocate_interval_ticks 2000
+set FULL worldmod.patch_radius_cells 16
+set FULL worldmod.patch_capacity_scale_q16 262144
+set FULL worldmod.max_capacity_overrides 8192
+set FULL worldmod.max_material_overrides 8192
+set FULL artifact.enabled true
+set FULL social.enabled true
+set FULL social.perception_enabled true
+set FULL social.signal_enabled true
+set FULL social.observational_enabled true
+vary contest.enabled
+vary worldmod.enabled
+vary worldmod.patch_enabled
+vary worldmod.relocate_interval_ticks
+vary worldmod.patch_radius_cells
+vary worldmod.patch_capacity_scale_q16
+vary worldmod.max_capacity_overrides
+vary worldmod.max_material_overrides
+vary artifact.enabled
+vary social.enabled
+vary social.perception_enabled
+vary social.signal_enabled
+vary social.observational_enabled
+output events on
+output snapshots off
+output spatial 0

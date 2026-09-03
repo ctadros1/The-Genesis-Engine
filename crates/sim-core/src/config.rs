@@ -1013,10 +1013,14 @@ impl TransitionConfig {
         Self {
             enabled: false,
             check_interval_ticks: 100,
-            // Twenty seedings: reachable by growth (the Phase 15 campaign's
-            // standing densities are ~53x seeded), unreachable by a lone
-            // abiogenesis firing.
-            density_floor_milli: 20_000,
+            // One organism's energy: the minimal physical condition - a
+            // slot converts when it holds at least what one organism costs,
+            // sustained over the persistence window. The first default
+            // (20,000) misread D-128's ~53x sustainment ratio as a per-slot
+            // figure; it is a total, and the Phase 16 pilot measured ~9,400
+            // milli per slot on average at 60,000 ticks under the shipped
+            // rates, so 20,000 was unreachable inside the horizon.
+            density_floor_milli: 4_000,
             persistence_checks: 5,
             // The top step of the default two-position aggregation axis.
             aggregation_step_min: 1,

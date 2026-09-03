@@ -1,13 +1,17 @@
 # Phase 16 transition pre-registration (C16.5, C16.6)
 
-**STATUS: DRAFT, NOT LOCKED.** Written before the Stage B pilot
-(`experiments/phase16-transition-pilot.campaign`, seeds 17901..17904,
-disjoint from the confirmatory's). The pilot fills in the marked
-`[PILOT]` facts; the record is then LOCKED and committed before any
-confirmatory world runs (`experiments/phase16-transition-confirmatory.campaign`).
-Nothing the pilot shows changes an observable's definition - it can only
-change the horizon, a cap, or an expectation, and each such change is
-recorded here with the pilot number that motivated it.
+**LOCKED 2026-09-02, before any confirmatory world ran.** Committed ahead
+of `experiments/phase16-transition-confirmatory.campaign` per the
+methodological law: the observables, decision rules and expectations
+below are fixed here; anything the campaign then shows is reported
+against them, never fitted to them. The reduction script
+(`experiments/results/phase16-transition-reduction.py`) is committed
+alongside, also before the campaign. The Stage B pilot that calibrated
+this record (`experiments/phase16-transition-pilot.campaign`, seeds
+17901, 17902, 17903, 17905 - 17904 generates no land at 64x64 - four
+conditions, 16 worlds, 60,000 ticks) is archived under
+`runs/phase16-transition-pilot-0xd113b9f4494ccde7`; its facts are quoted
+where they set a value.
 
 ## Question
 
@@ -23,16 +27,18 @@ difference between conditions (ADR-0018), and the interpretable
 difference here is **T0 versus N**: a transition-disabled scratch world
 holds zero organisms ever, by construction, so materialization under N
 is what the transition adds. The scaffold arms (S2, S4) place the same
-production into patches, and D-128's ceiling makes the a-priori
-expectation flat.
+production into patches; D-128's ceiling and the pilot make the
+a-priori expectation for the scaffold contrast flat.
 
 ## World and base configuration
 
 64x64 cells, phase-2 preset, `origin.mode = scratch` with zero founders,
 60,000 ticks, 30 seeds per condition (17001..17030, disjoint from every
-prior decision range; any seed the preflight refuses is replaced by the
-next generable value and the amendment recorded here before any world
-runs, as Phase 15 did), the same seeds in every condition.
+prior decision range and from the pilot's; the generability probe of
+2026-09-02 found every one of them generable at 64x64, so no amendment
+is expected - should the preflight refuse one anyway, it is replaced by
+the next generable value and the amendment recorded here before any
+world runs), the same seeds in every condition.
 
 The stack: schema 2 with the Phase 10 morphology campaign's caps and
 mutation rates (duplication 6,554, deletion 655, insertion and
@@ -42,11 +48,21 @@ Phase 15 field regime at its shipped rates (production 2 milli per
 cell-step, `mutation_q16` 4,096 above its truncation floor), coupling v1
 live in both directions (excretion and remains at 0.5) so the whole
 cycle runs, and the transition at its defaults: check interval 100,
-density floor 20,000 milli, persistence 5 checks, aggregation step 1
+density floor 4,000 milli, persistence 5 checks, aggregation step 1
 (the top of the default axis), 4,000 milli per organism, 4 organisms
 per event, 64 per tick. The pairing threshold stays at its shipped
 7,000 (a materialized organism starts at 4,000 and must eat up to it;
 the unicell holds 12,000).
+
+*The floor, and why it is 4,000.* ADR-0032 first set the default floor
+at 20,000 milli, reading D-128's "~53x seeded" sustainment ratio as a
+per-slot density. It is a total. The first pilot run (same seeds, floor
+20,000) materialized nothing in any arm; the per-slot average density
+at the horizon is ~9,400 milli, growing linearly at ~5,000 per 10,000
+ticks. The floor is now one organism's energy - the minimal physical
+condition the trigger can state - and every campaign file and the
+default carry 4,000. Declared here, from the pilot, before the
+confirmatory; not discovered after.
 
 ## Conditions
 
@@ -87,21 +103,30 @@ births, and the medians of the rest. The record is the four-point table
 
 ## Decision rules, stated in advance
 
-- **C16.5**: N is stated before the campaign as `[PILOT] N of 30` worlds
-  materializing under the best scaffold condition; the expected result
-  under T0 is 0 of 30 by construction, and that comparison is the
-  finding. Given D-128 (persistence at the ceiling in every Phase 15
-  condition including neutral), the a-priori expectation is that N also
-  materializes in nearly every world, so the S-versus-N contrast is
-  expected flat and is reported as a curve without a bar.
-- **C16.6**: **expected null, stated in advance.** The count of worlds
-  in which any lineage exceeds one module is reported per condition with
-  no bar; the a-priori expectation is 0 of 30 in every condition, for two
-  independent reasons the pilot will separate: a unicell may not reach
-  maturity and reproduce at all in this ecology (no births - Phase 9's
-  D-073 birth-limit shape), and if it does, structural evolution at
-  these rates does not reach a population median (D-087). A nonzero
-  count is reported as a measured reachability with the scaffold named.
+- **C16.5**: the stated N is **28 of 30** worlds materializing under the
+  best scaffold condition, and the same 28 of 30 is stated for N itself:
+  the pilot materialized in 4 of 4 worlds under N, S2 and S4 alike
+  (first materialization at ticks 24,500 / 23,500 / 22,500, medians),
+  and the density that drives the trigger grows deterministically with
+  production, so a world that fails to materialize would be a seed whose
+  land or field differs qualitatively. T0's expected result is 0 of 30
+  by construction, and T0-versus-N is the finding. The S-versus-N
+  contrast is reported as a curve with no bar; a-priori flat.
+- **C16.6**: **expected null, stated in advance: 0 of 30 in every
+  condition** (the pilot: 0 of 4 in every arm, peak `max_modules` 1
+  everywhere). The pilot also says which of the two reasons applies:
+  births happen but rarely - 2 of 4 worlds per arm, medians 3.5 (N),
+  50.5 (S2), 62.5 (S4) births per world against ~22,700 materialized -
+  so structural evolution has almost no material to act on within the
+  horizon (Phase 9's D-073 birth-limit shape). A nonzero count is
+  reported as a measured reachability with the scaffold named; the
+  birth counts are reported beside it either way.
+- **The influx rate is the cap.** In every pilot world the
+  `materialized` total rises by exactly 640 per 1,000 ticks after onset
+  (64 per check, 10 checks) - the per-tick cap binds, so the standing
+  population (~140-170) is the equilibrium of a configured influx
+  against starvation, not a property of the field. Stated so it is not
+  read as a finding about density.
 
 No threshold is weakened after the data; a different bar is a different
 experiment.
@@ -123,11 +148,14 @@ experiment.
 
 ## Expected outcomes, recorded in advance
 
-`[PILOT]` - to be completed from the pilot's four seeds per condition:
-first-materialization tick under N, sustained population, whether births
-occur, whether the per-tick cap or `max_entities` deferred anything, and
-the module-count distribution. The pilot cannot change an observable's
-definition.
+Materialization in 30 (or 29) of 30 under N, S2 and S4, none under T0;
+first materialization between ticks 20,000 and 30,000; standing
+populations of order 100-200 at the horizon, held by the influx cap
+against starvation; births in a minority of worlds and in the tens at
+most; no lineage above one module in any world. The phase's own
+a-priori text ("expected to return null" on C16.6) holds; C16.5's
+"scratch runs end to end" is expected to be met, and its interpretation
+rests on T0.
 
 ## Out of scope here
 
