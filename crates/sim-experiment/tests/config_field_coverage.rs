@@ -42,9 +42,13 @@ fn perturbation(current: FieldValue) -> String {
         FieldValue::U64(value) => value.saturating_add(1).to_string(),
         FieldValue::I32(value) => value.saturating_add(1).to_string(),
         FieldValue::I64(value) => value.saturating_add(1).to_string(),
-        // The only enumerated field today. Named explicitly rather than
-        // skipped, so a second one is a compile-visible decision.
+        // The enumerated fields, each named explicitly rather than skipped,
+        // so a new one is a compile-visible decision: the origin mode's
+        // three values and, since Phase 21 (ADR-0036), the intake order's
+        // two.
         FieldValue::Choice("random") => "seeded".to_owned(),
+        FieldValue::Choice("ascending") => "descending".to_owned(),
+        FieldValue::Choice("descending") => "ascending".to_owned(),
         FieldValue::Choice(_) => "random".to_owned(),
     }
 }

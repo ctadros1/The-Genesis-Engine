@@ -75,8 +75,7 @@ pub use config::{
     MAX_PATCH_RADIUS_CELLS, MorphologyConfig, OriginConfig, PHASE2_BEHAVIOR_POLICY_VERSION,
     ChemistryConfig, Phase2Config, PhysiologyConfig, PlasticityConfig, ProbeConfig, SimConfig,
     SocialConfig, TransitionConfig,
-    WorldModConfig, WorldgenVersion,
-};
+    WorldModConfig, WorldgenVersion, IntakeOrder};
 pub use contest::{
     CONTEST_POLICY_VERSION, Carcass, ContestState, PAIR_KEY_POLICY_VERSION, pair_key,
 };

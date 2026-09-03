@@ -7,7 +7,7 @@
 //! remainder; then the same with biomass. A statement about the shipped
 //! physics, pinned so the phase reasons from what runs.
 
-use sim_core::{OriginMode, SimConfig, World, class_count, class_parameters};
+use sim_core::{IntakeOrder, OriginMode, SimConfig, World, class_count, class_parameters};
 
 const SEED: u64 = 0x0f21_5eed_0f21_5eed;
 const ENERGY: i64 = 4_000;
@@ -101,7 +101,13 @@ fn plant_biomass(world: World, cell: usize, amount: i64) -> World {
 /// An elder (ID 1, aged thirty ticks) and a newcomer (ID 2, aged zero) in
 /// one cell, the cell's biomass emptied, both hungry.
 fn elder_and_newcomer(seed: u64) -> (World, usize) {
-    let config = scratch_config(seed);
+    elder_and_newcomer_under(seed, IntakeOrder::Ascending)
+}
+
+fn elder_and_newcomer_under(seed: u64, order: IntakeOrder) -> (World, usize) {
+    let mut config = scratch_config(seed);
+    config.physiology.intake_order = order;
+    config.validate().expect("validates");
     let world = World::new(config).expect("world");
     let cell = first_land(&world);
     let mut world = arm_one(world, cell, &config);
@@ -155,4 +161,45 @@ fn the_elder_takes_the_biomass_first_and_the_newcomer_gets_the_remainder() {
     let d2 = world.organism_detail(2).unwrap().energy_milli - e2;
     assert!(d1 > d2, "the elder gains more from the shared biomass: elder {d1}, newcomer {d2}");
     world.check_invariants().expect("identities");
+}
+
+#[test]
+fn under_the_probe_order_the_newcomer_takes_first_in_both_passes_and_the_identities_hold() {
+    // ADR-0036's probe: `Descending` visits organisms youngest-first, so
+    // the same planted cell now feeds the newcomer before the elder, in
+    // the substrate pass and in the biomass pass alike; the ledger closes
+    // exactly either way.
+    let (world, cell) = elder_and_newcomer_under(SEED ^ 0x2, IntakeOrder::Descending);
+    let e1 = world.organism_detail(1).unwrap().energy_milli;
+    let e2 = world.organism_detail(2).unwrap().energy_milli;
+    let mut world = plant_substrate(world, cell, 250);
+    world.step();
+    let d1 = world.organism_detail(1).unwrap().energy_milli - e1;
+    let d2 = world.organism_detail(2).unwrap().energy_milli - e2;
+    assert!(d2 > d1 + 20, "youngest first: newcomer {d2}, elder {d1}");
+    world.check_invariants().expect("identities (substrate, descending)");
+
+    let (world, cell) = elder_and_newcomer_under(SEED ^ 0x3, IntakeOrder::Descending);
+    let e1 = world.organism_detail(1).unwrap().energy_milli;
+    let e2 = world.organism_detail(2).unwrap().energy_milli;
+    let mut world = plant_biomass(world, cell, 120);
+    world.step();
+    let d1 = world.organism_detail(1).unwrap().energy_milli - e1;
+    let d2 = world.organism_detail(2).unwrap().energy_milli - e2;
+    assert!(d2 > d1, "youngest first: newcomer {d2}, elder {d1}");
+    world.check_invariants().expect("identities (biomass, descending)");
+}
+
+#[test]
+fn the_probe_order_is_hashed_only_when_it_is_the_probe() {
+    let ascending = scratch_config(SEED ^ 0x4);
+    let mut descending = ascending;
+    descending.physiology.intake_order = IntakeOrder::Descending;
+    descending.validate().expect("validates");
+    let a = World::new(ascending).expect("world");
+    let d = World::new(descending).expect("world");
+    assert_ne!(a.config_hash(), d.config_hash(), "the probe must be a different experiment");
+    let mut shipped = scratch_config(SEED ^ 0x4);
+    shipped.physiology.intake_order = IntakeOrder::Ascending;
+    assert_eq!(World::new(shipped).expect("world").config_hash(), a.config_hash());
 }

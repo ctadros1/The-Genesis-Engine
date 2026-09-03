@@ -1,0 +1,123 @@
+Phase 21 findings: the born cohort's life
+=========================================
+Recorded 2026-09-03. ADR-0036; pre-registration
+experiments/phase21-born-cohort-preregistration.md LOCKED before any
+confirmatory world ran. Reduction:
+experiments/results/phase21-born-cohort-reduction.py (counts, decides
+nothing). Runs archived under runs/phase21-born-cohort-pilot-
+0xa7a9fd0e26445430 (4 worlds, the shipped world), runs/phase21-born-
+cohort-pilot-gate-0xdcc22be2abd31f7e (8 worlds, both orders) and
+runs/phase21-born-cohort-confirmatory-gate-* (60 worlds; see the
+confirmatory section).
+
+The question
+------------
+Phase 20 (D-134) ended with the rate-limiting term of every lineage: a
+born organism lives a median ~268 ticks against a materialized one's
+~1,784 with a comparable start, so one born organism in fourteen
+reproduces before it starves. Why does a born organism live a sixth as
+long?
+
+Two facts of the tick, settled by tests before any campaign
+-----------------------------------------------------------
+1. Where it starts. A child is placed within 2 m of its parents'
+   midpoint in 4 m cells - the cell its parents are eating in, or the
+   one beside it.
+2. When it eats. Both feeding passes visit organisms in entity-ID order
+   and a cell's biomass and substrate are taken in that order, so a
+   newborn - the highest ID in the world - eats after every older
+   occupant of its cell. The youngest eats last. Pinned by
+   crates/sim-core/tests/phase21_cohort.rs: an elder (ID 1, aged 30)
+   and a newcomer (ID 2, aged 0) in one cell, both hungry; the elder
+   takes planted substrate first and planted biomass first; reversing
+   either pair of feeding loops fails its clause. Nothing was written to
+   make it so; it is what an ordered loop over a shared cell does.
+
+The instrument
+--------------
+BirthSite (event tag 31, schema 13, 67 bytes): at every admission -
+births and materializations alike - the cell, the organisms already in
+it (every one ahead of the newcomer in the order), the organism's own
+trait-derived maturity, and the cell's four substrates, microbial
+density and biomass as the newcomer finds them. The census (lifesim
+cohort, lifesim-cohort-index-v1) reads it per cohort: completed
+lifespans, food at birth (primordial + monomer + biomass; waste,
+polymer and microbial density apart), occupants, block-stratified rank
+correlations (20,000-tick admission blocks, so the run's own trend
+from empty ground to a grazed crowd cannot pose as place or order),
+maturity and reproduction by food quartile and occupancy. The record
+moves no checksum (verify-phase21, six clauses).
+
+The first pilot: the shipped world, four seeds
+----------------------------------------------
+The median born organism starts in a cell with ZERO food (waste ~10,500
+and microbial ~15,500 milli, no primordial, monomer or biomass) against
+~12,650 for a materialized one; it has one occupant beside it. Its
+completed lifespan correlates with occupants at birth (median block rho
+-306, range -344..-281) more strongly than with food (274, range
+256..297), and the within-block partials sharpen it (occupants -219
+after food; food 135 after occupants). With two or more occupants at
+birth almost no born organism reaches maturity (per world ~893 / 1,152
+/ 136 / 3 at 0 / 1 / 2 / 3+). The licence rule written before the
+pilot - occupants at least as strong as food - was met in every world,
+so the probe was built: lifesim-intake-order-v2, both feeding passes
+visiting organisms in descending index order (youngest first, since
+age rank and ID rank coincide here), a permutation of who takes first
+and nothing else, hashed only when selected, ALIF format 16.
+
+The second pilot: the same seeds under both orders
+--------------------------------------------------
+| seed | O1 born median | O2 born median | delta | O1 mat | O2 mat |
+|------|----------------|----------------|-------|--------|--------|
+| 21901 | 244 | 2,171 | +1,927 | 1,762 | 1,205 |
+| 21902 | 192 | 2,150 | +1,958 | 1,709 | 1,176 |
+| 21903 | 191 | 2,037 | +1,846 | 1,959 | 1,227 |
+| 21904 | 228 | 2,597 | +2,369 | 1,702 | 1,170 |
+
+Youngest-first lifts the born cohort's median life tenfold, above the
+materialized cohort's, and lowers the materialized median by ~545: what
+the youngest now take, the eldest no longer get. Born organisms
+reaching their own maturity go from ~1,600 to ~9,600 per world, and
+reproducing from ~880 to ~8,250. Both associations vanish under O2
+(food rho median 13; occupants 14.5). The plan's stated expectation -
+that place carries most of it - was wrong: the order is the term, and
+place and company were its shadow, because the cell a newborn is born
+into is grazed, in that same tick, by the organisms that eat before it.
+The pre-registration records the revision with its reason and is
+locked on the probe shape: SESOI 971 ticks (half the median pair
+difference, by a rule fixed before the pilot), bar 22 of 30.
+
+Confirmatory (C21.1, C21.2, C21.3)
+----------------------------------
+PENDING - experiments/phase21-born-cohort-confirmatory-gate.campaign,
+30 matched seeds, O1 against O2.
+
+Decided outside the campaign
+----------------------------
+C21.4 MET: the order fact, both passes, mutation-checked; under the
+  probe the newcomer takes first in both passes with the identities
+  exact.
+C21.5 MET: one record per admission equal to the world's arrays; no
+  checksum moves (the schema-15 fixture's state equals the Phase 19
+  pin; events on and off, one checksum); a mid-run save round trip
+  restores the same next records; verify-phase21 six clauses; the
+  probe replays and hashes as its own experiment; the shipped order's
+  fixtures byte-identical.
+C21.6 RECORDED: 67 bytes per admission; one O(population) pass per tick
+  for the occupant count; the probe adds no cost (an index map).
+
+Traps met and named
+-------------------
+- An expectation stated in advance can be wrong; the record says so
+  and why, and the SESOI came from a rule fixed before the data, not
+  from the surprise.
+- "Contemporaries", "food" and "the second module's type" each needed a
+  definition the data could compute; the adversarial review supplied
+  them before the build.
+- The occupant count must be built at the start of lifecycle from the
+  tick's positions; the spatial buckets are pre-movement.
+- A materialized organism's record shows the density it condensed
+  from, its own debit landing after the record; a test that demanded
+  equality was wrong, not the record.
+- A one-pass check over a tick's events classified a record before its
+  organism's admission record arrived; two passes.

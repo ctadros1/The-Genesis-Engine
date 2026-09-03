@@ -14,6 +14,10 @@
 #   4. the Phase 16 fixture is untouched;
 #   5. a schema-13 event log written by a short campaign verifies and the
 #      cohort census reads it - one world line with a rho field present.
+#   6. the youngest-first probe (`--youngest-first`, ADR-0036's
+#      `lifesim-intake-order-v2`) replays across processes, pinned; its
+#      config hash differs from the shipped order's (the probe is hashed)
+#      and the shipped order's line is byte-identical with the flag absent.
 set -eu
 
 phase21_repo=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
@@ -32,6 +36,9 @@ phase21_config=0x7cfe66d39cda2e2b
 phase21_terrain=0xfacf6d2db889019f
 phase21_state=0x2137b2286076cd63
 phase19_state=0x2137b2286076cd63
+# The youngest-first probe's pins (2026-09-03).
+phase21_probe_config=0xf3c1d35fa9b7c7da
+phase21_probe_state=0x3439df67a8cc1e88
 phase16_config=0xfdd1a4b549e5927b
 phase16_state=0xe523f07aeebb8596
 
@@ -90,3 +97,14 @@ grep -q '^cohort-report 1 ' "$phase21_tmp/cohort.txt" || { cat "$phase21_tmp/coh
 [ "$(grep -c '^world ' "$phase21_tmp/cohort.txt")" -eq 1 ] || { cat "$phase21_tmp/cohort.txt" >&2; exit 1; }
 grep -q 'rho_food_milli=' "$phase21_tmp/cohort.txt" || { cat "$phase21_tmp/cohort.txt" >&2; exit 1; }
 echo "phase21 a schema-13 log verifies and the cohort census reads it: PASS"
+
+# --- clause 6: the youngest-first probe --------------------------------------
+target/release/lifesim fixture --ticks "$phase21_ticks" --youngest-first --seed "$phase21_seed" > "$phase21_tmp/probe1.json"
+target/release/lifesim fixture --ticks "$phase21_ticks" --youngest-first --seed "$phase21_seed" > "$phase21_tmp/probe2.json"
+cmp "$phase21_tmp/probe1.json" "$phase21_tmp/probe2.json"
+for expected in '"intake_order":"descending"' "\"config_hash\":\"$phase21_probe_config\"" "\"state_checksum\":\"$phase21_probe_state\""; do
+  grep -q -- "$expected" "$phase21_tmp/probe1.json" || { echo "phase21: probe expected $expected" >&2; cat "$phase21_tmp/probe1.json" >&2; exit 1; }
+done
+[ "$phase21_probe_config" != "$phase21_config" ] || { echo "phase21: the probe hashes like the shipped order" >&2; exit 1; }
+grep -q -- '"intake_order":"ascending"' "$phase21_tmp/first.json" || { echo "phase21: the shipped line does not say ascending" >&2; exit 1; }
+echo "phase21 the youngest-first probe replays and is its own experiment: PASS"

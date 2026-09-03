@@ -3566,7 +3566,9 @@ impl World {
         let assimilation = i64::from(self.config.assimilation_q16);
         let consumption = self.chemistry.is_some() && self.config.chemistry.consumption_fraction_q16 > 0;
         let mut eaten: Vec<i64> = if consumption { vec![0; population] } else { Vec::new() };
-        for index in 0..population {
+        for step in 0..population {
+            // Phase 21 (ADR-0036): the intake order; `Ascending` is the identity.
+            let index = self.config.physiology.intake_order.index(step, population);
             if self.energy_milli[index] <= 0 {
                 continue;
             }
@@ -3602,7 +3604,9 @@ impl World {
         if consumption {
             let fraction = i64::from(self.config.chemistry.consumption_fraction_q16);
             let yield_q16 = i64::from(self.config.chemistry.consumption_yield_q16);
-            for index in 0..population {
+            for step in 0..population {
+                // Phase 21 (ADR-0036): the intake order; `Ascending` is the identity.
+                let index = self.config.physiology.intake_order.index(step, population);
                 if self.energy_milli[index] <= 0 {
                     continue;
                 }
@@ -4291,7 +4295,9 @@ impl World {
         let assimilation = i64::from(self.config.assimilation_q16);
         let consumption = self.chemistry.is_some() && self.config.chemistry.consumption_fraction_q16 > 0;
         let mut eaten: Vec<i64> = if consumption { vec![0; population] } else { Vec::new() };
-        for index in 0..population {
+        for step in 0..population {
+            // Phase 21 (ADR-0036): the intake order; `Ascending` is the identity.
+            let index = self.config.physiology.intake_order.index(step, population);
             if !p2.intent_eat[index] || self.energy_milli[index] <= 0 {
                 continue;
             }
@@ -4328,7 +4334,9 @@ impl World {
         if consumption {
             let fraction = i64::from(self.config.chemistry.consumption_fraction_q16);
             let yield_q16 = i64::from(self.config.chemistry.consumption_yield_q16);
-            for index in 0..population {
+            for step in 0..population {
+                // Phase 21 (ADR-0036): the intake order; `Ascending` is the identity.
+                let index = self.config.physiology.intake_order.index(step, population);
                 if !p2.intent_eat[index] || self.energy_milli[index] <= 0 {
                     continue;
                 }

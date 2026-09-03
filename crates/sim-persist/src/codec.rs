@@ -77,7 +77,7 @@ pub const SNAPSHOT_MAGIC: &[u8; 4] = b"ALIF";
 /// acceptance requirement is byte identity against what the format-4 reader
 /// produces, and a comparison you have deleted one side of is not a
 /// comparison.
-pub const FORMAT_VERSION: u16 = FORMAT_VERSION_15;
+pub const FORMAT_VERSION: u16 = FORMAT_VERSION_16;
 /// Format 8 appends the Phase 13 social config block (ADR-0029 section 6).
 ///
 /// The fourth config-block bump, block-shaped like format 7's rather than
@@ -126,6 +126,10 @@ pub const FORMAT_VERSION_14: u16 = 14;
 /// the config body and one trailing i128 to `SECTION_CHEMISTRY`'s body.
 /// Guarded by name wherever it gates, permanently (D-108).
 pub const FORMAT_VERSION_15: u16 = 15;
+/// Format 16 (Phase 21, ADR-0036): appends the physiology intake-order
+/// byte to the config body. Byte-shaped like formats 5, 6, and 13 - no new
+/// section. Guarded by name wherever it gates, permanently (D-108).
+pub const FORMAT_VERSION_16: u16 = 16;
 /// Format 7 appends the Phase 12 artifact config block and
 /// `genome2.mutation.binding_q16` to the config block, adds one counter word
 /// to the schema-2 section, and introduces `SECTION_OBJECTS` (ADR-0028
@@ -955,6 +959,10 @@ fn encode_config(config: &sim_core::SimConfig, format: u16) -> Vec<u8> {
     if format >= FORMAT_VERSION_15 {
         encode_consumption_config(&mut writer, config);
     }
+    // Format 16's intake-order byte (ADR-0036), on the same terms again.
+    if format >= FORMAT_VERSION_16 {
+        encode_intake_order_config(&mut writer, config);
+    }
     writer.0
 }
 
@@ -1309,6 +1317,26 @@ fn decode_consumption_config(
     Ok(())
 }
 
+/// The format-16 intake-order byte (ADR-0036), swept by
+/// `config_field_coverage.rs` like every field before it.
+fn encode_intake_order_config(writer: &mut Writer, config: &sim_core::SimConfig) {
+    writer.u8(config.physiology.intake_order.id());
+}
+
+/// Bytes the format-16 block adds to a config body. Asserted by the chain
+/// test rather than trusted.
+pub const FORMAT16_CONFIG_BYTES: usize = 1;
+
+fn decode_intake_order_config(
+    reader: &mut Reader,
+    config: &mut sim_core::SimConfig,
+) -> Result<(), CodecError> {
+    let id = reader.u8()?;
+    config.physiology.intake_order =
+        sim_core::IntakeOrder::from_id(id).ok_or(CodecError::ValueOutOfRange("intake order"))?;
+    Ok(())
+}
+
 /// Decode the config section written by `encode_config` at the same version.
 ///
 /// Read the two together. A format-4 body reaching this at format 5 runs out
@@ -1578,6 +1606,13 @@ fn decode_config(reader: &mut Reader, format: u16) -> Result<sim_core::SimConfig
     // mouth to consume with.
     if format >= FORMAT_VERSION_15 {
         decode_consumption_config(&mut *reader, &mut config)?;
+    }
+    // Format 16's byte (ADR-0036). Left at its `Ascending` default for an
+    // older body, and that is a resolution rather than an invention on the
+    // same terms as every earlier appended field: no build that could write
+    // a format-15 file could feed its organisms in any order but ascending.
+    if format >= FORMAT_VERSION_16 {
+        decode_intake_order_config(&mut *reader, &mut config)?;
     }
     Ok(config)
 }
@@ -3290,6 +3325,7 @@ pub fn encode_snapshot_format3(
     refuse_format8_state(state, FORMAT_VERSION_3)?;
     refuse_format9_state(state, FORMAT_VERSION_3)?;
     refuse_format10_state(state, FORMAT_VERSION_3)?;
+    refuse_format16_state(state, FORMAT_VERSION_3)?;
     refuse_format15_state(state, FORMAT_VERSION_3)?;
     refuse_format14_state(state, FORMAT_VERSION_3)?;
     refuse_format13_state(state, FORMAT_VERSION_3)?;
@@ -3348,6 +3384,7 @@ pub fn encode_snapshot_format4(
     refuse_format8_state(state, FORMAT_VERSION_4)?;
     refuse_format9_state(state, FORMAT_VERSION_4)?;
     refuse_format10_state(state, FORMAT_VERSION_4)?;
+    refuse_format16_state(state, FORMAT_VERSION_4)?;
     refuse_format15_state(state, FORMAT_VERSION_4)?;
     refuse_format14_state(state, FORMAT_VERSION_4)?;
     refuse_format13_state(state, FORMAT_VERSION_4)?;
@@ -3396,6 +3433,7 @@ pub fn encode_snapshot_format5(
     refuse_format8_state(state, FORMAT_VERSION_5)?;
     refuse_format9_state(state, FORMAT_VERSION_5)?;
     refuse_format10_state(state, FORMAT_VERSION_5)?;
+    refuse_format16_state(state, FORMAT_VERSION_5)?;
     refuse_format15_state(state, FORMAT_VERSION_5)?;
     refuse_format14_state(state, FORMAT_VERSION_5)?;
     refuse_format13_state(state, FORMAT_VERSION_5)?;
@@ -3437,6 +3475,7 @@ pub fn encode_snapshot_format6(
     refuse_format8_state(state, FORMAT_VERSION_6)?;
     refuse_format9_state(state, FORMAT_VERSION_6)?;
     refuse_format10_state(state, FORMAT_VERSION_6)?;
+    refuse_format16_state(state, FORMAT_VERSION_6)?;
     refuse_format15_state(state, FORMAT_VERSION_6)?;
     refuse_format14_state(state, FORMAT_VERSION_6)?;
     refuse_format13_state(state, FORMAT_VERSION_6)?;
@@ -3477,6 +3516,7 @@ pub fn encode_snapshot_format7(
     refuse_format8_state(state, FORMAT_VERSION_7)?;
     refuse_format9_state(state, FORMAT_VERSION_7)?;
     refuse_format10_state(state, FORMAT_VERSION_7)?;
+    refuse_format16_state(state, FORMAT_VERSION_7)?;
     refuse_format15_state(state, FORMAT_VERSION_7)?;
     refuse_format14_state(state, FORMAT_VERSION_7)?;
     refuse_format13_state(state, FORMAT_VERSION_7)?;
@@ -3515,6 +3555,7 @@ pub fn encode_snapshot_format8(
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format9_state(state, FORMAT_VERSION_8)?;
     refuse_format10_state(state, FORMAT_VERSION_8)?;
+    refuse_format16_state(state, FORMAT_VERSION_8)?;
     refuse_format15_state(state, FORMAT_VERSION_8)?;
     refuse_format14_state(state, FORMAT_VERSION_8)?;
     refuse_format13_state(state, FORMAT_VERSION_8)?;
@@ -3546,6 +3587,7 @@ pub fn encode_snapshot_format9(
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
     refuse_format10_state(state, FORMAT_VERSION_9)?;
+    refuse_format16_state(state, FORMAT_VERSION_9)?;
     refuse_format15_state(state, FORMAT_VERSION_9)?;
     refuse_format14_state(state, FORMAT_VERSION_9)?;
     refuse_format13_state(state, FORMAT_VERSION_9)?;
@@ -3576,6 +3618,7 @@ pub fn encode_snapshot_format10(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format16_state(state, FORMAT_VERSION_10)?;
     refuse_format15_state(state, FORMAT_VERSION_10)?;
     refuse_format14_state(state, FORMAT_VERSION_10)?;
     refuse_format13_state(state, FORMAT_VERSION_10)?;
@@ -3612,6 +3655,7 @@ pub fn encode_snapshot_format11(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format16_state(state, FORMAT_VERSION_11)?;
     refuse_format15_state(state, FORMAT_VERSION_11)?;
     refuse_format14_state(state, FORMAT_VERSION_11)?;
     refuse_format13_state(state, FORMAT_VERSION_11)?;
@@ -3641,6 +3685,7 @@ pub fn encode_snapshot_format12(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format16_state(state, FORMAT_VERSION_12)?;
     refuse_format15_state(state, FORMAT_VERSION_12)?;
     refuse_format14_state(state, FORMAT_VERSION_12)?;
     refuse_format13_state(state, FORMAT_VERSION_12)?;
@@ -3669,6 +3714,7 @@ pub fn encode_snapshot_format13(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format16_state(state, FORMAT_VERSION_13)?;
     refuse_format15_state(state, FORMAT_VERSION_13)?;
     refuse_format14_state(state, FORMAT_VERSION_13)?;
     encode_snapshot_versioned(
@@ -3696,6 +3742,7 @@ pub fn encode_snapshot_format14(
     event_log_offset: u64,
     compression_level: Option<i32>,
 ) -> Result<Vec<u8>, CodecError> {
+    refuse_format16_state(state, FORMAT_VERSION_14)?;
     refuse_format15_state(state, FORMAT_VERSION_14)?;
     encode_snapshot_versioned(
         state,
@@ -3708,6 +3755,46 @@ pub fn encode_snapshot_format14(
         FORMAT_VERSION_14,
         SAVE_STATE_VERSION,
     )
+}
+
+/// Encode a **format 15** snapshot, retained on the terms every earlier
+/// writer is: the 15-to-16 migration's byte-identity requirement is
+/// stated against it.
+pub fn encode_snapshot_format15(
+    state: &SaveState,
+    world_id: u64,
+    parent_world_id: u64,
+    state_checksum: u64,
+    build_version: &str,
+    event_log_offset: u64,
+    compression_level: Option<i32>,
+) -> Result<Vec<u8>, CodecError> {
+    refuse_format16_state(state, FORMAT_VERSION_15)?;
+    encode_snapshot_versioned(
+        state,
+        world_id,
+        parent_world_id,
+        state_checksum,
+        build_version,
+        event_log_offset,
+        compression_level,
+        FORMAT_VERSION_15,
+        SAVE_STATE_VERSION,
+    )
+}
+
+/// The write-side refusal every retained pre-16 writer shares (ADR-0036):
+/// a non-ascending intake order refused by name. A pre-16 file has no byte
+/// for it and writing one anyway would describe a world whose co-located
+/// organisms fed in an order it never had, silently.
+fn refuse_format16_state(state: &SaveState, format: u16) -> Result<(), CodecError> {
+    if state.config.physiology.intake_order != sim_core::IntakeOrder::Ascending {
+        return Err(CodecError::FieldNotInFormat {
+            field: "intake order",
+            format,
+        });
+    }
+    Ok(())
 }
 
 /// The write-side refusal every retained pre-15 writer shares (ADR-0034):
@@ -4212,6 +4299,12 @@ pub fn decode_snapshot_format13(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState
 /// the terms every earlier retained reader is.
 pub fn decode_snapshot_format14(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
     decode_snapshot_versioned(bytes, FORMAT_VERSION_14, SAVE_STATE_VERSION)
+}
+
+/// Decode a **format 15** snapshot. Retained for the 15-to-16 migration, on
+/// the terms every earlier retained reader is.
+pub fn decode_snapshot_format15(bytes: &[u8]) -> Result<(SnapshotInfo, SaveState), CodecError> {
+    decode_snapshot_versioned(bytes, FORMAT_VERSION_15, SAVE_STATE_VERSION)
 }
 
 fn decode_snapshot_versioned(

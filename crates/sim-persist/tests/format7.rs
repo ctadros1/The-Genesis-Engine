@@ -39,21 +39,22 @@ use sim_core::{
 use sim_persist::{
     CodecError, FORMAT_VERSION, FORMAT_VERSION_4, FORMAT_VERSION_5, FORMAT_VERSION_6,
     FORMAT_VERSION_7, FORMAT_VERSION_8, FORMAT_VERSION_9, FORMAT_VERSION_10, FORMAT_VERSION_11,
-    FORMAT_VERSION_12, FORMAT_VERSION_13, FORMAT_VERSION_14, FORMAT_VERSION_15,
+    FORMAT_VERSION_12, FORMAT_VERSION_13, FORMAT_VERSION_14, FORMAT_VERSION_15, FORMAT_VERSION_16,
     FORMAT7_CONFIG_BYTES, FORMAT8_CONFIG_BYTES, FORMAT9_CONFIG_BYTES, FORMAT10_CONFIG_BYTES,
     FORMAT11_CONFIG_BYTES, FORMAT12_CONFIG_BYTES, FORMAT13_CONFIG_BYTES, FORMAT14_CONFIG_BYTES,
-    FORMAT15_CONFIG_BYTES,
+    FORMAT15_CONFIG_BYTES, FORMAT16_CONFIG_BYTES,
     StoreError,
     decode_snapshot,
     decode_snapshot_format6,
     decode_snapshot_format7, decode_snapshot_format8, decode_snapshot_format9,
     decode_snapshot_format10, decode_snapshot_format11, decode_snapshot_format12,
-    decode_snapshot_format13, decode_snapshot_format14, encode_snapshot,
+    decode_snapshot_format13, decode_snapshot_format14, decode_snapshot_format15, encode_snapshot,
     encode_snapshot_format4,
     encode_snapshot_format5,
     encode_snapshot_format6, encode_snapshot_format7, encode_snapshot_format8,
     encode_snapshot_format9, encode_snapshot_format10, encode_snapshot_format11,
-    encode_snapshot_format12, encode_snapshot_format13, encode_snapshot_format14, migration_for,
+    encode_snapshot_format12, encode_snapshot_format13, encode_snapshot_format14,
+    encode_snapshot_format15, migration_for,
 };
 
 const SEED: u64 = 0x5eed_cafe_f00d_beef;
@@ -244,8 +245,13 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
         ),
         (
             FORMAT_VERSION_15,
-            encode_snapshot as Writer,
+            encode_snapshot_format15 as Writer,
             FORMAT15_CONFIG_BYTES,
+        ),
+        (
+            FORMAT_VERSION_16,
+            encode_snapshot as Writer,
+            FORMAT16_CONFIG_BYTES,
         ),
     ];
 
@@ -368,10 +374,20 @@ fn each_adjacent_format_extends_its_predecessor_by_exactly_the_declared_bytes() 
     // section.
     let (fifteen_version, fifteen_bytes, _) = &encoded[11];
     assert_eq!(*fifteen_version, FORMAT_VERSION_15);
-    let (_, fifteen_state) = decode_snapshot(fifteen_bytes).expect("decode format 15");
+    let (_, fifteen_state) = decode_snapshot_format15(fifteen_bytes).expect("decode format 15");
     assert_eq!(
         fifteen_state.config, fourteen_state.config,
         "the appended consumption block did not round-trip to its defaults"
+    );
+    // And the 15-to-16 pair on the same terms: the appended intake-order
+    // byte decodes back to its field's default (ascending) for a world
+    // that never fed in any other order.
+    let (sixteen_version, sixteen_bytes, _) = &encoded[12];
+    assert_eq!(*sixteen_version, FORMAT_VERSION_16);
+    let (_, sixteen_state) = decode_snapshot(sixteen_bytes).expect("decode format 16");
+    assert_eq!(
+        sixteen_state.config, fifteen_state.config,
+        "the appended intake-order byte did not round-trip to its default"
     );
 }
 
@@ -642,18 +658,33 @@ fn a_version_word_that_disagrees_with_the_body_is_refused_both_ways() {
          the appended transition block"
     );
     // The 14/15 pair, both ways, on the same terms.
-    let fifteen = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
-        .expect("encode format 15");
+    let fifteen =
+        encode_snapshot_format15(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+            .expect("encode format 15");
     assert_eq!(
         decode_snapshot_format14(&relabel(&fifteen, FORMAT_VERSION_14)).err(),
         Some(CodecError::ValueOutOfRange("section trailing bytes")),
         "a format 15 payload read as format 14 must fail on the appended consumption block"
     );
     assert_eq!(
-        decode_snapshot(&relabel(&fourteen, FORMAT_VERSION_15)).err(),
+        decode_snapshot_format15(&relabel(&fourteen, FORMAT_VERSION_15)).err(),
         Some(CodecError::TruncatedSection),
         "a format 14 payload read as format 15 must run out of config body inside \
          the appended consumption block"
+    );
+    // The 15/16 pair, both ways, on the same terms.
+    let sixteen = encode_snapshot(&state, 1, 0, checksum, sim_persist::BUILD_VERSION, 0, None)
+        .expect("encode format 16");
+    assert_eq!(
+        decode_snapshot_format15(&relabel(&sixteen, FORMAT_VERSION_15)).err(),
+        Some(CodecError::ValueOutOfRange("section trailing bytes")),
+        "a format 16 payload read as format 15 must fail on the appended intake-order byte"
+    );
+    assert_eq!(
+        decode_snapshot(&relabel(&fifteen, FORMAT_VERSION_16)).err(),
+        Some(CodecError::TruncatedSection),
+        "a format 15 payload read as format 16 must run out of config body inside \
+         the appended intake-order byte"
     );
 }
 

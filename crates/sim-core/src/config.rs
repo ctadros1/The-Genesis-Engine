@@ -757,6 +757,55 @@ impl PlasticityConfig {
     }
 }
 
+/// The order in which co-located organisms take from a cell's biomass and
+/// substrate (Phase 21, ADR-0036). `Ascending` is the shipped order - entity
+/// ID, so the youngest eats last; `Descending` is the probe - youngest
+/// first, since age rank and ID rank coincide in this kernel. A permutation
+/// of who takes first among co-located organisms, never a share: it grants
+/// nothing and reads no age. Hashed under `lifesim-intake-order-v2` only
+/// when `Descending`, so every earlier fixture is untouched.
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+pub enum IntakeOrder {
+    #[default]
+    Ascending,
+    Descending,
+}
+
+impl IntakeOrder {
+    pub fn id(self) -> u8 {
+        match self {
+            IntakeOrder::Ascending => 0,
+            IntakeOrder::Descending => 1,
+        }
+    }
+
+    pub fn from_id(id: u8) -> Option<Self> {
+        match id {
+            0 => Some(IntakeOrder::Ascending),
+            1 => Some(IntakeOrder::Descending),
+            _ => None,
+        }
+    }
+
+    pub fn name(self) -> &'static str {
+        match self {
+            IntakeOrder::Ascending => "ascending",
+            IntakeOrder::Descending => "descending",
+        }
+    }
+
+    /// The organism index visited at `step` of a feeding pass over
+    /// `population` organisms. `Ascending` is the identity, so the shipped
+    /// loops are the shipped loops byte for byte.
+    #[inline]
+    pub fn index(self, step: usize, population: usize) -> usize {
+        match self {
+            IntakeOrder::Ascending => step,
+            IntakeOrder::Descending => population - 1 - step,
+        }
+    }
+}
+
 /// Versioned Phase 8 demography policy (`lifesim-demography-v1`).
 ///
 /// Six independently gated mechanisms rather than one switch, because the
@@ -766,6 +815,8 @@ impl PlasticityConfig {
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct PhysiologyConfig {
     pub enabled: bool,
+    /// Phase 21 (ADR-0036): who takes first among co-located organisms.
+    pub intake_order: IntakeOrder,
 
     /// Basal cost scales as body mass to `basal_exponent_quarters / 4`.
     /// The default 3 is Kleiber's 0.75. Quarters rather than a Q16
@@ -863,6 +914,7 @@ impl PhysiologyConfig {
             growth_rate_milli_per_s: 50,
             mate_choice_enabled: false,
             mate_choice_scramble: false,
+            intake_order: IntakeOrder::Ascending,
         }
     }
 }
@@ -2798,6 +2850,12 @@ impl SimConfig {
                 hasher.update_u32(self.chemistry.consumption_fraction_q16);
                 hasher.update_u32(self.chemistry.consumption_yield_q16);
             }
+        }
+        // Phase 21 (ADR-0036): the intake order, hashed only when it is the
+        // probe, so every fixture at the shipped order is untouched.
+        if self.physiology.intake_order != IntakeOrder::Ascending {
+            hasher.update(b"lifesim-intake-order-v2");
+            hasher.update_u32(u32::from(self.physiology.intake_order.id()));
         }
         // Phase 16 section: hashed only when enabled, so every hash issued
         // before the transition existed is unchanged. The map version is

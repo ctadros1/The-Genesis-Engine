@@ -89,6 +89,7 @@ macro_rules! config_fields {
         pub const FIELD_NAMES: &[&str] = &[
             "climate.enabled",
             "origin.mode",
+            "physiology.intake_order",
             $($name),*
         ];
 
@@ -99,6 +100,9 @@ macro_rules! config_fields {
                 "climate.enabled" => return Some(FieldValue::Bool(config.climate.enabled)),
                 "origin.mode" => {
                     return Some(FieldValue::Choice(config.origin.mode.name()));
+                }
+                "physiology.intake_order" => {
+                    return Some(FieldValue::Choice(config.physiology.intake_order.name()));
                 }
                 _ => {}
             }
@@ -131,6 +135,19 @@ macro_rules! config_fields {
                         sim_core::WorldgenVersion::V2
                     } else {
                         sim_core::WorldgenVersion::V1
+                    };
+                    return Ok(());
+                }
+                "physiology.intake_order" => {
+                    config.physiology.intake_order = match value {
+                        "ascending" => sim_core::IntakeOrder::Ascending,
+                        "descending" => sim_core::IntakeOrder::Descending,
+                        _ => {
+                            return Err(FieldError::BadValue {
+                                field: name.to_owned(),
+                                value: value.to_owned(),
+                            });
+                        }
                     };
                     return Ok(());
                 }

@@ -15,6 +15,7 @@ mod arrival;
 mod assortment;
 mod development;
 mod artifact;
+mod cohort;
 mod communities;
 mod conjunction;
 mod demography;
@@ -65,6 +66,7 @@ pub use demography::{
     world_demography,
 };
 pub use lineage::{LINEAGE_INDEX_VERSION, WorldLineage, world_lineage};
+pub use cohort::{COHORT_INDEX_VERSION, WorldCohort, world_cohort};
 pub use era::{
     Boundary as EraBoundary, ERA_VERSION, EraError, EraPlan, FEATURE_COUNT, FEATURE_NAMES,
     FeatureGates, SYNTHETIC_FIXTURE_VERSION, SyntheticSpec, WindowFeatures, WorldEra,

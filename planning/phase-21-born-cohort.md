@@ -119,6 +119,27 @@ license it, the confirmatory runs the shipped world alone and the phase
 is observational: the associations with their intervals and the
 born-versus-materialized site contrast.
 
+**Read 2026-09-03**: licensed. Median block rho over the four pilot
+worlds: occupants -306, food 274, and |occupants| >= food in every
+world; the within-block partials (occupants -219 after food, food 135
+after occupants) say the same. The median born organism starts in a
+cell with zero food against ~12,650 for a materialized one, and with
+two or more occupants at birth almost none reaches maturity. The probe
+is built; a second four-seed pilot under both orders supplies the pair
+spread the pre-registration needs (the first could not, having no probe
+arm) before the lock.
+
+**The second pilot, read 2026-09-03** (`runs/phase21-born-cohort-pilot-
+gate-0xdcc22be2abd31f7e`): under youngest-first the born median
+lifespan rises from ~210 to ~2,160 ticks in every pair (+1,846 to
++2,369), the materialized median falls by ~545, born organisms
+reaching maturity go from ~1,600 to ~9,600 per world, and both
+associations vanish. The plan's expectation that place carries most of
+it was wrong; the order is the term. The pre-registration records the
+revision with its reason and is locked on the probe shape: SESOI 971
+ticks (half the median pair difference, by the rule fixed before the
+pilot), bar 22 of 30.
+
 ## Non-Goals
 
 - No change to placement, investment, maturity, the pairing gate, the
@@ -162,10 +183,16 @@ are reported beside it and never rescue it.
       and taken as the world's median block rho, because the run moves
       from empty ungrazed ground to a grazed crowded state and a pooled
       rho would carry that trend as if it were place or order; the count
-      of worlds where each median block rho clears a SESOI stated from
-      the pilot, with bars. Probe shape (if licensed): the born cohort's median
-      completed lifespan under youngest-first minus the shipped order,
-      seed-paired directed count with SESOI and bar from the pilot; the
+      of worlds where each median block rho clears its SESOI - half the
+      first pilot's smallest magnitude, 128 for food and 140 for
+      occupants - against a bar of 22 of 30 (alpha 0.008), all fixed in
+      the pre-registration from the first pilot before the second. Probe
+      shape (licensed): the born cohort's median completed lifespan
+      under youngest-first minus the shipped order, seed-paired directed
+      count against a bar of 22 of 30 fixed before the second pilot
+      (alpha 0.008; power 0.87 at a per-pair clearing rate of 0.8) and a
+      SESOI in ticks set by the pre-registration's rule (the larger of
+      20 ticks and half the second pilot's median pair difference); the
       materialized cohort's lifespan reported beside it (it should not
       move much - a materialized organism is rarely the youngest in its
       cell). **Expected, stated in advance**: place carries most of it

@@ -185,6 +185,53 @@ paragraph is appended when it is measured.
 - **The moved pin.** `verify-phase20`'s literal `event_schema_version`
   went 12 -> 13 with a note in the script; no config, terrain or state
   pin moved anywhere.
-- **The census** is being built to the definitions above by a
-  delegated agent (`crates/sim-analysis/src/cohort.rs`); its report is
-  folded in when it lands.
+- **The census** (`crates/sim-analysis/src/cohort.rs`,
+  `lifesim-cohort-index-v1`, built by a delegated agent to the
+  definitions above; four unit tests; three mutations killed - waste
+  folded into food, the pooled rho substituted for the block rho, a
+  censored-before-maturity organism counted as matured): two choices
+  the design left open are now fixed. Food quartiles use the lower-cut
+  convention every median here uses (`sorted[(n-1)/4]`,
+  `sorted[(n-1)/2]`, `sorted[3(n-1)/4]`, inclusive upper bounds).
+  "Reproduced" is membership of the organism's id among any later
+  birth's parents - unconditional membership, since a parent exists
+  before it is named. The world line's split columns are
+  `reached_maturity_food_quartile`, `reproduced_food_quartile`,
+  `reached_maturity_occupants`, `reproduced_occupants` (four counts
+  each, `/`-joined). `verify-phase21` clause 5 passes on a schema-13
+  log.
+- **The probe, built after the first pilot licensed it** (median block
+  rho occupants -306 against food 274, |occupants| >= food in all four
+  worlds): `sim_core::IntakeOrder { Ascending (default), Descending }`
+  with `id()`, `from_id()`, `name()` and `index(step, population)`; the
+  field `physiology.intake_order`; the four feeding loops (two biomass,
+  two substrate) now run `for step in 0..population { let index =
+  order.index(step, population); ... }` - at `Ascending` the identity,
+  so the shipped loops are arithmetically the shipped loops; hashed
+  under `lifesim-intake-order-v2` only when `Descending`, appended after
+  every earlier block; the campaign field registry's choice
+  `physiology.intake_order ascending|descending`; the fixture flag
+  `--youngest-first` (schema 15 with `"intake_order":"descending"`,
+  config 0xf3c1d35fa9b7c7da, state 0x3439df67a8cc1e88 at 4,000 ticks,
+  pinned by `verify-phase21` clause 6, which also asserts the shipped
+  line still says ascending and hashes as before). `tests/
+  phase21_cohort.rs` gained the probe's clauses: under `Descending` the
+  newcomer takes first in both passes with the identities exact, and
+  the hash moves only for the probe. ALIF format 16 (the field appended
+  as one byte at the end of the config body, a retained format-15
+  writer refusing `Descending` as "intake order") is being built by a
+  delegated agent to the pattern of formats 14 and 15; before it
+  landed, the field-coverage sweep (`config_field_coverage.rs`, once
+  taught the order's two choices) flagged exactly `physiology.
+  intake_order` as set to descending and restored as ascending, and
+  nothing else - the sweep D-065 and D-086 asked for, doing what it is
+  for. Landed: `FORMAT_VERSION_16`, one byte appended after the
+  format-15 consumption block (`FORMAT16_CONFIG_BYTES` 1), an unknown
+  id refused as "intake order" on decode, `refuse_format16_state`
+  threaded into all twelve retained pre-16 writers, retained
+  `encode_snapshot_format15` / `decode_snapshot_format15`,
+  `FORMAT15_TO_CURRENT` resolving the order to ascending; six tests in
+  `tests/format16.rs` and the format chain and version-word tests
+  extended; four codec mutations killed (skip the byte, read
+  unconditionally, ignore the order in the refusal, drop the format
+  guard). The field-coverage sweep passes with the field carried.

@@ -325,6 +325,15 @@ the appended fields to the defaults every older world actually ran with:
   consumed total is "chemistry consumed" - refused by every pre-15
   writer), `FORMAT14_TO_CURRENT` resolving the pair to its defaults and
   the counter to zero - no build that wrote format 14 could eat.
+- **Format 16** (Phase 21, ADR-0036): `physiology.intake_order`
+  (`FORMAT16_CONFIG_BYTES`, one byte: the order's id, 0 ascending - the
+  shipped order - and 1 descending, the youngest-first probe), appended
+  at the end of the config body like every block since format 5, so
+  format 15 stays a byte prefix of format 16. Retained format-15 writer
+  and reader, `refuse_format16_state` (a descending order is "intake
+  order" - refused by every pre-16 writer), `FORMAT15_TO_CURRENT`
+  resolving the order to ascending - no build that wrote format 15
+  could run the probe. An unknown id is refused on decode.
 
 ## Planned Successor: ALIF Format 2 (Phase 12)
 

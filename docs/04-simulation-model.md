@@ -69,6 +69,7 @@ precedence over anything in this document that contradicts it.
 | Chemistry and microbial field regime | `lifesim-chemistry-v1`, `lifesim-microbial-v1` | 15 | `specifications/unicellular-regime.md`, ADR-0031 |
 | Field-to-individual transition (`scratch` end to end) | `lifesim-transition-v1` | 16 | `specifications/unicellular-regime.md`, ADR-0032 |
 | Chemistry as food (coupling v2: organisms eat the substrate) | `lifesim-chemistry-coupling-v2` | 19 | `specifications/unicellular-regime.md`, ADR-0034 |
+| Intake order among co-located organisms (`physiology.intake_order`; the shipped order is entity-ID ascending, the youngest last; `descending` is the Phase 21 probe) | `lifesim-intake-order-v2` (hashed only when descending) | 21 | ADR-0036 |
 
 Three sections below become live rather than documented placeholders:
 combat and damage in Phase 7, `C_thermal` in the energy equation in Phase 8, and carcasses in Phase 7.

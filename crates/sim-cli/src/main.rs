@@ -189,6 +189,8 @@ struct Options {
     /// Phase 21: the composition trace at fixture schema 15, counting the
     /// birth-site records and summarising where the born start.
     birthsite: bool,
+    /// Phase 21: the birth-site trace under the youngest-first intake order.
+    youngest_first: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -315,6 +317,15 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--transition-off" {
             options.transition_off = true;
+            index += 1;
+            continue;
+        }
+        if name == "--youngest-first" {
+            options.youngest_first = true;
+            options.birthsite = true;
+            options.composition = true;
+            options.coupled = true;
+            options.transition = true;
             index += 1;
             continue;
         }
@@ -1020,12 +1031,17 @@ fn transition_trace_world(options: &Options) -> Result<World, String> {
             usage()
         ));
     }
-    let config =
+    let mut config =
         transition_trace_config(
             options.seed.unwrap_or(DEFAULT_SEED),
             options.transition_off,
             options.coupled,
         );
+    if options.youngest_first {
+        // Phase 21 (ADR-0036): the probe order on the birth-site trace.
+        config.physiology.intake_order = sim_core::IntakeOrder::Descending;
+        config.validate().map_err(|error| format!("youngest-first trace config: {error:?}"))?;
+    }
     World::new(config).map_err(|error| format!("transition trace world: {error}"))
 }
 
@@ -4050,7 +4066,8 @@ fn command_fixture(options: Options) -> Result<(), String> {
                 "\"refused\":{},\"organism_energy_milli\":{},",
                 "\"composition_records\":{},\"max_modules_seen\":{},",
                 "\"birthsite_records\":{},\"median_occupants_at_birth\":{},",
-                "\"born_site_food_median\":{},\"born_recorded\":{}}}"
+                "\"born_site_food_median\":{},\"born_recorded\":{},",
+                "\"intake_order\":\"{}\"}}"
             ),
             sim_core::EVENT_SCHEMA_VERSION,
             world.config().initial_organisms,
@@ -4072,6 +4089,7 @@ fn command_fixture(options: Options) -> Result<(), String> {
             median_occupants_at_birth,
             born_site_food_median,
             born_food.len(),
+            world.config().physiology.intake_order.name(),
         );
     } else if options.composition {
         // Fixture schema 14: the Phase 19 coupled trace with the Phase 20
