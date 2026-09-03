@@ -187,6 +187,29 @@ the pilot is extended to eight seeds once (recorded) before a branch is
 read; if still none, the phase reports the appearance rate with its
 bound and stops there.
 
+**Read 2026-09-03 against the pilot** (`runs/phase20-lineage-pilot-
+0x06fb2fdcf55662df`, four worlds, 100,000 ticks): 17 multi-module
+organisms, all born, 16 of them a doubled gut and one gut-plus-motor;
+`multi_parents` 0 in every world, so Branch A by its letter. But the
+branch's lever was premised on a refusal that never happened - the
+energy gate refused 0 pairings in all four worlds (capacity 0,
+placement 0-1) - and the census's born-parent counts say what does
+bind: born organisms reproduce (1,803 / 1,303 / 834 / 822 distinct
+born parents; 72 percent of births have a born parent) but each one
+rarely - about one in eight - with world-wide born median lifespans of
+210-293 ticks against a trait-derived maturity of at least 400. A
+two-module organism (lifespans 133-261, matched cohort 140-259) has the
+reproductive prospects of any born organism, and 0 of 17 reproducing
+has probability ~0.09 at the cohort's rate. Phase 19's "one at a time"
+under-counted appearances about eightfold: two-module organisms live
+~200 ticks and the series sampled every 500. The confirmatory
+therefore runs the **shipped world alone** on 50 seeds
+(`phase20-lineage-confirmatory-alone.campaign`) with the second-
+generation rate predicted in advance from the cohort and an equivalence
+bound - the one-arm shape - and the two-arm gate contrast is not run,
+because a contrast on a gate that refuses nobody is a null bought in
+advance. The unused campaign file is removed with this reading.
+
 ## Non-Goals
 
 - No mechanism that makes a second module more likely, more heritable
@@ -238,7 +261,13 @@ reported beside it and never rescue it.
       mechanism. On Branch D: the count at both horizons. Whichever
       branch, the birth-normalized rate is reported beside the count.
       **Expected, stated in advance**: Branches B or C, a null under the
-      bound, and a mechanism named by the test.
+      bound, and a mechanism named by the test. *Revised at the pilot
+      (recorded above): the shipped world alone, with the rate predicted
+      from the cohort's own numbers - appearances per birth x the
+      born-parent fraction x offspring per born parent x one half - so
+      the confirmatory decides whether multi-module organisms reproduce
+      like their cohort (the prediction holds), less (the second module
+      costs reproduction), or not at all (a gate).*
 - [ ] **C20.2 What a second module costs, measured.** Within the shipped
       world, the completed lifespan of multi-module organisms against
       their **matched one-module cohort**: born one-module organisms
@@ -259,25 +288,29 @@ reported beside it and never rescue it.
       Descriptive; no expectation is stated because any stated one would
       be a guess about which duplication is viable, which is what the
       census exists to replace.
-- [ ] **C20.4 The starting fact and the reproduction test.** The
+- [x] **C20.4 The starting fact and the reproduction test.** The
       pilot's U1 census recorded in the pre-registration before the
       lock, the branch taken and the tree it was read against; on
       Branches B and C the reproduction test's four counts over 1,000
       draws against a unicell and 1,000 against itself.
-- [ ] **C20.5 The clamp arithmetic is the physics that runs.** The fact
+      *MET 2026-09-03: the starting fact is the pilot's census (`runs/phase20-lineage-pilot-0x06fb2fdcf55662df`: 17 multi-module organisms, all born, 16 gut+gut and 1 gut+motor, none reproducing; born parents 8.3 percent of births; born median lifespan 210-293 against maturity >= 400) and the reproduction test's counts (488/1,000 and 767/1,000 two-module children, 0 refused, compatibility 0.0). Phase 19's logs carry no body record - recorded as the trap.*
+- [x] **C20.5 The clamp arithmetic is the physics that runs.** The fact
       test pins the founder reference, the unicell's multipliers and
       the seven two-module cases; a registry change that moves any of
       them fails the test and is recorded, never absorbed.
-- [ ] **C20.6 Neutrality and determinism.** The composition record moves
+      *MET 2026-09-03: `tests/phase20_lineage.rs` pins the founder reference (2,400 / 750 / 1,000 / 1,000), the unicell's multipliers (600, 600, 1,000) and the seven two-module cases (five on the floor; motor 800; neural 933).*
+- [x] **C20.6 Neutrality and determinism.** The composition record moves
       no state checksum (events on and off, one checksum); every pinned
       fixture byte-identical; the schema-12 coupled fixture replays
       across two processes and its record count equals its admissions;
       schema-12 logs verify and reconcile; schema-11 logs still decode.
-- [ ] **C20.7 Cost.** One record per admission: the log's growth per
+      *MET 2026-09-03: one record per admission whose sum is the module count and whose living records match the max_modules gauge; no checksum moves (the schema-14 fixture's state equals the Phase 19 pin; events on and off, one checksum); a mid-run save round trip restores the same next records; a bodiless world emits none; `scripts/verify-phase20-determinism.sh` five clauses PASS; schema-11 logs decode unchanged (persist suite).*
+- [x] **C20.7 Cost.** One record per admission: the log's growth per
       admission recorded (23 bytes: a one-byte tag, the u64 id and
       seven u16 counts, fixed width, no packing) and the Phase 19
       confirmatory's log size as the baseline; no tick-path change, so
       no benchmark re-run is owed beyond stating that.
+      *RECORDED 2026-09-03: 23 bytes per admission (tag, u64 id, seven u16), no tick-path change; the pilot's four 100,000-tick logs are in the archive for the size.*
 
 ## Test Plan
 

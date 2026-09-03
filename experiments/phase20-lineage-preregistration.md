@@ -1,12 +1,14 @@
 # Phase 20 lineage pre-registration (C20.1, C20.2, C20.3)
 
-**STATUS: DRAFT, NOT LOCKED.** The pilot
-(`experiments/phase20-lineage-pilot.campaign`, seeds 20901..20904, the
-shipped Phase 19 v2 world with the body-composition record on, 100,000
-ticks) is read against the decision tree in
-`planning/phase-20-second-module-lineage.md` - written and committed
-before the pilot ran - and fills the `[PILOT]` slots; the record is then
-LOCKED and committed before any confirmatory world runs.
+**STATUS: LOCKED 2026-09-03**, before any confirmatory world ran. The
+pilot (`experiments/phase20-lineage-pilot.campaign`, seeds 20901..20904,
+the shipped Phase 19 v2 world with the body-composition record on,
+100,000 ticks; archived at `runs/phase20-lineage-pilot-0x06fb2fdcf55662df`)
+was read against the decision tree in
+`planning/phase-20-second-module-lineage.md` (written and committed
+before the pilot ran, 41e9930); the reading and the branch are recorded
+below and in the plan. No threshold is weakened after the data; a
+different bound is a different phase.
 
 ## Question
 
@@ -54,18 +56,33 @@ was a sampling artefact" (Branch D); Branches B and C are already
 disfavoured by these numbers and would be a surprise the record must
 explain.
 
-## The branch taken
+## The branch taken: A by its letter, run as the one-arm shape
 
-`[PILOT]` - recorded here with the pilot's U1 census (per world:
-multi_total, multi_born, multi_parents, multi_offspring_total,
-second_generation, cohort medians, compositions, added types, and the
-manifest's nonviable_bodies and refused_node_budget) and the tree's
-branch it lands on: A (no offspring -> contrast the pairing energy
-gate lowered against the shipped world; see the plan's tree), B (offspring,
-refused children -> shipped world alone + reproduction test), C
-(offspring, viable one-module children -> shipped world alone +
-reproduction test), or D (second-generation organisms exist -> two
-horizons).
+The pilot's U1 census (`lifesim lineage`, four worlds):
+
+| seed | births | multi (all born) | multi parents | 2nd gen | multi median | cohort median (completed/censored) | born parents | births with a born parent | rej energy/cap/place | refused budget | compositions |
+|---|---|---|---|---|---|---|---|---|---|---|---|
+| 20901 | 14,483 | 6 | 0 | 0 | 191 | 259 (4,160/151) | 1,803 | 10,417 | 0/0/1 | 1,215 | gut+gut x5, gut+motor x1 |
+| 20902 | 17,981 | 7 | 0 | 0 | 218 | 238 (4,834/249) | 1,303 | 12,951 | 0/0/1 | 905 | gut+gut x7 |
+| 20903 | 13,677 | 2 | 0 | 0 | 261 | 144 (1,326/51) | 834 | 8,630 | 0/0/0 | 810 | gut+gut x2 |
+| 20904 | 11,174 | 2 | 0 | 0 | 133 | 140 (1,368/67) | 822 | 7,263 | 0/0/0 | 917 | gut+gut x2 |
+
+`multi_parents` is zero in every world: Branch A by the tree's letter.
+Its lever was the pairing energy gate; the gate refused no pairing in
+any world, so a contrast on it would be a null bought in advance and it
+is not run. What the census shows instead: born organisms do reproduce,
+each rarely (born parents / births = 12.4, 7.2, 6.1, 7.4 percent), with
+world-wide born median lifespans 293 / 235 / 220 / 210 ticks against a
+trait-derived maturity of at least 400; a two-module organism's
+lifespan matches its cohort's (median difference -13.5 ticks) and 0 of
+17 reproducing has probability ~0.09 at the cohort's rate. Appearances:
+17 in 57,315 births = 2.97 per 10,000 - about eight times Phase 19's
+series-based count, which sampled every 500 ticks and missed most
+~200-tick lives.
+
+**The confirmatory is the shipped world alone**
+(`experiments/phase20-lineage-confirmatory-alone.campaign`, 50 seeds),
+and the two-arm file is removed from the tree with this record.
 
 ## Primary endpoint (every branch)
 
@@ -75,19 +92,29 @@ two or more, and a module count not above that parent's (inherited, not
 a fresh duplication). Beside it, on every branch: the birth-normalized
 rate (per 10,000 births).
 
-- Branch A: seed-paired directed count, open threshold minus shipped,
-  SESOI `[PILOT]` worlds-with-any, bar `[PILOT]` of 50 with a
-  simulation-based power statement from the pilot's per-birth
-  appearance rate.
-- Branches B and C: the shipped world alone on 50 seeds with an
-  **equivalence bound**: the pooled second-generation rate below
-  `[PILOT]` per 10,000 births (the SESOI), with its exact binomial
-  upper interval, so "no transmission" is distinguishable from
-  "underpowered"; the reproduction test's four counts (refused
-  non-viable, refused budget, one module, two or more) over 1,000 draws
-  against a unicell genome and 1,000 against itself are the named
-  mechanism.
-- Branch D: the count at 60,000 and at 100,000 ticks on the same seeds.
+- **The decision rule (one arm, 50 worlds)**: the pooled
+  second-generation rate per 10,000 births with its exact one-sided
+  97.5 percent upper bound, against a **SESOI of 0.5 per 10,000
+  births**, and beside it the **cohort prediction** computed by the
+  reduction from the same campaign's own numbers:
+
+      predicted rate = (appearances / births)
+                     x (born parents / births)
+                     x (births with a born parent / born parents)
+                     x 0.5 (the reproduction test's transmission)
+
+  On the pilot: 17 / 57,315 x 0.0831 x 8.24 x 0.5 = **1.016 per 10,000
+  births**, 5.8 expected second-generation organisms over the pilot's
+  births against 0 observed (Poisson probability ~0.003 - a deficit the
+  four worlds cannot settle and the fifty are run to). Three readings,
+  stated in advance: (i) the observed rate's interval contains the
+  prediction - multi-module organisms reproduce like their cohort and
+  lineages exist at the rarity the arithmetic says (Branch D's
+  substance); (ii) the upper bound is below the SESOI while the
+  prediction is above it - the second module costs reproduction, and
+  C20.2 says how; (iii) zero everywhere with the prediction above the
+  bound - a gate, named from the counters. The reproduction test's
+  counts are the transmission term and are recorded as such.
 
 ## Reported beside it
 

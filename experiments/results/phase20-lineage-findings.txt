@@ -1,0 +1,119 @@
+Phase 20 findings: the second module - why no lineage
+======================================================
+Recorded 2026-09-03. ADR-0035; pre-registration
+experiments/phase20-lineage-preregistration.md LOCKED before any
+confirmatory world ran. Reduction:
+experiments/results/phase20-lineage-reduction.py (counts, decides
+nothing). Runs archived under runs/phase20-lineage-pilot-
+0x06fb2fdcf55662df (4 worlds) and runs/phase20-lineage-confirmatory-*
+(50 worlds; see the confirmatory section).
+
+The question
+------------
+Phase 19 (D-133) ended with bodies above one module appearing in 17 of
+30 worlds under coupling v2, one organism at a time by the 500-tick
+series, and none by the horizon: no multi-module lineage. Why?
+
+What was settled by arithmetic and by tests before any campaign
+---------------------------------------------------------------
+1. Price is not the reason. The phenotype's basal multiplier is the
+   body's summed upkeep relative to the founder body's (mass 2,400,
+   upkeep 750, intake 1,000) clamped to [0.6, 1.6]; the unicell (800 /
+   200 / 1,000) sits on the floor at 0.6, and a second module of five of
+   the seven types - structural 300, sensory 350, digestive 400,
+   storage 280, reproductive 450 - leaves it there while conferring
+   capability (a second gut: intake x1.2; storage: capacity 12,000 ->
+   60,000; a motor: speed 500 -> 2,116). Only a motor (0.8) or a neural
+   module (0.93) lifts the multiplier, by at most ~3 milli per tick
+   against ~200 of intake. Pinned by
+   crates/sim-core/tests/phase20_lineage.rs. The plan's first draft had
+   proposed a uniform upkeep-scale knob; it was withdrawn before it was
+   built (ADR-0035 records why).
+2. Transmission is Mendelian and nothing refuses the carrier
+   (crates/sim-core/tests/phase20_reproduction.rs, the kernel's own
+   recombine-mutate-develop sequence with keyed draws): a two-module
+   genome found from the unicell at keyed draw 6,398 (a duplicated gut;
+   the unicell x unicell cross yields a second module in 0 of 1,000
+   draws) reproduces against a unicell into 488 of 1,000 two-module
+   children and against itself into 767 of 1,000; 0 refused as
+   non-viable, 0-2 on node budget; its compatibility distance to the
+   unicell is 0.0000 against the 0.5 pairing threshold.
+3. There was no body record to read. GrowthCompleted (Phase 14) is
+   emitted only on the ontogeny path and every Phase 16 and 19 campaign
+   ran with ontogeny off, so the census over Phase 19's own logs is
+   empty by construction. The BodyComposition record (event tag 30,
+   schema 12) is emitted at every admission and the census keys on it.
+
+The pilot's reading (four worlds, 100,000 ticks, the shipped world)
+--------------------------------------------------------------------
+17 multi-module organisms across the four worlds, every one of them
+born (a materialized organism always starts from the constant one-
+module map), 16 a doubled gut and one gut-plus-motor: the duplication
+that survives development is overwhelmingly a copy of the gut's own
+regulatory locus. None of the 17 reproduced; none had offspring; second
+generation 0. Their completed lifespans (per-world medians 191, 218,
+261, 133 ticks) match their matched one-module cohort's (259, 238, 144,
+140; median difference -13.5 ticks): the second module costs nothing
+visible in life length, as the arithmetic said.
+
+What the census then showed about the whole born cohort is the finding
+that reframes the question. Born organisms do reproduce - 1,803, 1,303,
+834 and 822 distinct born parents per world, 72 percent of births
+having a born parent - but each one rarely (born parents / births =
+8.3 percent pooled), because the world-wide born median lifespan (293,
+235, 220, 210 ticks) sits below the trait-derived maturity's floor of
+400. The ecology is a long-lived materialized parent stock (~1,400-tick
+lives, D-133) feeding a short-lived born population, and a second
+module only ever appears in the short-lived half. The pairing gate's
+other preconditions refused nobody: energy 0, capacity 0, placement 0-1
+in every world (the ~900-1,200 "nonviable" pair rejections per world
+are all node-budget refusals, C10.7's brain-costs-body coupling, ~7
+percent of births). The decision tree's Branch A applied by its letter
+(no multi-module parent) but its lever - the pairing energy gate - was
+premised on a refusal that never happens, so the two-arm contrast was
+not run and its campaign file was removed with the record.
+
+Appearances: 17 in 57,315 births = 2.97 per 10,000 - about eight times
+the Phase 19 series-based count, which sampled every 500 ticks and
+missed most ~200-tick lives. "One at a time" was a sampling artefact
+of the instrument, not a fact about the organisms.
+
+The cohort prediction, stated before the confirmatory: appearances per
+birth x born-parent fraction x offspring per born parent x one half =
+1.016 second-generation organisms per 10,000 births, 5.8 expected over
+the pilot's births against 0 observed (Poisson ~0.003) - a deficit the
+four worlds could not settle and the fifty were run to.
+
+Confirmatory (C20.1, C20.2, C20.3)
+----------------------------------
+PENDING - experiments/phase20-lineage-confirmatory-alone.campaign, 50
+seeds, the shipped world alone; SESOI 0.5 per 10,000 births; the three
+pre-stated readings.
+
+Decided outside the campaign
+----------------------------
+C20.4 MET: the starting fact is the pilot's census above (Phase 19's
+  logs carry no body record; recorded as the trap it is) and the
+  reproduction test's counts.
+C20.5 MET: the clamp fact test pins the founder reference, the unicell's
+  multipliers and the seven two-module cases.
+C20.6 MET: one record per admission whose sum is the module count; the
+  record moves no checksum (events on and off, one checksum; the
+  schema-14 fixture's state equals the Phase 19 pin); a mid-run save
+  round trip restores the same next records; a bodiless world emits
+  none; verify-phase20 five clauses; schema-11 logs decode unchanged.
+C20.7 RECORDED: 23 bytes per admission (tag, u64 id, seven u16), no
+  tick-path change.
+
+Traps met and named
+-------------------
+- A criterion on a 500-tick series peak under-counts lives shorter than
+  the interval by an order of magnitude; the event log is the instrument
+  for anything that lives for hundreds of ticks.
+- A "price" argument in registry upkeep units is not an argument about
+  what the world charges; the clamps decide, and they are pinned now.
+- A decision tree's lever must be premised on an observable refusal;
+  when the counters say the gate refuses nobody, the branch's letter is
+  not a licence to run its arm.
+- A parser arm without its index advance hangs the fixture; no pin sees
+  it, the run does.

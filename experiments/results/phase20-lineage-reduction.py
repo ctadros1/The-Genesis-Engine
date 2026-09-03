@@ -41,7 +41,7 @@ from pathlib import Path
 from statistics import median
 
 LINEAGE = re.compile(r"world condition=(\S+) seed=0x([0-9a-f]+) (.*)")
-MANIFEST = re.compile(r"^run condition=(\S+) seed=0x([0-9a-f]+) (.*)")
+MANIFEST = re.compile(r"^run (?:index=\d+ )?condition=(\S+) seed=0x([0-9a-f]+) (.*)")
 
 
 def parse_seeds(spec):
@@ -122,7 +122,7 @@ def main():
     if "--sesoi" not in args or "--bar" not in args or len(args) < 7:
         print(__doc__, file=sys.stderr)
         return 2
-    sesoi = int(args[args.index("--sesoi") + 1])
+    sesoi = float(args[args.index("--sesoi") + 1])
     bar = int(args[args.index("--bar") + 1])
     positional = [a for i, a in enumerate(args) if not a.startswith("--") and not (i > 0 and args[i - 1] in ("--sesoi", "--bar"))]
     directory = Path(positional[0])
@@ -183,6 +183,8 @@ def main():
                 "cohort_censored": int(ln["cohort_censored"]),
                 "max_modules": int(ln["max_modules"]),
                 "first_multi_tick": int(ln["first_multi_tick"]),
+                "born_parents": int(ln.get("born_parents", "0")),
+                "births_with_born_parent": int(ln.get("births_with_born_parent", "0")),
                 "compositions": ln.get("multi_compositions", "-"),
                 "added": ln.get("added_modules", "-"),
             }
@@ -220,6 +222,16 @@ def main():
               f"exact 97.5% upper bound {clopper_pearson_upper(second, births) * 10_000 if births else float('nan'):.3f} per 10,000")
         print(f"  median multi minus cohort lifespan over worlds with both: {median(gaps) if gaps else 'n/a'} (n={len(gaps)})")
         print(f"  worlds at the entity cap {max_entities}: {at_cap} / {len(seeds)}")
+        # The cohort prediction (pre-registered): appearances per birth x
+        # born-parent fraction x offspring per born parent x one half.
+        multi = sum(w["multi_total"] for w in rows)
+        born_parents = sum(w["born_parents"] for w in rows)
+        with_born = sum(w["births_with_born_parent"] for w in rows)
+        if births and born_parents:
+            predicted = multi / births * (born_parents / births) * (with_born / born_parents) * 0.5
+            print(f"  cohort prediction: {multi} appearances / {births} births x born-parent fraction {born_parents / births:.4f} "
+                  f"x {with_born / born_parents:.2f} offspring per born parent x 0.5 = {predicted * 10_000:.3f} per 10,000 births "
+                  f"({predicted * births:.1f} expected second-generation organisms; observed {second})")
         if treatment is None:
             met = (clopper_pearson_upper(second, births) * 10_000 if births else float('inf')) < sesoi
             print(f"C20.1 equivalence: upper bound {'BELOW' if met else 'NOT BELOW'} the SESOI of {sesoi} per 10,000 births")

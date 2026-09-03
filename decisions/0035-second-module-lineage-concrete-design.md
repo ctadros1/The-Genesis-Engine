@@ -159,4 +159,36 @@ with the birth-normalized rate beside it.
 
 ## As built
 
-(Amended at the end of the phase with every divergence.)
+Amended 2026-09-03 with every divergence so far; the campaign's
+paragraph is appended when it is measured.
+
+- **The record.** `EventKind::BodyComposition { id, counts: [u16; 7] }`,
+  tag 30, `EVENT_SCHEMA_VERSION` 12; pushed in `admit_schema2_child`
+  right after the body is stored (births and materializations alike)
+  and beside every `GrowthCompleted` in the ontogeny completion loop;
+  counts from `morphology::composition_counts(&body)` (registry order by
+  `ModuleType::id()`). Persist: `TAG_BODY_COMPOSITION` 30, fixed width
+  (tag, u64, seven u16 = 23 bytes), an all-zero record refused on
+  decode, reconciliation no-op, the round-trip sample count 48 -> 51
+  (three segments). Verified: one record per admission whose sum is the
+  module count (3,000-tick coupled scratch world), records of the living
+  agree with the `max_modules` gauge, no checksum moves, a mid-run save
+  round trip restores the same next records, a bodiless schema-2 world
+  emits none.
+- **`founder_reference` made public** for the clamp fact test.
+- **The census** (`crates/sim-analysis/src/lineage.rs`,
+  `lifesim-lineage-index-v1`): built by a delegated agent on the
+  GrowthCompleted-only definition and extended here to read the
+  composition record, the inheritance guard (child count <= best
+  parent's), the matched cohort (`COHORT_WINDOW_TICKS` 2,000) and the
+  two histograms; eight unit tests; the CLI line carries `cohort_*`,
+  `multi_compositions` and `added_modules`.
+- **The fixture** is a new flag, `--composition` (schema 14), not a move
+  of the schema-13 line; its parser arm initially omitted the index
+  advance and spun forever - the kind of defect a fixture pin cannot
+  see, caught by the run hanging.
+- **The reproduction test** ran before the pilot; its numbers are in
+  the section above and in the pre-registration.
+- **Two confirmatory shapes** are committed (`-alone` and `-gate`); the
+  locked pre-registration names which runs.
+- **Cost (C20.7).** 23 bytes per admission; no tick-path change.

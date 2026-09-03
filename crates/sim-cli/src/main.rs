@@ -2702,6 +2702,7 @@ fn command_lineage(options: Options) -> Result<(), String> {
              multi_offspring_total={} multi_parents={} second_generation={} max_modules={} \
              first_multi_tick={} last_multi_death_tick={} \
              cohort_completed={} cohort_censored={} cohort_median_lifespan_ticks={} \
+             births_with_born_parent={} born_parents={} \
              multi_compositions={} added_modules={}",
             run.condition,
             run.seed,
@@ -2723,6 +2724,8 @@ fn command_lineage(options: Options) -> Result<(), String> {
             summary.cohort_completed,
             summary.cohort_censored,
             summary.cohort_median_lifespan_ticks,
+            summary.births_with_born_parent,
+            summary.born_parents,
             if summary.multi_compositions.is_empty() { "-" } else { summary.multi_compositions.as_str() },
             if summary.added_modules.is_empty() { "-" } else { summary.added_modules.as_str() },
         );

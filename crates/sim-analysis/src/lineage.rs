@@ -109,6 +109,12 @@ pub struct WorldLineage {
     /// Composition multiset of multi-module bodies: each distinct count
     /// array (registry order, joined by '.') with its multiplicity, joined
     /// by ';' in lexical order. Empty when no record was present.
+    /// Births with at least one BORN parent, and distinct born organisms
+    /// that are parents - whether born organisms reproduce at all in this
+    /// world (a materialized organism's children may all die before
+    /// maturity, in which case the lineage question has a prior answer).
+    pub births_with_born_parent: u64,
+    pub born_parents: u64,
     pub multi_compositions: String,
     /// For every multi-module born child whose parent's record exists,
     /// the child-minus-parent counts against the parent with the larger
@@ -329,6 +335,21 @@ pub fn world_lineage(events: &[Event]) -> WorldLineage {
     summary.multi_offspring_total = offspring_total;
     summary.multi_parents = qualifying_parents.len() as u64;
     summary.second_generation = second_generation;
+
+    // Born parents: does reproduction ever run on a born organism?
+    let mut born_parent_set: BTreeSet<u64> = BTreeSet::new();
+    for parent_ids in parents_of.values() {
+        let born: Vec<u64> = parent_ids
+            .iter()
+            .copied()
+            .filter(|p| matches!(start.get(p), Some(&(_, StartKind::Born))))
+            .collect();
+        if !born.is_empty() {
+            summary.births_with_born_parent += 1;
+            born_parent_set.extend(born);
+        }
+    }
+    summary.born_parents = born_parent_set.len() as u64;
 
     // Composition multiset over multi-module bodies.
     let mut compositions: BTreeMap<String, u64> = BTreeMap::new();
