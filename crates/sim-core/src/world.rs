@@ -182,7 +182,7 @@ impl DeathCause {
 /// transition admits, carrying the cell, the class and the energy it
 /// entered with, so C16.5 and C16.1 can be read from the log without
 /// re-simulation. The decoder keeps accepting older schemas.
-pub const EVENT_SCHEMA_VERSION: u32 = 12;
+pub const EVENT_SCHEMA_VERSION: u32 = 13;
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum EventKind {
@@ -432,6 +432,24 @@ pub enum EventKind {
     BodyComposition {
         id: u64,
         counts: [u16; crate::morphology::MODULE_TYPE_COUNT],
+    },
+    /// Where and beside whom an organism starts (Phase 21, ADR-0036,
+    /// schema 13): its cell, the organisms already in that cell (every
+    /// one of them ahead of it in the feeding order), its own trait-
+    /// derived maturity, and the cell's four substrates (primordial,
+    /// monomer, polymer, waste - only the first two are food), microbial
+    /// density and biomass as the newcomer finds them - read at
+    /// admission, after the tick's feeding. Emitted for births and
+    /// materializations alike. Observation only: no rule reads it, the
+    /// reconciliation walk ignores it.
+    BirthSite {
+        id: u64,
+        cell: u32,
+        occupants: u16,
+        maturity_ticks: u32,
+        substrate_milli: [i64; crate::chemistry::SUBSTRATE_COUNT],
+        microbial_milli: i64,
+        biomass_milli: i64,
     },
     /// An organism entered the world by the field-to-individual transition
     /// (Phase 16, ADR-0032): the cell and genotype class whose density it
@@ -1101,6 +1119,11 @@ pub struct World {
 
     // Spatial buckets over organism positions.
     buckets: Vec<Vec<u32>>,
+    // Phase 21 (ADR-0036): organisms per cell at the start of `lifecycle`,
+    // from the positions the tick's feeding used, incremented by every
+    // admission that tick - the BirthSite record's `occupants`. A rebuilt
+    // per-tick buffer, never saved.
+    cell_occupants: Vec<u16>,
     buckets_x: u32,
     buckets_y: u32,
     bucket_size_fp: i32,
@@ -1249,6 +1272,7 @@ impl World {
             age_ticks: Vec::new(),
             cooldown_ticks: Vec::new(),
             biomass_milli,
+            cell_occupants: Vec::new(),
             buckets: (0..(buckets_x as usize) * (buckets_y as usize))
                 .map(|_| Vec::new())
                 .collect(),
@@ -5494,6 +5518,14 @@ impl World {
         // Death marks in stable order. Starvation is checked before age
         // (documented tie policy).
         let population = self.ids.len();
+        // Phase 21: the per-cell occupancy every admission this tick reads.
+        let cells = self.terrain.cell_count();
+        self.cell_occupants.clear();
+        self.cell_occupants.resize(cells, 0);
+        for index in 0..population {
+            let cell = self.cell_of(self.x_fp[index], self.y_fp[index]);
+            self.cell_occupants[cell] = self.cell_occupants[cell].saturating_add(1);
+        }
         let mut dead = vec![false; population];
         // Health depletion is checked first when contest is enabled: it is
         // the most specific cause, and a death has exactly one.
@@ -5834,6 +5866,43 @@ impl World {
             let id = self.next_entity_id;
             let counts = crate::morphology::composition_counts(child_body);
             self.push_event(next_tick, EventKind::BodyComposition { id, counts });
+        }
+        // Phase 21 (ADR-0036): where and beside whom this organism starts,
+        // as the cell is at admission - after the tick's feeding - for
+        // births and materializations alike.
+        {
+            let cell = self.cell_of(child.x_fp, child.y_fp);
+            let occupants = self.cell_occupants.get(cell).copied().unwrap_or(0);
+            let mut substrate_milli = [0_i64; crate::chemistry::SUBSTRATE_COUNT];
+            let mut microbial_milli = 0_i64;
+            if let Some(chemistry) = self.chemistry.as_ref() {
+                let base = cell * crate::chemistry::SUBSTRATE_COUNT;
+                for (slot, mass) in substrate_milli.iter_mut().enumerate() {
+                    *mass = chemistry.concentrations[base + slot];
+                }
+            }
+            if let Some(microbial) = self.microbial.as_ref() {
+                let classes = crate::microbial::class_count(&self.config.chemistry);
+                microbial_milli = microbial.densities[cell * classes..(cell + 1) * classes]
+                    .iter()
+                    .sum();
+            }
+            let biomass_milli = self.biomass_milli[cell];
+            self.push_event(
+                next_tick,
+                EventKind::BirthSite {
+                    id: self.next_entity_id,
+                    cell: cell as u32,
+                    occupants,
+                    maturity_ticks: child.phenotype.maturity_ticks as u32,
+                    substrate_milli,
+                    microbial_milli,
+                    biomass_milli,
+                },
+            );
+            if let Some(count) = self.cell_occupants.get_mut(cell) {
+                *count = count.saturating_add(1);
+            }
         }
         if let (Some(ontogeny), Some(child_body)) =
             (self.ontogeny.as_mut(), child.body.as_ref())

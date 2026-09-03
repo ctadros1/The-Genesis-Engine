@@ -99,6 +99,17 @@ speed (x4). A reader who reasons about a second module's "price" in
 registry upkeep units repeats the mistake this phase's first draft
 made; the numbers above are the ones that run, and a test pins them.*
 
+*As built (2026-09-03, Phase 21, ADR-0036): a born organism starts with
+the mean of its parents' investments (3,000-6,000 milli each) within
+2 m of their midpoint - its parents' cell or the one beside it, ground
+its parents have been eating - and, holding the highest entity ID in
+the world, it feeds after every older occupant of that cell in both
+passes. A materialized organism starts with 4,000 where the field is
+densest. Over fifty worlds the first lives a median ~268 ticks and the
+second ~1,784 against a trait maturity of 400-1,200 (D-134); what that
+difference is made of - place, order, company - is Phase 21's
+measurement, and the record says the difference is not the start.*
+
 ## State
 
 | Category | Required State | Boundaries |

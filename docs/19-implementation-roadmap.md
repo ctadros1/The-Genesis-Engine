@@ -30,6 +30,7 @@ evidence, fixtures, and benchmark records are preserved unchanged.
 | 18 | Intra-world parallelism (**cross-cutting; after 8, before 13**) | planned |
 | 19 | Chemistry as food (coupling v2) and the unicell ecology | COMPLETE 2026-09-03 (D-133): C19.3 met 30/30, C19.4 met 30/30, C19.5 v2 17/30 vs v1 0/30 - first bodies above one module, no multi-module lineage; soak exact over 10^6 ticks (`planning/phase-19-chemistry-as-food.md`) |
 | 20 | The second module: why no lineage | COMPLETE 2026-09-03 (D-134): price ruled out by arithmetic, transmission Mendelian by test, and lineages found - 127 second-generation two-module organisms in 8 of 50 worlds, 1.94 per 10,000 births against a SESOI of 0.5; Phase 19's null was a sampling artefact (`planning/phase-20-second-module-lineage.md`) |
+| 21 | The born cohort's life | planned 2026-09-03 (the rate-limiting term D-134 named; `planning/phase-21-born-cohort.md`, ADR-0036) |
 
 The former Phase 5 (performance optimization) and Phase 6 (advanced
 ecosystems) plans are superseded and preserved unmodified under

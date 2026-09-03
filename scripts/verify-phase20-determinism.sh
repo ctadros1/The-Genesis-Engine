@@ -33,6 +33,9 @@ phase20_seed=0x5eedcafef00dbeef
 phase20_ticks=4000
 # Pinned on 2026-09-03 from the first run of this script. If any moves,
 # record the old and new values in docs/22-decision-log.md and the reason.
+# The event_schema_version literal moved 12 -> 13 on 2026-09-03 (Phase 21,
+# ADR-0036: the BirthSite record); the config, terrain and state pins did
+# not move, which is what the record's neutrality asserts.
 phase20_config=0x7cfe66d39cda2e2b
 phase20_terrain=0xfacf6d2db889019f
 phase20_state=0x2137b2286076cd63
@@ -56,7 +59,7 @@ cmp "$phase20_tmp/first.json" "$phase20_tmp/second.json"
 for expected in \
   '"fixture_schema_version":14' \
   '"phase":"phase20"' \
-  '"event_schema_version":12' \
+  '"event_schema_version":13' \
   '"organisms":0' \
   "\"config_hash\":\"$phase20_config\"" \
   "\"terrain_checksum\":\"$phase20_terrain\"" \

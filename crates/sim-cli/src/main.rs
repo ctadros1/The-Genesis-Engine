@@ -81,6 +81,7 @@ fn run() -> Result<(), String> {
         Some("spatial") => command_spatial(parse_options(args.collect())?),
         Some("demography") => command_demography(parse_options(args.collect())?),
         Some("lineage") => command_lineage(parse_options(args.collect())?),
+        Some("cohort") => command_cohort(parse_options(args.collect())?),
         Some("structure") => command_structure(parse_options(args.collect())?),
         Some("morph") => command_morph(parse_options(args.collect())?),
         Some("plasticity") => command_plasticity(parse_options(args.collect())?),
@@ -104,7 +105,7 @@ fn run() -> Result<(), String> {
 fn usage() -> String {
     concat!(
         "usage: lifesim run --ticks N [config flags] [--pause-at T --pause-ticks M] [--metrics-out PATH|-] [--check-interval N] [--save-path P [--compress L]] [--load-save P] [--csv-out P [--csv-interval N]]\n",
-        "       lifesim fixture --ticks N [config flags] [--transition [--coupled|--composition]]\n",
+        "       lifesim fixture --ticks N [config flags] [--transition [--coupled|--composition|--birthsite]]\n",
         "       lifesim inspect [config flags]\n",
         "       lifesim benchmark --benchmark-id ID --output DIR [config flags] [--warmup N --samples N --ticks-per-sample N]\n",
         "       lifesim analyze --ticks N [config flags]   (requires --phase2)\n",
@@ -115,6 +116,7 @@ fn usage() -> String {
         "       lifesim spatial --manifest FILE --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX] [--power]\n",
         "       lifesim demography --manifest FILE\n",
         "       lifesim lineage --manifest FILE   (multi-module organism census; no threshold, no verdict)\n",
+        "       lifesim cohort --manifest FILE   (Phase 21 born-cohort census; no threshold, no verdict)\n",
         "       lifesim structure --manifest FILE --baseline CONDITION\n",
         "       lifesim morph --manifest FILE --baseline CONDITION\n",
         "       lifesim plasticity --manifest FILE --treatment CONDITION --baseline CONDITION [--burn-in N] [--sesoi N] [--analysis-seed HEX]\n",
@@ -184,6 +186,9 @@ struct Options {
     /// Phase 20: the coupled trace at fixture schema 14, counting the
     /// body-composition records as the world emits them.
     composition: bool,
+    /// Phase 21: the composition trace at fixture schema 15, counting the
+    /// birth-site records and summarising where the born start.
+    birthsite: bool,
     ticks: Option<u64>,
     pause_at: Option<u64>,
     pause_ticks: Option<u64>,
@@ -310,6 +315,14 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
         }
         if name == "--transition-off" {
             options.transition_off = true;
+            index += 1;
+            continue;
+        }
+        if name == "--birthsite" {
+            options.birthsite = true;
+            options.composition = true;
+            options.coupled = true;
+            options.transition = true;
             index += 1;
             continue;
         }
@@ -2733,6 +2746,89 @@ fn command_lineage(options: Options) -> Result<(), String> {
     Ok(())
 }
 
+/// Phase 21 (ADR-0036): a per-world census of the born cohort's life,
+/// computed from each run's event log -- the ground it is born on, the
+/// order it eats in, the company it keeps -- with the materialized
+/// cohort as a magnitude reference. Exactly what `WorldCohort` reports
+/// and nothing more -- no threshold, no verdict (ADR-0016).
+fn command_cohort(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("cohort requires --manifest\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+
+    println!("cohort-report 1 campaign {}", manifest.campaign.id);
+    println!("index_version {}", sim_analysis::COHORT_INDEX_VERSION);
+    for run in &manifest.runs {
+        let stem = sim_experiment::run_stem(&run.condition, run.seed);
+        let log_path = directory.join(format!("{stem}.alev"));
+        let bytes =
+            fs::read(&log_path).map_err(|error| format!("{}: {error}", log_path.display()))?;
+        let (_, events) =
+            sim_persist::decode_log_events(&bytes).map_err(|error| error.to_string())?;
+        let summary = sim_analysis::world_cohort(&events);
+
+        println!(
+            "world condition={} seed={:#018x} born_completed={} born_censored={} \
+             born_median_lifespan_ticks={} born_site_food_median={} born_occupants_median={} \
+             mat_completed={} mat_censored={} mat_median_lifespan_ticks={} \
+             mat_site_food_median={} mat_occupants_median={} food_ratio_milli={} \
+             rho_food_milli={} rho_occupants_milli={} blocks_used={} blocks_skipped={} \
+             pooled_rho_food_milli={} pooled_rho_occupants_milli={} partial_food_milli={} \
+             partial_occupants_milli={} born_reached_maturity={} born_reproduced={} \
+             reached_maturity_food_quartile={}/{}/{}/{} reproduced_food_quartile={}/{}/{}/{} \
+             reached_maturity_occupants={}/{}/{}/{} reproduced_occupants={}/{}/{}/{} \
+             waste_median={} polymer_median={} microbial_median={}",
+            run.condition,
+            run.seed,
+            summary.born_completed,
+            summary.born_censored,
+            summary.born_median_lifespan_ticks,
+            summary.born_site_food_median,
+            summary.born_occupants_median,
+            summary.mat_completed,
+            summary.mat_censored,
+            summary.mat_median_lifespan_ticks,
+            summary.mat_site_food_median,
+            summary.mat_occupants_median,
+            summary.food_ratio_milli,
+            summary.rho_food_milli,
+            summary.rho_occupants_milli,
+            summary.blocks_used,
+            summary.blocks_skipped,
+            summary.pooled_rho_food_milli,
+            summary.pooled_rho_occupants_milli,
+            summary.partial_food_milli,
+            summary.partial_occupants_milli,
+            summary.born_reached_maturity,
+            summary.born_reproduced,
+            summary.reached_maturity_food_quartile[0],
+            summary.reached_maturity_food_quartile[1],
+            summary.reached_maturity_food_quartile[2],
+            summary.reached_maturity_food_quartile[3],
+            summary.reproduced_food_quartile[0],
+            summary.reproduced_food_quartile[1],
+            summary.reproduced_food_quartile[2],
+            summary.reproduced_food_quartile[3],
+            summary.reached_maturity_occupants[0],
+            summary.reached_maturity_occupants[1],
+            summary.reached_maturity_occupants[2],
+            summary.reached_maturity_occupants[3],
+            summary.reproduced_occupants[0],
+            summary.reproduced_occupants[1],
+            summary.reproduced_occupants[2],
+            summary.reproduced_occupants[3],
+            summary.waste_median,
+            summary.polymer_median,
+            summary.microbial_median,
+        );
+    }
+    Ok(())
+}
+
 /// The Phase 13 observer report: C13.1's arrival census and the social
 /// reachability census, one line per world, no threshold and no verdict
 /// (ADR-0016). The A-versus-C and A-versus-D decisions belong to the
@@ -3896,23 +3992,88 @@ fn command_fixture(options: Options) -> Result<(), String> {
     // emits them, and the largest body any record described.
     let mut composition_records: u64 = 0;
     let mut max_modules_seen: u32 = 0;
+    // Phase 21 (schema 15): the birth-site records, the occupants and the
+    // food (primordial + monomer + biomass) the born found, for the medians.
+    let mut birthsite_records: u64 = 0;
+    let mut born_occupants: Vec<u16> = Vec::new();
+    let mut born_food: Vec<i64> = Vec::new();
     for _ in 0..ticks {
         world.step();
         if options.composition {
+            let mut born_this_tick: std::collections::BTreeSet<u64> = std::collections::BTreeSet::new();
             for event in world.events() {
-                if let sim_core::EventKind::BodyComposition { counts, .. } = event.kind {
-                    composition_records += 1;
-                    let total: u32 = counts.iter().map(|&c| u32::from(c)).sum();
-                    max_modules_seen = max_modules_seen.max(total);
+                if let sim_core::EventKind::Birth { id, .. } | sim_core::EventKind::PairedBirth { id, .. } = event.kind {
+                    born_this_tick.insert(id);
+                }
+            }
+            for event in world.events() {
+                match event.kind {
+                    sim_core::EventKind::BodyComposition { counts, .. } => {
+                        composition_records += 1;
+                        let total: u32 = counts.iter().map(|&c| u32::from(c)).sum();
+                        max_modules_seen = max_modules_seen.max(total);
+                    }
+                    sim_core::EventKind::BirthSite { id, occupants, substrate_milli, biomass_milli, .. } if options.birthsite => {
+                        birthsite_records += 1;
+                        if born_this_tick.contains(&id) {
+                            born_occupants.push(occupants);
+                            born_food.push(substrate_milli[sim_core::S_PRIMORDIAL] + substrate_milli[sim_core::S_MONOMER] + biomass_milli);
+                        }
+                    }
+                    _ => {}
                 }
             }
         }
     }
+    let lower_median = |v: &mut Vec<i64>| -> i64 { if v.is_empty() { 0 } else { v.sort_unstable(); v[(v.len() - 1) / 2] } };
+    let mut born_occupants_i64: Vec<i64> = born_occupants.iter().map(|&o| i64::from(o)).collect();
+    let median_occupants_at_birth = lower_median(&mut born_occupants_i64);
+    let born_site_food_median = lower_median(&mut born_food);
     world
         .check_invariants()
         .map_err(|violation| format!("invariant violation: {violation}"))?;
     let metrics = world.metrics();
-    if options.composition {
+    if options.birthsite {
+        // Fixture schema 15: the schema-14 trace with the Phase 21 birth-site
+        // record counted (ADR-0036) and the born cohort's occupancy and food
+        // at birth summarised; the schema-14 line stays as it is.
+        let counters = world.counters();
+        println!(
+            concat!(
+                "{{\"fixture_schema_version\":15,\"phase\":\"phase21\",",
+                "\"coupling_policy\":\"lifesim-chemistry-coupling-v2\",",
+                "\"event_schema_version\":{},",
+                "\"organisms\":{},\"ticks\":{},\"seed\":\"0x{:016x}\",",
+                "\"config_hash\":\"0x{:016x}\",\"terrain_checksum\":\"0x{:016x}\",",
+                "\"state_checksum\":\"0x{:016x}\",\"population\":{},\"births\":{},",
+                "\"consumed_milli\":{},\"materialized\":{},\"materialized_milli\":{},",
+                "\"refused\":{},\"organism_energy_milli\":{},",
+                "\"composition_records\":{},\"max_modules_seen\":{},",
+                "\"birthsite_records\":{},\"median_occupants_at_birth\":{},",
+                "\"born_site_food_median\":{},\"born_recorded\":{}}}"
+            ),
+            sim_core::EVENT_SCHEMA_VERSION,
+            world.config().initial_organisms,
+            metrics.tick,
+            world.config().world_seed,
+            world.config_hash(),
+            world.terrain().terrain_checksum,
+            world.state_checksum(),
+            metrics.population,
+            counters.births_total,
+            metrics.chemistry_consumed_milli,
+            metrics.materialized_total,
+            metrics.materialized_milli,
+            metrics.transition_refused_total,
+            metrics.total_energy_milli,
+            composition_records,
+            max_modules_seen,
+            birthsite_records,
+            median_occupants_at_birth,
+            born_site_food_median,
+            born_food.len(),
+        );
+    } else if options.composition {
         // Fixture schema 14: the Phase 19 coupled trace with the Phase 20
         // body-composition record counted (ADR-0035). The schema-13 line
         // stays as it is for `verify-phase19`; this one adds two fields

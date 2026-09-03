@@ -138,6 +138,18 @@ founder body's (750), clamped to [0.6, 1.6], so a one-module unicell
 leaves it there while conferring capability. Price is not what stops a
 second module; the phase measures transmission instead.*
 
+*As built (2026-09-03, Phase 21, ADR-0036): one observation record and
+one fact about the tick. `BirthSite` (event tag 31, schema 13) carries,
+at every admission, the cell an organism starts in, how many organisms
+were already there, its own maturity, and the cell's substrates,
+microbial density and biomass as it finds them. The fact, pinned by a
+mutation-checked test: both feeding passes visit organisms in entity-ID
+order and a cell's biomass and substrate are taken in that order, so a
+newborn - the highest ID in the world - eats after every older occupant
+of its cell. The youngest eats last. Nothing was written to make it
+so; it is what an ordered loop over a shared cell does, and the phase
+measures what it costs.*
+
 Each new phase is empty when its section is disabled, so simulation results
 are unaffected; only the per-phase benchmark shape changes, which increments
 the benchmark schema version.

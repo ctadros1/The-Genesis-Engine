@@ -144,6 +144,15 @@ C20.3 - what the extra module is: 221 of 238 multi-module bodies are a
 
 Free-lunch gate clear: no world at the cap.
 
+The two cohorts' lives (lifesim demography over the same run, saved as
+demography.txt in the archive): per-world median completed lifespan
+over all organisms 268 ticks (range 192-332); over materialized
+organisms 1,784 (range 1,613-12,292); per world a median ~14,880
+completed lives of which ~2,450 materialized, so the all-organism
+median is the born cohort's to within a few ticks. The born cohort's
+short life against a trait maturity of 400-1,200 is the rate-limiting
+term of every lineage above and the subject of Phase 21.
+
 Observation, no criterion: the Phase 17 era detector at its locked
 penalty (2 x 10^8, window 1,000, burn-in 10,000) reports one segment
 in each of the three largest lineage worlds (seeds 20009, 20014,

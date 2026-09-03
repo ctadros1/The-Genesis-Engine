@@ -114,6 +114,8 @@ const TAG_GROWTH_COMPLETED: u8 = 28;
 const TAG_MATERIALIZED: u8 = 29;
 /// Phase 20 (schema 12): a body's module counts by type at admission.
 const TAG_BODY_COMPOSITION: u8 = 30;
+/// Phase 21 (schema 13): where and beside whom an organism starts.
+const TAG_BIRTH_SITE: u8 = 31;
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum EventLogError {
@@ -366,6 +368,8 @@ impl ReconstructedCounters {
             EventKind::Materialized { .. } => {}
             // Observation only: a body's composition changes no counter.
             EventKind::BodyComposition { .. } => {}
+            // Observation only: a birth site changes no counter.
+            EventKind::BirthSite { .. } => {}
         }
     }
 }
@@ -864,6 +868,26 @@ fn encode_event(out: &mut Vec<u8>, kind: &EventKind) {
                 out.extend_from_slice(&count.to_le_bytes());
             }
         }
+        EventKind::BirthSite {
+            id,
+            cell,
+            occupants,
+            maturity_ticks,
+            substrate_milli,
+            microbial_milli,
+            biomass_milli,
+        } => {
+            out.push(TAG_BIRTH_SITE);
+            out.extend_from_slice(&id.to_le_bytes());
+            out.extend_from_slice(&cell.to_le_bytes());
+            out.extend_from_slice(&occupants.to_le_bytes());
+            out.extend_from_slice(&maturity_ticks.to_le_bytes());
+            for mass in substrate_milli {
+                out.extend_from_slice(&mass.to_le_bytes());
+            }
+            out.extend_from_slice(&microbial_milli.to_le_bytes());
+            out.extend_from_slice(&biomass_milli.to_le_bytes());
+        }
         EventKind::Materialized {
             id,
             cell,
@@ -1353,6 +1377,32 @@ fn decode_events_into(
                 }
                 EventKind::BodyComposition { id, counts }
             }
+            TAG_BIRTH_SITE => {
+                let id = short!(cursor.u64());
+                let cell = short!(cursor.u32());
+                let occupants = short!(cursor.u16());
+                let maturity_ticks = short!(cursor.u32());
+                let mut substrate_milli = [0_i64; sim_core::SUBSTRATE_COUNT];
+                for slot in substrate_milli.iter_mut() {
+                    *slot = short!(cursor.i64());
+                }
+                let microbial_milli = short!(cursor.i64());
+                let biomass_milli = short!(cursor.i64());
+                // A field mass cannot be negative; a negative one is a
+                // corrupt record, not a world the kernel emits.
+                if substrate_milli.iter().any(|&m| m < 0) || microbial_milli < 0 || biomass_milli < 0 {
+                    return Err(EventLogError::ValueOutOfRange("birth site mass"));
+                }
+                EventKind::BirthSite {
+                    id,
+                    cell,
+                    occupants,
+                    maturity_ticks,
+                    substrate_milli,
+                    microbial_milli,
+                    biomass_milli,
+                }
+            }
             TAG_MATERIALIZED => {
                 let id = short!(cursor.u64());
                 let cell = short!(cursor.u32());
@@ -1811,6 +1861,20 @@ mod tests {
                     counts: [0, 1, 0, 1, 0, 0, 0],
                 },
             },
+            // Phase 21 (schema 13): a birth site with two occupants and a
+            // grazed cell, so the u16, u32 and i64 array paths round-trip.
+            Event {
+                tick,
+                kind: EventKind::BirthSite {
+                    id: 32,
+                    cell: 1_234,
+                    occupants: 2,
+                    maturity_ticks: 800,
+                    substrate_milli: [1_500, 250, 40, 9_000],
+                    microbial_milli: 12_345,
+                    biomass_milli: 0,
+                },
+            },
         ]
     }
 
@@ -1827,7 +1891,7 @@ mod tests {
         let bytes = build_log();
         let (scan, events) = decode_log_events(&bytes).unwrap();
         assert_eq!(scan.segments, 3);
-        assert_eq!(scan.events, 51);
+        assert_eq!(scan.events, 54);
         assert_eq!(scan.first_tick, Some(1));
         assert_eq!(scan.last_tick, Some(3));
         assert_eq!(scan.bytes_consumed, bytes.len());
