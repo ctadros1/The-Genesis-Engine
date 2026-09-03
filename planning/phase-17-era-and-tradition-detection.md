@@ -1,8 +1,13 @@
 # Phase 17: Offline Era And Tradition Detection
 
-Status: planned, not started. Analysis versions `lifesim-era-v1`,
-`lifesim-tradition-v1`. Specification:
-`specifications/era-and-tradition-detection.md`.
+Status: in progress (2026-09-02). Analysis versions `lifesim-era-v1`,
+`lifesim-tradition-v1` (the latter shipped with Phase 13, D-124/D-126).
+Specification: `specifications/era-and-tradition-detection.md`. Decision:
+ADR-0033 (the concrete design: the log-supplied feature vector and its
+recorded absences, the exact integer segmenter with the penalty as the
+threshold, the synthetic fixtures, the null-control campaign and its
+burn-in, and D-126's conviction of the tradition detector as C17.6's
+reading).
 
 ## Problem
 

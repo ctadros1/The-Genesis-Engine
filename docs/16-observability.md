@@ -31,6 +31,14 @@ Avoid high-cardinality labels such as organism ID, client ID, genome hash, arbit
 
 Structured logs include timestamp, world ID, tick, component, severity, correlation ID, and safe error code. Major simulation events include births, deaths, extinctions, config changes, interventions, saves, restores, and capacity limits. Logs cannot replace append-only event records for replay/audit.
 
+*Analysis reports are not metrics (Phase 17, ADR-0033).* A metric is an
+operational or scientific time series scraped from a running world; an
+analysis report (`lifesim era`, `lifesim tradition`, and the rest of the
+`sim-analysis` family) is a versioned offline artifact computed from the
+event log after the run, carrying its own provenance and its own version
+string outside the config hash. Nothing in a report is exported to
+Prometheus, and nothing in a tick reads one.
+
 ## Grafana Dashboard Plan
 
 Create one operational dashboard for tick rate, p95 phase duration, RSS, save health, observer bandwidth, and errors. Create a separate world dashboard for population, births/deaths, resources, diversity, lifespan, and predator/prey intake ratio. Do not edit existing dashboards until a named owner, datasource, folder, and rollback export are confirmed live.

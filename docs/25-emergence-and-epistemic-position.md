@@ -92,6 +92,22 @@ conditions rather than the scaffolded result alone. The realistic risk is
 not that the rule gets broken once; it is that the word "scaffolded" quietly
 disappears from a summary three documents downstream.
 
+*Status of the from-scratch prediction (2026-09-02, D-128, D-131).* The
+chain is now measured link by link. Chemistry to a persistent microbial
+field: reached, and at the ceiling in the neutral field, not only the
+scaffolded ones (Phase 15). Field to individual organisms: reached in
+every world with the transition enabled and in none without it (Phase
+16) - a representation change at a physical threshold, with no organism
+gaining anything by crossing it (the neutrality tests). Individual to
+multicellular: **not reached** - the pre-registered null - and the reason
+is measured rather than guessed: a materialized unicell is a slow,
+blind gut that cannot eat the substrate it condensed from (coupling v1),
+so it starves before maturity and reproduces on the order of once per
+thousand arrivals; structural evolution had almost nothing to act on.
+That is the honest prior this document has always stated, now with a
+number on it, and the next lever is physics (a mouth for the field,
+Phase 19), not a threshold.
+
 ### The corollary: analysis observes, it never instructs
 
 This project already holds this line for similarity clustering

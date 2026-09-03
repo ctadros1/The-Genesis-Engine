@@ -35,6 +35,7 @@ and none has started:
 | 16 | The multicellularity transition | `phase-16-multicellularity-transition.md` |
 | 17 | Offline era and tradition detection | `phase-17-era-and-tradition-detection.md` |
 | 18 | Intra-world parallelism - **cross-cutting; after 8, before 13** | `phase-18-intra-world-parallelism.md` |
+| 19 | Chemistry as food (coupling v2) and the unicell ecology - planned 2026-09-02 | `phase-19-chemistry-as-food.md` |
 
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under

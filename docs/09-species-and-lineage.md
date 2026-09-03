@@ -47,6 +47,17 @@ never a state the simulation enters and no organism is ever told about one.
 Reports call detected regimes "segments" and never name them after human
 historical periods.
 
+*As built (2026-09-02, Phase 17, ADR-0033): `lifesim era` reads a run's
+event log into fixed windows of twenty-two integer features (rates per
+1,000 organism-ticks, absent groups excluded rather than zeroed) and
+partitions them by exact optimal partitioning under a per-boundary
+penalty that is the threshold; the report echoes every parameter and
+prints "no segments above threshold" as an explicit negative result. The
+tradition detector is the Phase 13 one; its Phase 13 campaign convicted
+it on its own control arm (D-126), and Phase 17 records that as C17.6's
+reading rather than re-running the verdict - the sharper control is
+`lifesim-tradition-v2` follow-on work.*
+
 ## Species Labels
 
 Species are analytical clusters, not hard simulation factions. The initial system periodically samples living genomes, computes a normalized genetic distance, and assigns provisional cluster labels. Cluster membership does not change action eligibility, mating rules, or rendering unless a configuration explicitly says so.

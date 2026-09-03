@@ -25,9 +25,10 @@ evidence, fixtures, and benchmark records are preserved unchanged.
 | 13 | Social channel, and organized conflict | planned |
 | 14 | Ontogeny and sexual selection | planned |
 | 15 | Abiogenesis and the unicellular regime | planned |
-| 16 | The multicellularity transition | planned |
-| 17 | Offline era and tradition detection | planned |
+| 16 | The multicellularity transition | in progress (2026-09-02: built, pinned, campaign pre-registered) |
+| 17 | Offline era and tradition detection | in progress (2026-09-02: ADR-0033, detector being built) |
 | 18 | Intra-world parallelism (**cross-cutting; after 8, before 13**) | planned |
+| 19 | Chemistry as food (coupling v2) and the unicell ecology | planned 2026-09-02 (the follow-on ADR-0031 and ADR-0032 name; `planning/phase-19-chemistry-as-food.md`) |
 
 The former Phase 5 (performance optimization) and Phase 6 (advanced
 ecosystems) plans are superseded and preserved unmodified under

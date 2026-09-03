@@ -1,0 +1,99 @@
+PHASE 16 TRANSITION FINDINGS (C16.5, C16.6)
+=========================================================================
+Campaign phase16-transition-confirmatory, hash 0x4328c7911173a5d4: 4
+conditions x 30 matched seeds (17001..17030, every one generable at
+64x64 - no amendment was needed), 60,000 ticks, 64x64 cells, 120 worlds,
+0 failed, wall 362.5 s at 8 workers (run locally: the pre-registration's
+projection of a few minutes held, and the server's signing agent was
+locked). Read ONLY through experiments/phase16-transition-preregistration.md
+(LOCKED and committed at 075095a, before any confirmatory world ran, on
+the Stage B pilot archived at runs/phase16-transition-pilot-
+0xd113b9f4494ccde7). Reduction: phase16-transition-reduction.py beside
+this file, recomputable from the archived run at
+runs/phase16-transition-confirmatory-0x4328c7911173a5d4 (13 MB: 120
+.alfd series + 120 end snapshots + manifest + batch log + reduction).
+
+Run integrity: World::check_invariants enforced BOTH identities every
+5,000 ticks in all 120 worlds (the field identity with the materialized
+term subtracted, the organism energy identity with it added); the
+reduction independently re-verified produced + deposited -
+materialized_milli == chemistry + microbial at the final sample of every
+world and refused nothing. `refused` admissions: zero in every world.
+
+THE PRE-REGISTERED OBSERVABLES (verbatim reduction output)
+-------------------------------------------------------------------------
+# condition n materialized/n median_first_tick median_final_population median_final_materialized median_final_births births_worlds/n multi_module_worlds/n median_peak_max_modules median_final_multi_fraction_milli median_occupancy
+T0 30 0/30 none 0.0 0.0 0.0 0/30 0/30 0.0 0.0 1.0000
+N 30 30/30 24500.0 150.0 22788.5 8.5 20/30 0/30 1.0 0.0 1.0000
+S2 30 30/30 23500.0 185.0 23155.0 76.0 25/30 0/30 1.0 0.0 1.0000
+S4 30 30/30 22500.0 184.0 23330.5 75.5 25/30 0/30 1.0 0.0 1.0000
+# differences from T0 (N minus T0): materialized +30/30, population +150
+# differences from N (S minus N): S2 first tick -1000, population +35,
+#   materialized +366.5, births +67.5, births-worlds +5/30;
+#   S4 first tick -2000, population +34, materialized +542, births +67,
+#   births-worlds +5/30
+
+READING, AGAINST THE LOCKED DECISION RULES
+-------------------------------------------------------------------------
+1. C16.5 MET. `scratch` runs end to end: from chemistry, through
+   abiogenesis and the microbial field, to materialized individual
+   organisms, in 30 of 30 worlds under N and under both scaffold
+   conditions, against the pre-registered bar of 28 of 30 - and in 0 of
+   30 under the transition-disabled control T0, by construction. The
+   T0-versus-N difference is the finding; the first materialization
+   lands between ticks 22,500 and 24,500 (medians), inside the 20,000-
+   30,000 window the pre-registration stated. The scaffold contrast on
+   materialization is flat at the ceiling, as stated in advance
+   (D-128's field is rich everywhere); the scaffolds bring the first
+   materialization forward by 1,000-2,000 ticks (a small, consistent,
+   un-barred difference, reported as the curve).
+
+2. C16.6: THE PRE-REGISTERED EXPECTED NULL. No lineage exceeded one
+   module in any of the 120 worlds (peak max_modules = 1 wherever
+   organisms existed; multi-module fraction 0). This is a measured
+   result about reachability at these rates and this horizon, reported
+   as such and not weakened after the fact. Which of the two
+   pre-registered reasons applies: births DO occur - in 20 of 30 N worlds
+   (median 8.5 per world) and 25 of 30 scaffold worlds (median ~76) -
+   against ~22,800-23,300 materialized organisms per world, so a
+   materialized lineage reproduces on the order of once per 300-2,700
+   arrivals. Structural evolution had almost no material to act on
+   inside the horizon: the null is a birth-limit null (D-073's shape), as
+   the pre-registration said it would be if births stayed rare.
+
+3. THE INFLUX RATE IS THE CAP, AS STATED IN ADVANCE. Every transition
+   world's materialized total is ~22,800-23,300 at the horizon, which is
+   the per-tick cap (64 per 100-tick check) applied from first onset -
+   the trigger fires in far more slots than the cap admits, every check.
+   The standing population (medians 150 / 185 / 184) is therefore the
+   equilibrium of a configured influx against starvation, and the
+   pre-registration forbids reading it as a property of the field.
+
+4. UNPLANNED OBSERVATION (no bar, no decision): the scaffolds raise
+   births roughly ninefold (medians 76 and 75.5 against 8.5) and the
+   standing population by ~23%, with the same influx. A plausible
+   mechanism - patch cells hold more substrate, so more slots trigger
+   near each other and materialized unicells land beside potential mates
+   more often - is consistent with the numbers but was not instrumented;
+   it is a hypothesis for Phase 19's pre-registration, not a finding.
+
+NAMED NARROWINGS (carried from ADR-0031 and ADR-0032)
+-------------------------------------------------------------------------
+- Coupling v1 only: organisms cannot feed from the chemistry field, so a
+  materialized unicell (a slow, blind gut) starves in ~200 ticks against
+  a trait-derived maturity of 800 unless it finds biomass; C16.2's
+  survival clause leans on this narrowness (ADR-0032), and Phase 19
+  (chemistry as food) is the named follow-on that re-asks C16.6 under a
+  viable unicell ecology.
+- The class-to-genome map is constant across classes (ADR-0032); the
+  registry decides which slots trigger, not what arrives.
+
+CRITERIA STATUS AFTER THIS CAMPAIGN
+-------------------------------------------------------------------------
+- C16.5 MET - this file.
+- C16.6 MEASURED, the expected null - this file.
+- C16.1: the short-horizon half closed by the suite, the verify script
+  and this campaign's 120 in-run identity checks; the 10^6-tick soak
+  (phase16-c161-ledger-soak.campaign) is running and is recorded in its
+  own addendum below when it completes.
+- C16.2, C16.3, C16.4, C16.7, C16.8: met at the build increment (D-130).

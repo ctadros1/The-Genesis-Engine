@@ -120,17 +120,32 @@ scaffolded condition paired with its unscaffolded control.
       clause pins the encoded genome equal across classes and its body
       equal to the unicell; the fixture's two-process replay pins it across
       clean processes.*
-- [ ] **C16.5 `scratch` runs end to end**, or reports precisely where it
+- [x] **C16.5 `scratch` runs end to end**, or reports precisely where it
       stops. A run from chemistry to at least one materialized individual
       organism, in at least N of 30 seeds under the best scaffold condition,
       with N stated before the campaign. Under the unscaffolded control the
       expected result is 0 of 30, and that comparison is the finding.
-- [ ] **C16.6 Multicellularity is reached, or reported as not reached.** The
+      *Met 2026-09-02 (D-131): N stated as 28 of 30 in the locked
+      pre-registration; measured 30 of 30 under N, S2 and S4, 0 of 30
+      under the transition-disabled control T0. The pre-registration
+      recorded, before the campaign, that D-128's ceiling makes the
+      unscaffolded field rich enough to materialize too, so the
+      interpretable control is T0 rather than N; the scaffolds bring the
+      first materialization forward by 1,000-2,000 ticks. Findings:
+      `experiments/results/phase16-transition-findings.txt`.*
+- [x] **C16.6 Multicellularity is reached, or reported as not reached.** The
       fraction of seeds in which any lineage exceeds one module, and the
       distribution of module counts over time, for scaffolded and
       unscaffolded conditions. **This is expected to return null and is
       stated so in advance.** A null here is a measured result about
       reachability, reported as such and not weakened after the fact.
+      *Measured 2026-09-02 (D-131): the pre-registered expected null - 0
+      of 30 in every arm, peak module count 1 wherever organisms existed.
+      Reported as a birth-limit null: births occur but rarely (N median
+      8.5 per world against ~22,800 materialized), which the
+      pre-registration named ahead of time as the reason to expect. The
+      named lever is Phase 19 (chemistry as food), which re-asks this
+      criterion under a viable unicell ecology.*
 - [x] **C16.7 No multicellularity mechanic exists.** A code review criterion
       stated as an acceptance criterion because it is the phase's central
       claim: no rule reads module count to grant, deny, reward, or penalize
