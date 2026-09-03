@@ -91,6 +91,7 @@ fn run() -> Result<(), String> {
         Some("development") => command_development(parse_options(args.collect())?),
         Some("assortment") => command_assortment(parse_options(args.collect())?),
         Some("tradition") => command_tradition(parse_options(args.collect())?),
+        Some("era") => command_era(parse_options(args.collect())?),
         Some("communities") => command_communities(parse_options(args.collect())?),
         Some("recognition") => command_recognition(parse_options(args.collect())?),
         Some("fields") => command_fields(),
@@ -121,6 +122,8 @@ fn usage() -> String {
         "       lifesim social-contrast --manifest FILE --treatment A --baseline C --epochs N,N,.. --sesoi N [--analysis-seed HEX]   (C13.1 seed-paired contrast)\n",
         "       lifesim fidelity --manifest FILE   (C13.2 per-world reductions; no verdict)\n",
         "       lifesim tradition --manifest FILE   (C13.3 per-world reductions; no verdict)\n",
+        "       lifesim era --manifest FILE --penalty MILLI [--window TICKS] [--burn-in TICKS] [--max-segments N] [--features]\n",
+        "                                           (Phase 17 lifesim-era-v1 per-world segmentation report; no verdict)\n",
         "       lifesim communities --manifest FILE [--analysis-seed HEX]   (C13.8-C13.10 per-world reductions; no verdict)\n",
         "       lifesim recognition --manifest FILE [--analysis-seed HEX]   (C13.7 per-world reductions; needs event schema 8 artifacts)\n",
         "       lifesim fields\n",
@@ -198,6 +201,10 @@ struct Options {
     disabled: Option<String>,
     workers: Option<usize>,
     burn_in: Option<u64>,
+    window: Option<u64>,
+    penalty: Option<i128>,
+    max_segments: Option<usize>,
+    features: bool,
     sesoi: Option<i64>,
     analysis_seed: Option<u64>,
     power: bool,
@@ -300,6 +307,11 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             index += 1;
             continue;
         }
+        if name == "--features" {
+            options.features = true;
+            index += 1;
+            continue;
+        }
         if name == "--no-preflight" {
             options.no_preflight = true;
             index += 1;
@@ -343,6 +355,9 @@ fn parse_options(args: Vec<String>) -> Result<Options, String> {
             "--disabled" => options.disabled = Some(value.clone()),
             "--workers" => options.workers = Some(parse_number(name, value)?),
             "--burn-in" => options.burn_in = Some(parse_number(name, value)?),
+            "--window" => options.window = Some(parse_number(name, value)?),
+            "--penalty" => options.penalty = Some(parse_number::<i128>(name, value)?),
+            "--max-segments" => options.max_segments = Some(parse_number(name, value)?),
             "--sesoi" => options.sesoi = Some(parse_number::<i64>(name, value)?),
             "--analysis-seed" => options.analysis_seed = Some(parse_seed(value)?),
             "--epoch" => options.epoch = Some(parse_number(name, value)?),
@@ -3294,6 +3309,77 @@ fn command_fidelity(options: Options) -> Result<(), String> {
                 bins.join(" "),
             );
         }
+    }
+    Ok(())
+}
+
+/// Phase 17's per-world segmentation report (`lifesim-era-v1`, ADR-0033):
+/// the windowed feature vector, the exact optimal partition under the
+/// stated penalty, and the feature deltas across each boundary, one
+/// world after another, no verdict (ADR-0016). Every parameter is echoed
+/// in the header so a reader checks the report against the
+/// pre-registration rather than against memory; `--penalty` has no
+/// default because the penalty is the threshold, and a threshold nobody
+/// wrote down is not a threshold.
+fn command_era(options: Options) -> Result<(), String> {
+    let path = options
+        .manifest
+        .as_ref()
+        .ok_or_else(|| format!("era requires --manifest\n{}", usage()))?;
+    let penalty = options
+        .penalty
+        .ok_or_else(|| format!("era requires --penalty MILLI (the pre-registered value)\n{}", usage()))?;
+    let text = fs::read_to_string(path).map_err(|error| format!("{}: {error}", path.display()))?;
+    let manifest = sim_experiment::Manifest::parse(&text).map_err(|error| error.to_string())?;
+    let directory = path.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let window_ticks = options.window.unwrap_or(1_000);
+    let burn_in_ticks = options.burn_in.unwrap_or(0);
+    let max_segments = options.max_segments.unwrap_or(8);
+    let mut header_printed = false;
+    for condition in &manifest.campaign.conditions {
+        for run in manifest.runs_for(&condition.name) {
+            let artifacts = load_run_artifacts(directory, &manifest, condition, run, false, false)?;
+            let config = &artifacts.config;
+            let plan = sim_analysis::EraPlan {
+                window_ticks,
+                burn_in_ticks,
+                penalty_milli: penalty,
+                max_segments,
+                initial_organisms: config.initial_organisms,
+                max_entities: config.max_entities,
+                run_ticks: run.ticks,
+                gates: sim_analysis::FeatureGates {
+                    contest: config.contest.enabled,
+                    artifact: config.artifact.enabled,
+                    social: config.social.enabled,
+                    ontogeny: config.physiology.enabled && config.physiology.ontogeny_enabled,
+                    transition: config.transition.enabled,
+                },
+            };
+            if !header_printed {
+                print!(
+                    "{}",
+                    sim_analysis::render_header(&manifest.campaign.id, &plan)
+                );
+                header_printed = true;
+            }
+            let era = sim_analysis::world_era(&artifacts.events, &plan)
+                .map_err(|error| format!("{}: era: {error:?}", run.condition))?;
+            print!(
+                "{}",
+                sim_analysis::render_world(
+                    &run.condition,
+                    run.seed,
+                    run.config_hash,
+                    manifest.event_schema_version,
+                    &era,
+                    options.features,
+                )
+            );
+        }
+    }
+    if !header_printed {
+        return Err("era: the manifest lists no runs".to_owned());
     }
     Ok(())
 }

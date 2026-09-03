@@ -51,10 +51,12 @@ threshold. Analysis version outside the config hash. The command is
 Feature scale, for reading the penalty: in the pilot, births run
 ~900-1,600 and starvation deaths ~450-1,200 milli per 1,000
 organism-ticks with population ~33 milli of `max_entities`; a boundary
-must buy a within-segment sum-of-squares reduction of 2 x 10^8, which
-a step of ~4,000 in one feature over twenty windows on each side does
-(20 x 20 / 40 x 4,000^2 = 1.6 x 10^8, plus the other features that move
-with it) and a step of ~2,000 alone does not.
+must buy a within-segment sum-of-squares reduction of 2 x 10^8: over
+twenty windows on each side that is 10 x sum(step^2), so a lone step of
+~4,500 in one feature is the edge (4,000 alone buys 1.6 x 10^8 and does
+not clear it; 6,000 alone buys 3.6 x 10^8 and does), and a step of
+~2,000 alone never does. The suite's locked-penalty fixtures step by
+5,000-6,000 and pin both sides (`era_locked_penalty.rs`).
 
 *Seed amendment, recorded 2026-09-02 before any validation-campaign
 world ran:* the preflight refused seed 18019 (no land at 64x64 - the

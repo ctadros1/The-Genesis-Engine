@@ -1,0 +1,63 @@
+PHASE 17 ERA-DETECTOR FINDINGS (C17.4, C17.5)
+=========================================================================
+Campaign phase17-era-null, hash 0x61d51a68b5f7d1fa: NULL and FULL x 30
+matched seeds (18001..18018, 18020..18030, 18035 - the pre-registered
+amendment: preflight refused 18019 before any world ran), 60,000 ticks,
+64x64 cells, events on, 60 worlds, 0 failed, wall 827 s at 8 workers
+(run locally). Read ONLY through experiments/phase17-era-preregistration.md
+(LOCKED at 6bbcdcb, amended at aa61d6a, both before any world was read)
+at its locked parameters: window 1,000, burn-in 10,000, penalty
+200,000,000, max 8 segments. The full report is beside this file
+(phase17-era-null-report.txt); the reduction script and the archived run
+(runs/phase17-era-null-0x61d51a68b5f7d1fa, 1.5 GB: 60 event logs +
+manifest + report + reduction) make every number recomputable.
+
+Run integrity: every log decoded fail-closed; all 60 world lines present
+(the reduction refuses otherwise); the report header echoes the locked
+parameters verbatim.
+
+THE PRE-REGISTERED OBSERVABLES (verbatim reduction output)
+-------------------------------------------------------------------------
+# condition n worlds_with_boundary/n segments_distribution leading_features
+NULL 30 0/30 1:30 -
+FULL 30 30/30 4:3 5:5 6:6 7:5 8:11 signals_emitted:128 object_actions_refused:38
+
+READING, AGAINST THE LOCKED DECISION RULES
+-------------------------------------------------------------------------
+1. C17.5 MET. At the locked penalty the detector reports no segment above
+   threshold in 30 of 30 ablated worlds (bar: at least 25 of 30). The
+   pre-registration expected 0 to 3; the pilot's one near-threshold
+   demographic shift had no counterpart above 2 x 10^8 across the thirty
+   seeds. Every NULL report ends with the explicit negative line.
+
+2. THE CONTRAST ARM READS AS EXPECTED. All 30 FULL worlds report
+   boundaries (segments 4 to 8; 11 worlds at the cap), and the features
+   that lead the deltas are signal emission (128 of the boundaries'
+   leading deltas) and refused object actions (38) - the two mechanisms
+   the FULL arm turns on, plus the relocating patch that moves every two
+   windows. Reported beside the null with no bar, exactly as
+   pre-registered: the detector finds regime changes where the mechanisms
+   that could produce them exist, and none where they do not.
+
+3. C17.4 (suite, at the same locked penalty): one, three and one-group
+   injected boundaries recovered within one window with precision and
+   recall 1.0; the synthetic null empty; a twofold single step correctly
+   below threshold (era_locked_penalty.rs). The detector is neither blind
+   nor trigger-happy at the scale of real logs.
+
+WHAT THIS IS NOT
+-------------------------------------------------------------------------
+A segment is a statistically detected change in event rates. Nothing
+here names an era, and nothing in a tick can read a report (C17.1,
+C17.2). The tradition detector issued no verdict in this phase: its Phase
+13 campaign convicted it on its own control arm (D-126), recorded here as
+C17.6's reading; the sharper control is lifesim-tradition-v2, follow-on
+work.
+
+CRITERIA STATUS AFTER THIS CAMPAIGN
+-------------------------------------------------------------------------
+- C17.5 MET - this file. C17.4 MET - the suite at the locked penalty.
+- C17.1, C17.2, C17.3, C17.7: suite tests and verify-phase17-determinism.sh.
+- C17.6: the Phase 13 format, read through D-126 (ADR-0033).
+- C17.8: experiments/results/phase17-benchmark-measurements.txt (14.1 s,
+  2.27 GB peak over the largest archived log, 589 MB).

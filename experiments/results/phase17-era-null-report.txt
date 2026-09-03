@@ -1,0 +1,1087 @@
+era-report 1 campaign phase17-era-null detector lifesim-era-v1 window 1000 penalty 200000000 max_segments 8 burn_in 10000 features 22
+world condition=NULL seed=0x0000000000004651 config=0xb06cb402156df847 schema=11 windows=50 dropped=10 segments=1 cost=3111104
+no segments above threshold
+world condition=NULL seed=0x0000000000004652 config=0xa7ac183bcc8229ee schema=11 windows=50 dropped=10 segments=1 cost=1211693
+no segments above threshold
+world condition=NULL seed=0x0000000000004653 config=0x79fff0412ab04a45 schema=11 windows=50 dropped=10 segments=1 cost=5693124
+no segments above threshold
+world condition=NULL seed=0x0000000000004654 config=0x2faa8a098d0d9894 schema=11 windows=50 dropped=10 segments=1 cost=2432599
+no segments above threshold
+world condition=NULL seed=0x0000000000004655 config=0x6961274f399fd4d3 schema=11 windows=50 dropped=10 segments=1 cost=2996685
+no segments above threshold
+world condition=NULL seed=0x0000000000004656 config=0x229e0d211b58a46a schema=11 windows=50 dropped=10 segments=1 cost=1348110
+no segments above threshold
+world condition=NULL seed=0x0000000000004657 config=0x4f73e543c8d19d01 schema=11 windows=50 dropped=10 segments=1 cost=1008574
+no segments above threshold
+world condition=NULL seed=0x0000000000004658 config=0x426f62e28eeb2de0 schema=11 windows=50 dropped=10 segments=1 cost=2761473
+no segments above threshold
+world condition=NULL seed=0x0000000000004659 config=0x16db912d6e31fcbf schema=11 windows=50 dropped=10 segments=1 cost=2577476
+no segments above threshold
+world condition=NULL seed=0x000000000000465a config=0x72248b33aff63366 schema=11 windows=50 dropped=10 segments=1 cost=2044344
+no segments above threshold
+world condition=NULL seed=0x000000000000465b config=0x45099840f4139c1d schema=11 windows=50 dropped=10 segments=1 cost=1814303
+no segments above threshold
+world condition=NULL seed=0x000000000000465c config=0x9ea190a052eaed2c schema=11 windows=50 dropped=10 segments=1 cost=1085836
+no segments above threshold
+world condition=NULL seed=0x000000000000465d config=0xe08b4e5f15ac622b schema=11 windows=50 dropped=10 segments=1 cost=933683
+no segments above threshold
+world condition=NULL seed=0x000000000000465e config=0xb44ed3d7de0cd642 schema=11 windows=50 dropped=10 segments=1 cost=627338
+no segments above threshold
+world condition=NULL seed=0x000000000000465f config=0xafd440066fb45ed9 schema=11 windows=50 dropped=10 segments=1 cost=2607582
+no segments above threshold
+world condition=NULL seed=0x0000000000004660 config=0x75bf9a02551c4758 schema=11 windows=50 dropped=10 segments=1 cost=1935318
+no segments above threshold
+world condition=NULL seed=0x0000000000004661 config=0x74e9f7c61dcc19b7 schema=11 windows=50 dropped=10 segments=1 cost=1120600
+no segments above threshold
+world condition=NULL seed=0x0000000000004662 config=0x41b6e988f31bef1e schema=11 windows=50 dropped=10 segments=1 cost=1434347
+no segments above threshold
+world condition=NULL seed=0x0000000000004664 config=0x3f224e4e25f170c4 schema=11 windows=50 dropped=10 segments=1 cost=3358967
+no segments above threshold
+world condition=NULL seed=0x0000000000004665 config=0xd0e49c210e15c203 schema=11 windows=50 dropped=10 segments=1 cost=1996357
+no segments above threshold
+world condition=NULL seed=0x0000000000004666 config=0x3f6e0ccd1478c25a schema=11 windows=50 dropped=10 segments=1 cost=1608316
+no segments above threshold
+world condition=NULL seed=0x0000000000004667 config=0x5aca8ea90ff64f71 schema=11 windows=50 dropped=10 segments=1 cost=1777667
+no segments above threshold
+world condition=NULL seed=0x0000000000004668 config=0x6a76df7bb1599d50 schema=11 windows=50 dropped=10 segments=1 cost=3012303
+no segments above threshold
+world condition=NULL seed=0x0000000000004669 config=0x3066de939db3ffef schema=11 windows=50 dropped=10 segments=1 cost=2493662
+no segments above threshold
+world condition=NULL seed=0x000000000000466a config=0x3f13aee2871a0856 schema=11 windows=50 dropped=10 segments=1 cost=891140
+no segments above threshold
+world condition=NULL seed=0x000000000000466b config=0x67ba8aaf5abab6cd schema=11 windows=50 dropped=10 segments=1 cost=2098348
+no segments above threshold
+world condition=NULL seed=0x000000000000466c config=0x9b720b469d03d15c schema=11 windows=50 dropped=10 segments=1 cost=1785732
+no segments above threshold
+world condition=NULL seed=0x000000000000466d config=0xb617b8ea6bb92c9b schema=11 windows=50 dropped=10 segments=1 cost=1148096
+no segments above threshold
+world condition=NULL seed=0x000000000000466e config=0xde015bdba6c1b9f2 schema=11 windows=50 dropped=10 segments=1 cost=1798663
+no segments above threshold
+world condition=NULL seed=0x0000000000004673 config=0xe751c88f1e5a3025 schema=11 windows=50 dropped=10 segments=1 cost=2943739
+no segments above threshold
+world condition=FULL seed=0x0000000000004651 config=0x31790f10397216d8 schema=11 windows=50 dropped=10 segments=8 cost=3339661747
+boundary tick=14001 window=14
+delta signals_emitted=10871
+delta object_actions_refused=3096
+delta objects_consumed=983
+delta damage_events=218
+delta deaths_starvation=54
+boundary tick=25001 window=25
+delta signals_emitted=-13211
+delta object_actions_refused=5001
+delta objects_consumed=810
+delta damage_events=268
+delta objects_created=135
+boundary tick=38001 window=38
+delta signals_emitted=16511
+delta object_actions_refused=-8207
+delta objects_consumed=745
+delta deaths_starvation=365
+delta damage_events=84
+boundary tick=41001 window=41
+delta signals_emitted=22747
+delta object_actions_refused=-703
+delta deaths_starvation=-500
+delta objects_consumed=264
+delta objects_struck=-118
+boundary tick=43001 window=43
+delta signals_emitted=26631
+delta objects_consumed=-1105
+delta object_actions_refused=542
+delta objects_struck=186
+delta objects_created=154
+boundary tick=46001 window=46
+delta signals_emitted=-28773
+delta object_actions_refused=2879
+delta objects_consumed=-322
+delta deaths_starvation=160
+delta population=41
+boundary tick=48001 window=48
+delta signals_emitted=-21878
+delta object_actions_refused=-1643
+delta objects_consumed=685
+delta damage_events=142
+delta deaths_starvation=-48
+world condition=FULL seed=0x0000000000004652 config=0xda7111815cdd8e7d schema=11 windows=50 dropped=10 segments=7 cost=2106926250
+boundary tick=15001 window=15
+delta signals_emitted=11779
+delta object_actions_refused=1093
+delta objects_consumed=-826
+delta deaths_starvation=135
+delta objects_struck=73
+boundary tick=20001 window=20
+delta signals_emitted=13753
+delta object_actions_refused=4436
+delta objects_consumed=1132
+delta damage_events=133
+delta objects_created=85
+boundary tick=27001 window=27
+delta signals_emitted=-7840
+delta object_actions_refused=-605
+delta objects_created=-105
+delta objects_destroyed=-103
+delta objects_struck=-102
+boundary tick=35001 window=35
+delta signals_emitted=-15320
+delta object_actions_refused=-2828
+delta objects_consumed=-648
+delta damage_events=130
+delta objects_created=77
+boundary tick=47001 window=47
+delta object_actions_refused=10537
+delta signals_emitted=5463
+delta objects_consumed=248
+delta objects_struck=240
+delta objects_created=237
+boundary tick=54001 window=54
+delta object_actions_refused=-8542
+delta signals_emitted=3354
+delta objects_consumed=325
+delta objects_struck=-224
+delta objects_destroyed=-182
+world condition=FULL seed=0x0000000000004653 config=0x354304204d5b550e schema=11 windows=50 dropped=10 segments=8 cost=4475850512
+boundary tick=14001 window=14
+delta signals_emitted=17845
+delta object_actions_refused=1843
+delta objects_consumed=1670
+delta damage_events=260
+delta objects_struck=-88
+boundary tick=21001 window=21
+delta signals_emitted=17864
+delta object_actions_refused=2651
+delta objects_consumed=-2336
+delta deaths_starvation=271
+delta damage_events=36
+boundary tick=23001 window=23
+delta signals_emitted=-19264
+delta object_actions_refused=-2812
+delta objects_consumed=1941
+delta deaths_starvation=-197
+delta damage_events=175
+boundary tick=33001 window=33
+delta signals_emitted=22515
+delta object_actions_refused=1379
+delta objects_consumed=-798
+delta damage_events=-380
+delta objects_created=190
+boundary tick=38001 window=38
+delta signals_emitted=-45469
+delta object_actions_refused=3038
+delta objects_consumed=1019
+delta damage_events=299
+delta objects_created=-193
+boundary tick=46001 window=46
+delta object_actions_refused=17926
+delta objects_consumed=4240
+delta signals_emitted=3637
+delta damage_events=204
+delta deaths_starvation=-113
+boundary tick=50001 window=50
+delta object_actions_refused=-21919
+delta signals_emitted=-2834
+delta objects_consumed=-1667
+delta damage_events=282
+delta births=-86
+world condition=FULL seed=0x0000000000004654 config=0xee5b32200339236b schema=11 windows=50 dropped=10 segments=6 cost=1856634418
+boundary tick=12001 window=12
+delta signals_emitted=-12964
+delta object_actions_refused=2264
+delta objects_consumed=1768
+delta damage_events=203
+delta deaths_starvation=-43
+boundary tick=16001 window=16
+delta signals_emitted=-12222
+delta object_actions_refused=1564
+delta objects_consumed=527
+delta damage_events=274
+delta objects_struck=166
+boundary tick=39001 window=39
+delta signals_emitted=13482
+delta object_actions_refused=951
+delta objects_consumed=-830
+delta objects_struck=359
+delta damage_events=-194
+boundary tick=44001 window=44
+delta signals_emitted=-10437
+delta object_actions_refused=6607
+delta objects_consumed=-594
+delta objects_struck=-216
+delta objects_created=-123
+boundary tick=57001 window=57
+delta signals_emitted=13725
+delta object_actions_refused=-5109
+delta objects_consumed=1850
+delta objects_struck=180
+delta objects_picked_up=-118
+world condition=FULL seed=0x0000000000004655 config=0x835638e52d9f6164 schema=11 windows=50 dropped=10 segments=4 cost=1635325269
+boundary tick=23001 window=23
+delta object_actions_refused=-11245
+delta signals_emitted=616
+delta objects_consumed=-330
+delta objects_created=-96
+delta objects_destroyed=-95
+boundary tick=31001 window=31
+delta signals_emitted=8758
+delta object_actions_refused=-1466
+delta objects_consumed=411
+delta damage_events=109
+delta objects_created=87
+boundary tick=48001 window=48
+delta signals_emitted=-10918
+delta object_actions_refused=-1831
+delta objects_consumed=1187
+delta damage_events=121
+delta deaths_starvation=-36
+world condition=FULL seed=0x0000000000004656 config=0xd1ced8678e5e6959 schema=11 windows=50 dropped=10 segments=5 cost=1578073662
+boundary tick=18001 window=18
+delta signals_emitted=9443
+delta object_actions_refused=-1086
+delta objects_consumed=-583
+delta deaths_starvation=157
+delta objects_created=-97
+boundary tick=23001 window=23
+delta signals_emitted=17213
+delta object_actions_refused=5179
+delta objects_consumed=-889
+delta deaths_starvation=-123
+delta damage_events=-95
+boundary tick=25001 window=25
+delta signals_emitted=-11995
+delta object_actions_refused=706
+delta objects_consumed=537
+delta objects_destroyed=-142
+delta objects_created=-140
+boundary tick=32001 window=32
+delta signals_emitted=-13287
+delta object_actions_refused=-4120
+delta objects_consumed=1788
+delta damage_events=350
+delta objects_destroyed=57
+world condition=FULL seed=0x0000000000004657 config=0xe48b205580d14c2a schema=11 windows=50 dropped=10 segments=5 cost=2295442652
+boundary tick=15001 window=15
+delta signals_emitted=-21774
+delta object_actions_refused=-1552
+delta objects_consumed=233
+delta deaths_starvation=101
+delta damage_events=38
+boundary tick=25001 window=25
+delta signals_emitted=-18316
+delta object_actions_refused=2227
+delta objects_consumed=1011
+delta damage_events=158
+delta deaths_starvation=80
+boundary tick=43001 window=43
+delta object_actions_refused=12842
+delta signals_emitted=-2994
+delta objects_consumed=-998
+delta deaths_starvation=-293
+delta damage_events=-158
+boundary tick=46001 window=46
+delta object_actions_refused=-14176
+delta signals_emitted=9437
+delta objects_consumed=1730
+delta damage_events=401
+delta deaths_starvation=270
+world condition=FULL seed=0x0000000000004658 config=0x3e259ac20256f367 schema=11 windows=50 dropped=10 segments=7 cost=2860026242
+boundary tick=19001 window=19
+delta signals_emitted=10729
+delta object_actions_refused=-3862
+delta objects_consumed=864
+delta damage_events=346
+delta births=30
+boundary tick=24001 window=24
+delta signals_emitted=-15136
+delta object_actions_refused=7700
+delta objects_consumed=-922
+delta damage_events=-402
+delta objects_created=133
+boundary tick=32001 window=32
+delta signals_emitted=10666
+delta object_actions_refused=-5127
+delta objects_consumed=946
+delta damage_events=291
+delta objects_struck=-111
+boundary tick=40001 window=40
+delta signals_emitted=-14027
+delta object_actions_refused=5219
+delta objects_consumed=806
+delta objects_destroyed=257
+delta objects_created=255
+boundary tick=47001 window=47
+delta object_actions_refused=-10141
+delta signals_emitted=-4073
+delta objects_consumed=-2452
+delta damage_events=-558
+delta terrain_struck=287
+boundary tick=51001 window=51
+delta signals_emitted=9595
+delta objects_consumed=4388
+delta object_actions_refused=1607
+delta damage_events=640
+delta terrain_struck=-347
+world condition=FULL seed=0x0000000000004659 config=0xf3f7f31ef80d09c0 schema=11 windows=50 dropped=10 segments=8 cost=3546459371
+boundary tick=18001 window=18
+delta signals_emitted=24785
+delta object_actions_refused=1415
+delta objects_consumed=-135
+delta damage_events=73
+delta births=40
+boundary tick=21001 window=21
+delta signals_emitted=14017
+delta object_actions_refused=-1130
+delta deaths_starvation=90
+delta objects_consumed=-64
+delta damage_events=16
+boundary tick=28001 window=28
+delta signals_emitted=-25181
+delta object_actions_refused=-3650
+delta objects_consumed=129
+delta objects_struck=-84
+delta objects_destroyed=-83
+boundary tick=33001 window=33
+delta signals_emitted=-11227
+delta object_actions_refused=3347
+delta objects_consumed=1494
+delta damage_events=306
+delta objects_destroyed=78
+boundary tick=41001 window=41
+delta object_actions_refused=7905
+delta signals_emitted=2566
+delta objects_consumed=1991
+delta damage_events=173
+delta objects_created=133
+boundary tick=53001 window=53
+delta signals_emitted=23766
+delta object_actions_refused=18818
+delta objects_consumed=1504
+delta damage_events=510
+delta deaths_starvation=108
+boundary tick=58001 window=58
+delta object_actions_refused=-20792
+delta signals_emitted=-18485
+delta objects_consumed=-1274
+delta objects_destroyed=173
+delta objects_created=148
+world condition=FULL seed=0x000000000000465a config=0x2a189cb73fa867e5 schema=11 windows=50 dropped=10 segments=7 cost=2812458078
+boundary tick=13001 window=13
+delta signals_emitted=19458
+delta object_actions_refused=-991
+delta objects_consumed=902
+delta objects_destroyed=-170
+delta objects_created=-165
+boundary tick=24001 window=24
+delta signals_emitted=-10204
+delta object_actions_refused=9751
+delta objects_consumed=452
+delta objects_struck=110
+delta population=101
+boundary tick=31001 window=31
+delta object_actions_refused=-14065
+delta signals_emitted=5085
+delta objects_consumed=-288
+delta damage_events=62
+delta population=-56
+boundary tick=44001 window=44
+delta signals_emitted=18864
+delta objects_consumed=484
+delta object_actions_refused=245
+delta objects_struck=-157
+delta objects_created=-133
+boundary tick=47001 window=47
+delta signals_emitted=13774
+delta object_actions_refused=2328
+delta objects_consumed=1777
+delta damage_events=273
+delta objects_created=207
+boundary tick=56001 window=56
+delta signals_emitted=10329
+delta object_actions_refused=-3024
+delta deaths_starvation=246
+delta damage_events=173
+delta objects_consumed=148
+world condition=FULL seed=0x000000000000465b config=0x46e4dfc920b613d6 schema=11 windows=50 dropped=10 segments=5 cost=2133081799
+boundary tick=35001 window=35
+delta object_actions_refused=5355
+delta signals_emitted=2844
+delta objects_consumed=-1274
+delta damage_events=-171
+delta objects_created=-55
+boundary tick=48001 window=48
+delta signals_emitted=16966
+delta object_actions_refused=9251
+delta objects_consumed=3142
+delta damage_events=551
+delta deaths_starvation=264
+boundary tick=51001 window=51
+delta object_actions_refused=-16706
+delta signals_emitted=12831
+delta objects_consumed=-3228
+delta damage_events=-398
+delta objects_created=-345
+boundary tick=53001 window=53
+delta signals_emitted=-28820
+delta object_actions_refused=4270
+delta objects_consumed=2955
+delta damage_events=272
+delta objects_created=80
+world condition=FULL seed=0x000000000000465c config=0xefdc4ff755c4a6d3 schema=11 windows=50 dropped=10 segments=6 cost=2551414403
+boundary tick=29001 window=29
+delta signals_emitted=-17134
+delta object_actions_refused=1275
+delta objects_consumed=-761
+delta objects_destroyed=-52
+delta objects_created=-51
+boundary tick=32001 window=32
+delta signals_emitted=14962
+delta object_actions_refused=9805
+delta objects_consumed=2217
+delta damage_events=127
+delta deaths_starvation=108
+boundary tick=40001 window=40
+delta signals_emitted=-17917
+delta object_actions_refused=-10684
+delta objects_consumed=-1793
+delta damage_events=-166
+delta objects_created=-27
+boundary tick=53001 window=53
+delta signals_emitted=17025
+delta deaths_starvation=135
+delta damage_events=-135
+delta objects_struck=104
+delta terrain_struck=99
+boundary tick=56001 window=56
+delta signals_emitted=-10951
+delta object_actions_refused=4743
+delta objects_created=262
+delta objects_destroyed=257
+delta terrain_struck=255
+world condition=FULL seed=0x000000000000465d config=0xb7cc1b7c8cab7f6c schema=11 windows=50 dropped=10 segments=8 cost=3160406225
+boundary tick=19001 window=19
+delta object_actions_refused=-19068
+delta signals_emitted=10559
+delta objects_consumed=1175
+delta deaths_starvation=111
+delta objects_destroyed=46
+boundary tick=32001 window=32
+delta signals_emitted=-12780
+delta object_actions_refused=9637
+delta objects_consumed=-875
+delta objects_created=139
+delta objects_destroyed=137
+boundary tick=35001 window=35
+delta signals_emitted=24684
+delta object_actions_refused=7060
+delta objects_consumed=-408
+delta deaths_starvation=179
+delta terrain_struck=-42
+boundary tick=41001 window=41
+delta signals_emitted=-26349
+delta object_actions_refused=-15516
+delta objects_consumed=-475
+delta objects_created=92
+delta objects_destroyed=87
+boundary tick=49001 window=49
+delta object_actions_refused=8862
+delta signals_emitted=-8138
+delta objects_consumed=4800
+delta objects_created=1128
+delta objects_destroyed=1128
+boundary tick=55001 window=55
+delta signals_emitted=29003
+delta object_actions_refused=-10802
+delta objects_consumed=-883
+delta objects_destroyed=-875
+delta objects_created=-874
+boundary tick=59001 window=59
+delta signals_emitted=-20804
+delta object_actions_refused=-5583
+delta objects_consumed=968
+delta deaths_starvation=293
+delta objects_created=-155
+world condition=FULL seed=0x000000000000465e config=0x2322c18091f37641 schema=11 windows=50 dropped=10 segments=5 cost=2140167371
+boundary tick=22001 window=22
+delta object_actions_refused=13923
+delta signals_emitted=6284
+delta objects_consumed=1849
+delta damage_events=177
+delta objects_created=128
+boundary tick=25001 window=25
+delta object_actions_refused=-12824
+delta signals_emitted=-5761
+delta objects_consumed=-1263
+delta deaths_starvation=85
+delta population=-43
+boundary tick=38001 window=38
+delta object_actions_refused=7106
+delta signals_emitted=5969
+delta objects_consumed=2647
+delta damage_events=504
+delta objects_struck=-73
+boundary tick=58001 window=58
+delta signals_emitted=25436
+delta object_actions_refused=-5942
+delta objects_consumed=-2794
+delta damage_events=-403
+delta objects_struck=203
+world condition=FULL seed=0x000000000000465f config=0x91b29238e2b7c012 schema=11 windows=50 dropped=10 segments=4 cost=1829560050
+boundary tick=17001 window=17
+delta signals_emitted=9258
+delta object_actions_refused=-731
+delta objects_consumed=-472
+delta deaths_starvation=-87
+delta terrain_struck=87
+boundary tick=24001 window=24
+delta signals_emitted=16412
+delta object_actions_refused=-2439
+delta objects_consumed=2252
+delta damage_events=485
+delta deaths_starvation=225
+boundary tick=27001 window=27
+delta signals_emitted=-29098
+delta object_actions_refused=-1178
+delta objects_consumed=-312
+delta deaths_starvation=-177
+delta terrain_struck=47
+world condition=FULL seed=0x0000000000004660 config=0xfb37f543e8b27ecf schema=11 windows=50 dropped=10 segments=8 cost=2600655713
+boundary tick=19001 window=19
+delta object_actions_refused=12119
+delta objects_consumed=6491
+delta signals_emitted=-1767
+delta damage_events=621
+delta objects_struck=579
+boundary tick=23001 window=23
+delta object_actions_refused=-9341
+delta objects_consumed=-4983
+delta signals_emitted=3219
+delta objects_struck=-434
+delta damage_events=-366
+boundary tick=31001 window=31
+delta signals_emitted=15500
+delta object_actions_refused=2213
+delta objects_consumed=-880
+delta objects_created=-168
+delta objects_destroyed=-155
+boundary tick=37001 window=37
+delta object_actions_refused=10162
+delta signals_emitted=10024
+delta objects_consumed=2722
+delta objects_struck=711
+delta damage_events=370
+boundary tick=40001 window=40
+delta signals_emitted=17307
+delta objects_consumed=1547
+delta object_actions_refused=-1233
+delta objects_struck=-298
+delta deaths_starvation=282
+boundary tick=42001 window=42
+delta signals_emitted=-15762
+delta object_actions_refused=-7029
+delta objects_consumed=-2706
+delta deaths_starvation=-513
+delta objects_struck=-501
+boundary tick=47001 window=47
+delta signals_emitted=-19662
+delta object_actions_refused=4629
+delta objects_consumed=1578
+delta deaths_starvation=185
+delta damage_events=148
+world condition=FULL seed=0x0000000000004661 config=0x4b8d543a64353ea8 schema=11 windows=50 dropped=10 segments=6 cost=2506788698
+boundary tick=17001 window=17
+delta signals_emitted=22686
+delta object_actions_refused=-4595
+delta objects_consumed=1499
+delta damage_events=233
+delta objects_created=114
+boundary tick=27001 window=27
+delta signals_emitted=13013
+delta object_actions_refused=-4448
+delta objects_consumed=1363
+delta damage_events=303
+delta deaths_starvation=-81
+boundary tick=33001 window=33
+delta signals_emitted=-34947
+delta object_actions_refused=-1588
+delta objects_consumed=-626
+delta damage_events=-144
+delta deaths_starvation=114
+boundary tick=45001 window=45
+delta signals_emitted=-13398
+delta object_actions_refused=2338
+delta objects_consumed=-781
+delta objects_destroyed=-185
+delta objects_created=-184
+boundary tick=50001 window=50
+delta signals_emitted=7389
+delta objects_consumed=3249
+delta object_actions_refused=-1356
+delta damage_events=594
+delta objects_destroyed=166
+world condition=FULL seed=0x0000000000004662 config=0xfe976314caaf398d schema=11 windows=50 dropped=10 segments=8 cost=3709756208
+boundary tick=23001 window=23
+delta signals_emitted=-11089
+delta object_actions_refused=2245
+delta objects_consumed=-800
+delta deaths_starvation=85
+delta objects_created=-73
+boundary tick=30001 window=30
+delta signals_emitted=12190
+delta object_actions_refused=4718
+delta objects_consumed=1656
+delta damage_events=260
+delta objects_created=107
+boundary tick=35001 window=35
+delta signals_emitted=23711
+delta object_actions_refused=-3457
+delta objects_consumed=799
+delta objects_created=161
+delta objects_destroyed=158
+boundary tick=44001 window=44
+delta signals_emitted=19010
+delta objects_consumed=-3069
+delta damage_events=-297
+delta object_actions_refused=-193
+delta deaths_starvation=-74
+boundary tick=51001 window=51
+delta signals_emitted=28650
+delta objects_consumed=707
+delta deaths_starvation=485
+delta object_actions_refused=406
+delta objects_created=-291
+boundary tick=53001 window=53
+delta signals_emitted=-40384
+delta object_actions_refused=1425
+delta deaths_starvation=-670
+delta objects_consumed=-302
+delta damage_events=-294
+boundary tick=56001 window=56
+delta signals_emitted=28911
+delta object_actions_refused=-1673
+delta objects_consumed=1355
+delta damage_events=357
+delta deaths_starvation=285
+world condition=FULL seed=0x0000000000004664 config=0x34101c5ec013933b schema=11 windows=50 dropped=10 segments=8 cost=5287233712
+boundary tick=18001 window=18
+delta object_actions_refused=34403
+delta signals_emitted=-19142
+delta objects_consumed=-993
+delta damage_events=201
+delta objects_struck=-80
+boundary tick=20001 window=20
+delta object_actions_refused=42579
+delta objects_consumed=1397
+delta signals_emitted=896
+delta deaths_starvation=-193
+delta damage_events=-120
+boundary tick=22001 window=22
+delta object_actions_refused=58654
+delta signals_emitted=2437
+delta objects_consumed=506
+delta deaths_starvation=278
+delta damage_events=220
+boundary tick=25001 window=25
+delta object_actions_refused=-31199
+delta signals_emitted=6964
+delta objects_consumed=-795
+delta objects_struck=-71
+delta population=-58
+boundary tick=28001 window=28
+delta object_actions_refused=-62296
+delta signals_emitted=-2204
+delta objects_consumed=-2009
+delta deaths_starvation=-119
+delta damage_events=-102
+boundary tick=29001 window=29
+delta object_actions_refused=-47617
+delta signals_emitted=12077
+delta objects_consumed=951
+delta damage_events=-186
+delta objects_struck=134
+boundary tick=52001 window=52
+delta signals_emitted=-18986
+delta object_actions_refused=-5494
+delta objects_consumed=1537
+delta damage_events=170
+delta deaths_starvation=-70
+world condition=FULL seed=0x0000000000004665 config=0x36e88d0f4954a574 schema=11 windows=50 dropped=10 segments=5 cost=1946548412
+boundary tick=18001 window=18
+delta object_actions_refused=5568
+delta signals_emitted=4234
+delta objects_consumed=3756
+delta damage_events=438
+delta objects_created=76
+boundary tick=27001 window=27
+delta signals_emitted=11448
+delta object_actions_refused=6196
+delta objects_consumed=244
+delta objects_struck=181
+delta damage_events=169
+boundary tick=31001 window=31
+delta signals_emitted=-21674
+delta object_actions_refused=-1897
+delta objects_consumed=-127
+delta deaths_starvation=-101
+delta objects_created=78
+boundary tick=53001 window=53
+delta signals_emitted=16118
+delta object_actions_refused=-2888
+delta objects_consumed=937
+delta damage_events=132
+delta deaths_starvation=31
+world condition=FULL seed=0x0000000000004666 config=0xdb12f4501f8dcba9 schema=11 windows=50 dropped=10 segments=8 cost=2645143330
+boundary tick=20001 window=20
+delta signals_emitted=13657
+delta object_actions_refused=804
+delta damage_events=146
+delta objects_consumed=105
+delta deaths_starvation=76
+boundary tick=29001 window=29
+delta signals_emitted=22182
+delta object_actions_refused=-4088
+delta objects_consumed=1834
+delta damage_events=283
+delta deaths_starvation=-141
+boundary tick=34001 window=34
+delta signals_emitted=-20546
+delta object_actions_refused=-2840
+delta objects_consumed=-200
+delta deaths_starvation=183
+delta objects_struck=153
+boundary tick=36001 window=36
+delta signals_emitted=-11298
+delta object_actions_refused=-2690
+delta objects_consumed=448
+delta objects_created=77
+delta objects_destroyed=72
+boundary tick=50001 window=50
+delta signals_emitted=15418
+delta object_actions_refused=8157
+delta objects_consumed=-662
+delta deaths_starvation=-81
+delta objects_struck=-20
+boundary tick=56001 window=56
+delta signals_emitted=10160
+delta object_actions_refused=-6430
+delta objects_consumed=4387
+delta damage_events=749
+delta deaths_starvation=124
+boundary tick=58001 window=58
+delta signals_emitted=-17008
+delta object_actions_refused=-1853
+delta objects_consumed=-1305
+delta damage_events=-224
+delta objects_created=-62
+world condition=FULL seed=0x0000000000004667 config=0x41850f40c538563a schema=11 windows=50 dropped=10 segments=8 cost=2483100706
+boundary tick=16001 window=16
+delta object_actions_refused=-13089
+delta signals_emitted=1470
+delta objects_consumed=1287
+delta damage_events=402
+delta objects_destroyed=128
+boundary tick=25001 window=25
+delta signals_emitted=24566
+delta object_actions_refused=959
+delta deaths_starvation=190
+delta objects_consumed=-115
+delta damage_events=70
+boundary tick=28001 window=28
+delta signals_emitted=-19314
+delta object_actions_refused=1596
+delta objects_consumed=-292
+delta deaths_starvation=-140
+delta objects_destroyed=-102
+boundary tick=46001 window=46
+delta signals_emitted=13233
+delta object_actions_refused=-5345
+delta deaths_starvation=235
+delta objects_consumed=-92
+delta objects_created=-64
+boundary tick=48001 window=48
+delta signals_emitted=13964
+delta object_actions_refused=7114
+delta objects_consumed=1686
+delta deaths_starvation=-273
+delta births=63
+boundary tick=55001 window=55
+delta signals_emitted=19341
+delta object_actions_refused=-2831
+delta objects_consumed=1417
+delta damage_events=196
+delta deaths_starvation=48
+boundary tick=59001 window=59
+delta signals_emitted=15854
+delta objects_consumed=-3509
+delta object_actions_refused=1573
+delta deaths_starvation=-167
+delta damage_events=-150
+world condition=FULL seed=0x0000000000004668 config=0x708a75edb620eab7 schema=11 windows=50 dropped=10 segments=8 cost=2424809117
+boundary tick=15001 window=15
+delta signals_emitted=18425
+delta object_actions_refused=3822
+delta objects_consumed=1150
+delta objects_struck=99
+delta objects_created=93
+boundary tick=23001 window=23
+delta signals_emitted=-9544
+delta object_actions_refused=7432
+delta objects_struck=523
+delta objects_created=514
+delta objects_destroyed=513
+boundary tick=27001 window=27
+delta signals_emitted=-14415
+delta object_actions_refused=9547
+delta objects_consumed=1338
+delta objects_struck=-309
+delta objects_destroyed=-259
+boundary tick=32001 window=32
+delta object_actions_refused=-16072
+delta signals_emitted=-6756
+delta objects_consumed=811
+delta damage_events=207
+delta objects_struck=-149
+boundary tick=42001 window=42
+delta signals_emitted=13133
+delta object_actions_refused=1593
+delta objects_created=275
+delta objects_destroyed=275
+delta objects_struck=249
+boundary tick=46001 window=46
+delta signals_emitted=-9017
+delta objects_consumed=-1441
+delta object_actions_refused=858
+delta objects_struck=291
+delta objects_created=283
+boundary tick=55001 window=55
+delta signals_emitted=13327
+delta objects_consumed=2199
+delta object_actions_refused=1577
+delta objects_created=-540
+delta objects_struck=-534
+world condition=FULL seed=0x0000000000004669 config=0x5e982fd5c1fc12d0 schema=11 windows=50 dropped=10 segments=6 cost=2028288376
+boundary tick=14001 window=14
+delta signals_emitted=7709
+delta object_actions_refused=4161
+delta objects_consumed=-1507
+delta deaths_starvation=128
+delta terrain_struck=60
+boundary tick=22001 window=22
+delta object_actions_refused=19642
+delta signals_emitted=-8998
+delta objects_consumed=942
+delta objects_destroyed=630
+delta objects_created=629
+boundary tick=25001 window=25
+delta object_actions_refused=-21761
+delta signals_emitted=-1810
+delta objects_created=-726
+delta objects_destroyed=-726
+delta objects_struck=-666
+boundary tick=36001 window=36
+delta signals_emitted=-7013
+delta object_actions_refused=-2849
+delta deaths_starvation=-60
+delta objects_created=48
+delta objects_destroyed=46
+boundary tick=49001 window=49
+delta object_actions_refused=5555
+delta objects_consumed=3967
+delta signals_emitted=2183
+delta damage_events=731
+delta objects_destroyed=190
+world condition=FULL seed=0x000000000000466a config=0xd22b8b3a60f040b5 schema=11 windows=50 dropped=10 segments=7 cost=3819924461
+boundary tick=16001 window=16
+delta signals_emitted=14363
+delta object_actions_refused=7815
+delta objects_consumed=-392
+delta deaths_starvation=110
+delta objects_created=73
+boundary tick=37001 window=37
+delta signals_emitted=25797
+delta object_actions_refused=-8315
+delta objects_consumed=252
+delta damage_events=109
+delta objects_created=32
+boundary tick=47001 window=47
+delta signals_emitted=34565
+delta object_actions_refused=4160
+delta objects_consumed=669
+delta objects_created=165
+delta objects_destroyed=164
+boundary tick=51001 window=51
+delta signals_emitted=-21066
+delta object_actions_refused=8267
+delta objects_consumed=-1623
+delta damage_events=-314
+delta objects_destroyed=-216
+boundary tick=55001 window=55
+delta signals_emitted=42941
+delta object_actions_refused=6810
+delta objects_consumed=819
+delta damage_events=167
+delta deaths_starvation=-86
+boundary tick=58001 window=58
+delta signals_emitted=21559
+delta object_actions_refused=-4458
+delta objects_consumed=3659
+delta damage_events=188
+delta objects_created=96
+world condition=FULL seed=0x000000000000466b config=0x8d0c34e0834a09e6 schema=11 windows=50 dropped=10 segments=4 cost=1533187858
+boundary tick=13001 window=13
+delta object_actions_refused=-18873
+delta signals_emitted=4130
+delta objects_consumed=356
+delta damage_events=106
+delta objects_created=85
+boundary tick=21001 window=21
+delta object_actions_refused=-14380
+delta signals_emitted=-708
+delta objects_consumed=627
+delta damage_events=66
+delta deaths_starvation=40
+boundary tick=33001 window=33
+delta object_actions_refused=-5395
+delta signals_emitted=1100
+delta objects_created=103
+delta damage_events=-101
+delta objects_destroyed=101
+world condition=FULL seed=0x000000000000466c config=0x560b2b5c0c54fba3 schema=11 windows=50 dropped=10 segments=6 cost=1938144896
+boundary tick=18001 window=18
+delta object_actions_refused=-10674
+delta signals_emitted=6134
+delta objects_consumed=1877
+delta damage_events=486
+delta objects_struck=-64
+boundary tick=38001 window=38
+delta signals_emitted=12296
+delta objects_consumed=3224
+delta damage_events=533
+delta object_actions_refused=188
+delta objects_destroyed=91
+boundary tick=42001 window=42
+delta signals_emitted=-7967
+delta objects_consumed=-3741
+delta object_actions_refused=-1993
+delta damage_events=-567
+delta deaths_damage=-59
+boundary tick=50001 window=50
+delta signals_emitted=16480
+delta objects_consumed=-899
+delta object_actions_refused=-560
+delta damage_events=-251
+delta deaths_starvation=-95
+boundary tick=54001 window=54
+delta signals_emitted=-14377
+delta object_actions_refused=2141
+delta objects_consumed=380
+delta deaths_starvation=89
+delta births=45
+world condition=FULL seed=0x000000000000466d config=0x2f7be259b21a5afc schema=11 windows=50 dropped=10 segments=6 cost=1827037945
+boundary tick=19001 window=19
+delta object_actions_refused=10351
+delta signals_emitted=9402
+delta objects_consumed=-1353
+delta deaths_starvation=140
+delta births=95
+boundary tick=23001 window=23
+delta signals_emitted=9238
+delta object_actions_refused=-6496
+delta objects_consumed=1649
+delta damage_events=189
+delta objects_created=-113
+boundary tick=29001 window=29
+delta signals_emitted=-15425
+delta objects_consumed=2729
+delta object_actions_refused=1420
+delta objects_struck=206
+delta objects_created=152
+boundary tick=33001 window=33
+delta signals_emitted=9315
+delta object_actions_refused=-1483
+delta objects_consumed=-600
+delta objects_struck=-319
+delta damage_events=187
+boundary tick=49001 window=49
+delta signals_emitted=9697
+delta object_actions_refused=-1592
+delta objects_consumed=-543
+delta damage_events=-82
+delta deaths_starvation=-61
+world condition=FULL seed=0x000000000000466e config=0x7c3c4cf37e3a03d1 schema=11 windows=50 dropped=10 segments=7 cost=2814354976
+boundary tick=18001 window=18
+delta signals_emitted=14480
+delta object_actions_refused=-13992
+delta objects_consumed=1016
+delta objects_created=235
+delta objects_destroyed=233
+boundary tick=25001 window=25
+delta signals_emitted=19015
+delta object_actions_refused=2751
+delta objects_consumed=-487
+delta objects_struck=-158
+delta objects_created=-140
+boundary tick=28001 window=28
+delta signals_emitted=11725
+delta object_actions_refused=2530
+delta objects_consumed=212
+delta objects_created=-84
+delta objects_destroyed=-83
+boundary tick=33001 window=33
+delta signals_emitted=-13288
+delta object_actions_refused=-5867
+delta objects_consumed=519
+delta damage_events=65
+delta population=-48
+boundary tick=39001 window=39
+delta signals_emitted=-20455
+delta object_actions_refused=-508
+delta objects_consumed=317
+delta objects_created=146
+delta objects_destroyed=143
+boundary tick=57001 window=57
+delta signals_emitted=15273
+delta object_actions_refused=1146
+delta objects_consumed=587
+delta damage_events=78
+delta objects_created=74
+world condition=FULL seed=0x0000000000004673 config=0x31ece9b74e7412ae schema=11 windows=50 dropped=10 segments=8 cost=3265995367
+boundary tick=13001 window=13
+delta signals_emitted=19435
+delta object_actions_refused=4657
+delta objects_consumed=1962
+delta objects_struck=221
+delta population=79
+boundary tick=19001 window=19
+delta signals_emitted=-19296
+delta object_actions_refused=11419
+delta objects_consumed=-705
+delta deaths_starvation=183
+delta objects_struck=-182
+boundary tick=25001 window=25
+delta signals_emitted=18698
+delta object_actions_refused=-11788
+delta objects_consumed=1198
+delta damage_events=343
+delta deaths_starvation=-96
+boundary tick=42001 window=42
+delta signals_emitted=25501
+delta object_actions_refused=4410
+delta deaths_starvation=-217
+delta damage_events=116
+delta objects_destroyed=-62
+boundary tick=45001 window=45
+delta signals_emitted=-17814
+delta object_actions_refused=-1981
+delta objects_consumed=572
+delta deaths_starvation=192
+delta objects_struck=-75
+boundary tick=48001 window=48
+delta signals_emitted=-19772
+delta object_actions_refused=1246
+delta objects_consumed=488
+delta damage_events=111
+delta deaths_starvation=29
+boundary tick=58001 window=58
+delta signals_emitted=12186
+delta object_actions_refused=-7230
+delta objects_consumed=-2543
+delta deaths_starvation=479
+delta damage_events=-184

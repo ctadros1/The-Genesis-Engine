@@ -18,6 +18,7 @@ mod artifact;
 mod communities;
 mod conjunction;
 mod demography;
+mod era;
 mod fidelity;
 mod morph;
 mod paired;
@@ -61,6 +62,11 @@ pub use conjunction::{
 pub use demography::{
     DEMOGRAPHY_INDEX_VERSION, WorldDemography, spearman_milli, thermal_match_rho_milli,
     world_demography,
+};
+pub use era::{
+    Boundary as EraBoundary, ERA_VERSION, EraError, EraPlan, FEATURE_COUNT, FEATURE_NAMES,
+    FeatureGates, SYNTHETIC_FIXTURE_VERSION, SyntheticSpec, WindowFeatures, WorldEra,
+    render_header, render_world, segment, synthetic_log, world_era,
 };
 pub use morph::{
     MORPH_ANALYSIS_VERSION, MorphOutcome, MorphPlan, MorphSample, PERMUTATIONS, WorldMorph,

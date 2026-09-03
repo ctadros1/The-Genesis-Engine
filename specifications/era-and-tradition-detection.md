@@ -1,8 +1,13 @@
 # Era And Tradition Detection Specification
 
-Status: design specification, not implemented. Phase 17. Analysis versions
-`lifesim-era-v1`, `lifesim-tradition-v1`. These are **not** in the config
-hash, because an analysis version can never affect a world.
+Status: implemented (Phase 17, ADR-0033, 2026-09-02): `lifesim-era-v1` in
+`sim-analysis` with `lifesim era`; `lifesim-tradition-v1` shipped with
+Phase 13 (D-124) and was convicted by its own control arm (D-126), which
+Phase 17 records as its reading rather than re-running a verdict. Analysis
+versions `lifesim-era-v1`, `lifesim-tradition-v1`. These are **not** in the
+config hash, because an analysis version can never affect a world. Where
+this text and ADR-0033 disagree (the feature table the log can actually
+supply, the penalty as the threshold, the burn-in), the record owns it.
 
 ## The Hard Rule
 

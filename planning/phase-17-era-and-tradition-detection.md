@@ -1,6 +1,6 @@
 # Phase 17: Offline Era And Tradition Detection
 
-Status: in progress (2026-09-02). Analysis versions `lifesim-era-v1`,
+Status: COMPLETE 2026-09-02 (D-132): every criterion decided. Analysis versions `lifesim-era-v1`,
 `lifesim-tradition-v1` (the latter shipped with Phase 13, D-124/D-126).
 Specification: `specifications/era-and-tradition-detection.md`. Decision:
 ADR-0033 (the concrete design: the log-supplied feature vector and its
@@ -78,37 +78,45 @@ than a review finding. See ADR-0016.
 
 ## Acceptance Criteria
 
-- [ ] **C17.1 Zero feedback, proven.** World state checksums are
+- [x] **C17.1 Zero feedback, proven.** World state checksums are
       bit-identical with detection enabled at every supported cadence and
       with detection disabled. This mirrors the existing Phase 2
       analysis-neutrality test and is the phase's most important criterion.
-- [ ] **C17.2 Dependency direction enforced by the build.** `sim-core` does
+      *Met 2026-09-02: `era_neutrality.rs` steps a world 1,200 ticks analyzing its own collected log at cadences 1, 7, 100 and 500 and holds its checksum trajectory equal to a never-analyzed twin's at every tick; the same log renders a byte-identical report twice.*
+- [x] **C17.2 Dependency direction enforced by the build.** `sim-core` does
       not depend on `sim-analysis`. Asserted in CI, not by convention.
-- [ ] **C17.3 Reproducible reports.** The same event log and parameters
+      *Met 2026-09-02: `dependency_direction.rs` parses the crate manifests - `sim-core` names no workspace crate at all, and `sim-core`, `sim-persist`, `sim-server` and `sim-protocol` name no `sim-analysis`.*
+- [x] **C17.3 Reproducible reports.** The same event log and parameters
       analyzed in two clean processes produce byte-identical reports.
-- [ ] **C17.4 Synthetic ground truth.** On a fixture event log with injected
+      *Met 2026-09-02: `verify-phase17-determinism.sh` produces the pilot's report in two processes at the locked parameters and compares byte for byte; the header echoes every parameter and the explicit negative line is present.*
+- [x] **C17.4 Synthetic ground truth.** On a fixture event log with injected
       known regime changes at known ticks, the detector recovers boundaries
       within `+/- k` windows at stated precision and recall. The generator
       and its injected changes are versioned fixtures.
-- [ ] **C17.5 Null control.** On event logs from runs with the relevant
+      *Met 2026-09-02: `era_locked_penalty.rs` (fixtures at the pilot's scale, steps 5,000-6,000, penalty 2 x 10^8): one, three and one-group boundaries recovered within one window with precision and recall 1.0, the synthetic null empty, and a twofold single step correctly below threshold; `era_synthetic.rs` proves the machinery at fixture-derived penalties and against brute-force partitioning.*
+- [x] **C17.5 Null control.** On event logs from runs with the relevant
       mechanisms ablated (no artifacts, no signalling, no contest), the
       detector reports no segments above threshold in at least 25 of 30
       seeds. A detector that finds eras where nothing can happen is finding
       noise, and this is the check that catches it. Without C17.5 the whole
       analysis is unfalsifiable pattern-matching.
-- [ ] **C17.6 Tradition findings carry their control.** Every tradition
+      *Met 2026-09-02 (D-132): 0 of 30 ablated worlds report a segment above the locked threshold (bar 25 of 30); all 30 full-stack worlds do. Findings: `experiments/results/phase17-era-findings.txt`.*
+- [x] **C17.6 Tradition findings carry their control.** Every tradition
       finding includes its genotype-matched control statistic, the matching
       tolerance, and the cohort size. A finding constructed without one
       fails report validation. A behavior shared by close kin is a plausible
       inherited trait, not a tradition, and the report format makes that
       distinction unavoidable.
-- [ ] **C17.7 Negative results are reported.** A run with no segments above
+      *Met by the Phase 13 detector's format (every finding prints its control cohort, control frequency and tolerance; D-124) and read through D-126: the control arm convicted the detector, so no tradition verdict is issued in this phase and the sharper control is named follow-on work (ADR-0033).*
+- [x] **C17.7 Negative results are reported.** A run with no segments above
       threshold and no traditions produces a report saying exactly that.
       Silence is not a result and an empty report is not the same as no
       report.
-- [ ] **C17.8 Bounded cost.** Runtime and memory on the largest supported
+      *Met 2026-09-02: `no segments above threshold` is printed per world (the verify script requires it); the tradition report prints every rejection counter.*
+- [x] **C17.8 Bounded cost.** Runtime and memory on the largest supported
       event log are measured and recorded separately from tick cost,
       following the existing similarity-analysis convention.
+      *Met 2026-09-02 (`experiments/results/phase17-benchmark-measurements.txt`): one `lifesim era` process over the largest archived event log (589 MB, a Phase 13 D-arm world) takes 14.1 s wall with a 2.27 GB peak resident set, separately from tick cost; the decoder loads the whole log, which the record states as the bound.*
 
 ## Test Plan
 
