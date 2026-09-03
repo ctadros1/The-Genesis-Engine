@@ -1,0 +1,56 @@
+Phase 22 findings: lineages under the other order
+=================================================
+Recorded 2026-09-03. ADR-0037; pre-registration
+experiments/phase22-lineages-preregistration.md LOCKED before any
+confirmatory world ran. Reduction:
+experiments/results/phase22-lineages-reduction.py (counts, decides
+nothing). The pilot is the Phase 21 confirmatory's lineage census
+(runs/phase21-born-cohort-confirmatory-gate-0xca1805044815a9f2, an
+observation); the confirmatory is archived under
+runs/phase22-lineages-confirmatory-* (see below).
+
+The question
+------------
+Phase 20 found multi-module lineages in the shipped physics once per
+six worlds (D-134) and named the term that limits them: a second module
+arises only in born organisms, and a born organism reproduces with
+probability ~0.07 before it starves. Phase 21 found what that term is
+made of - the youngest eats last - and that youngest-first lifts the
+born cohort's life tenfold (D-135). Is the order what limits lineages?
+
+The pilot (an observation, not a result)
+----------------------------------------
+Phase 20's lineage census over Phase 21's confirmatory, both arms, 30
+matched seeds 21002..21031: shipped order 61 multi-module organisms in
+25 worlds, 3 parents, 2 second-generation organisms in 1 world;
+youngest-first 313 in 26 worlds, 214 parents in 23 worlds, 244 second-
+generation in 16 worlds, largest per-world count 77. That campaign was
+pre-registered for lifespan, not lineage, so this decided nothing; it
+set the rules below.
+
+The rules, fixed before the run
+-------------------------------
+Two, conjunctive, on 50 matched seeds disjoint from every world read
+so far: (1) the seed-paired directed count of worlds where O2 has a
+second-generation organism and O1 none, at least 15 of 50 (an
+unconditional binomial tail; false-positive rate 0.002 at a shipped
+baseline of 0.16 and restated at the upper bound of the observed O1
+rate; power 0.90 at 0.45, 0.99 at the pilot's 0.53, ~0.5 at 0.35 - so a
+null reads as "fewer than nine worlds in twenty", never as no effect);
+(2) the exact conditional sign test on the discordant pairs, one-sided
+p below 0.01, which assumes nothing about either rate. The reduction,
+the phase's one new artifact, reproduces the pilot exactly (1 of 30
+and 2 pooled; 16 of 30, 244 pooled, largest 77; 16 directed, 1 reverse,
+p = 1.4e-4) and refuses a manifest with one world's census line
+removed. Reviewed by a three-lens adversarial workflow (23 findings, 6
+confirmed and applied) before the lock.
+
+Confirmatory (C22.1, C22.2, C22.3)
+----------------------------------
+PENDING - experiments/phase22-lineages-confirmatory.campaign, seeds
+22001..22052 without 22010 and 22028, O1 against O2.
+
+Decided outside the campaign
+----------------------------
+C22.4 MET: no kernel change; verify 13-21 pass on the tree the
+  campaign runs from; the arms differ in exactly one hashed field.

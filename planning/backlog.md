@@ -38,6 +38,7 @@ and none has started:
 | 19 | Chemistry as food (coupling v2) and the unicell ecology - COMPLETE 2026-09-03 (D-133) | `phase-19-chemistry-as-food.md` |
 | 20 | The second module: why no lineage - COMPLETE 2026-09-03 (D-134): lineages exist in 8 of 50 worlds | `phase-20-second-module-lineage.md` |
 | 21 | The born cohort's life - COMPLETE 2026-09-03 (D-135): the order in which co-located organisms eat is the term, 30 of 30 | `phase-21-born-cohort.md` |
+| 22 | Lineages under the other order - planned 2026-09-03 | `phase-22-lineages-under-the-other-order.md` |
 
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under
