@@ -182,6 +182,29 @@ the cost; what a phase may ask is whether the ecology's own dynamics
 ever make the order matter less (a cell that refills faster than a tick
 feeds), which is a question about the field, not about a rule.
 
+*Status after the other order (2026-09-03, D-136).* The chain's links
+now read end to end from the record, each with its control: chemistry
+to a persistent field (Phase 15), field to individuals in every world
+that had the transition and none that lacked it (Phase 16), a mouth
+that makes a life (Phase 19), the first bodies above one module once
+reproduction runs (Phase 20), an age-structured famine no rule wrote
+that keeps the born cohort - the only cohort a second module appears
+in - from breeding (Phase 21), and now: on fifty matched seeds, a
+single permutation of who eats first - the youngest first instead of
+last - founded a two-module lineage in 31 worlds where the shipped
+order founded none, against 3 the other way (36 of 50 worlds against
+8; `runs/phase22-lineages-confirmatory-0x27e283f5a58b16ad`). The honest
+prior this document has always stated is unchanged in kind - nothing
+here is a body that divides labour, a third module, or a lineage that
+outlives its world - and changed in one particular: the shipped
+physics already contains everything a two-module lineage needs, and
+what stood between them was the order of an unordered loop. The next
+link is stated honestly: whether any body ever divides labour is not
+reached by more of the same, and the order question has one more
+honest form - whether the field's own dynamics can ever make the order
+matter less (a cell that refills within a tick) - which is a question
+about production, not about a rule.
+
 ### The corollary: analysis observes, it never instructs
 
 This project already holds this line for similarity clustering

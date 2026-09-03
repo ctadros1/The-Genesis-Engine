@@ -47,8 +47,56 @@ confirmed and applied) before the lock.
 
 Confirmatory (C22.1, C22.2, C22.3)
 ----------------------------------
-PENDING - experiments/phase22-lineages-confirmatory.campaign, seeds
-22001..22052 without 22010 and 22028, O1 against O2.
+experiments/phase22-lineages-confirmatory.campaign: O1 (the shipped
+intake order) against O2 (youngest-first, the only difference), 50
+matched seeds 22001..22052 without 22010 and 22028, 100,000 ticks,
+events on; 100 worlds, 0 failed, 861 s at 6 workers; no world at the
+entity cap and no capacity rejection anywhere. Archived at
+runs/phase22-lineages-confirmatory-0x27e283f5a58b16ad with lineage.txt,
+cohort.txt and reduction.txt beside the manifest.
+
+C22.1 (primary) MET on both rules.
+  Rule 1: 31 of 50 seed pairs where youngest-first holds a second-
+    generation two-module organism and the shipped order none (3
+    reverse pairs), against the bar of 15. Its false-positive rate,
+    restated as pre-registered at the upper bound of the observed
+    shipped rate (8 of 50 -> 0.291), is 0.076 - above 0.01, which is
+    exactly why the record required the second rule.
+  Rule 2: the exact conditional sign test on the 34 discordant pairs,
+    31 against 3, one-sided p = 3.8e-7 (bar 0.01). Assumption-free; it
+    carries the decision.
+  Beside them: worlds with any second-generation organism, shipped 8 of
+  50 - Phase 20's 8 of 50 reproduced on fresh seeds - and youngest-first
+  36 of 50; pooled 149 (largest per-world count 75) against 854
+  (largest 153); the birth-normalized rate, median per world 0 against
+  2.44 per 10,000 births, on 648,364 and 576,298 births.
+
+C22.2 - the lineage's shape: multi-module organisms per world median 2
+  against 5; multi-module parents in 10 worlds against 41; the largest
+  per-world second-generation count 75 against 153; compositions in
+  both arms overwhelmingly a doubled gut (lineage.txt carries them).
+
+C22.3 - the cohort beneath it: born median completed lifespan 210.5
+  against 2,172.5 ticks; materialized 1,764.5 against 1,196 - Phase
+  21's result reproduced on fresh seeds beside the count it explains.
+
+What the phase found, in one paragraph
+--------------------------------------
+On fifty matched seeds, reversing the order in which co-located
+organisms eat - youngest first, a permutation of who takes first and
+nothing else - produced a second-generation two-module organism in 31
+worlds where the shipped order produced none, against 3 the other way;
+lineages that the shipped physics founds once per six worlds it now
+founds in seven of ten. The mechanism attributed is D-135's: the order
+acts through the born cohort's lifespan, and this contrast does not
+separate the order from any other route to a longer born life - the
+order is what differs between the arms, and the born median beside the
+count shows the term and its consequence together. Both orders are
+equally unauthored and the shipped order stays shipped; what the
+record now carries is narrow and true: in this ecology the shipped
+intake order is a sufficient cause of the rarity of multi-module
+lineages, and a single permutation of who eats first is a sufficient
+cause of their forming.
 
 Decided outside the campaign
 ----------------------------

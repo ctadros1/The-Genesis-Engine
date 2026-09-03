@@ -60,7 +60,7 @@ its endpoint, SESOI and bar fixed before it runs.
 
 **Primary endpoint: C22.1.** Acceptance is conjunctive.
 
-- [ ] **C22.1 Lineages under the other order (primary).** Worlds with
+- [x] **C22.1 Lineages under the other order (primary).** Worlds with
       at least one second-generation multi-module organism, O2 minus
       O1, seed-paired directed count (worlds where O2 has one and O1
       none), against a **bar of 15 of 50** fixed here: under no directed
@@ -75,17 +75,21 @@ its endpoint, SESOI and bar fixed before it runs.
       arms, because youngest-first also changes the birth count.
       **Expected, stated in advance**: met - the pilot shows 16 of 30
       against 1 of 30.
-- [ ] **C22.2 The lineage's shape.** Per arm: the distribution of
+      *MET 2026-09-03 on both rules (`runs/phase22-lineages-confirmatory-0x27e283f5a58b16ad`): 31 of 50 probe-only pairs (3 reverse; bar 15), conditional sign test p = 3.8e-7 (bar 0.01); worlds with any: shipped 8 of 50, youngest-first 36 of 50; rate 0 vs 2.44 per 10,000 births. Rule 1's restated false-positive rate at the observed baseline's upper bound was 0.076, so rule 2 carried the decision, as the record required. Findings: `experiments/results/phase22-lineages-findings.txt`.*
+- [x] **C22.2 The lineage's shape.** Per arm: the distribution of
       second-generation counts per world, the largest per-world second-generation count, the
       multi-module parents' fraction against the born cohort's, the
       compositions; descriptive.
-- [ ] **C22.3 The cohort beneath it.** The born cohort's median
+      *MEASURED 2026-09-03: multi-module organisms per world median 2 vs 5; parents in 10 vs 41 worlds; largest per-world second-generation count 75 vs 153; a doubled gut in both arms.*
+- [x] **C22.3 The cohort beneath it.** The born cohort's median
       lifespan per arm (Phase 21's census) reported beside the lineage
       count, so a reader sees the term and its consequence in one
       table.
-- [ ] **C22.4 Determinism and neutrality.** No kernel change: every
+      *MEASURED 2026-09-03: born median lifespan 210.5 vs 2,172.5 ticks; materialized 1,764.5 vs 1,196 - Phase 21 reproduced on fresh seeds beside the lineage count.*
+- [x] **C22.4 Determinism and neutrality.** No kernel change: every
       pinned fixture unchanged (verify 13-21); the campaign's two arms
       differ in exactly one hashed field.
+      *MET 2026-09-03: no kernel change; verify 13-21 pass on the tree the campaign ran from; the arms differ in exactly one hashed field.*
 
 ## Test Plan
 

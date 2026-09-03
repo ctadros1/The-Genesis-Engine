@@ -31,7 +31,7 @@ evidence, fixtures, and benchmark records are preserved unchanged.
 | 19 | Chemistry as food (coupling v2) and the unicell ecology | COMPLETE 2026-09-03 (D-133): C19.3 met 30/30, C19.4 met 30/30, C19.5 v2 17/30 vs v1 0/30 - first bodies above one module, no multi-module lineage; soak exact over 10^6 ticks (`planning/phase-19-chemistry-as-food.md`) |
 | 20 | The second module: why no lineage | COMPLETE 2026-09-03 (D-134): price ruled out by arithmetic, transmission Mendelian by test, and lineages found - 127 second-generation two-module organisms in 8 of 50 worlds, 1.94 per 10,000 births against a SESOI of 0.5; Phase 19's null was a sampling artefact (`planning/phase-20-second-module-lineage.md`) |
 | 21 | The born cohort's life | COMPLETE 2026-09-03 (D-135): the youngest eats last - a fact of the tick pinned by test; a youngest-first probe lifts the born median lifespan from ~220 to ~2,190 ticks in 30 of 30 matched worlds (SESOI 971); place and company were the order's shadow (`planning/phase-21-born-cohort.md`) |
-| 22 | Lineages under the other order | planned 2026-09-03 (the question D-135 left; no new code; `planning/phase-22-lineages-under-the-other-order.md`, ADR-0037) |
+| 22 | Lineages under the other order | COMPLETE 2026-09-03 (D-136): 31 of 50 probe-only pairs against 3, sign-test p 3.8e-7; lineages in 36 of 50 worlds under youngest-first against 8 of 50 shipped; the shipped intake order is a sufficient cause of their rarity (`planning/phase-22-lineages-under-the-other-order.md`) |
 
 The former Phase 5 (performance optimization) and Phase 6 (advanced
 ecosystems) plans are superseded and preserved unmodified under

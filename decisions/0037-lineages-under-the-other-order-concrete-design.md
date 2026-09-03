@@ -73,4 +73,38 @@ whole determinism claim of a no-code phase.
 
 ## As built
 
-(Amended at the end of the phase with every divergence.)
+Amended 2026-09-03 with every divergence so far; the campaign's
+paragraph is appended when it is measured.
+
+- **The review** (three lenses, 23 findings, 6 confirmed) changed the
+  record before it entered the tree: the null reading is attached to
+  the rate with power 0.9 (0.45, "fewer than nine worlds in twenty")
+  with 0.35 kept as the underpowered caveat; the consequence sentence
+  claims only the count the rules decide and names the mechanism as
+  D-135's; the decision has two conjunctive rules, the directed count
+  with its false-positive rate restated at the upper bound of the
+  observed baseline, and the exact conditional sign test on the
+  discordant pairs, which assumes nothing; the plan says the reduction
+  is new; "largest lineage" became "largest per-world second-generation
+  count", which is what the census computes; the entity-cap gate also
+  reads the manifest's capacity rejections.
+- **The reduction**, pinned before the lock on the Phase 21 archive:
+  O1 1 of 30 worlds with any and 2 pooled; O2 16 of 30, 244 pooled,
+  largest per-world count 77; 16 directed pairs, 1 reverse, sign-test
+  p 1.4e-4; a manifest with one world's census line removed refuses.
+- **The lock commit** hung on the commit signer (the same locked agent
+  that hangs pushes; earlier commits had failed fast into the unsigned
+  fallback, this one waited on a prompt); ending the signer let the
+  fallback commit, unsigned like every commit since 1e8c528, and the
+  campaign launched from that commit - the pre-registration was in the
+  tree before the first world ran, which is the whole point of the
+  order.
+- **The campaign** (`runs/phase22-lineages-confirmatory-
+  0x27e283f5a58b16ad`, 100 worlds, 0 failed, 861 s): both rules met -
+  31 of 50 probe-only pairs against 3 reverse (bar 15) and the
+  conditional sign test at p = 3.8e-7 (bar 0.01); rule 1's restated
+  false-positive rate at the observed baseline's upper bound was
+  0.076, above 0.01, so rule 2 carried the decision as the record
+  required. Shipped 8 of 50 worlds with any (Phase 20's figure on
+  fresh seeds) against 36 of 50; born median 210 against 2,173 ticks.
+  D-136.
