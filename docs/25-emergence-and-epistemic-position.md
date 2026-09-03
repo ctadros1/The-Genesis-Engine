@@ -108,6 +108,22 @@ That is the honest prior this document has always stated, now with a
 number on it, and the next lever is physics (a mouth for the field,
 Phase 19), not a threshold.
 
+*Status after the mouth (2026-09-03, D-133).* With coupling v2 the
+unicell eats the substrate it condensed from, and on 30 matched seeds
+against the v1 control every pre-registered contrast moved the way the
+arithmetic said it would: a materialized life goes from ~200 ticks to
+~1,400 (still ending in starvation, every one of them), reproduction
+goes from a handful of births per world to thousands, and the first
+bodies above one module appear (17 of 30 worlds, none under v1). What
+did not happen is as much the record as what did: in every such world
+it was one two-module organism at a time, late, and gone by the
+horizon. Individual to multicellular is therefore **reached as an event
+and not as a lineage**. The prior stays unfavorable and the next
+question is stated honestly: whether a second module ever pays for
+itself in this ecology, which is a question about the physics of the
+body (a gut that cannot move against a field it has grazed flat), not
+about any mechanism this project might add.
+
 ### The corollary: analysis observes, it never instructs
 
 This project already holds this line for similarity clustering

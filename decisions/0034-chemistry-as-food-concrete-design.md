@@ -162,5 +162,7 @@ Amended 2026-09-03 with every divergence from the design above.
   (none under v1) and the locked pre-registration states that
   expectation instead; the mechanism reading (a born offspring's genome
   duplication) is a reading, not a criterion.
-- **Cost (C19.8).** See `experiments/results/phase19-benchmark-
-  measurements.txt` and the findings.
+- **Cost (C19.8).** ~11 ns per organism-tick for the substrate loop
+  (3-6 us on a 140-200 us populated tick at 16-256 organisms); the
+  empty field's per-cell step unchanged within noise.
+  `experiments/results/phase19-benchmark-measurements.txt`.

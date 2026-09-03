@@ -28,7 +28,7 @@ evidence, fixtures, and benchmark records are preserved unchanged.
 | 16 | The multicellularity transition | complete 2026-09-02 (C16.5 met 30/30 vs 0/30, C16.6 the pre-registered null, C16.1 soaked exact; D-131) |
 | 17 | Offline era and tradition detection | complete 2026-09-02 (C17.5 met 30/30 null, C17.4 at the locked penalty; D-132) |
 | 18 | Intra-world parallelism (**cross-cutting; after 8, before 13**) | planned |
-| 19 | Chemistry as food (coupling v2) and the unicell ecology | planned 2026-09-02 (the follow-on ADR-0031 and ADR-0032 name; `planning/phase-19-chemistry-as-food.md`) |
+| 19 | Chemistry as food (coupling v2) and the unicell ecology | COMPLETE 2026-09-03 (D-133): C19.3 met 30/30, C19.4 met 30/30, C19.5 v2 17/30 vs v1 0/30 - first bodies above one module, no multi-module lineage; soak exact over 10^6 ticks (`planning/phase-19-chemistry-as-food.md`) |
 
 The former Phase 5 (performance optimization) and Phase 6 (advanced
 ecosystems) plans are superseded and preserved unmodified under

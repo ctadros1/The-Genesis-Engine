@@ -1,0 +1,156 @@
+Phase 19 findings: chemistry as food (coupling v2) - the unicell ecology
+=======================================================================
+Recorded 2026-09-03. ADR-0034; pre-registration
+experiments/phase19-consumption-preregistration.md LOCKED before any
+confirmatory or soak world ran (commit 4aa4a34). Reduction:
+experiments/results/phase19-consumption-reduction.py (counts, decides
+nothing). Runs archived under runs/phase19-consumption-pilot-
+0x6201f977132973cc (8 worlds) and runs/phase19-consumption-
+confirmatory-0xa9821c424f67d7f4 (60 worlds, with demography.txt and
+reduction.txt beside the manifest).
+
+The question
+------------
+Phase 16 (D-131) ended with a materialized one-module unicell that
+starves at ~200 ticks against a trait-derived maturity of 800, so its
+C16.6 null was a birth-limit null. Phase 19 opens one mouth: after
+biomass has had its turn, an organism may take substrate from its own
+cell (S_MONOMER first, then S_PRIMORDIAL) into the digestive capability
+it already has, at yield 0.6, with the loss returned to the cell as
+waste and the gross taken counted in the field identity. The control is
+coupling v1 - the Phase 16 world byte for byte - on the same seeds.
+
+Campaign
+--------
+experiments/phase19-consumption-confirmatory.campaign: 64x64 scratch
+worlds, 60,000 ticks, the Phase 16 confirmatory's base (transition at
+defaults, floor 4,000, influx cap 64 per 100 ticks, pairing threshold
+7,000, max_entities 4,000), two arms on 30 matched seeds
+(19001..19008 19010..19022 19024..19032; 19009 and 19023 ungenerable
+and replaced before any world ran): v1 (consumption fraction 0) and
+v2 (Q16_ONE). 60 worlds, 0 failed, 302 s wall at 6 workers, the in-run
+identity check every 5,000 ticks silent everywhere, and the reduction
+re-deriving the field identity with the consumed term at all 120
+samples of all 60 series with zero defect.
+
+Pre-registered results
+----------------------
+C19.3 (primary) MET. Materialized median completed lifespan, v2 minus
+  v1, seed-paired: 30 of 30 pairs above the SESOI of +200 ticks (bar 28
+  of 30). Pair deltas: median +1,223.5, min +983, max +1,547.
+    v1: median of the per-world medians 201 ticks (worlds 177-211);
+        ~22,640 completed lifespans per world, ~150 censored.
+    v2: 1,418.5 ticks (worlds 983+ above their pair); ~1,870 completed
+        per world, ~720 censored (alive at the horizon, counted, never
+        imputed - the completed median is if anything an underestimate).
+  A fed unicell lives past its 800-tick maturity in every world. It
+  still dies of starvation: the starvation share is 1,000 milli in all
+  60 worlds. The mouth changes how long a life is, not what ends it.
+
+C19.4 MET. Births per world, v2 minus v1: 30 of 30 pairs above the SESOI
+  of +100 (bar 28 of 30). Deltas median +5,858.5, min +4,031, max
+  +8,298. v1 median 5 births per world (D-131's rare births); v2 median
+  5,866. The pre-registered arithmetic held: from 4,000 milli a fed gut
+  reaches the 7,000 pairing threshold in ticks, so reproduction is
+  ordinary under v2.
+
+C19.5 (C16.6 re-asked) MET as pre-registered, and read carefully.
+  Worlds with any body above one module (peak max_modules > 1 over the
+  series): v2 17 of 30 (bar >= 15), v1 0 of 30 (bar <= 2). Beside it,
+  as the pre-registration required: births v2 ~5,866 vs v1 ~5 - this is
+  the null's release, not a null. What the peak hides: in every one of
+  the 17 worlds the multi-module count never exceeded ONE organism at
+  a time (peak multi_module 1), the first appearance is late (median
+  sample 44,500 of 60,000; earliest 26,000), and at the final sample the
+  multi-module count is 0 in most worlds (median 0, max 1). Peak
+  max_modules is 2 everywhere it is above 1. So: the first bodies above
+  one module appear once reproduction runs - and no multi-module lineage
+  established itself inside the horizon. The mechanism reading (not a
+  criterion): a materialized organism always starts with one module
+  (the constant map), so every second module belongs to a born
+  offspring, Phase 9's structural duplication (duplication_q16 6,554)
+  acting on the first lineages that reproduce.
+
+Free-lunch gate CLEAR. No world in either arm reached the entity cap
+  (v2 final population median 911; v1 149.5). The field pays for the
+  ecology visibly: final chem + microbial mass v2 median 86.4M milli
+  against v1 407.2M (grazed to ~21%); consumed median 861.6M milli per
+  v2 world, i.e. the organisms took ~1.75x the field's standing mass
+  over the run. Materialization itself falls under v2 (median 2,587
+  events vs 22,788): the field a fed population grazes condenses fewer
+  new organisms, and the standing population is births, not influx.
+  First materialization tick is identical between arms (median 24,500)
+  - nothing eats before anyone exists.
+
+Decided outside the campaign
+----------------------------
+C19.2 MET (tests): the relabelled twin shares one future for 400 ticks
+  while eating; the materialized organism under v2 has the founder
+  path's phenotype and trait genes, parents [0, 0], depth 0.
+C19.6 MET (test): excretion, remains, materialization and consumption
+  each move only their own counted term alone, all four together, both
+  identities exact at every check in every arm; the control moves none.
+C19.7 MET (scripts/verify-phase19-determinism.sh): two-process replay
+  of the coupled fixture (config 0x7cfe66d39cda2e2b, state
+  0x2137b2286076cd63, consumed 44,119,239 at 4,000 ticks); every
+  mechanism refused at zero; both identities from the printed totals;
+  the v1 fixture equals the Phase 16 pins; the Phase 15 fixture
+  untouched.
+C19.1: see the soak section below.
+C19.8: see the cost section below.
+
+Pilot (Stage B, disjoint seeds 19901 19903 19904 19905)
+---------------------------------------------------------
+Calibrated the record: lifespan deltas +1,129 to +1,457; births deltas
++5,425 to +5,894; a body above one module in 3 of 4 v2 worlds - the
+observation that replaced the plan's "expected null again" before the
+lock. It also exposed that demography index v1 could not see a
+materialized life at all (0 completed over ~22,600 deaths); index v2
+was made and recorded before the lock.
+
+Traps met and named
+-------------------
+- A criterion defined on a peak (any body above one module) is met by
+  one organism for one sample. The record carries the peak count, the
+  first tick and the final count beside it so the reader is not misled;
+  the next record should define the endpoint on persistence.
+- A restored source file older than the mutant build is not rebuilt:
+  cargo's mtime check passed the mutant's test binary off as the
+  restored one. Touch after restoring.
+- The campaign parser wants `output field off`, not `0`.
+
+Soak (C19.1)
+------------
+MET. experiments/phase19-c191-ledger-soak.campaign: one v2 scratch
+world (seed 19201), 10^6 ticks, the full stack on, both identities
+enforced by World::check_invariants every 10,000 ticks - 100 checks,
+0 violations, 632 s wall - and exact at the horizon from the series:
+  produced 8,192,000,000 + deposited 9,854,571,626
+  - materialized 9,869,658 - consumed 17,952,388,401
+  == chemistry 31,212,447 + microbial 53,101,120  (defect 0).
+Over the run: 2,404 materializations, 149,352 births, 872 alive at the
+end; the organisms took 2.2x the field's total production through the
+mouth, and the loop closed to the milli. Archived at
+runs/phase19-c191-soak-0x3d4af4da44ce3603.
+The soak also extends C19.5's reading by a factor of seventeen in
+horizon: over 10^6 ticks and 149,352 births, peak max_modules reached 2
+exactly once (first at sample 940,000) and the final sample holds no
+body above one module. Standing population ranged 159-1,120 across the
+100 samples - the fed ecology oscillates rather than settles.
+
+Cost (C19.8)
+------------
+RECORDED. scripts/run-phase19-benchmarks.sh (bench_phase19.rs, two
+PHASE19-BENCH markers, medians over 200 ticks after 10 warm-up, each
+arm timed after a throwaway world of the same shape so the first-world
+cold-start cost does not masquerade as the flag's). At 64x64:
+  consumption-tick: 16 organisms 139.0 us off -> 142.3 us on;
+                    256 organisms 198.8 us off -> 204.6 us on;
+                    diff-in-diff ~0.011 us (~11 ns) per organism-tick.
+  field-cell (no organisms): 105.0 ns per cell off, 102.0 ns on - the
+                    difference is inside run-to-run noise and its sign
+                    flips between runs.
+The mouth is priced per organism-tick at the tens-of-nanoseconds level
+and the field's cost stays per-cell, as the plan required. The
+biomass-off arm of the populated benchmark is fed only from the field,
+so the loop it prices is the one that actually runs.

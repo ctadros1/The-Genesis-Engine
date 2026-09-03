@@ -88,11 +88,12 @@ Conditions per ADR-0018 on matched seeds; the control arm is coupling v1
 world; a scaffold sweep is not needed (the neutral field is the
 question, D-128 having made it rich enough).
 
-- [ ] **C19.1 Conservation across the bidirectional exchange.** Both
+- [x] **C19.1 Conservation across the bidirectional exchange.** Both
       identities, with the consumption term, exact to the milli-unit over
       a 10^6-tick scratch run in which materialization, feeding from the
       field, excretion, death and remains all run. Extends C15.1 and C16.1
       to the closed loop.
+      *MET 2026-09-03: `runs/phase19-c191-soak-0x3d4af4da44ce3603` - 10^6 ticks, 100 in-run checks of both identities silent, exact at the horizon (8,192,000,000 + 9,854,571,626 - 9,869,658 - 17,952,388,401 == 31,212,447 + 53,101,120); 2,404 materializations, 149,352 births; plus the confirmatory reduction re-deriving the field identity at all 7,200 samples with zero defect.*
 - [x] **C19.2 Neutrality with a coupled field.** ADR-0032's obligation:
       the C16.2 tests re-run with both fractions and consumption nonzero -
       the materialized organism's rows equal the founder path's for the
@@ -100,7 +101,7 @@ question, D-128 having made it rich enough).
       twin shares one future. Any divergence is authored progress and
       fails the phase.
       *Met 2026-09-03: `phase19_consumption.rs` - the relabelled twin shares one future for 400 ticks while eating (consumed > 0 asserted), and the materialized organism under v2 has the founder path's phenotype and trait genes with parents [0, 0], depth 0, age 0.*
-- [ ] **C19.3 The unicell ecology is viable, or reported as not.** The
+- [x] **C19.3 The unicell ecology is viable, or reported as not.** The
       primary endpoint: median completed lifespan of materialized
       organisms (from the event log's `Materialized` and `Death` records)
       under v2 versus v1, seed-paired directed count, SESOI and bar
@@ -108,16 +109,19 @@ question, D-128 having made it rich enough).
       Expected direction: longer under v2 - a fed gut outlives a starving
       one - and if it does not, the finding is that intake cannot outrun
       basal cost at this body, which is a fact about the physics.
-- [ ] **C19.4 Reproduction from the field.** Births per world under v2
+      *MET 2026-09-03 (pre-registered, `runs/phase19-consumption-confirmatory-0xa9821c424f67d7f4`): 30 of 30 seed pairs above the SESOI of +200 ticks (bar 28); v1 materialized median lifespan ~201, v2 ~1,418; pair deltas +983 to +1,547. Every death in both arms is still starvation.*
+- [x] **C19.4 Reproduction from the field.** Births per world under v2
       versus v1, seed-paired directed count with its own SESOI; the
       pre-registration states whether the shipped pairing threshold
       (7,000) is reachable from the field alone before any world runs,
       because a unicell holds 12,000 and starts at 4,000.
-- [ ] **C19.5 C16.6 re-asked.** The fraction of seeds in which any
+      *MET 2026-09-03: 30 of 30 pairs above +100 births (bar 28); v1 median 5, v2 5,866; the 7,000 threshold is reachable from 4,000 in ticks at yield 0.6, as stated before the run.*
+- [x] **C19.5 C16.6 re-asked.** The fraction of seeds in which any
       lineage exceeds one module under v2 and v1, with the module-count
       distribution over time. **Expected to return null again, stated in
       advance**; reported with the birth counts beside it so a null with
       reproduction is distinguishable from the Phase 16 null without it.
+      *MET as pre-registered 2026-09-03 - and the expectation was revised by the pilot before the lock, not a null: v2 17 of 30 worlds with a body above one module (bar >= 15), v1 0 of 30 (bar <= 2), births beside it (5,866 vs 5). Read carefully: one two-module organism at a time, late (median first sample 44,500), gone by the horizon in most worlds - first multi-module bodies, no multi-module lineage. Findings: `experiments/results/phase19-consumption-findings.txt`.*
 - [x] **C19.6 The exchange test in full.** Excretion, remains,
       materialization and consumption each move a counted term, all four
       arms exercised alone and together, identities exact.
@@ -126,8 +130,9 @@ question, D-128 having made it rich enough).
       with consumption live; consumption disabled reproduces the Phase 16
       fixture exactly.
       *Met 2026-09-03: `scripts/verify-phase19-determinism.sh` - two-process replay of `--transition --coupled` (config 0x7cfe66d39cda2e2b, state 0x2137b2286076cd63), every mechanism refused at zero, both identities from the printed totals, the v1 fixture equal to the Phase 16 pins, the Phase 15 fixture untouched.*
-- [ ] **C19.8 Cost.** The consumption pass priced per organism and per
+- [x] **C19.8 Cost.** The consumption pass priced per organism and per
       tick against the v1 world; the field's cost stays per-cell.
+      *RECORDED 2026-09-03 (`scripts/run-phase19-benchmarks.sh`, `experiments/results/phase19-benchmark-measurements.txt`): at 64x64 the substrate loop adds ~3 us per tick at 16 organisms and ~6 us at 256 (139.0 -> 142.3 us; 198.8 -> 204.6 us), a diff-in-diff of ~0.01 us (about 11 ns) per organism-tick; the empty field's per-cell step is 105 ns off and 102 ns on - unchanged within noise, the sign of the difference flipping between runs. The field's cost stays per-cell.*
 
 ## Test Plan
 

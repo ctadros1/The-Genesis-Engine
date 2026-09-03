@@ -1,0 +1,4 @@
+# phase19-local-20260903T045052Z
+# benchmark schema 10: PHASE19-BENCH markers, medians over 200 ticks after 10 warmup
+PHASE19-BENCH consumption-tick cells=64x64 pop_small=16 pop_large=256 off_small_us=139.04 on_small_us=142.25 off_large_us=198.83 on_large_us=204.58 alive_off_small=16 alive_on_small=16 alive_off_large=256 alive_on_large=256 per_organism_us=0.011
+PHASE19-BENCH field-cell cells=64x64 organisms=0 off_us=430.00 on_us=417.71 per_cell_ns_off=104.98 per_cell_ns_on=101.98
