@@ -17,3 +17,6 @@ sim-protocol = { path = "../sim-protocol" }
 tiny_http = "0.12"
 tungstenite = "0.24"
 sim-persist = { path = "../sim-persist" }
+# The field registry a world is created from (ADR-0039): the console can
+# name a setting only if a campaign could.
+sim-experiment = { path = "../sim-experiment" }

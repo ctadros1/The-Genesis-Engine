@@ -1,13 +1,18 @@
-//! Shared server state: the authoritative world, control settings, audit
-//! log, subscriber registry, and stream statistics.
+//! Shared server state, split in two by ADR-0039: the process-level `Hub`
+//! and the per-world `WorldRuntime`.
 //!
-//! The kernel stays pure; every clock, socket, and thread lives here. The
-//! tick thread must never block on client I/O: subscribers receive frames
-//! through bounded latest-wins queues and slow clients get resynced with a
-//! fresh keyframe instead of an unbounded backlog.
+//! The kernel stays pure; every clock, socket, and thread lives here. A
+//! world's tick thread must never block on client I/O: subscribers receive
+//! frames through bounded latest-wins queues and slow clients get resynced
+//! with a fresh keyframe instead of an unbounded backlog.
+//!
+//! Lock order, process-wide: `Hub::worlds` is held only long enough to
+//! clone an `Arc<WorldRuntime>` or to insert/remove one, and never while a
+//! world lock is held. Nothing else nests a world lock inside another
+//! world's, so two worlds cannot deadlock each other.
 
 use sim_core::World;
-use std::collections::VecDeque;
+use std::collections::{BTreeMap, HashMap, VecDeque};
 use std::sync::atomic::{AtomicBool, AtomicU64, Ordering};
 use std::sync::{Arc, Condvar, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -20,13 +25,16 @@ pub const MAX_PENDING_FRAMES: usize = 16;
 pub const TILE_REFRESH_INTERVAL: u64 = 20;
 /// Maximum speed multiplier (Q16) an admin may set: 64x.
 pub const MAX_SPEED_Q16: u32 = 64 << 16;
+/// The world built from the command-line flags. Every route, test and
+/// deployment that predates ADR-0039 addresses this id.
+pub const PRIMARY_WORLD_ID: u64 = 1;
 
 pub struct Control {
     pub paused: bool,
     pub speed_q16: u32,
 }
 
-/// How the tick thread paces itself.
+/// How a tick thread paces itself.
 ///
 /// Acceleration is a host concern only. The kernel reads no clock, so
 /// pacing cannot reach a result; A5.1 is the test that proves the claim
@@ -72,6 +80,9 @@ impl CheckpointMode {
 pub struct AuditRecord {
     pub id: u64,
     pub unix_ms: u64,
+    /// Which world the mutation addressed. 0 means the process itself
+    /// (world creation, which has no world until it succeeds).
+    pub world_id: u64,
     pub role: &'static str,
     pub action: String,
     pub accepted: bool,
@@ -149,28 +160,35 @@ impl ClientSlot {
     }
 }
 
-pub struct Shared {
+/// One hosted world: its state, its controls, its subscribers, its tick
+/// thread's counters. Nothing here is shared with another world, which is
+/// what makes "pausing one does not pause the others" a property of the
+/// data layout rather than of the control handler's care.
+pub struct WorldRuntime {
+    pub id: u64,
+    pub name: String,
+    /// The preset the world was created from, or the parent's preset for a
+    /// branch. Reported so a console can say what a world descends from.
+    pub preset: String,
+    pub created_unix_ms: u64,
+    /// 0 for a world with no parent.
+    pub parent_world_id: u64,
+    pub world_epoch: u64,
     pub world: Mutex<World>,
     pub control: Mutex<Control>,
-    pub audit: Mutex<Vec<AuditRecord>>,
     pub clients: Mutex<Vec<Arc<ClientSlot>>>,
-    pub next_client_id: AtomicU64,
-    pub next_audit_id: AtomicU64,
-    pub world_epoch: u64,
-    pub observer_token: String,
-    pub admin_token: String,
+    /// Set by `control?action=stop`. The tick thread writes a final
+    /// checkpoint and exits; open sessions answer 410 and close.
+    pub stopped: AtomicBool,
     /// Ring of recent tick durations (microseconds) for benchmarking.
     pub tick_samples_us: Mutex<VecDeque<f64>>,
     pub ticks_total: AtomicU64,
-    /// Snapshot store (None disables persistence endpoints/checkpoints).
-    /// Shared rather than owned so the asynchronous checkpoint writer and
-    /// the REST save endpoints can hold the same catalog.
-    pub store: Option<Arc<Mutex<sim_persist::SnapshotStore>>>,
-    /// Wall-clock seconds between automatic checkpoints (0 disables).
-    pub checkpoint_interval_secs: u64,
-    pub checkpoint_keep: usize,
-    pub checkpoint_mode: CheckpointMode,
-    pub pacing: Pacing,
+    /// Measured tick rate, in thousandths of a tick per second, refreshed
+    /// once a second by the tick thread. Measured rather than derived from
+    /// the mean tick cost: a paused or speed-limited world costs the same
+    /// per tick and advances at a different rate.
+    pub ticks_per_second_milli: AtomicU64,
+    pub dt_ms: u64,
     pub saves_total: AtomicU64,
     pub save_failures_total: AtomicU64,
     pub last_save_duration_us: AtomicU64,
@@ -183,6 +201,65 @@ pub struct Shared {
     /// is the only part of a checkpoint the tick thread pays for in
     /// asynchronous mode, and A5.5 measures it directly.
     pub last_capture_us: AtomicU64,
+    /// Wall-clock ms of the last accepted control on this world. Per world
+    /// rather than per process, so a burst of controls on one world cannot
+    /// refuse a control on another.
+    pub last_control_ms: AtomicU64,
+}
+
+impl WorldRuntime {
+    pub fn status(&self) -> &'static str {
+        if self.stopped.load(Ordering::Relaxed) {
+            "stopped"
+        } else if self.control.lock().expect("control").paused {
+            "paused"
+        } else {
+            "running"
+        }
+    }
+
+    pub fn tick_number(&self) -> u64 {
+        self.world.lock().expect("world").tick_number()
+    }
+
+    /// Mean of the recent tick-duration ring, in microseconds.
+    pub fn tick_mean_us(&self) -> f64 {
+        let samples = self.tick_samples_us.lock().expect("samples");
+        if samples.is_empty() {
+            return 0.0;
+        }
+        samples.iter().sum::<f64>() / samples.len() as f64
+    }
+}
+
+/// Process-level state: the tokens, the audit log, the idempotency cache,
+/// the snapshot store, and the registry of worlds.
+pub struct Hub {
+    pub observer_token: String,
+    pub admin_token: String,
+    pub audit: Mutex<Vec<AuditRecord>>,
+    pub next_audit_id: AtomicU64,
+    pub next_client_id: AtomicU64,
+    /// Recorded responses for keyed mutations, keyed by world id and the
+    /// client's `Idempotency-Key` so one key replayed against a different
+    /// world cannot return the other world's answer.
+    pub idempotency: Mutex<HashMap<String, (u16, String)>>,
+    /// Snapshot store (None disables persistence endpoints/checkpoints).
+    /// Shared rather than owned so the asynchronous checkpoint writer and
+    /// the REST save endpoints can hold the same catalog.
+    pub store: Option<Arc<Mutex<sim_persist::SnapshotStore>>>,
+    /// Root of the store, needed to turn a catalog row's file name into a
+    /// path when branching.
+    pub data_dir: Option<std::path::PathBuf>,
+    /// Wall-clock seconds between automatic checkpoints (0 disables).
+    pub checkpoint_interval_secs: u64,
+    pub checkpoint_keep: usize,
+    pub checkpoint_mode: CheckpointMode,
+    pub pacing: Pacing,
+    pub max_worlds: usize,
+    /// World 1 comes from the flags; created worlds start at 2.
+    pub next_world_id: AtomicU64,
+    pub worlds: Mutex<BTreeMap<u64, Arc<WorldRuntime>>>,
 }
 
 pub fn now_unix_ms() -> u64 {
@@ -211,7 +288,7 @@ pub enum Role {
     Admin,
 }
 
-impl Shared {
+impl Hub {
     /// Resolve a bearer token to a role. Admin implies observer access.
     pub fn role_for(&self, token: &str) -> Option<Role> {
         if token_matches(token, &self.admin_token) {
@@ -223,8 +300,27 @@ impl Shared {
         }
     }
 
+    /// The registry entry for `id`, if the world still exists.
+    pub fn world(&self, id: u64) -> Option<Arc<WorldRuntime>> {
+        self.worlds.lock().expect("worlds").get(&id).cloned()
+    }
+
+    /// Every hosted world in id order, so listings are stable.
+    pub fn all_worlds(&self) -> Vec<Arc<WorldRuntime>> {
+        self.worlds
+            .lock()
+            .expect("worlds")
+            .values()
+            .cloned()
+            .collect()
+    }
+
+    // One record, one argument each: bundling them into a struct would put
+    // a type between every call site and the log it writes.
+    #[allow(clippy::too_many_arguments)]
     pub fn record_audit(
         &self,
+        world_id: u64,
         role: &'static str,
         action: &str,
         accepted: bool,
@@ -235,6 +331,7 @@ impl Shared {
         let record = AuditRecord {
             id: self.next_audit_id.fetch_add(1, Ordering::Relaxed),
             unix_ms: now_unix_ms(),
+            world_id,
             role,
             action: action.to_owned(),
             accepted,

@@ -1,0 +1,167 @@
+/* Server screen: saved profiles, the add/edit form, and the connection
+ * test result. Reuses the shared theme tokens from src/style.css — no new
+ * colors, just layout for this screen's own structures.
+ */
+
+.server-screen {
+  max-width: 46rem;
+}
+
+.server-section {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+}
+
+.server-section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: var(--space-3);
+}
+
+.profile-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.profile-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  background: var(--bg-raised);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.profile-row.is-active {
+  border-color: var(--accent);
+}
+
+.profile-info {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  min-width: 0;
+}
+
+.profile-name {
+  font-size: 1.05rem;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.profile-detail {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+  overflow-wrap: anywhere;
+}
+
+.profile-actions {
+  display: flex;
+  gap: var(--space-2);
+  flex-shrink: 0;
+}
+
+.profile-empty {
+  color: var(--text-faint);
+}
+
+.server-form {
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-raised);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.form-row {
+  display: flex;
+  gap: var(--space-3);
+}
+
+.form-row .field {
+  flex: 1;
+  min-width: 0;
+}
+
+.form-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.test-result {
+  margin-top: var(--space-3);
+  padding: var(--space-3);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  background: var(--bg-inset);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.test-result[hidden] {
+  display: none;
+}
+
+.test-result-line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex-wrap: wrap;
+}
+
+/* Badges: text always carries the meaning; color is decoration only. */
+
+.badge {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  border: var(--border-width) solid var(--border-strong);
+  color: var(--text);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.badge-ok {
+  color: var(--bg-inset);
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge-fail {
+  color: var(--bg-inset);
+  background: var(--danger);
+  border-color: var(--danger);
+}
+
+.badge-role-admin {
+  color: var(--bg-inset);
+  background: var(--accent);
+  border-color: var(--accent-strong);
+}
+
+.badge-role-observer {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
+}
+
+.badge-neutral {
+  color: var(--text-dim);
+}

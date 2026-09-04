@@ -1,0 +1,121 @@
+/* Title screen: the name, the menu, the status strip and the full-bleed
+ * background layer (a live world preview or a procedural pixel drift,
+ * see ./title/background.ts). Reuses the shared theme tokens from
+ * src/style.css — no new colors, just this screen's own layout.
+ */
+
+.title-screen {
+  position: relative;
+  overflow: hidden;
+  padding: 0;
+}
+
+.title-background {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.title-background canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.title-content {
+  position: relative;
+  z-index: 1;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: var(--space-5);
+  padding: var(--space-5);
+}
+
+.title-header {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+}
+
+.title-heading {
+  font-size: 3.4rem;
+  letter-spacing: 0.14em;
+  margin: 0;
+  text-shadow: 3px 3px 0 var(--bg-inset);
+}
+
+.title-subtitle {
+  font-size: 1.05rem;
+  margin: 0;
+  max-width: 34rem;
+}
+
+.title-status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  width: fit-content;
+  background: rgb(6 10 14 / 72%);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2) var(--space-3);
+}
+
+.title-status-item {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.title-menu-panel {
+  width: fit-content;
+  background: rgb(6 10 14 / 72%);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-4);
+}
+
+.title-menu-panel .menu-list button:disabled {
+  opacity: 0.45;
+}
+
+/* Badges: text always carries the meaning; color is decoration only. */
+
+.badge {
+  display: inline-block;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px 8px;
+  border-radius: var(--radius);
+  border: var(--border-width) solid var(--border-strong);
+  color: var(--text);
+  background: var(--surface);
+  white-space: nowrap;
+}
+
+.badge-ok {
+  color: var(--bg-inset);
+  background: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge-neutral {
+  color: var(--text-dim);
+}
+
+.badge-role-admin {
+  color: var(--bg-inset);
+  background: var(--accent);
+  border-color: var(--accent-strong);
+}
+
+.badge-role-observer {
+  color: var(--text);
+  background: var(--surface);
+  border-color: var(--border-strong);
+}

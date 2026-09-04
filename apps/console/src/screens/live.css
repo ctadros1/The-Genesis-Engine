@@ -1,0 +1,185 @@
+/* Live screen: world canvas, HUD, inspector, chart, overlay and controls.
+ * Imported from live.ts. Uses the shared tokens defined in src/style.css —
+ * this file only adds layout and components specific to this screen.
+ */
+
+.live-screen {
+  padding: var(--space-3);
+  gap: var(--space-2);
+}
+
+.live-topbar {
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.live-topbar-left {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+}
+
+.live-topbar-left h1 {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+.live-topbar-right {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-2);
+}
+
+.live-topbar-right .field {
+  margin-bottom: 0;
+}
+
+/* Status badge: text-only signal, never color alone. */
+.badge {
+  display: inline-block;
+  font-size: 0.8rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius);
+  border: var(--border-width) solid var(--border-strong);
+  background: var(--bg-raised);
+  color: var(--text-dim);
+}
+
+.badge-running {
+  color: var(--ok);
+  border-color: var(--ok);
+}
+
+.badge-paused {
+  color: var(--warn);
+  border-color: var(--warn);
+}
+
+.badge-stopped {
+  color: var(--danger-strong);
+  border-color: var(--danger);
+}
+
+.live-connection-status {
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.live-stage-wrap {
+  position: relative;
+  flex: 1;
+  min-height: 24rem;
+  display: flex;
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  overflow: hidden;
+  background: var(--bg-inset);
+}
+
+/* An explicit `display` on an element also carrying the `hidden` attribute
+ * beats the user-agent stylesheet's unmarked `[hidden] { display: none }`
+ * on selector-specificity ties by cascade order (this rule loads after the
+ * UA sheet) — so anything toggled via `.hidden = true/false` needs its own
+ * `[hidden]` override here to actually disappear. */
+.live-stage-wrap[hidden],
+.live-error-panel[hidden] {
+  display: none;
+}
+
+.live-viewport {
+  flex: 1;
+  position: relative;
+}
+
+.live-viewport canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
+.live-hud {
+  position: absolute;
+  top: var(--space-2);
+  left: var(--space-2);
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  max-width: 20rem;
+}
+
+.live-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: var(--space-2);
+  background: rgb(6 10 14 / 78%);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+}
+
+.live-controls .field {
+  margin-bottom: 0;
+}
+
+.live-chart {
+  background: rgb(6 10 14 / 78%);
+  border: var(--border-width) solid var(--border);
+  border-radius: var(--radius);
+  padding: var(--space-2);
+}
+
+.live-chart-canvas {
+  display: block;
+  width: 260px;
+  height: 80px;
+}
+
+.live-inspector {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  width: 18rem;
+  max-height: calc(100% - var(--space-4));
+  overflow-y: auto;
+  background: var(--bg-raised);
+  border: var(--border-width) solid var(--border-strong);
+  border-radius: var(--radius);
+  padding: var(--space-3);
+}
+
+.live-inspector h2 {
+  font-size: 1rem;
+  margin-bottom: var(--space-2);
+}
+
+.live-inspect-body {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: var(--space-1) var(--space-2);
+  margin: var(--space-2) 0 0 0;
+}
+
+.live-inspect-body dt {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.live-inspect-body dd {
+  margin: 0;
+  word-break: break-word;
+}
+
+.live-error-panel {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: var(--border-width) solid var(--danger);
+  border-radius: var(--radius);
+  background: var(--bg-raised);
+  color: var(--danger-strong);
+}

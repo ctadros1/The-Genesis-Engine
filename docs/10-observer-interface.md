@@ -18,6 +18,62 @@ Accessibility in this slice: live status region, real buttons, chart text
 alternative, reduced-motion support (heading rotation disabled), and
 selection indicated by ring plus inspector text rather than color alone.
 
+## The Console (ADR-0039)
+
+`apps/observer` is unchanged and still connects to world 1 behind a token
+paste. `apps/console` is the second client: the same instrument, entered
+the way a game is entered. Plain TypeScript, Vite and PixiJS 8, no
+framework; `protocol.ts` and `render.ts` are copied from `apps/observer`
+with a provenance header naming the source and the copy date, and
+`apps/observer` stays the source of truth for both.
+
+The console is a screen stack. One screen is mounted at a time; every
+screen is reachable by keyboard alone (arrow keys move, Enter activates,
+Escape pops) and by pointer alone.
+
+| Screen | What it is for |
+|---|---|
+| Title | The name, a live pixel background, a status strip naming the active profile, its role and the connection, and the menu: Continue (the last world viewed), Worlds, New World, Load Save, Server, About |
+| Server | Connection profiles (name, REST base, WS base, observer token, admin token) kept in `localStorage`, a Test button that proves the tokens before committing to them, and the derived role shown as a badge; the last profile auto-connects on launch |
+| Worlds | One card per hosted world - name, status, tick, population, a sparkline from polled history, seed, config hash, measured tick cost - refreshed every two seconds, with View, Pause/Resume, Save, Stop, Branch and Delete |
+| New World | The builder: preset picker with descriptions, shipped recipes (named settings sets, e.g. Phase 22's chemistry-field base) applied on top of a preset, the settings grouped by prefix with search and typed inputs (toggle, number bounded by the field's type, choice select), a seed field with Randomise, the server's preview showing `config_hash` and validation errors live, and a summary of the settings that differ from the preset before Create |
+| Live | The Observer's canvas, HUD, inspector, chart, overlay and pause/resume/speed, plus Back and a world switcher; reconnect and keyframe resync as before |
+| Saves | Per world: the list, Save now, Verify, and Branch into a new world |
+
+Three properties are load-bearing rather than incidental:
+
+- **The builder is generated from the server's schema.** It hardcodes no
+  field name and no validation rule; it knows only how to render each
+  field type and how to diff a value against the active preset's default.
+  The schema is the campaign field registry, so the console cannot name a
+  setting a campaign could not, and it cannot drift from the vocabulary
+  the experiments use.
+- **Settings are editable before a world starts and never after.** The
+  builder is the only place settings are typed, and there is no route
+  behind which a running world's config could change (ADR-0039, docs/11).
+- **Role is a capability, not a decoration.** A profile with no admin
+  token derives the observer role, and every admin control is absent or
+  disabled with an explanation rather than present and failing at the
+  server. Admin actions confirm in a dialog that names the world and the
+  action before they send, and the server audits each one with its world
+  id, as this document's interaction rules require.
+
+Accessibility carries over unchanged, and `tests/c4-accessibility.spec.ts`
+is the check: a live status region announcing each screen and each
+accepted action, focus order through every screen, real buttons, no
+colour-only status (the status badge carries its word), and the title
+background animation off under `prefers-reduced-motion`.
+
+Tokens live in `localStorage` on the private LAN, exactly as the Observer
+already keeps them. They are sent only as an `Authorization` header:
+never in a URL, never in a log line, and the token inputs are password
+fields.
+
+The console runs first as a developer instance on the VM
+(`scripts/run-console-dev.sh`, recipe in `docs/28`). Production at
+`genesisengine.local` still serves `apps/observer` and changes only
+through the root-only installer.
+
 ## Design Direction
 
 The observer is a clear scientific instrument with a lively pixel-art surface. It supports desktop, phone, and wall-display use without reducing the world to a game HUD. Pixel art conveys terrain and organisms; a switchable scientific layer reveals exact information, selection state, ranges, and heatmaps.

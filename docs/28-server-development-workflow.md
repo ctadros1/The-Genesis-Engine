@@ -43,6 +43,55 @@ and monitor the process. Run one expensive WorldMod or benchmark campaign at a
 time; the full workspace suite contains intentionally CPU-intensive long-run
 tests and must not overlap the production simulation service.
 
+## Console developer instance
+
+`apps/console` (ADR-0039) is served by a **second** `lifesim-server`
+instance on developer ports, with its own data directory and its own
+tokens. It never touches the production process, its data, or its tokens.
+
+```sh
+ssh genesis-engine
+cd ~/src/The-Genesis-Engine
+git pull --ff-only
+scripts/run-console-dev.sh
+```
+
+The script builds `lifesim-server` and the console, starts the server on
+REST 8960 and WebSocket 8961 against `$HOME/console-dev-data` with
+`--max-worlds 8`, serves the built console on 127.0.0.1:5280, waits for
+`/api/health`, prints the URLs, and stays up until Ctrl-C, which tears both
+processes down. Override the ports with `CONSOLE_REST_PORT`,
+`CONSOLE_WS_PORT` and `CONSOLE_UI_PORT`.
+
+**Tokens.** Export `LIFESIM_OBSERVER_TOKEN` and `LIFESIM_ADMIN_TOKEN` to
+supply your own, and the script prints nothing about them. Otherwise it
+reuses whatever a previous run saved in `$HOME/console-dev-data/tokens.env`
+(mode 600) or generates a fresh pair, saves them there, and prints them
+once. Do not commit them, paste them into an agent prompt, or reuse the
+production tokens from `/etc/genesis-engine/runtime.env` here.
+
+The data directory persists, so a second run reuses the saves and
+checkpoints the first one wrote. Note what ADR-0039 does not promise: the
+**world registry** is not durable. A restart boots world 1 only; every
+other world comes back by branching one of its saves.
+
+Everything is loopback-only on the VM, so reach it from the development Mac
+through the SSH alias's local port-forward, then open
+`http://127.0.0.1:5280`:
+
+```sh
+ssh -L 5280:127.0.0.1:5280 -L 8960:127.0.0.1:8960 -L 8961:127.0.0.1:8961 genesis-engine
+```
+
+In the console's Server screen, point the profile at
+`http://127.0.0.1:8960` and `ws://127.0.0.1:8961`, paste the two tokens,
+and press Test before Connect.
+
+Playwright specs for the console run against a real server through
+`scripts/run-console-e2e.sh`, which is separate from this one: its own
+ports (8962/8963), fixed test tokens, and no `--data-dir` at all, so it
+cannot touch the developer instance's worlds or saves.
+
 ## Runtime and release boundary
 
 The production process is a separate, non-login `genesis` account managed by

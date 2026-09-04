@@ -394,6 +394,7 @@ name = "sim-server"
 version = "0.1.0"
 dependencies = [
  "sim-core",
+ "sim-experiment",
  "sim-persist",
  "sim-protocol",
  "tiny_http",

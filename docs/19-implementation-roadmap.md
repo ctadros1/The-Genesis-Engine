@@ -34,6 +34,23 @@ evidence, fixtures, and benchmark records are preserved unchanged.
 | 22 | Lineages under the other order | COMPLETE 2026-09-03 (D-136): 31 of 50 probe-only pairs against 3, sign-test p 3.8e-7; lineages in 36 of 50 worlds under youngest-first against 8 of 50 shipped; the shipped intake order is a sufficient cause of their rarity (`planning/phase-22-lineages-under-the-other-order.md`) |
 | 23 | The order on the field's terms | planned 2026-09-03 (a production dose sweep under the shipped order to a dose past one take, with the other order beside it at the shipped and the top dose; one harness change, the manifest's transition columns; `planning/phase-23-the-order-on-the-fields-terms.md`, ADR-0038) |
 
+**Off the numbered track: the console and the multi-world server**
+(2026-09-04, ADR-0039,
+`planning/console-and-multi-world-server.md`). An interface and
+operations increment on the observer track, not a science phase: it
+measures nothing about the world and moves no kernel, field, hash,
+fixture or format. `lifesim-server` becomes multi-world in one process
+(`--max-worlds`, default 8; world 1 is still the world the flags built,
+so every existing route, test and the production deployment keep their
+meaning), worlds are created from a preset plus named settings drawn from
+the campaign field registry and **never edited after creation**, the
+WebSocket selects a world by path at `ALSP` 1.0 unchanged, and
+`apps/console` is a second client with a title screen and a screen stack
+over those routes. It runs as a developer instance on the VM
+(`docs/28`); production still serves `apps/observer` and changes only
+through the installer. Routes and stream selection are in `docs/11`, the
+screens in `docs/10`.
+
 The former Phase 5 (performance optimization) and Phase 6 (advanced
 ecosystems) plans are superseded and preserved unmodified under
 `planning/superseded/`. Performance work is now a standing discipline

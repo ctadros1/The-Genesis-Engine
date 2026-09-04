@@ -1,9 +1,13 @@
-//! WebSocket streaming: session handshake, subscription management, frame
-//! building, and per-client backpressure.
+//! WebSocket streaming: world selection by path, session handshake,
+//! subscription management, frame building, and per-client backpressure.
+//!
+//! `ALSP` stays at 1.0 (ADR-0039 decision 4): the world a socket watches is
+//! chosen by the HTTP path of the upgrade request, not by a new frame, and
+//! the Welcome's existing `world_id` field reports the choice.
 
 use crate::state::{
-    ClientSlot, MAX_PENDING_FRAMES, MAX_RATE_HZ, MIN_RATE_HZ, Role, Shared, TILE_REFRESH_INTERVAL,
-    now_unix_ms,
+    ClientSlot, Hub, MAX_PENDING_FRAMES, MAX_RATE_HZ, MIN_RATE_HZ, PRIMARY_WORLD_ID, Role,
+    TILE_REFRESH_INTERVAL, WorldRuntime, now_unix_ms,
 };
 use sim_core::{RenderEntity, World};
 use sim_protocol::{
@@ -14,17 +18,32 @@ use std::net::{TcpListener, TcpStream};
 use std::sync::Arc;
 use std::sync::atomic::Ordering;
 use std::time::Duration;
-use tungstenite::{Message, WebSocket, accept};
+use tungstenite::{Message, WebSocket, accept_hdr};
 
 const KNOWN_LAYERS: u32 = LAYER_TERRAIN | LAYER_ORGANISMS | LAYER_METRICS;
 
-pub fn websocket_listener(shared: Arc<Shared>, listener: TcpListener) {
+pub fn websocket_listener(hub: Arc<Hub>, listener: TcpListener) {
     for stream in listener.incoming() {
         let Ok(stream) = stream else { continue };
-        let shared = Arc::clone(&shared);
+        let hub = Arc::clone(&hub);
         std::thread::spawn(move || {
-            let _ = handle_connection(shared, stream);
+            let _ = handle_connection(hub, stream);
         });
+    }
+}
+
+/// The world a request path selects. `/` and `/worlds/1` are world 1, which
+/// is what keeps every client written before ADR-0039 pointed at the world
+/// the flags built. `None` is a path that names no world at all.
+fn world_id_for_path(path: &str) -> Option<u64> {
+    let trimmed = path.trim_matches('/');
+    if trimmed.is_empty() {
+        return Some(PRIMARY_WORLD_ID);
+    }
+    let segments: Vec<&str> = trimmed.split('/').collect();
+    match segments.as_slice() {
+        ["worlds", id] => id.parse().ok(),
+        _ => None,
     }
 }
 
@@ -42,19 +61,27 @@ fn send_frame(
     socket.send(Message::Binary(bytes)).map_err(|_| ())
 }
 
-fn handle_connection(shared: Arc<Shared>, stream: TcpStream) -> Result<(), ()> {
+// The handshake callback's error type is tungstenite's own HTTP response;
+// its size is not this crate's to reduce.
+#[allow(clippy::result_large_err)]
+fn handle_connection(hub: Arc<Hub>, stream: TcpStream) -> Result<(), ()> {
     stream
         .set_read_timeout(Some(Duration::from_millis(10)))
         .map_err(|_| ())?;
-    let mut socket = accept(stream).map_err(|_| ())?;
-    let epoch = shared.world_epoch;
-    let meta = |sequence: u64| FrameMeta {
-        world_epoch: epoch,
-        sequence,
-        checksummed: false,
-    };
+    let mut requested_path = String::new();
+    let mut socket = accept_hdr(
+        stream,
+        |request: &tungstenite::handshake::server::Request, response| {
+            requested_path = request.uri().path().to_owned();
+            Ok(response)
+        },
+    )
+    .map_err(|_| ())?;
+    let selected = world_id_for_path(&requested_path);
 
     // 1. Hello with a valid observer or admin token, before anything else.
+    // The world the path names is reported only after the token is, so an
+    // unauthenticated socket learns nothing about which worlds exist.
     let hello = read_binary_blocking(&mut socket, Duration::from_secs(5))?;
     let authorized = match decode(&hello) {
         Ok((_, Frame::Hello { major, token, .. })) => {
@@ -62,7 +89,7 @@ fn handle_connection(shared: Arc<Shared>, stream: TcpStream) -> Result<(), ()> {
             if major != PROTOCOL_MAJOR {
                 None
             } else {
-                shared.role_for(&token)
+                hub.role_for(&token)
             }
         }
         _ => None,
@@ -75,14 +102,42 @@ fn handle_connection(shared: Arc<Shared>, stream: TcpStream) -> Result<(), ()> {
                 code: 401,
                 message: "unauthorized".to_owned(),
             },
-            meta(0),
+            FrameMeta {
+                world_epoch: 0,
+                sequence: 0,
+                checksummed: false,
+            },
         );
         return Err(());
     }
 
+    let runtime = selected.and_then(|id| hub.world(id));
+    let Some(runtime) = runtime else {
+        let _ = send_frame(
+            &mut socket,
+            None,
+            &Frame::Error {
+                code: 404,
+                message: "unknown world".to_owned(),
+            },
+            FrameMeta {
+                world_epoch: 0,
+                sequence: 0,
+                checksummed: false,
+            },
+        );
+        return Err(());
+    };
+    let epoch = runtime.world_epoch;
+    let meta = |sequence: u64| FrameMeta {
+        world_epoch: epoch,
+        sequence,
+        checksummed: false,
+    };
+
     // 2. Welcome with world metadata and effective limits.
     {
-        let world = shared.world.lock().expect("world");
+        let world = runtime.world.lock().expect("world");
         let config = world.config();
         send_frame(
             &mut socket,
@@ -91,7 +146,7 @@ fn handle_connection(shared: Arc<Shared>, stream: TcpStream) -> Result<(), ()> {
                 major: PROTOCOL_MAJOR,
                 minor: PROTOCOL_MINOR,
                 capabilities: KNOWN_LAYERS,
-                world_id: 1,
+                world_id: runtime.id,
                 config_hash: world.config_hash(),
                 cells_x: config.cells_x,
                 cells_y: config.cells_y,
@@ -105,17 +160,17 @@ fn handle_connection(shared: Arc<Shared>, stream: TcpStream) -> Result<(), ()> {
     }
 
     // 3. Register a slot; frames flow after the first Subscribe.
-    let slot = ClientSlot::new(shared.next_client_id.fetch_add(1, Ordering::Relaxed));
-    shared
+    let slot = ClientSlot::new(hub.next_client_id.fetch_add(1, Ordering::Relaxed));
+    runtime
         .clients
         .lock()
         .expect("clients")
         .push(Arc::clone(&slot));
 
-    let result = session_loop(&shared, &mut socket, &slot, epoch);
+    let result = session_loop(&runtime, &mut socket, &slot, epoch);
 
     slot.closed.store(true, Ordering::Relaxed);
-    shared
+    runtime
         .clients
         .lock()
         .expect("clients")
@@ -124,13 +179,31 @@ fn handle_connection(shared: Arc<Shared>, stream: TcpStream) -> Result<(), ()> {
 }
 
 fn session_loop(
-    shared: &Arc<Shared>,
+    runtime: &Arc<WorldRuntime>,
     socket: &mut WebSocket<TcpStream>,
     slot: &Arc<ClientSlot>,
     epoch: u64,
 ) -> Result<(), ()> {
     loop {
         if slot.closed.load(Ordering::Relaxed) {
+            return Ok(());
+        }
+        // A stopped world stops producing frames, so a session left open on
+        // one would look like a stall. It is told, then closed.
+        if runtime.stopped.load(Ordering::Relaxed) {
+            let _ = send_frame(
+                socket,
+                Some(slot),
+                &Frame::Error {
+                    code: 410,
+                    message: "world stopped".to_owned(),
+                },
+                FrameMeta {
+                    world_epoch: epoch,
+                    sequence: 0,
+                    checksummed: false,
+                },
+            );
             return Ok(());
         }
         // Drain any queued frames first (writer side).
@@ -175,7 +248,7 @@ fn session_loop(
                         max_rate_hz,
                     } => {
                         let (effective_viewport, effective_layers, effective_rate) =
-                            clamp_subscription(shared, viewport, layers, max_rate_hz);
+                            clamp_subscription(runtime, viewport, layers, max_rate_hz);
                         {
                             let mut queue = slot.queue.lock().expect("queue");
                             queue.viewport = Some((
@@ -273,12 +346,12 @@ fn next_sequence(slot: &ClientSlot) -> u64 {
 }
 
 fn clamp_subscription(
-    shared: &Shared,
+    runtime: &WorldRuntime,
     viewport: Viewport,
     layers: u32,
     max_rate_hz: u8,
 ) -> (Viewport, u32, u8) {
-    let world = shared.world.lock().expect("world");
+    let world = runtime.world.lock().expect("world");
     let config = world.config();
     let extent_x = config.world_extent_x_fp();
     let extent_y = config.world_extent_y_fp();
@@ -296,7 +369,7 @@ fn clamp_subscription(
     )
 }
 
-// --- Frame building (called from the tick thread) ---------------------------
+// --- Frame building (called from a world's tick thread) ---------------------
 
 fn tile_block(world: &World, bounds: (i32, i32, i32, i32)) -> TileBlock {
     let config = world.config();
@@ -346,12 +419,12 @@ fn to_protocol_record(entity: &RenderEntity) -> EntityRecord {
     }
 }
 
-/// Build and enqueue state frames for every subscribed client whose rate
-/// window has elapsed. Runs on the tick thread with the world lock held
-/// briefly per client; encoding happens outside the world lock.
-pub fn broadcast(shared: &Shared, scratch: &mut Vec<RenderEntity>) {
+/// Build and enqueue state frames for every subscribed client of one world
+/// whose rate window has elapsed. Runs on that world's tick thread with its
+/// world lock held briefly per client; encoding happens outside the lock.
+pub fn broadcast(runtime: &WorldRuntime, scratch: &mut Vec<RenderEntity>) {
     let now_ms = now_unix_ms();
-    let clients: Vec<Arc<ClientSlot>> = shared.clients.lock().expect("clients").clone();
+    let clients: Vec<Arc<ClientSlot>> = runtime.clients.lock().expect("clients").clone();
     for slot in clients {
         if slot.closed.load(Ordering::Relaxed) {
             continue;
@@ -381,7 +454,7 @@ pub fn broadcast(shared: &Shared, scratch: &mut Vec<RenderEntity>) {
         let lagging = backlog >= MAX_PENDING_FRAMES / 2 || sequence.saturating_sub(acked) > 64;
 
         let (frame, entity_map) = {
-            let world = shared.world.lock().expect("world");
+            let world = runtime.world.lock().expect("world");
             let tick = world.tick_number();
             if layers & LAYER_ORGANISMS != 0 {
                 world.render_entities_in(bounds.0, bounds.1, bounds.2, bounds.3, scratch);
@@ -450,7 +523,7 @@ pub fn broadcast(shared: &Shared, scratch: &mut Vec<RenderEntity>) {
         let bytes = encode(
             &frame,
             FrameMeta {
-                world_epoch: shared.world_epoch,
+                world_epoch: runtime.world_epoch,
                 sequence,
                 checksummed: false,
             },
@@ -467,9 +540,9 @@ pub fn broadcast(shared: &Shared, scratch: &mut Vec<RenderEntity>) {
 }
 
 /// Enqueue a metrics sample for clients subscribed to the metrics layer.
-pub fn broadcast_metrics(shared: &Shared) {
+pub fn broadcast_metrics(runtime: &WorldRuntime) {
     let metrics = {
-        let world = shared.world.lock().expect("world");
+        let world = runtime.world.lock().expect("world");
         world.metrics()
     };
     let frame = Frame::MetricsSample {
@@ -483,7 +556,7 @@ pub fn broadcast_metrics(shared: &Shared) {
         total_energy_milli: metrics.total_energy_milli,
         max_ancestry_depth: metrics.max_ancestry_depth,
     };
-    let clients: Vec<Arc<ClientSlot>> = shared.clients.lock().expect("clients").clone();
+    let clients: Vec<Arc<ClientSlot>> = runtime.clients.lock().expect("clients").clone();
     for slot in clients {
         if slot.closed.load(Ordering::Relaxed) {
             continue;
@@ -499,11 +572,31 @@ pub fn broadcast_metrics(shared: &Shared) {
         let bytes = encode(
             &frame,
             FrameMeta {
-                world_epoch: shared.world_epoch,
+                world_epoch: runtime.world_epoch,
                 sequence,
                 checksummed: false,
             },
         );
         slot.push_frame(bytes);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::world_id_for_path;
+    use crate::state::PRIMARY_WORLD_ID;
+
+    #[test]
+    fn the_upgrade_path_selects_the_world_and_bare_root_is_world_one() {
+        assert_eq!(world_id_for_path("/"), Some(PRIMARY_WORLD_ID));
+        assert_eq!(world_id_for_path(""), Some(PRIMARY_WORLD_ID));
+        assert_eq!(world_id_for_path("/worlds/1"), Some(1));
+        assert_eq!(world_id_for_path("/worlds/2"), Some(2));
+        assert_eq!(world_id_for_path("/worlds/99"), Some(99));
+        assert_eq!(world_id_for_path("/worlds/2/"), Some(2));
+        assert_eq!(world_id_for_path("/worlds"), None);
+        assert_eq!(world_id_for_path("/worlds/two"), None);
+        assert_eq!(world_id_for_path("/worlds/2/extra"), None);
+        assert_eq!(world_id_for_path("/api/worlds/2"), None);
     }
 }

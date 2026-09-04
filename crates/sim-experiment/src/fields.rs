@@ -38,6 +38,56 @@ impl fmt::Display for FieldValue {
     }
 }
 
+/// A field's type without a value, so a caller that has to *offer* the
+/// field (a settings form, a schema endpoint) can say what it accepts
+/// before anything has been set. The widths match `FieldValue`: 16-bit
+/// fields report as their widened form because that is how they read back.
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum FieldKind {
+    Choice,
+    U32,
+    U64,
+    I32,
+    I64,
+    Bool,
+}
+
+impl FieldKind {
+    pub fn name(self) -> &'static str {
+        match self {
+            Self::Choice => "choice",
+            Self::U32 => "u32",
+            Self::U64 => "u64",
+            Self::I32 => "i32",
+            Self::I64 => "i64",
+            Self::Bool => "bool",
+        }
+    }
+}
+
+impl FieldValue {
+    pub fn kind(self) -> FieldKind {
+        match self {
+            Self::Choice(_) => FieldKind::Choice,
+            Self::U32(_) => FieldKind::U32,
+            Self::U64(_) => FieldKind::U64,
+            Self::I32(_) => FieldKind::I32,
+            Self::I64(_) => FieldKind::I64,
+            Self::Bool(_) => FieldKind::Bool,
+        }
+    }
+}
+
+/// The values a choice field accepts, in the order `set_field` matches
+/// them. `None` for every field that is not a choice.
+pub fn field_choices(name: &str) -> Option<&'static [&'static str]> {
+    match name {
+        "origin.mode" => Some(&["random", "seeded", "scratch"]),
+        "physiology.intake_order" => Some(&["ascending", "descending"]),
+        _ => None,
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub enum FieldError {
     Unknown(String),
@@ -108,6 +158,21 @@ macro_rules! config_fields {
             }
             match name {
                 $( $name => Some(config_fields!(@read $kind, config.$($path).+)), )*
+                _ => None,
+            }
+        }
+
+        /// A field's type, without needing a config to read it from.
+        pub fn field_kind(name: &str) -> Option<FieldKind> {
+            match name {
+                "climate.enabled" => return Some(FieldKind::Bool),
+                "origin.mode" | "physiology.intake_order" => {
+                    return Some(FieldKind::Choice);
+                }
+                _ => {}
+            }
+            match name {
+                $( $name => Some(config_fields!(@kind $kind)), )*
                 _ => None,
             }
         }
@@ -189,6 +254,13 @@ macro_rules! config_fields {
     (@read u64, $expr:expr) => { FieldValue::U64($expr) };
     (@read i32, $expr:expr) => { FieldValue::I32($expr) };
     (@read i64, $expr:expr) => { FieldValue::I64($expr) };
+    (@kind bool) => { FieldKind::Bool };
+    (@kind u16) => { FieldKind::U32 };
+    (@kind i16) => { FieldKind::I32 };
+    (@kind u32) => { FieldKind::U32 };
+    (@kind u64) => { FieldKind::U64 };
+    (@kind i32) => { FieldKind::I32 };
+    (@kind i64) => { FieldKind::I64 };
     (@parse bool, $name:expr, $value:expr) => {
         parse_bool($value).ok_or_else(|| FieldError::BadValue {
             field: $name.to_owned(),
@@ -501,6 +573,42 @@ mod tests {
             assert_eq!(read_field(&copy, name), Some(value), "round trip {name}");
         }
         assert!(differing_fields(&config, &config).is_empty());
+    }
+
+    /// The read side a settings form is generated from: what it says a
+    /// field accepts has to be what `set_field` accepts, or the form offers
+    /// inputs the server refuses. Checked against the value that field
+    /// actually reads back, field by field, rather than by inspection.
+    #[test]
+    fn the_declared_kind_and_choices_match_what_each_field_reads_and_accepts() {
+        let config = SimConfig::phase2_default(1);
+        for name in FIELD_NAMES {
+            let value = read_field(&config, name).unwrap_or_else(|| panic!("read {name}"));
+            let kind = field_kind(name).unwrap_or_else(|| panic!("kind {name}"));
+            assert_eq!(kind, value.kind(), "declared kind of {name}");
+            match field_choices(name) {
+                Some(choices) => {
+                    assert_eq!(kind, FieldKind::Choice, "{name} has choices");
+                    assert!(
+                        choices.contains(&value.to_string().as_str()),
+                        "{name} reads {value}, which is not among its choices {choices:?}"
+                    );
+                    for choice in choices {
+                        let mut copy = config;
+                        set_field(&mut copy, name, choice)
+                            .unwrap_or_else(|error| panic!("set {name}={choice}: {error}"));
+                        assert_eq!(
+                            read_field(&copy, name),
+                            Some(FieldValue::Choice(choice)),
+                            "{name} kept {choice}"
+                        );
+                    }
+                }
+                None => assert_ne!(kind, FieldKind::Choice, "{name} is a choice without choices"),
+            }
+        }
+        assert_eq!(field_kind("not_a_field"), None);
+        assert_eq!(field_kind("world_seed"), None);
     }
 
     #[test]

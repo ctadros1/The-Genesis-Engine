@@ -1,30 +1,39 @@
-//! Private observer/control server for one authoritative world.
+//! Private observer/control server. Hosts many authoritative worlds in one
+//! process (ADR-0039): world 1 comes from the command-line flags, the rest
+//! are created over REST from a preset plus named settings.
 //!
-//! Threads: one tick loop (owns pacing; never blocks on client I/O), one
-//! REST acceptor, one WebSocket acceptor, one thread per WS session.
-//! Security posture: private LAN boundary; every request needs a bearer
-//! token (observer or admin role). Tokens come from the environment or are
-//! generated at startup and printed once; nothing is committed. TLS and
-//! reverse-proxy choices remain deployment decisions per the security
+//! Threads: one tick loop per world (each owns its pacing; none blocks on
+//! client I/O), one REST acceptor, one WebSocket acceptor, one thread per WS
+//! session. Security posture: private LAN boundary; every request needs a
+//! bearer token (observer or admin role). Tokens come from the environment
+//! or are generated at startup and printed once; nothing is committed. TLS
+//! and reverse-proxy choices remain deployment decisions per the security
 //! model. This binary deploys nothing and touches no infrastructure.
 
+mod json;
+mod schema;
 mod state;
 mod stream;
+mod worlds;
 
+use crate::json::escape as json_escape;
 use sim_core::{SimConfig, World, analyze};
-use state::{CheckpointMode, Control, MAX_SPEED_Q16, Pacing, Role, Shared, now_unix_ms};
-use std::collections::HashMap;
+use state::{
+    CheckpointMode, Hub, MAX_SPEED_Q16, PRIMARY_WORLD_ID, Pacing, Role, WorldRuntime, now_unix_ms,
+};
+use std::collections::{BTreeMap, HashMap};
 use std::io::Read;
 use std::net::TcpListener;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
 
 const DEFAULT_SEED: u64 = 0x5eed_cafe_f00d_beef;
 const DEFAULT_REST_PORT: u16 = 8940;
 const DEFAULT_WS_PORT: u16 = 8941;
-/// Minimum interval between accepted control mutations.
+/// Minimum interval between accepted control mutations, per world.
 const CONTROL_RATE_LIMIT_MS: u64 = 100;
+/// Default bound on hosted worlds (`--max-worlds`).
+const DEFAULT_MAX_WORLDS: usize = 8;
 
 fn main() {
     if let Err(error) = run() {
@@ -47,6 +56,7 @@ struct Options {
     checkpoint_mode: CheckpointMode,
     load_save: Option<std::path::PathBuf>,
     pacing: Pacing,
+    max_worlds: usize,
     /// Stop after this many ticks and print a fixture line. Exists so
     /// acceleration neutrality (A5.1) is an automated test rather than a
     /// manual procedure.
@@ -68,6 +78,7 @@ fn parse_options() -> Result<Options, String> {
         checkpoint_mode: CheckpointMode::Async,
         load_save: None,
         pacing: Pacing::Realtime,
+        max_worlds: DEFAULT_MAX_WORLDS,
         run_ticks: None,
     };
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -154,6 +165,15 @@ fn parse_options() -> Result<Options, String> {
                             }
                         };
                     }
+                    "--max-worlds" => {
+                        let count: usize = value
+                            .parse()
+                            .map_err(|_| format!("invalid world count {value}"))?;
+                        if count == 0 {
+                            return Err("max worlds must be at least 1".to_owned());
+                        }
+                        options.max_worlds = count;
+                    }
                     "--run-ticks" => {
                         options.run_ticks = Some(
                             value
@@ -222,7 +242,6 @@ fn run() -> Result<(), String> {
             (World::new(config).map_err(|error| error.to_string())?, 1)
         }
     };
-    let dt_ms = u64::from(world.config().dt_ms);
 
     let store = match &options.data_dir {
         Some(directory) => {
@@ -237,33 +256,38 @@ fn run() -> Result<(), String> {
         None => None,
     };
 
-    let shared = Arc::new(Shared {
-        world: Mutex::new(world),
-        control: Mutex::new(Control {
-            paused: options.paused,
-            speed_q16: options.speed_q16,
-        }),
-        audit: Mutex::new(Vec::new()),
-        clients: Mutex::new(Vec::new()),
-        next_client_id: AtomicU64::new(1),
-        next_audit_id: AtomicU64::new(1),
-        world_epoch,
+    let hub = Arc::new(Hub {
         observer_token: resolve_token("LIFESIM_OBSERVER_TOKEN"),
         admin_token: resolve_token("LIFESIM_ADMIN_TOKEN"),
-        tick_samples_us: Mutex::new(std::collections::VecDeque::with_capacity(4_096)),
-        ticks_total: AtomicU64::new(0),
+        audit: Mutex::new(Vec::new()),
+        next_audit_id: AtomicU64::new(1),
+        next_client_id: AtomicU64::new(1),
+        idempotency: Mutex::new(HashMap::new()),
         store,
+        data_dir: options.data_dir.clone(),
         checkpoint_interval_secs: options.checkpoint_interval_secs,
         checkpoint_keep: options.checkpoint_keep,
         checkpoint_mode: options.checkpoint_mode,
         pacing: options.pacing,
-        saves_total: AtomicU64::new(0),
-        save_failures_total: AtomicU64::new(0),
-        last_save_duration_us: AtomicU64::new(0),
-        last_save_bytes: AtomicU64::new(0),
-        checkpoints_skipped: AtomicU64::new(0),
-        last_capture_us: AtomicU64::new(0),
+        max_worlds: options.max_worlds,
+        next_world_id: AtomicU64::new(PRIMARY_WORLD_ID + 1),
+        worlds: Mutex::new(BTreeMap::new()),
     });
+
+    let primary = Arc::new(worlds::new_runtime(
+        PRIMARY_WORLD_ID,
+        "primary".to_owned(),
+        if options.load_save.is_some() {
+            "loaded".to_owned()
+        } else {
+            "flags".to_owned()
+        },
+        0,
+        world_epoch,
+        world,
+        options.paused,
+        options.speed_q16,
+    ));
 
     // Both listeners bind before the banner prints. The banner is the
     // readiness signal every integration test waits on, so printing it
@@ -279,270 +303,22 @@ fn run() -> Result<(), String> {
     );
 
     {
-        let shared = Arc::clone(&shared);
-        std::thread::spawn(move || stream::websocket_listener(shared, ws_listener));
+        let hub = Arc::clone(&hub);
+        std::thread::spawn(move || stream::websocket_listener(hub, ws_listener));
     }
-    {
-        let shared = Arc::clone(&shared);
-        let run_ticks = options.run_ticks;
-        std::thread::spawn(move || tick_loop(shared, dt_ms, run_ticks));
-    }
+    worlds::start(&hub, primary, options.run_ticks);
 
-    let idempotency: Mutex<HashMap<String, (u16, String)>> = Mutex::new(HashMap::new());
-    let last_control_ms = AtomicU64::new(0);
     for request in server.incoming_requests() {
-        handle_request(&shared, request, &idempotency, &last_control_ms);
+        handle_request(&hub, request);
     }
     Ok(())
-}
-
-// --- Tick loop --------------------------------------------------------------
-
-/// Perform one durable save (checkpoint or named). State capture happens
-/// under the world lock; encoding, compression, and fsync happen outside
-/// it so only the export clone stalls other world readers.
-fn perform_save(
-    shared: &Shared,
-    name: &str,
-    kind: &str,
-) -> Result<sim_persist::SaveRecord, String> {
-    let Some(store) = shared.store.as_ref() else {
-        return Err("no --data-dir configured".to_owned());
-    };
-    let started = Instant::now();
-    let (state, checksum) = {
-        let world = shared.world.lock().expect("world");
-        (world.export_state(), world.state_checksum())
-    };
-    let result = store.lock().expect("store").save(
-        &state,
-        checksum,
-        1,
-        if shared.world_epoch > 1 { 1 } else { 0 },
-        name,
-        kind,
-        0,
-        Some(3),
-    );
-    match result {
-        Ok(record) => {
-            shared.saves_total.fetch_add(1, Ordering::Relaxed);
-            shared
-                .last_save_duration_us
-                .store(started.elapsed().as_micros() as u64, Ordering::Relaxed);
-            shared
-                .last_save_bytes
-                .store(record.bytes, Ordering::Relaxed);
-            if kind == "checkpoint" {
-                let _ = store
-                    .lock()
-                    .expect("store")
-                    .prune_checkpoints(shared.checkpoint_keep);
-            }
-            Ok(record)
-        }
-        Err(error) => {
-            shared.save_failures_total.fetch_add(1, Ordering::Relaxed);
-            Err(error.to_string())
-        }
-    }
-}
-
-fn tick_loop(shared: Arc<Shared>, dt_ms: u64, run_ticks: Option<u64>) {
-    let mut scratch = Vec::new();
-    let mut next_deadline = Instant::now();
-    let mut last_metrics = Instant::now();
-    let mut last_checkpoint = Instant::now();
-    // The asynchronous writer exists only when both a store and the
-    // asynchronous mode are configured; otherwise the Phase 4 synchronous
-    // path runs unchanged.
-    let checkpointer = match (shared.store.as_ref(), shared.checkpoint_mode) {
-        (Some(store), CheckpointMode::Async) => {
-            Some(sim_persist::AsyncCheckpointer::spawn(Arc::clone(store)))
-        }
-        _ => None,
-    };
-    loop {
-        if let Some(limit) = run_ticks
-            && shared.ticks_total.load(Ordering::Relaxed) >= limit
-        {
-            // Finish any checkpoint still in flight before reporting, so
-            // the summary describes a settled world.
-            if let Some(checkpointer) = checkpointer {
-                let outcomes = checkpointer.shutdown();
-                for outcome in outcomes.iter().filter(|outcome| outcome.error.is_some()) {
-                    eprintln!(
-                        "checkpoint at tick {} failed: {}",
-                        outcome.tick,
-                        outcome.error.as_deref().unwrap_or("")
-                    );
-                }
-            }
-            print_run_summary(&shared, limit);
-            std::process::exit(0);
-        }
-        let (paused, speed_q16) = {
-            let control = shared.control.lock().expect("control");
-            (control.paused, control.speed_q16)
-        };
-        // A paused world advances zero ticks in either pacing mode: pausing
-        // is world state, not a pacing policy.
-        if paused || (shared.pacing == Pacing::Realtime && speed_q16 == 0) {
-            std::thread::sleep(Duration::from_millis(20));
-            next_deadline = Instant::now();
-            continue;
-        }
-        // Real-time pacing: interval = dt / speed. Headless pacing never
-        // sleeps, so the speed multiplier is ignored entirely rather than
-        // being reinterpreted as a large one.
-        let interval_us = (dt_ms * 1_000 * 65_536) / u64::from(speed_q16).max(1);
-        let started = Instant::now();
-        {
-            let mut world = shared.world.lock().expect("world");
-            world.step();
-        }
-        let elapsed_us = started.elapsed().as_secs_f64() * 1_000_000.0;
-        {
-            let mut samples = shared.tick_samples_us.lock().expect("samples");
-            if samples.len() >= 4_096 {
-                samples.pop_front();
-            }
-            samples.push_back(elapsed_us);
-        }
-        shared.ticks_total.fetch_add(1, Ordering::Relaxed);
-
-        // Stream state frames (per-client rate limiting inside).
-        stream::broadcast(&shared, &mut scratch);
-        if last_metrics.elapsed() >= Duration::from_secs(1) {
-            stream::broadcast_metrics(&shared);
-            last_metrics = Instant::now();
-        }
-        // Automatic checkpoints at completed tick boundaries.
-        if shared.checkpoint_interval_secs > 0
-            && shared.store.is_some()
-            && last_checkpoint.elapsed() >= Duration::from_secs(shared.checkpoint_interval_secs)
-        {
-            let tick = shared.ticks_total.load(Ordering::Relaxed);
-            match checkpointer.as_ref() {
-                Some(checkpointer) => submit_checkpoint(&shared, checkpointer, tick),
-                None => match perform_save(&shared, "auto", "checkpoint") {
-                    Ok(record) => shared.record_audit(
-                        "service",
-                        "checkpoint",
-                        true,
-                        &format!("save_id {} bytes {}", record.save_id, record.bytes),
-                        tick,
-                        "",
-                    ),
-                    Err(error) => {
-                        shared.record_audit("service", "checkpoint", false, &error, tick, "");
-                    }
-                },
-            }
-            last_checkpoint = Instant::now();
-        }
-        // Completed asynchronous writes are reported here rather than on
-        // the writer thread, so audit ordering stays on one thread.
-        if let Some(checkpointer) = checkpointer.as_ref() {
-            for outcome in checkpointer.drain_outcomes() {
-                match (&outcome.record, &outcome.error) {
-                    (Some(record), _) => {
-                        shared.saves_total.fetch_add(1, Ordering::Relaxed);
-                        shared
-                            .last_save_duration_us
-                            .store(outcome.duration_us, Ordering::Relaxed);
-                        shared
-                            .last_save_bytes
-                            .store(outcome.bytes, Ordering::Relaxed);
-                        shared.record_audit(
-                            "service",
-                            "checkpoint",
-                            true,
-                            &format!("save_id {} bytes {}", record.save_id, record.bytes),
-                            outcome.tick,
-                            "",
-                        );
-                    }
-                    (None, Some(error)) => {
-                        shared.save_failures_total.fetch_add(1, Ordering::Relaxed);
-                        shared.record_audit(
-                            "service",
-                            "checkpoint",
-                            false,
-                            error,
-                            outcome.tick,
-                            "",
-                        );
-                    }
-                    (None, None) => {}
-                }
-            }
-        }
-
-        if shared.pacing == Pacing::Headless {
-            // Nothing to wait for: the kernel reads no clock, so running
-            // free cannot change a result. A5.1 is the proof.
-            continue;
-        }
-        next_deadline += Duration::from_micros(interval_us);
-        let now = Instant::now();
-        if next_deadline > now {
-            std::thread::sleep(next_deadline - now);
-        } else {
-            // Falling behind (turbo speed or heavy load): never sleep-debt.
-            next_deadline = now;
-        }
-    }
-}
-
-/// Capture state on the tick thread and hand the write to the background
-/// writer. Capture is the only cost the tick thread pays.
-fn submit_checkpoint(
-    shared: &Arc<Shared>,
-    checkpointer: &sim_persist::AsyncCheckpointer,
-    tick: u64,
-) {
-    let capture_started = Instant::now();
-    let (state, checksum) = {
-        let world = shared.world.lock().expect("world");
-        (world.export_state(), world.state_checksum())
-    };
-    shared.last_capture_us.store(
-        capture_started.elapsed().as_micros() as u64,
-        Ordering::Relaxed,
-    );
-    let request = sim_persist::CheckpointRequest {
-        state,
-        state_checksum: checksum,
-        world_id: 1,
-        parent_world_id: if shared.world_epoch > 1 { 1 } else { 0 },
-        name: "auto".to_owned(),
-        kind: "checkpoint".to_owned(),
-        event_log_offset: 0,
-        compression_level: Some(3),
-        prune_keep: Some(shared.checkpoint_keep),
-    };
-    if checkpointer.submit(request) == sim_persist::SubmitResult::Busy {
-        // Refused, counted, and audited. The checkpoint interval is shorter
-        // than a checkpoint takes, and pretending otherwise would make the
-        // interval a lie.
-        shared.checkpoints_skipped.fetch_add(1, Ordering::Relaxed);
-        shared.record_audit(
-            "service",
-            "checkpoint",
-            false,
-            "skipped: previous checkpoint still writing",
-            tick,
-            "",
-        );
-    }
 }
 
 /// One-line summary printed when `--run-ticks` completes. Deliberately the
 /// same shape as the CLI fixture line so the two are directly comparable,
 /// which is what makes A5.1 a checksum equality rather than a description.
-fn print_run_summary(shared: &Arc<Shared>, requested: u64) {
-    let world = shared.world.lock().expect("world");
+pub fn print_run_summary(hub: &Hub, runtime: &WorldRuntime, requested: u64) {
+    let world = runtime.world.lock().expect("world");
     let metrics = world.metrics();
     println!(
         concat!(
@@ -553,8 +329,8 @@ fn print_run_summary(shared: &Arc<Shared>, requested: u64) {
             "\"checkpoints_skipped\":{},",
             "\"terrain_checksum\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\"}}"
         ),
-        shared.pacing.name(),
-        shared.checkpoint_mode.name(),
+        hub.pacing.name(),
+        hub.checkpoint_mode.name(),
         requested,
         world.tick_number(),
         world.config().world_seed,
@@ -562,7 +338,7 @@ fn print_run_summary(shared: &Arc<Shared>, requested: u64) {
         metrics.population,
         metrics.births_total,
         metrics.extinct,
-        shared.checkpoints_skipped.load(Ordering::Relaxed),
+        runtime.checkpoints_skipped.load(Ordering::Relaxed),
         world.terrain().terrain_checksum,
         world.state_checksum()
     );
@@ -612,6 +388,14 @@ fn respond_json(request: tiny_http::Request, status: u16, body: String) {
     respond(request, status, "application/json", body);
 }
 
+fn respond_error(request: tiny_http::Request, status: u16, message: &str) {
+    respond_json(
+        request,
+        status,
+        format!("{{\"error\":\"{}\"}}", json_escape(message)),
+    );
+}
+
 fn query_param(url: &str, name: &str) -> Option<String> {
     let query = url.split_once('?')?.1;
     for pair in query.split('&') {
@@ -623,17 +407,39 @@ fn query_param(url: &str, name: &str) -> Option<String> {
     None
 }
 
-fn handle_request(
-    shared: &Arc<Shared>,
-    request: tiny_http::Request,
-    idempotency: &Mutex<HashMap<String, (u16, String)>>,
-    last_control_ms: &AtomicU64,
-) {
+/// Read a bounded request body. Bodies are read before anything is
+/// allocated from them, and a body larger than the cap is refused rather
+/// than truncated into a shape that happens to parse.
+fn read_body(request: &mut tiny_http::Request) -> Result<String, String> {
+    if let Some(length) = request.body_length()
+        && length > json::MAX_BODY_BYTES
+    {
+        return Err(format!(
+            "body larger than {} bytes",
+            json::MAX_BODY_BYTES
+        ));
+    }
+    let mut body = String::new();
+    request
+        .as_reader()
+        .take(json::MAX_BODY_BYTES as u64 + 1)
+        .read_to_string(&mut body)
+        .map_err(|_| "body is not UTF-8 text".to_owned())?;
+    if body.len() > json::MAX_BODY_BYTES {
+        return Err(format!(
+            "body larger than {} bytes",
+            json::MAX_BODY_BYTES
+        ));
+    }
+    Ok(body)
+}
+
+fn handle_request(hub: &Arc<Hub>, mut request: tiny_http::Request) {
     let url = request.url().to_owned();
     let path = url.split('?').next().unwrap_or("").to_owned();
-    let method = request.method().clone();
+    let method = request.method().as_str().to_owned();
 
-    if method.as_str() == "OPTIONS" {
+    if method == "OPTIONS" {
         let response = tiny_http::Response::empty(204)
             .with_header(
                 tiny_http::Header::from_bytes(
@@ -645,7 +451,7 @@ fn handle_request(
             .with_header(
                 tiny_http::Header::from_bytes(
                     "Access-Control-Allow-Methods".as_bytes(),
-                    "GET, POST, OPTIONS".as_bytes(),
+                    "GET, POST, DELETE, OPTIONS".as_bytes(),
                 )
                 .expect("header"),
             )
@@ -666,34 +472,133 @@ fn handle_request(
     }
 
     // Everything else requires a role.
-    let role = bearer_token(&request).and_then(|token| shared.role_for(&token));
+    let role = bearer_token(&request).and_then(|token| hub.role_for(&token));
     let Some(role) = role else {
-        respond_json(
-            request,
-            401,
-            "{\"error\":\"missing or invalid bearer token\"}".to_owned(),
-        );
+        respond_error(request, 401, "missing or invalid bearer token");
         return;
     };
 
-    match (method.as_str(), path.as_str()) {
-        ("GET", "/api/worlds") => {
-            respond_json(request, 200, format!("[{}]", world_summary_json(shared)));
+    let segments: Vec<&str> = path
+        .trim_matches('/')
+        .split('/')
+        .filter(|segment| !segment.is_empty())
+        .collect();
+    match (method.as_str(), segments.as_slice()) {
+        ("GET", ["api", "schema"]) => {
+            respond_json(request, 200, schema::schema_json(hub.max_worlds));
         }
-        ("GET", "/api/worlds/1") => {
-            respond_json(request, 200, world_summary_json(shared));
+        ("POST", ["api", "schema", "preview"]) => {
+            let body = match read_body(&mut request) {
+                Ok(body) => body,
+                Err(error) => return respond_error(request, 400, &error),
+            };
+            match schema::preview_json(&body, generated_seed(hub)) {
+                Ok(body) => respond_json(request, 200, body),
+                Err(bad) => respond_json(request, 400, bad.to_json()),
+            }
         }
-        ("GET", "/metrics") => {
-            respond(
-                request,
-                200,
-                "text/plain; version=0.0.4",
-                metrics_text(shared),
-            );
+        ("GET", ["api", "worlds"]) => {
+            let mut body = String::from("[");
+            for (index, runtime) in hub.all_worlds().iter().enumerate() {
+                if index > 0 {
+                    body.push(',');
+                }
+                body.push_str(&worlds::summary_json(runtime));
+            }
+            body.push(']');
+            respond_json(request, 200, body);
         }
-        ("GET", "/api/worlds/1/analysis") => {
+        ("POST", ["api", "worlds"]) => {
+            if role != Role::Admin {
+                return deny_admin(hub, request, 0, "create-world");
+            }
+            create_world(hub, request);
+        }
+        ("GET", ["api", "worlds", id]) => match resolve(hub, id) {
+            Some(runtime) => respond_json(request, 200, worlds::summary_json(&runtime)),
+            None => respond_error(request, 404, "unknown world"),
+        },
+        ("DELETE", ["api", "worlds", id]) => {
+            if role != Role::Admin {
+                return deny_admin(hub, request, parse_id(id).unwrap_or(0), "delete-world");
+            }
+            delete_world(hub, request, id);
+        }
+        ("POST", ["api", "worlds", id, "control"]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            if role != Role::Admin {
+                hub.record_audit(
+                    runtime.id,
+                    "observer",
+                    &format!("control {url}"),
+                    false,
+                    "admin role required",
+                    runtime.tick_number(),
+                    &header_value(&request, "Idempotency-Key").unwrap_or_default(),
+                );
+                return respond_error(request, 403, "admin role required");
+            }
+            handle_control(hub, &runtime, request, &url);
+        }
+        ("POST", ["api", "worlds", id, "branch"]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            if role != Role::Admin {
+                return deny_admin(hub, request, runtime.id, "branch");
+            }
+            branch_world(hub, request, &runtime, &url);
+        }
+        ("GET", ["api", "worlds", id, "saves"]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            list_saves(hub, request, runtime.id);
+        }
+        ("POST", ["api", "worlds", id, "saves"]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            if role != Role::Admin {
+                return deny_admin(hub, request, runtime.id, "save");
+            }
+            create_save(hub, request, &runtime, &url);
+        }
+        ("POST", ["api", "worlds", id, "saves", save_id, "verify"]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            if role != Role::Admin {
+                return deny_admin(hub, request, runtime.id, "verify-save");
+            }
+            verify_save(hub, request, &runtime, save_id);
+        }
+        ("GET", ["api", "worlds", id, "organisms", organism_id]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            let Ok(organism_id) = organism_id.parse::<u64>() else {
+                return respond_error(request, 400, "invalid organism id");
+            };
             let body = {
-                let world = shared.world.lock().expect("world");
+                let world = runtime.world.lock().expect("world");
+                world
+                    .organism_detail(organism_id)
+                    .map(|detail| organism_json(&detail))
+            };
+            match body {
+                Some(body) => respond_json(request, 200, body),
+                None => respond_error(request, 404, "organism not found"),
+            }
+        }
+        ("GET", ["api", "worlds", id, "analysis"]) => {
+            let Some(runtime) = resolve(hub, id) else {
+                return respond_error(request, 404, "unknown world");
+            };
+            let body = {
+                let world = runtime.world.lock().expect("world");
                 analyze(&world).map(|report| {
                     let mut sizes = String::new();
                     for (index, size) in report.cluster_sizes.iter().enumerate() {
@@ -720,33 +625,36 @@ fn handle_request(
             };
             match body {
                 Some(body) => respond_json(request, 200, body),
-                None => respond_json(
-                    request,
-                    409,
-                    "{\"error\":\"analysis requires a phase2 world\"}".to_owned(),
-                ),
+                None => respond_error(request, 409, "analysis requires a phase2 world"),
             }
         }
-        ("GET", "/api/benchmarks/ticks") => {
+        ("GET", ["metrics"]) => {
+            respond(
+                request,
+                200,
+                "text/plain; version=0.0.4",
+                worlds::metrics_text(hub),
+            );
+        }
+        ("GET", ["api", "benchmarks", "ticks"]) => {
+            let id = query_param(&url, "world").unwrap_or_else(|| PRIMARY_WORLD_ID.to_string());
+            let Some(runtime) = resolve(hub, &id) else {
+                return respond_error(request, 404, "unknown world");
+            };
             let samples: Vec<f64> = {
-                let samples = shared.tick_samples_us.lock().expect("samples");
+                let samples = runtime.tick_samples_us.lock().expect("samples");
                 samples.iter().copied().collect()
             };
             if query_param(&url, "reset").as_deref() == Some("1") {
-                shared.tick_samples_us.lock().expect("samples").clear();
+                runtime.tick_samples_us.lock().expect("samples").clear();
             }
-            respond_json(request, 200, tick_stats_json(shared, &samples));
+            respond_json(request, 200, worlds::tick_stats_json(&runtime, &samples));
         }
-        ("GET", "/api/audit") => {
+        ("GET", ["api", "audit"]) => {
             if role != Role::Admin {
-                respond_json(
-                    request,
-                    403,
-                    "{\"error\":\"admin role required\"}".to_owned(),
-                );
-                return;
+                return respond_error(request, 403, "admin role required");
             }
-            let audit = shared.audit.lock().expect("audit");
+            let audit = hub.audit.lock().expect("audit");
             let mut body = String::from("[");
             for (index, record) in audit.iter().rev().take(100).enumerate() {
                 if index > 0 {
@@ -754,11 +662,13 @@ fn handle_request(
                 }
                 body.push_str(&format!(
                     concat!(
-                        "{{\"id\":{},\"unix_ms\":{},\"role\":\"{}\",\"action\":\"{}\",",
-                        "\"accepted\":{},\"detail\":\"{}\",\"tick\":{},\"idempotency_key\":\"{}\"}}"
+                        "{{\"id\":{},\"unix_ms\":{},\"world_id\":{},\"role\":\"{}\",",
+                        "\"action\":\"{}\",\"accepted\":{},\"detail\":\"{}\",\"tick\":{},",
+                        "\"idempotency_key\":\"{}\"}}"
                     ),
                     record.id,
                     record.unix_ms,
+                    record.world_id,
                     record.role,
                     json_escape(&record.action),
                     record.accepted,
@@ -770,261 +680,460 @@ fn handle_request(
             body.push(']');
             respond_json(request, 200, body);
         }
-        ("GET", "/api/worlds/1/saves") => {
-            let Some(store) = shared.store.as_ref() else {
-                respond_json(
-                    request,
-                    409,
-                    "{\"error\":\"no data dir configured\"}".to_owned(),
-                );
-                return;
-            };
-            let records = store.lock().expect("store").list();
-            match records {
-                Ok(records) => {
-                    let mut body = String::from("[");
-                    for (index, record) in records.iter().enumerate() {
-                        if index > 0 {
-                            body.push(',');
-                        }
-                        body.push_str(&format!(
-                            concat!(
-                                "{{\"save_id\":{},\"name\":\"{}\",\"kind\":\"{}\",\"tick\":{},",
-                                "\"bytes\":{},\"compressed\":{},\"format_version\":{},",
-                                "\"config_hash\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
-                                "\"created_unix_ms\":{},\"verified\":{}}}"
-                            ),
-                            record.save_id,
-                            json_escape(&record.name),
-                            json_escape(&record.kind),
-                            record.tick,
-                            record.bytes,
-                            record.compressed,
-                            record.format_version,
-                            record.config_hash,
-                            record.state_checksum,
-                            record.created_unix_ms,
-                            record.verified_unix_ms.is_some()
-                        ));
-                    }
-                    body.push(']');
-                    respond_json(request, 200, body);
-                }
-                Err(error) => respond_json(
-                    request,
-                    500,
-                    format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
-                ),
-            }
-        }
-        ("POST", "/api/worlds/1/saves") => {
-            if role != Role::Admin {
-                respond_json(
-                    request,
-                    403,
-                    "{\"error\":\"admin role required\"}".to_owned(),
-                );
-                return;
-            }
-            let name = query_param(&url, "name").unwrap_or_else(|| "manual".to_owned());
-            let safe_name: String = name
-                .chars()
-                .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
-                .take(64)
-                .collect();
-            let tick = current_tick(shared);
-            match perform_save(shared, &safe_name, "manual") {
-                Ok(record) => {
-                    shared.record_audit(
-                        "admin",
-                        "save",
-                        true,
-                        &format!("save_id {} name {safe_name}", record.save_id),
-                        tick,
-                        &header_value(&request, "Idempotency-Key").unwrap_or_default(),
-                    );
-                    respond_json(
-                        request,
-                        200,
-                        format!(
-                            "{{\"save_id\":{},\"tick\":{},\"bytes\":{},\"state_checksum\":\"0x{:016x}\"}}",
-                            record.save_id, record.tick, record.bytes, record.state_checksum
-                        ),
-                    );
-                }
-                Err(error) => {
-                    shared.record_audit("admin", "save", false, &error, tick, "");
-                    respond_json(
-                        request,
-                        500,
-                        format!("{{\"error\":\"{}\"}}", json_escape(&error)),
-                    );
-                }
-            }
-        }
-        ("POST", _) if path.starts_with("/api/worlds/1/saves/") && path.ends_with("/verify") => {
-            if role != Role::Admin {
-                respond_json(
-                    request,
-                    403,
-                    "{\"error\":\"admin role required\"}".to_owned(),
-                );
-                return;
-            }
-            let Some(store) = shared.store.as_ref() else {
-                respond_json(
-                    request,
-                    409,
-                    "{\"error\":\"no data dir configured\"}".to_owned(),
-                );
-                return;
-            };
-            let save_id: Option<i64> = path
-                .trim_end_matches("/verify")
-                .rsplit('/')
-                .next()
-                .and_then(|value| value.parse().ok());
-            let Some(save_id) = save_id else {
-                respond_json(request, 400, "{\"error\":\"invalid save id\"}".to_owned());
-                return;
-            };
-            let tick = current_tick(shared);
-            // Isolated verification: rebuilds a throwaway world, never the
-            // live one.
-            let result = store.lock().expect("store").verify(save_id);
-            match result {
-                Ok(report) => {
-                    shared.record_audit(
-                        "admin",
-                        "verify-save",
-                        true,
-                        &format!("save_id {save_id}"),
-                        tick,
-                        "",
-                    );
-                    respond_json(
-                        request,
-                        200,
-                        format!(
-                            concat!(
-                                "{{\"save_id\":{},\"tick\":{},\"seed\":\"0x{:016x}\",",
-                                "\"config_hash\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
-                                "\"population\":{},\"build_version\":\"{}\",\"result\":\"ok\"}}"
-                            ),
-                            report.save_id,
-                            report.tick,
-                            report.seed,
-                            report.config_hash,
-                            report.state_checksum,
-                            report.population,
-                            json_escape(&report.build_version)
-                        ),
-                    );
-                }
-                Err(error) => {
-                    shared.record_audit(
-                        "admin",
-                        "verify-save",
-                        false,
-                        &error.to_string(),
-                        tick,
-                        "",
-                    );
-                    respond_json(
-                        request,
-                        422,
-                        format!("{{\"error\":\"{}\"}}", json_escape(&error.to_string())),
-                    );
-                }
-            }
-        }
-        ("POST", "/api/worlds/1/control") => {
-            if role != Role::Admin {
-                shared.record_audit(
-                    "observer",
-                    &format!("control {url}"),
-                    false,
-                    "admin role required",
-                    current_tick(shared),
-                    &header_value(&request, "Idempotency-Key").unwrap_or_default(),
-                );
-                respond_json(
-                    request,
-                    403,
-                    "{\"error\":\"admin role required\"}".to_owned(),
-                );
-                return;
-            }
-            handle_control(shared, request, &url, idempotency, last_control_ms);
-        }
-        ("GET", _) if path.starts_with("/api/worlds/1/organisms/") => {
-            let id: Option<u64> = path.rsplit('/').next().and_then(|value| value.parse().ok());
-            let Some(id) = id else {
-                respond_json(
-                    request,
-                    400,
-                    "{\"error\":\"invalid organism id\"}".to_owned(),
-                );
-                return;
-            };
-            let body = {
-                let world = shared.world.lock().expect("world");
-                world
-                    .organism_detail(id)
-                    .map(|detail| organism_json(&detail))
-            };
-            match body {
-                Some(body) => respond_json(request, 200, body),
-                None => respond_json(
-                    request,
-                    404,
-                    "{\"error\":\"organism not found\"}".to_owned(),
-                ),
-            }
-        }
-        _ => respond_json(request, 404, "{\"error\":\"not found\"}".to_owned()),
+        _ => respond_error(request, 404, "not found"),
     }
 }
 
-fn current_tick(shared: &Shared) -> u64 {
-    shared.world.lock().expect("world").tick_number()
+/// A world id from a path segment, and the runtime it names if it is still
+/// hosted. An unknown id is a 404 everywhere, which is what keeps a control
+/// aimed at a deleted world from landing on a live one.
+fn parse_id(segment: &str) -> Option<u64> {
+    segment.parse().ok()
+}
+
+fn resolve(hub: &Hub, segment: &str) -> Option<Arc<WorldRuntime>> {
+    parse_id(segment).and_then(|id| hub.world(id))
+}
+
+fn deny_admin(hub: &Hub, request: tiny_http::Request, world_id: u64, action: &str) {
+    let key = header_value(&request, "Idempotency-Key").unwrap_or_default();
+    hub.record_audit(
+        world_id,
+        "observer",
+        action,
+        false,
+        "admin role required",
+        0,
+        &key,
+    );
+    respond_error(request, 403, "admin role required");
+}
+
+/// A seed for a world whose request named none: the clock mixed with the
+/// id the world is about to take, so two worlds created in the same
+/// millisecond do not share a world.
+fn generated_seed(hub: &Hub) -> u64 {
+    let mut hasher = sim_core::Fnv1a64::new();
+    hasher.update(b"lifesim-server-world-seed-v1");
+    hasher.update_u64(now_unix_ms());
+    hasher.update_u64(hub.next_world_id.load(Ordering::Relaxed));
+    hasher.finish()
+}
+
+// --- World lifecycle routes -------------------------------------------------
+
+fn create_world(hub: &Arc<Hub>, mut request: tiny_http::Request) {
+    let key = header_value(&request, "Idempotency-Key").unwrap_or_default();
+    if let Some((status, body)) = replay(hub, 0, &key) {
+        return respond_json(request, status, body);
+    }
+    let body = match read_body(&mut request) {
+        Ok(body) => body,
+        Err(error) => {
+            hub.record_audit(0, "admin", "create-world", false, &error, 0, &key);
+            return respond_error(request, 400, &error);
+        }
+    };
+    let requested = match schema::parse_create(&body, generated_seed(hub)) {
+        Ok(request) => request,
+        Err(bad) => {
+            hub.record_audit(0, "admin", "create-world", false, &bad.message, 0, &key);
+            return respond_json(request, 400, bad.to_json());
+        }
+    };
+    if hub.worlds.lock().expect("worlds").len() >= hub.max_worlds {
+        let detail = format!("at the --max-worlds bound of {}", hub.max_worlds);
+        hub.record_audit(0, "admin", "create-world", false, &detail, 0, &key);
+        return respond_error(request, 409, &detail);
+    }
+    // Settings are applied to the config, and only then is the world built:
+    // the config hash the summary reports is the hash of the world that
+    // exists, not of one that was edited afterwards.
+    let config = match schema::build_config(&requested.preset, requested.seed, &requested.settings)
+    {
+        Ok(config) => config,
+        Err(bad) => {
+            hub.record_audit(0, "admin", "create-world", false, &bad.message, 0, &key);
+            return respond_json(request, 400, bad.to_json());
+        }
+    };
+    let world = match World::new(config) {
+        Ok(world) => world,
+        Err(error) => {
+            let message = error.to_string();
+            hub.record_audit(0, "admin", "create-world", false, &message, 0, &key);
+            return respond_error(request, 400, &message);
+        }
+    };
+    let id = hub.next_world_id.fetch_add(1, Ordering::Relaxed);
+    let runtime = Arc::new(worlds::new_runtime(
+        id,
+        requested.name.clone(),
+        requested.preset.clone(),
+        0,
+        1,
+        world,
+        requested.paused,
+        requested.speed_q16,
+    ));
+    let summary = worlds::summary_json(&runtime);
+    worlds::start(hub, runtime, None);
+    hub.record_audit(
+        id,
+        "admin",
+        "create-world",
+        true,
+        &format!(
+            "world {id} preset {} seed 0x{:016x} settings {}",
+            requested.preset,
+            requested.seed,
+            requested.settings.len()
+        ),
+        0,
+        &key,
+    );
+    remember(hub, 0, &key, 201, &summary);
+    respond_json(request, 201, summary);
+}
+
+fn delete_world(hub: &Arc<Hub>, request: tiny_http::Request, id: &str) {
+    let key = header_value(&request, "Idempotency-Key").unwrap_or_default();
+    let Some(runtime) = resolve(hub, id) else {
+        return respond_error(request, 404, "unknown world");
+    };
+    if !runtime.stopped.load(Ordering::Relaxed) {
+        hub.record_audit(
+            runtime.id,
+            "admin",
+            "delete-world",
+            false,
+            "world is running",
+            runtime.tick_number(),
+            &key,
+        );
+        return respond_error(request, 409, "stop the world before deleting it");
+    }
+    let tick = runtime.tick_number();
+    hub.worlds.lock().expect("worlds").remove(&runtime.id);
+    hub.record_audit(
+        runtime.id,
+        "admin",
+        "delete-world",
+        true,
+        "removed from the registry; saves kept",
+        tick,
+        &key,
+    );
+    respond_json(
+        request,
+        200,
+        format!("{{\"world_id\":{},\"deleted\":true}}", runtime.id),
+    );
+}
+
+/// `POST /api/worlds/{id}/branch?save_id=N&name=`: a new world loaded from
+/// one of this world's saves.
+///
+/// A branch starts paused. The state it carries is the save's, and that is
+/// the only thing anyone can check about it; a branch that started running
+/// would have stepped past the state it was branched from before its
+/// creator could look at it.
+fn branch_world(
+    hub: &Arc<Hub>,
+    request: tiny_http::Request,
+    parent: &Arc<WorldRuntime>,
+    url: &str,
+) {
+    let key = header_value(&request, "Idempotency-Key").unwrap_or_default();
+    if let Some((status, body)) = replay(hub, parent.id, &key) {
+        return respond_json(request, status, body);
+    }
+    let Some(store) = hub.store.as_ref() else {
+        return respond_error(request, 409, "no data dir configured");
+    };
+    let Some(data_dir) = hub.data_dir.as_ref() else {
+        return respond_error(request, 409, "no data dir configured");
+    };
+    let save_id: Option<i64> = query_param(url, "save_id").and_then(|value| value.parse().ok());
+    let Some(save_id) = save_id else {
+        return respond_error(request, 400, "save_id is required");
+    };
+    let record = match store.lock().expect("store").list() {
+        Ok(records) => records
+            .into_iter()
+            .find(|record| record.save_id == save_id && record.world_id == parent.id),
+        Err(error) => return respond_error(request, 500, &error.to_string()),
+    };
+    let Some(record) = record else {
+        return respond_error(request, 404, "unknown save for this world");
+    };
+    if hub.worlds.lock().expect("worlds").len() >= hub.max_worlds {
+        return respond_error(
+            request,
+            409,
+            &format!("at the --max-worlds bound of {}", hub.max_worlds),
+        );
+    }
+    let world = match sim_persist::SnapshotStore::load_world(&data_dir.join(&record.path)) {
+        Ok((_, world)) => world,
+        Err(error) => {
+            let message = error.to_string();
+            hub.record_audit(parent.id, "admin", "branch", false, &message, 0, &key);
+            return respond_error(request, 422, &message);
+        }
+    };
+    let name = schema::sanitize_name(&query_param(url, "name").unwrap_or_default());
+    let id = hub.next_world_id.fetch_add(1, Ordering::Relaxed);
+    let runtime = Arc::new(worlds::new_runtime(
+        id,
+        name,
+        parent.preset.clone(),
+        parent.id,
+        2,
+        world,
+        true,
+        1 << 16,
+    ));
+    let summary = worlds::summary_json(&runtime);
+    let tick = runtime.tick_number();
+    worlds::start(hub, runtime, None);
+    hub.record_audit(
+        id,
+        "admin",
+        "branch",
+        true,
+        &format!("world {id} from save {save_id} of world {}", parent.id),
+        tick,
+        &key,
+    );
+    remember(hub, parent.id, &key, 201, &summary);
+    respond_json(request, 201, summary);
+}
+
+// --- Saves ------------------------------------------------------------------
+
+fn list_saves(hub: &Hub, request: tiny_http::Request, world_id: u64) {
+    let Some(store) = hub.store.as_ref() else {
+        return respond_error(request, 409, "no data dir configured");
+    };
+    let records = store.lock().expect("store").list();
+    match records {
+        Ok(records) => {
+            let mut body = String::from("[");
+            for (written, record) in records
+                .iter()
+                .filter(|record| record.world_id == world_id)
+                .enumerate()
+            {
+                if written > 0 {
+                    body.push(',');
+                }
+                body.push_str(&format!(
+                    concat!(
+                        "{{\"save_id\":{},\"world_id\":{},\"name\":\"{}\",\"kind\":\"{}\",",
+                        "\"tick\":{},\"bytes\":{},\"compressed\":{},\"format_version\":{},",
+                        "\"config_hash\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
+                        "\"created_unix_ms\":{},\"verified\":{}}}"
+                    ),
+                    record.save_id,
+                    record.world_id,
+                    json_escape(&record.name),
+                    json_escape(&record.kind),
+                    record.tick,
+                    record.bytes,
+                    record.compressed,
+                    record.format_version,
+                    record.config_hash,
+                    record.state_checksum,
+                    record.created_unix_ms,
+                    record.verified_unix_ms.is_some()
+                ));
+            }
+            body.push(']');
+            respond_json(request, 200, body);
+        }
+        Err(error) => respond_error(request, 500, &error.to_string()),
+    }
+}
+
+fn create_save(hub: &Hub, request: tiny_http::Request, runtime: &WorldRuntime, url: &str) {
+    let name = query_param(url, "name").unwrap_or_else(|| "manual".to_owned());
+    let safe_name: String = name
+        .chars()
+        .filter(|c| c.is_ascii_alphanumeric() || *c == '-' || *c == '_')
+        .take(64)
+        .collect();
+    let tick = runtime.tick_number();
+    match worlds::perform_save(hub, runtime, &safe_name, "manual") {
+        Ok(record) => {
+            hub.record_audit(
+                runtime.id,
+                "admin",
+                "save",
+                true,
+                &format!("save_id {} name {safe_name}", record.save_id),
+                tick,
+                &header_value(&request, "Idempotency-Key").unwrap_or_default(),
+            );
+            respond_json(
+                request,
+                200,
+                format!(
+                    concat!(
+                        "{{\"save_id\":{},\"world_id\":{},\"tick\":{},\"bytes\":{},",
+                        "\"state_checksum\":\"0x{:016x}\"}}"
+                    ),
+                    record.save_id, record.world_id, record.tick, record.bytes,
+                    record.state_checksum
+                ),
+            );
+        }
+        Err(error) => {
+            hub.record_audit(runtime.id, "admin", "save", false, &error, tick, "");
+            respond_error(request, 500, &error);
+        }
+    }
+}
+
+fn verify_save(hub: &Hub, request: tiny_http::Request, runtime: &WorldRuntime, save_id: &str) {
+    let Some(store) = hub.store.as_ref() else {
+        return respond_error(request, 409, "no data dir configured");
+    };
+    let Ok(save_id) = save_id.parse::<i64>() else {
+        return respond_error(request, 400, "invalid save id");
+    };
+    // A save belongs to one world; verifying another world's save through
+    // this world's path would make the id in the path decorative.
+    let belongs = match store.lock().expect("store").list() {
+        Ok(records) => records
+            .iter()
+            .any(|record| record.save_id == save_id && record.world_id == runtime.id),
+        Err(error) => return respond_error(request, 500, &error.to_string()),
+    };
+    if !belongs {
+        return respond_error(request, 404, "unknown save for this world");
+    }
+    let tick = runtime.tick_number();
+    // Isolated verification: rebuilds a throwaway world, never the live one.
+    let result = store.lock().expect("store").verify(save_id);
+    match result {
+        Ok(report) => {
+            hub.record_audit(
+                runtime.id,
+                "admin",
+                "verify-save",
+                true,
+                &format!("save_id {save_id}"),
+                tick,
+                "",
+            );
+            respond_json(
+                request,
+                200,
+                format!(
+                    concat!(
+                        "{{\"save_id\":{},\"world_id\":{},\"tick\":{},\"seed\":\"0x{:016x}\",",
+                        "\"config_hash\":\"0x{:016x}\",\"state_checksum\":\"0x{:016x}\",",
+                        "\"population\":{},\"build_version\":\"{}\",\"result\":\"ok\"}}"
+                    ),
+                    report.save_id,
+                    report.world_id,
+                    report.tick,
+                    report.seed,
+                    report.config_hash,
+                    report.state_checksum,
+                    report.population,
+                    json_escape(&report.build_version)
+                ),
+            );
+        }
+        Err(error) => {
+            hub.record_audit(
+                runtime.id,
+                "admin",
+                "verify-save",
+                false,
+                &error.to_string(),
+                tick,
+                "",
+            );
+            respond_error(request, 422, &error.to_string());
+        }
+    }
+}
+
+// --- Controls ---------------------------------------------------------------
+
+/// Recorded response for a keyed mutation, if this key has already been
+/// answered for this world.
+fn replay(hub: &Hub, world_id: u64, key: &str) -> Option<(u16, String)> {
+    if key.is_empty() {
+        return None;
+    }
+    hub.idempotency
+        .lock()
+        .expect("idempotency")
+        .get(&format!("{world_id}:{key}"))
+        .cloned()
+}
+
+fn remember(hub: &Hub, world_id: u64, key: &str, status: u16, body: &str) {
+    if key.is_empty() {
+        return;
+    }
+    hub.idempotency
+        .lock()
+        .expect("idempotency")
+        .insert(format!("{world_id}:{key}"), (status, body.to_owned()));
 }
 
 fn handle_control(
-    shared: &Arc<Shared>,
+    hub: &Arc<Hub>,
+    runtime: &Arc<WorldRuntime>,
     request: tiny_http::Request,
     url: &str,
-    idempotency: &Mutex<HashMap<String, (u16, String)>>,
-    last_control_ms: &AtomicU64,
 ) {
     let key = header_value(&request, "Idempotency-Key").unwrap_or_default();
-    if !key.is_empty()
-        && let Some((status, body)) = idempotency.lock().expect("idempotency").get(&key).cloned()
-    {
+    if let Some((status, body)) = replay(hub, runtime.id, &key) {
         respond_json(request, status, body);
         return;
     }
     let now = now_unix_ms();
-    let last = last_control_ms.load(Ordering::Relaxed);
+    let last = runtime.last_control_ms.load(Ordering::Relaxed);
     if now.saturating_sub(last) < CONTROL_RATE_LIMIT_MS {
-        respond_json(
-            request,
-            429,
-            "{\"error\":\"control rate limit\"}".to_owned(),
-        );
+        respond_error(request, 429, "control rate limit");
         return;
     }
 
     let action = query_param(url, "action").unwrap_or_default();
-    let tick = current_tick(shared);
+    let tick = runtime.tick_number();
+    let stopped = runtime.stopped.load(Ordering::Relaxed);
     let (status, body, accepted, detail) = match action.as_str() {
+        // A stopped world has no tick thread to obey a pause or a speed, so
+        // accepting one would report a state the world will never be in.
+        "pause" | "resume" | "speed" if stopped => (
+            409,
+            "{\"error\":\"world is stopped\"}".to_owned(),
+            false,
+            "world is stopped".to_owned(),
+        ),
         "pause" => {
-            shared.control.lock().expect("control").paused = true;
-            (200, control_state_json(shared), true, "paused".to_owned())
+            runtime.control.lock().expect("control").paused = true;
+            (
+                200,
+                worlds::control_state_json(runtime),
+                true,
+                "paused".to_owned(),
+            )
         }
         "resume" => {
-            shared.control.lock().expect("control").paused = false;
-            (200, control_state_json(shared), true, "resumed".to_owned())
+            runtime.control.lock().expect("control").paused = false;
+            (
+                200,
+                worlds::control_state_json(runtime),
+                true,
+                "resumed".to_owned(),
+            )
         }
         "speed" => {
             let requested: Option<f64> =
@@ -1032,10 +1141,10 @@ fn handle_control(
             match requested {
                 Some(multiplier) if (0.0..=64.0).contains(&multiplier) => {
                     let speed_q16 = ((multiplier * 65_536.0) as u32).min(MAX_SPEED_Q16);
-                    shared.control.lock().expect("control").speed_q16 = speed_q16;
+                    runtime.control.lock().expect("control").speed_q16 = speed_q16;
                     (
                         200,
-                        control_state_json(shared),
+                        worlds::control_state_json(runtime),
                         true,
                         format!("speed {multiplier}"),
                     )
@@ -1048,6 +1157,15 @@ fn handle_control(
                 ),
             }
         }
+        "stop" => {
+            runtime.stopped.store(true, Ordering::Relaxed);
+            (
+                200,
+                worlds::control_state_json(runtime),
+                true,
+                "stopped".to_owned(),
+            )
+        }
         other => (
             400,
             "{\"error\":\"unknown action\"}".to_owned(),
@@ -1056,9 +1174,10 @@ fn handle_control(
         ),
     };
     if accepted {
-        last_control_ms.store(now, Ordering::Relaxed);
+        runtime.last_control_ms.store(now, Ordering::Relaxed);
     }
-    shared.record_audit(
+    hub.record_audit(
+        runtime.id,
         "admin",
         &format!("control {action}"),
         accepted,
@@ -1066,69 +1185,11 @@ fn handle_control(
         tick,
         &key,
     );
-    if !key.is_empty() {
-        idempotency
-            .lock()
-            .expect("idempotency")
-            .insert(key, (status, body.clone()));
-    }
+    remember(hub, runtime.id, &key, status, &body);
     respond_json(request, status, body);
 }
 
-// --- JSON / metrics rendering ----------------------------------------------
-
-fn json_escape(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('"', "\\\"")
-        .replace('\n', "\\n")
-}
-
-fn control_state_json(shared: &Shared) -> String {
-    let control = shared.control.lock().expect("control");
-    format!(
-        "{{\"paused\":{},\"speed_multiplier\":{:.4}}}",
-        control.paused,
-        f64::from(control.speed_q16) / 65_536.0
-    )
-}
-
-fn world_summary_json(shared: &Shared) -> String {
-    let world = shared.world.lock().expect("world");
-    let metrics = world.metrics();
-    let control = shared.control.lock().expect("control");
-    format!(
-        concat!(
-            "{{\"world_id\":1,\"world_epoch\":{},\"tick\":{},\"population\":{},",
-            "\"births_total\":{},\"deaths_starvation_total\":{},\"deaths_old_age_total\":{},",
-            "\"paired_births_total\":{},\"max_ancestry_depth\":{},\"extinct\":{},",
-            "\"phase2\":{},\"paused\":{},\"speed_multiplier\":{:.4},",
-            "\"config_hash\":\"0x{:016x}\",\"seed\":\"0x{:016x}\",",
-            "\"cells_x\":{},\"cells_y\":{},\"cell_size_m\":{},\"dt_ms\":{},",
-            "\"total_biomass_milli\":{},\"total_energy_milli\":{}}}"
-        ),
-        shared.world_epoch,
-        metrics.tick,
-        metrics.population,
-        metrics.births_total,
-        metrics.deaths_starvation_total,
-        metrics.deaths_old_age_total,
-        metrics.paired_births_total,
-        metrics.max_ancestry_depth,
-        metrics.extinct,
-        metrics.phase2_enabled,
-        control.paused,
-        f64::from(control.speed_q16) / 65_536.0,
-        world.config_hash(),
-        world.config().world_seed,
-        world.config().cells_x,
-        world.config().cells_y,
-        world.config().cell_size_m,
-        world.config().dt_ms,
-        metrics.total_biomass_milli,
-        metrics.total_energy_milli
-    )
-}
+// --- JSON rendering ---------------------------------------------------------
 
 fn organism_json(detail: &sim_core::OrganismDetail) -> String {
     let mut body = format!(
@@ -1181,166 +1242,4 @@ fn organism_json(detail: &sim_core::OrganismDetail) -> String {
     }
     body.push('}');
     body
-}
-
-fn tick_stats_json(shared: &Shared, samples: &[f64]) -> String {
-    let clients = shared.clients.lock().expect("clients");
-    let mut client_stats = String::from("[");
-    for (index, slot) in clients.iter().enumerate() {
-        if index > 0 {
-            client_stats.push(',');
-        }
-        client_stats.push_str(&format!(
-            "{{\"client_id\":{},\"bytes_sent\":{},\"dropped_updates\":{}}}",
-            slot.id,
-            slot.bytes_sent.load(Ordering::Relaxed),
-            slot.dropped_updates.load(Ordering::Relaxed)
-        ));
-    }
-    client_stats.push(']');
-    if samples.is_empty() {
-        return format!(
-            "{{\"samples\":0,\"ticks_total\":{},\"clients\":{client_stats}}}",
-            shared.ticks_total.load(Ordering::Relaxed)
-        );
-    }
-    let mut sorted: Vec<f64> = samples.to_vec();
-    sorted.sort_by(f64::total_cmp);
-    let percentile = |fraction: f64| -> f64 {
-        let index = ((sorted.len() - 1) as f64 * fraction).ceil() as usize;
-        sorted[index]
-    };
-    format!(
-        concat!(
-            "{{\"samples\":{},\"ticks_total\":{},\"tick_microseconds\":",
-            "{{\"p50\":{:.3},\"p95\":{:.3},\"p99\":{:.3},\"min\":{:.3},\"max\":{:.3}}},",
-            "\"clients\":{}}}"
-        ),
-        sorted.len(),
-        shared.ticks_total.load(Ordering::Relaxed),
-        percentile(0.50),
-        percentile(0.95),
-        percentile(0.99),
-        sorted[0],
-        sorted[sorted.len() - 1],
-        client_stats
-    )
-}
-
-fn metrics_text(shared: &Shared) -> String {
-    let metrics = {
-        let world = shared.world.lock().expect("world");
-        world.metrics()
-    };
-    let mut text = String::new();
-    let world_label = "server";
-    text.push_str("# TYPE lifesim_organisms gauge\n");
-    text.push_str(&format!(
-        "lifesim_organisms{{world=\"{world_label}\",life_state=\"alive\"}} {}\n",
-        metrics.population
-    ));
-    text.push_str("# TYPE lifesim_births_total counter\n");
-    text.push_str(&format!(
-        "lifesim_births_total{{world=\"{world_label}\"}} {}\n",
-        metrics.births_total
-    ));
-    text.push_str("# TYPE lifesim_deaths_total counter\n");
-    text.push_str(&format!(
-        "lifesim_deaths_total{{world=\"{world_label}\",cause=\"starvation\"}} {}\n",
-        metrics.deaths_starvation_total
-    ));
-    text.push_str(&format!(
-        "lifesim_deaths_total{{world=\"{world_label}\",cause=\"old_age\"}} {}\n",
-        metrics.deaths_old_age_total
-    ));
-    text.push_str("# TYPE lifesim_ticks_total counter\n");
-    text.push_str(&format!(
-        "lifesim_ticks_total{{world=\"{world_label}\"}} {}\n",
-        shared.ticks_total.load(Ordering::Relaxed)
-    ));
-    // Phase 13 social series (specifications/metrics-schema.md row 13),
-    // rendered only when the section is enabled: a disabled world exports
-    // no social series at all rather than a wall of zeros (D-014's inert
-    // rule applied to observability). Signal content is never a label.
-    if metrics.social_enabled {
-        text.push_str("# TYPE lifesim_signals_emitted_total counter\n");
-        text.push_str(&format!(
-            "lifesim_signals_emitted_total{{world=\"{world_label}\"}} {}\n",
-            metrics.signals_emitted_total
-        ));
-        text.push_str("# TYPE lifesim_signal_energy_spent_milli_total counter\n");
-        text.push_str(&format!(
-            "lifesim_signal_energy_spent_milli_total{{world=\"{world_label}\"}} {}\n",
-            metrics.signal_cost_milli_total
-        ));
-        text.push_str("# TYPE lifesim_perceived_neighbours gauge\n");
-        text.push_str(&format!(
-            "lifesim_perceived_neighbours{{world=\"{world_label}\"}} {}\n",
-            metrics.perceived_neighbours
-        ));
-        text.push_str("# TYPE lifesim_perception_faults_total counter\n");
-        text.push_str(&format!(
-            "lifesim_perception_faults_total{{world=\"{world_label}\"}} {}\n",
-            metrics.perception_faults_total
-        ));
-    }
-    // Stream metrics for connected observers.
-    let clients = shared.clients.lock().expect("clients");
-    let total_bytes: u64 = clients
-        .iter()
-        .map(|slot| slot.bytes_sent.load(Ordering::Relaxed))
-        .sum();
-    let total_dropped: u64 = clients
-        .iter()
-        .map(|slot| slot.dropped_updates.load(Ordering::Relaxed))
-        .sum();
-    text.push_str("# TYPE lifesim_stream_bytes_total counter\n");
-    text.push_str(&format!(
-        "lifesim_stream_bytes_total{{world=\"{world_label}\",client_class=\"observer\"}} {total_bytes}\n"
-    ));
-    text.push_str("# TYPE lifesim_observer_dropped_updates_total counter\n");
-    text.push_str(&format!(
-        "lifesim_observer_dropped_updates_total{{world=\"{world_label}\",reason=\"backpressure\"}} {total_dropped}\n"
-    ));
-    text.push_str("# TYPE lifesim_observers gauge\n");
-    text.push_str(&format!(
-        "lifesim_observers{{world=\"{world_label}\"}} {}\n",
-        clients.len()
-    ));
-    drop(clients);
-    // Save metrics (zero when persistence is disabled).
-    text.push_str("# TYPE lifesim_saves_total counter\n");
-    text.push_str(&format!(
-        "lifesim_saves_total{{world=\"{world_label}\",result=\"ok\"}} {}\n",
-        shared.saves_total.load(Ordering::Relaxed)
-    ));
-    text.push_str(&format!(
-        "lifesim_saves_total{{world=\"{world_label}\",result=\"error\"}} {}\n",
-        shared.save_failures_total.load(Ordering::Relaxed)
-    ));
-    text.push_str("# TYPE lifesim_save_duration_seconds gauge\n");
-    text.push_str(&format!(
-        "lifesim_save_duration_seconds{{world=\"{world_label}\",result=\"last\"}} {:.6}\n",
-        shared.last_save_duration_us.load(Ordering::Relaxed) as f64 / 1_000_000.0
-    ));
-    text.push_str("# TYPE lifesim_save_bytes gauge\n");
-    text.push_str(&format!(
-        "lifesim_save_bytes{{world=\"{world_label}\"}} {}\n",
-        shared.last_save_bytes.load(Ordering::Relaxed)
-    ));
-    // Phase 5 checkpoint instrumentation. `capture` is the only part of a
-    // checkpoint the tick thread pays for in asynchronous mode, so it is
-    // exported separately from the total write duration above.
-    text.push_str("# TYPE lifesim_checkpoint_capture_seconds gauge\n");
-    text.push_str(&format!(
-        "lifesim_checkpoint_capture_seconds{{world=\"{world_label}\",mode=\"{}\"}} {:.6}\n",
-        shared.checkpoint_mode.name(),
-        shared.last_capture_us.load(Ordering::Relaxed) as f64 / 1_000_000.0
-    ));
-    text.push_str("# TYPE lifesim_checkpoints_skipped_total counter\n");
-    text.push_str(&format!(
-        "lifesim_checkpoints_skipped_total{{world=\"{world_label}\"}} {}\n",
-        shared.checkpoints_skipped.load(Ordering::Relaxed)
-    ));
-    text
 }

@@ -41,6 +41,12 @@ and none has started:
 | 22 | Lineages under the other order - COMPLETE 2026-09-03 (D-136): 31 of 50 probe-only pairs, lineages in 36 of 50 worlds against 8 | `phase-22-lineages-under-the-other-order.md` |
 | 23 | The order on the field's terms - planned 2026-09-03 | `phase-23-the-order-on-the-fields-terms.md` |
 
+Off the numbered track, on the observer track:
+
+| Increment | Subject | Plan |
+|---|---|---|
+| - | The console and the multi-world server - IN PROGRESS 2026-09-04 (ADR-0039): `lifesim-server` hosts many worlds in one process (`--max-worlds`, default 8; world 1 is still the flag-built world), worlds are created from a preset plus named settings and never edited after creation, the WebSocket selects a world by path at `ALSP` 1.0 unchanged, and `apps/console` is a second client with a title screen and a screen stack. No kernel, field, hash, fixture or format moves. Developer instance via `scripts/run-console-dev.sh` (`docs/28`); routes in `docs/11`, screens in `docs/10`. | `console-and-multi-world-server.md` |
+
 The former Phase 5 (performance optimization) and Phase 7 (advanced
 ecosystems) plans are superseded and preserved unmodified under
 `planning/superseded/`. Performance work is now a standing discipline in
