@@ -540,6 +540,9 @@ fn execute_unit(
         distinct_morphologies: metrics.distinct_morphologies,
         nonviable_bodies: metrics.nonviable_bodies,
         refused_node_budget: metrics.refused_node_budget,
+        transition_materialized_total: metrics.materialized_total,
+        transition_deferred_cap_total: metrics.transition_deferred_cap_total,
+        transition_deferred_capacity_total: metrics.transition_deferred_capacity_total,
         structural_mutations_applied: metrics.structural_mutations_applied,
         structural_mutations_rejected: metrics.structural_mutations_rejected,
         attacks_total: metrics.attacks_total,
@@ -747,6 +750,117 @@ output snapshots off
     fn preflight_is_silent_when_every_world_generates() {
         let campaign = campaign(SMALL);
         assert_eq!(preflight(&campaign), Vec::new());
+    }
+
+    /// A scratch world tuned so the transition fires as soon as the
+    /// microbial layer reaches two organisms' worth in a cell: every class
+    /// eligible (`aggregation_step_min 0`), one check per tick, one check
+    /// per window, two organisms per event (so the materialized count is
+    /// twice the event count, and a column wired to the event counter
+    /// fails on the value) and two materializations per tick, so every
+    /// further trigger in a tick is a `deferred_cap`. The entity cap
+    /// decides whether `deferred_capacity` fires at all.
+    fn transition_campaign(max_entities: u64) -> Campaign {
+        campaign(&format!(
+            "campaign transition-columns
+ticks 4000
+seeds 5
+base preset phase2
+base cells_x 16
+base cells_y 16
+base initial_organisms 0
+base max_entities {max_entities}
+base origin.mode scratch
+base genome2.enabled true
+base morphology.enabled true
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 2
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+base chemistry.production_milli_per_step 20
+base transition.enabled true
+base transition.check_interval_ticks 1
+base transition.persistence_checks 1
+base transition.aggregation_step_min 0
+base transition.density_floor_milli 8000
+base transition.organism_energy_milli 4000
+base transition.max_organisms_per_event 2
+base transition.max_materializations_per_tick 2
+condition only
+output events off
+output snapshots off
+"
+        ))
+    }
+
+    /// Phase 23: the manifest's three transition columns are the world's
+    /// own counters, each on its own wire. Every column is checked against
+    /// a solo run's metrics, so a column wired to the wrong counter fails
+    /// on the value and not only on a zero; and the two caps tell the two
+    /// deferral wires apart: with the entity cap at two, the capacity
+    /// deferral must fire (every trigger while the first pair lives);
+    /// with the cap out of reach it must stay zero while the per-tick
+    /// deferral counts the triggers behind the first each tick.
+    #[test]
+    fn manifest_transition_columns_are_the_worlds_counters() {
+        for (max_entities, expect_capacity, expect_per_tick) in
+            [(2_u64, true, None), (100_000_u64, false, Some(true))]
+        {
+            let campaign = transition_campaign(max_entities);
+            let scheduled = run_campaign(&campaign, &SchedulerOptions::in_memory(1));
+            let result = scheduled[0].as_ref().expect("run succeeded");
+            let unit = &enumerate_units(&campaign)[0];
+            let condition = condition_named(&campaign, &unit.condition).unwrap();
+            let config = campaign.config_for(condition, unit.seed).unwrap();
+            let mut alone = World::new(config).unwrap();
+            for _ in 0..campaign.ticks {
+                alone.step();
+            }
+            let metrics = alone.metrics();
+            let context = format!(
+                "cap {max_entities}: materialized {} deferred_cap {} deferred_capacity {} \
+                 refused {} microbial_milli {} fired {} population {}",
+                metrics.materialized_total,
+                metrics.transition_deferred_cap_total,
+                metrics.transition_deferred_capacity_total,
+                metrics.transition_refused_total,
+                metrics.microbial_total_milli,
+                metrics.abiogenesis_fired_total,
+                metrics.population
+            );
+            assert_eq!(result.transition_materialized_total, metrics.materialized_total, "{context}");
+            assert_eq!(
+                result.transition_deferred_cap_total, metrics.transition_deferred_cap_total,
+                "{context}"
+            );
+            assert_eq!(
+                result.transition_deferred_capacity_total,
+                metrics.transition_deferred_capacity_total,
+                "{context}"
+            );
+            assert!(result.transition_materialized_total > 0, "inert: {context}");
+            assert_eq!(
+                result.transition_deferred_capacity_total > 0,
+                expect_capacity,
+                "capacity deferral: {context}"
+            );
+            if let Some(expected) = expect_per_tick {
+                assert_eq!(
+                    result.transition_deferred_cap_total > 0,
+                    expected,
+                    "per-tick deferral: {context}"
+                );
+            }
+            let text = crate::manifest::render_run_for_test(result);
+            for key in [
+                "transition_materialized=",
+                "transition_deferred_cap=",
+                "transition_deferred_capacity=",
+            ] {
+                assert!(text.contains(key), "{key} missing from the run line");
+            }
+        }
     }
 
     #[test]

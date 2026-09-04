@@ -1,0 +1,71 @@
+Phase 23 findings: the order on the field's terms
+=================================================
+Recorded 2026-09-03. ADR-0038; pre-registration
+experiments/phase23-production-preregistration.md LOCKED after the
+pilot and before any confirmatory world ran. Reduction:
+experiments/results/phase23-production-reduction.py (counts, decides
+nothing). Runs archived under runs/phase23-production-pilot-* and
+runs/phase23-production-confirmatory-* (see below).
+
+The question
+------------
+The shipped intake order - the youngest eats last - is a sufficient
+cause of the born cohort's short life and of the rarity of multi-
+module lineages, and a permutation of who eats first removes both
+(D-135, D-136). The record kept the shipped order: both orders are
+equally unauthored. What physics can answer is why the order matters:
+the field produces 2 milli per cell per step at one step per tick and
+a fed unicell takes up to 200 per tick, so a cell an elder has emptied
+refills at one percent of a single take per tick and a newborn beside
+it finds nothing for a hundred ticks. On the field's own terms: at
+what production does the order stop mattering - and does production
+alone, under the shipped order, carry the born cohort to where the
+other order carried it?
+
+The arithmetic, stated before the run
+-------------------------------------
+Doses P1 2 (shipped, the control), P4 8, P16 32, P64 128, P128 256,
+P256 512 milli per cell per step: refill against a single take of 1,
+4, 16, 64, 128 and 256 percent per tick. P128 is the first rung at
+which a cell refills within a tick for one eater; a newborn's cell
+refills for it only after every elder sharing the cell has taken.
+The other order runs beside the shipped one at the shipped dose (P1D,
+Phase 21's O2 on these seeds - the reference measured rather than
+quoted) and at the top dose (PTD - the order contrast at the dose
+where the arithmetic says it should stop mattering). The reduction,
+the phase's one new analysis artifact, reproduces the Phase 21
+archive exactly (born medians 222 against 2,191; 30 of 30 pairs, delta
+median 1,969, interval [1,944, 2,007]; field mass, materialized counts
+and occupants as pinned in ADR-0038) and refuses a removed line, an
+archive read without its pin flag, a broken field identity or a
+materialized count that differs between census, manifest and series.
+Production was swept once before, in Phase 15 (D-128), where the
+field's persistence saturated by fourfold.
+
+The harness change
+------------------
+The campaign manifest's run line now carries the transition's three
+counters (transition_materialized, transition_deferred_cap,
+transition_deferred_capacity). Before this, the entity-cap gate could
+see only births refused at the cap; a dose whose cap bound through
+materialization alone was invisible to every campaign artifact.
+Additive, absent-tolerant, every archived manifest still parses;
+wiring test against a solo run's metrics under two caps.
+
+The pilot
+---------
+PENDING - experiments/phase23-production-pilot.campaign, seeds
+23901..23904, nine arms; licenses the top dose by the pre-registered
+rule, calibrates the SESOI, measures the cost per world.
+
+Confirmatory (C23.1 - C23.5)
+----------------------------
+PENDING - experiments/phase23-production-confirmatory.campaign, seeds
+23001..23010 23012..23031, seven arms.
+
+Decided outside the campaign
+----------------------------
+C23.6 MET: no kernel change; verify 13-21 pass on the tree the
+  campaign runs from; the manifest columns round-trip with distinct
+  values and every archived manifest parses; the arms differ in
+  exactly the two varied fields (the campaign parser's `vary` check).

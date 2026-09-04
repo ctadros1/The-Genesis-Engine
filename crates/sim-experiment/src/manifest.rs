@@ -72,6 +72,14 @@ pub struct RunResult {
     pub distinct_morphologies: u64,
     pub nonviable_bodies: u64,
     pub refused_node_budget: u64,
+    /// Phase 16 transition outcomes (Phase 23). Zero when the section is
+    /// disabled. The two deferral counters are the materialization side of
+    /// the entity cap: `capacity_rejections` counts only births refused at
+    /// the cap, so a campaign whose cap binds through materialization
+    /// alone was invisible to the manifest before these columns.
+    pub transition_materialized_total: u64,
+    pub transition_deferred_cap_total: u64,
+    pub transition_deferred_capacity_total: u64,
     /// Phase 7 contest outcomes. Zero when the section is disabled.
     pub attacks_total: u64,
     pub deaths_by_damage_total: u64,
@@ -446,6 +454,9 @@ fn render_run(run: &RunResult) -> String {
         distinct_morphologies,
         nonviable_bodies,
         refused_node_budget,
+        transition_materialized_total,
+        transition_deferred_cap_total,
+        transition_deferred_capacity_total,
         attacks_total,
         deaths_by_damage_total,
         carcasses,
@@ -490,7 +501,10 @@ fn render_run(run: &RunResult) -> String {
          structmut_rejected={structural_mutations_rejected} \
          mean_modules_milli={mean_modules_milli} median_modules={median_modules} \
          distinct_morphologies={distinct_morphologies} nonviable_bodies={nonviable_bodies} \
-         refused_node_budget={refused_node_budget}"
+         refused_node_budget={refused_node_budget} \
+         transition_materialized={transition_materialized_total} \
+         transition_deferred_cap={transition_deferred_cap_total} \
+         transition_deferred_capacity={transition_deferred_capacity_total}"
     );
     if let Some(Phase2Counters {
         paired_births_total,
@@ -799,10 +813,20 @@ fn parse_run(text: &str, line: usize) -> Result<RunResult, ManifestError> {
         distinct_morphologies: number("distinct_morphologies").unwrap_or(0),
         nonviable_bodies: number("nonviable_bodies").unwrap_or(0),
         refused_node_budget: number("refused_node_budget").unwrap_or(0),
+        transition_materialized_total: number("transition_materialized").unwrap_or(0),
+        transition_deferred_cap_total: number("transition_deferred_cap").unwrap_or(0),
+        transition_deferred_capacity_total: number("transition_deferred_capacity").unwrap_or(0),
         mutation,
         develop,
         artifact,
     })
+}
+
+/// The rendered run line, for tests in sibling modules that need the
+/// text rather than the parsed record.
+#[cfg(test)]
+pub(crate) fn render_run_for_test(run: &RunResult) -> String {
+    render_run(run)
 }
 
 #[cfg(test)]
@@ -929,6 +953,9 @@ output snapshots off
             distinct_morphologies: 136,
             nonviable_bodies: 137,
             refused_node_budget: 138,
+            transition_materialized_total: 142,
+            transition_deferred_cap_total: 143,
+            transition_deferred_capacity_total: 144,
             attacks_total: 139,
             deaths_by_damage_total: 140,
             carcasses: 141,

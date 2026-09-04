@@ -1,0 +1,72 @@
+# Phase 23 confirmatory (ADR-0038): the field's production swept under the
+# shipped intake order - P1 the shipped 2 milli per cell per step (the
+# control), P4 8, P16 32, P64 128 (64 percent of a take per tick), and the
+# top dose PT the pilot licensed [PILOT: P128 256 or P256 512, the highest
+# rung past one take at which every pilot world was generable and none
+# tripped the entity-cap gate] - and the other order (youngest first,
+# physiology.intake_order descending) at the shipped dose (P1D, Phase 21's
+# O2 on these seeds) and at the top dose (PTD, the order contrast on the
+# field's terms). Thirty matched seeds disjoint from every world read so
+# far, 100,000 ticks, events on. Runs only after
+# experiments/phase23-production-preregistration.md is LOCKED and committed.
+campaign phase23-production-confirmatory
+ticks 100000
+workers 10
+seeds 23001..23010 23012..23031
+check-interval 10000
+base preset phase2
+base cells_x 64
+base cells_y 64
+base initial_organisms 0
+base max_entities 4000
+base origin.mode scratch
+base genome2.enabled true
+base genome2.mutation.duplication_q16 6554
+base genome2.mutation.deletion_q16 655
+base genome2.mutation.insertion_q16 0
+base genome2.mutation.transposition_q16 0
+base genome2.caps.max_loci_per_chromosome 160
+base genome2.caps.max_nodes 160
+base genome2.caps.max_edges 160
+base genome2.caps.max_edges_per_node 32
+base genome2.caps.max_genome_bytes 16384
+base morphology.enabled true
+base morphology.caps.max_modules 64
+base morphology.caps.lattice_radius 8
+base morphology.caps.max_growth_steps 16
+base morphology.base_node_budget 4
+base chemistry.enabled true
+base chemistry.field_steps_per_tick 1
+base chemistry.microbial_enabled true
+base chemistry.abiogenesis_enabled true
+base chemistry.mutation_q16 4096
+base chemistry.excretion_fraction_q16 32768
+base chemistry.remains_fraction_q16 32768
+base transition.enabled true
+base transition.check_interval_ticks 100
+base transition.density_floor_milli 4000
+base transition.persistence_checks 5
+base transition.aggregation_step_min 1
+base transition.organism_energy_milli 4000
+base transition.max_organisms_per_event 4
+base transition.max_materializations_per_tick 64
+base chemistry.consumption_fraction_q16 65536
+condition P1
+condition P4
+set P4 chemistry.production_milli_per_step 8
+condition P16
+set P16 chemistry.production_milli_per_step 32
+condition P64
+set P64 chemistry.production_milli_per_step 128
+condition PT
+set PT chemistry.production_milli_per_step 256
+condition P1D
+set P1D physiology.intake_order descending
+condition PTD
+set PTD chemistry.production_milli_per_step 256
+set PTD physiology.intake_order descending
+vary chemistry.production_milli_per_step
+vary physiology.intake_order
+output events on
+output snapshots on
+output field 1000
