@@ -41,6 +41,14 @@ export interface AppContext {
   /// True when the viewer has requested reduced motion
   /// (prefers-reduced-motion: reduce). Screens must not animate when true.
   reducedMotion(): boolean;
+  /// Record `worldId` as the last-viewed world for this session (updates
+  /// `session.lastWorldId`) and, when a profile is active, persist it
+  /// beside the profile store so a fresh boot's Continue targets it too.
+  /// Call this at every point the console treats a world as "the one being
+  /// looked at": the worlds screen's View and Branch actions, the live
+  /// screen's world switcher, the builder's Create, and the saves screen's
+  /// Branch.
+  rememberWorld(worldId: number): void;
 }
 
 const FOCUSABLE_SELECTOR =

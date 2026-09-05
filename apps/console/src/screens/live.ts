@@ -37,8 +37,9 @@ const RECONNECT_MAX_MS = 5_000;
 /// The token that gives the fullest access the active profile has: admin
 /// when present, else observer. Mirrors ApiClient's private authToken()
 /// (not exported), needed here because Hello is a raw WS frame, not a REST
-/// call the client wraps.
-function bestToken(profile: Profile | null): string {
+/// call the client wraps. Exported so worlds.ts's per-card metrics sockets
+/// (also raw WS frames) don't duplicate it.
+export function bestToken(profile: Profile | null): string {
   if (!profile) return "";
   return profile.adminToken && profile.adminToken.length > 0 ? profile.adminToken : profile.observerToken;
 }
@@ -47,7 +48,8 @@ function isAdminProfile(profile: Profile | null): boolean {
   return !!profile?.adminToken && profile.adminToken.length > 0;
 }
 
-function activeProfile(ctx: AppContext): Profile | null {
+/// Exported alongside bestToken for the same reason.
+export function activeProfile(ctx: AppContext): Profile | null {
   return ctx.session.profile ?? ctx.profiles.active();
 }
 
@@ -494,12 +496,13 @@ export function liveScreen(worldId: number, ctx: AppContext): Screen {
     worldSwitcher.addEventListener("change", () => {
       const next = Number(worldSwitcher.value);
       if (Number.isFinite(next) && next !== worldId) {
+        ctx.rememberWorld(next);
         void ctx.stack.replace(liveScreen(next, ctx));
       }
     });
 
     const savesButton = button("Saves", () => {
-      ctx.session.lastWorldId = worldId;
+      ctx.rememberWorld(worldId);
       void ctx.stack.push(savesScreen(ctx));
     });
 
@@ -580,6 +583,21 @@ export function liveScreen(worldId: number, ctx: AppContext): Screen {
     return el("div", { class: "screen live-screen" }, [topbar, connectionStatusEl, stageWrap, errorPanel]);
   }
 
+  /// Left/Right nav order, per the plan: Back, world switcher, Saves (the
+  /// top bar), then Pause, Resume, Speed, Overlay (the HUD) — exactly the
+  /// DOM order buildDom() authors them in, so one selector in document
+  /// order gives the right sequence without hand-listing elements.
+  /// Disabled controls (Pause/Resume/Speed on an observer profile) are
+  /// excluded by :not([disabled]) so focus never lands somewhere a screen
+  /// reader or a click could never activate.
+  function collectNavTargets(): HTMLElement[] {
+    if (!root) return [];
+    const selector =
+      ".live-topbar button:not([disabled]), .live-topbar select:not([disabled]), " +
+      ".live-controls button:not([disabled]), .live-controls select:not([disabled])";
+    return Array.from(root.querySelectorAll<HTMLElement>(selector));
+  }
+
   return {
     id: "live",
     title: `World ${worldId}`,
@@ -622,6 +640,18 @@ export function liveScreen(worldId: number, ctx: AppContext): Screen {
       }
       renderer = null;
       root = null;
+    },
+
+    onKey(event: KeyboardEvent): boolean {
+      if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return false;
+      const targets = collectNavTargets();
+      if (targets.length === 0) return false;
+      const currentIndex = targets.indexOf(document.activeElement as HTMLElement);
+      if (currentIndex === -1) return false;
+      const delta = event.key === "ArrowRight" ? 1 : -1;
+      const nextIndex = (currentIndex + delta + targets.length) % targets.length;
+      targets[nextIndex]!.focus();
+      return true;
     },
   };
 }

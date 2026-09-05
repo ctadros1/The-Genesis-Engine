@@ -537,7 +537,7 @@ export function builderScreen(ctx: AppContext): Screen {
       const result = await ctx.api.createWorld(body);
       if (!alive) return;
       if (result.ok) {
-        ctx.session.lastWorldId = result.value.world_id;
+        ctx.rememberWorld(result.value.world_id);
         ctx.announce(`World "${result.value.name}" created.`);
         await ctx.stack.push(liveScreen(result.value.world_id, ctx));
         return;
@@ -668,10 +668,17 @@ export function builderScreen(ctx: AppContext): Screen {
 
     const mainColumn = el("div", { class: "builder-main" }, [searchRow, statusPanel, summaryPanel, groupsContainer]);
 
-    createButton = button("Create World", () => void onCreate(), { variant: "primary", disabled: true });
-    const footer = el("div", { class: "builder-footer" }, [createButton]);
+    // An observer profile can read every setting (schema, groups, preview)
+    // but never mutates: no Create button is rendered at all — not merely
+    // disabled — per the plan's "no admin controls rendered for observer
+    // profiles". readOnly already disables every input/select/radio above.
+    const children: (Node | string)[] = [el("div", { class: "builder-layout" }, [leftColumn, mainColumn])];
+    if (!readOnly) {
+      createButton = button("Create World", () => void onCreate(), { variant: "primary", disabled: true });
+      children.push(el("div", { class: "builder-footer" }, [createButton]));
+    }
 
-    screenEl.append(el("div", { class: "builder-layout" }, [leftColumn, mainColumn]), footer);
+    screenEl.append(...children);
 
     renderSummary();
     renderStatus();

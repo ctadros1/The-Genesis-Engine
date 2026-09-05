@@ -100,3 +100,66 @@ adminTest.describe("C5: screen lifecycle — unmount on navigate-away", () => {
     },
   );
 });
+
+// Worlds screen: the population sparkline is fed from a per-card metrics
+// WebSocket (planning/console-and-multi-world-server.md screen 3: "a
+// sparkline from the metrics stream"), not from the 2s REST poll. These
+// reuse trackOpenSockets from above rather than installing a second
+// page-level WebSocket wrapper.
+adminTest.describe("C5: Worlds screen — per-card metrics sockets", () => {
+  adminTest.afterEach(async () => {
+    await stopNonPrimaryWorlds();
+  });
+
+  adminTest("leaving the Worlds screen closes its metrics sockets", async ({ page }) => {
+    const sockets = trackOpenSockets(page);
+
+    await page.goto("/");
+    await expect(page.locator(".title-menu-panel")).toBeVisible();
+    // Title's own background preview socket for the last-viewed world.
+    await expect.poll(() => sockets.size()).toBe(1);
+
+    await page.getByRole("button", { name: "Worlds" }).click();
+    const cards = page.locator(".card");
+    await expect(cards.first()).toBeVisible();
+    const cardCount = await cards.count();
+    // A stopped world's socket is opened and then immediately closed by
+    // the server itself (a 410, per crates/sim-server/src/stream.rs) — it
+    // never has metrics to stream, so only running/paused cards keep a
+    // live socket. That is still "never more sockets than cards": the
+    // sparkline just falls back to the poll for a stopped world's card.
+    const stoppedCount = await page.locator(".card .status-badge--stopped").count();
+    const expectedOpenSockets = cardCount - stoppedCount;
+    await expect.poll(() => sockets.size()).toBe(expectedOpenSockets);
+
+    await page.getByRole("button", { name: "Back" }).click();
+    await expect(page.locator(".title-menu-panel")).toBeVisible();
+    // Every one of the Worlds screen's sockets is gone; Title's own
+    // background socket is the only one left.
+    await expect.poll(() => sockets.size()).toBe(1);
+  });
+
+  adminTest(
+    "a card's sparkline updates from the metrics stream, faster than the 2s poll",
+    async ({ page }) => {
+      await page.goto("/");
+      await page.getByRole("button", { name: "Worlds" }).click();
+      const card = page.locator('[data-world-id="1"]');
+      await expect(card).toBeVisible();
+      const text = card.locator(".sparkline-wrap .visually-hidden");
+      await expect(text).not.toHaveText("Population trend: not enough samples yet.", {
+        timeout: 5_000,
+      });
+
+      // A pure 2s REST poll cannot have produced a second data point yet
+      // this soon after the card first rendered — this window only closes
+      // if the metrics socket (broadcasting at 1 sample/s once subscribed)
+      // is what is actually feeding the sparkline.
+      const before = await text.textContent();
+      await expect(async () => {
+        const after = await text.textContent();
+        expect(after).not.toBe(before);
+      }).toPass({ timeout: 1_800, intervals: [100] });
+    },
+  );
+});

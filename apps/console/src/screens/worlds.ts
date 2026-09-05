@@ -1,8 +1,10 @@
 // Worlds screen: one card per live world with a status badge, live metrics,
-// a population sparkline drawn from client-side polling history, and admin
-// actions (Pause/Resume, Save, Stop, Branch, Delete) behind confirmation
-// dialogs, per the plan's Worlds screen (planning/console-and-multi-world-
-// server.md, screen 3).
+// a population sparkline fed from a dedicated per-card metrics WebSocket
+// (falling back to the 2s REST poll until that socket's first sample
+// arrives), and admin actions (Pause/Resume, Save, Stop, Branch, Delete)
+// behind confirmation dialogs, per the plan's Worlds screen (planning/
+// console-and-multi-world-server.md, screen 3: "a sparkline from the
+// metrics stream").
 //
 // Every field read from a WorldSummary is treated as possibly absent at
 // runtime even though the type says otherwise: this screen and the server's
@@ -14,12 +16,22 @@ import type { AppContext, Screen } from "../screens";
 import { button, el } from "../ui/dom";
 import { confirm } from "../ui/dialog";
 import { builderScreen } from "./builder";
-import { liveScreen } from "./live";
+import { activeProfile, bestToken, liveScreen } from "./live";
 import { savesScreen } from "./saves";
+import {
+  LAYER_METRICS,
+  decodeFrame,
+  encodeHello,
+  encodeSubscribe,
+  type ServerFrame,
+} from "../protocol";
 import "./worlds.css";
 
 const POLL_INTERVAL_MS = 2000;
 const HISTORY_LENGTH = 60;
+// One socket per card, each metrics-only at 1 sample/s — comfortably below
+// any per-connection cost even at the schema's max_worlds ceiling of 8.
+const METRICS_SUBSCRIBE_RATE_HZ = 1;
 
 function numOr(value: unknown, fallback: number): number {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
@@ -83,7 +95,21 @@ function drawSparkline(canvas: HTMLCanvasElement, values: number[]): void {
   context.stroke();
 }
 
-function buildSparkline(history: number[]): HTMLElement {
+function sparklineText(history: number[]): string {
+  if (history.length === 0) return "Population trend: not enough samples yet.";
+  const current = history[history.length - 1] ?? 0;
+  const min = Math.min(...history);
+  const max = Math.max(...history);
+  return `Population trend over the last ${history.length} sample${history.length === 1 ? "" : "s"}: ranged from ${min} to ${max}, currently ${current}.`;
+}
+
+interface SparklineRefs {
+  element: HTMLElement;
+  canvas: HTMLCanvasElement;
+  textEl: HTMLElement;
+}
+
+function buildSparkline(history: number[]): SparklineRefs {
   const canvas = el("canvas", {
     width: 180,
     height: 40,
@@ -91,16 +117,9 @@ function buildSparkline(history: number[]): HTMLElement {
     "aria-hidden": "true",
   }) as HTMLCanvasElement;
   drawSparkline(canvas, history);
-  let text: string;
-  if (history.length === 0) {
-    text = "Population trend: not enough samples yet.";
-  } else {
-    const current = history[history.length - 1] ?? 0;
-    const min = Math.min(...history);
-    const max = Math.max(...history);
-    text = `Population trend over the last ${history.length} sample${history.length === 1 ? "" : "s"}: ranged from ${min} to ${max}, currently ${current}.`;
-  }
-  return el("div", { class: "sparkline-wrap" }, [canvas, el("span", { class: "visually-hidden" }, [text])]);
+  const textEl = el("span", { class: "visually-hidden" }, [sparklineText(history)]);
+  const element = el("div", { class: "sparkline-wrap" }, [canvas, textEl]);
+  return { element, canvas, textEl };
 }
 
 function metaRow(label: string, value: string, title?: string): HTMLElement {
@@ -120,6 +139,103 @@ export function worldsScreen(ctx: AppContext): Screen {
   const history = new Map<number, number[]>();
   const cardErrors = new Map<number, string>();
   const busyIds = new Set<number>();
+
+  // -- per-card metrics sockets --------------------------------------------
+  // One WebSocket per currently-listed world, each subscribed to LAYER_
+  // METRICS only at 1 sample/s with a minimal (zero-area) viewport — the
+  // sparkline needs nothing else this frame type carries. `history` above
+  // is fed by these once a world's first sample arrives; `hasLiveSample`
+  // gates refresh() back off REST-derived population points for that world
+  // so the two sources never interleave in one series.
+  const metricsSockets = new Map<number, WebSocket>();
+  const hasLiveSample = new Set<number>();
+  // Worlds a socket got a fatal 404/410 for (unknown or stopped) — never
+  // retried while the card keeps appearing, since the server sends both
+  // codes as a terminal close with no reason to expect a retry to differ.
+  const deadSockets = new Set<number>();
+  const sparklineRefs = new Map<number, { canvas: HTMLCanvasElement; textEl: HTMLElement }>();
+
+  function closeMetricsSocket(worldId: number): void {
+    const socket = metricsSockets.get(worldId);
+    if (!socket) return;
+    socket.onopen = null;
+    socket.onmessage = null;
+    socket.onclose = null;
+    socket.onerror = null;
+    socket.close();
+    metricsSockets.delete(worldId);
+  }
+
+  function redrawSparkline(worldId: number): void {
+    const refs = sparklineRefs.get(worldId);
+    if (!refs) return; // card not currently rendered (e.g. mid-repaint)
+    const hist = history.get(worldId) ?? [];
+    drawSparkline(refs.canvas, hist);
+    refs.textEl.textContent = sparklineText(hist);
+  }
+
+  function handleMetricsFrame(worldId: number, frame: ServerFrame, socket: WebSocket): void {
+    switch (frame.kind) {
+      case "welcome":
+        // Zero-area viewport: this socket only ever wants LAYER_METRICS,
+        // which is not bounds-gated, so the real world extent is moot.
+        socket.send(encodeSubscribe(0, 0, 0, 0, LAYER_METRICS, METRICS_SUBSCRIBE_RATE_HZ));
+        break;
+      case "metrics": {
+        const samples = history.get(worldId) ?? [];
+        samples.push(frame.population);
+        while (samples.length > HISTORY_LENGTH) samples.shift();
+        history.set(worldId, samples);
+        hasLiveSample.add(worldId);
+        redrawSparkline(worldId);
+        break;
+      }
+      case "error":
+        if (frame.code === 404 || frame.code === 410) deadSockets.add(worldId);
+        socket.close();
+        break;
+      default:
+        break;
+    }
+  }
+
+  function openMetricsSocket(worldId: number): void {
+    if (metricsSockets.has(worldId) || deadSockets.has(worldId)) return;
+    const profile = activeProfile(ctx);
+    if (!profile) return;
+    const socket = new WebSocket(ctx.api.wsUrl(worldId));
+    socket.binaryType = "arraybuffer";
+    metricsSockets.set(worldId, socket);
+    socket.onopen = () => socket.send(encodeHello(bestToken(profile)));
+    socket.onmessage = (event: MessageEvent<ArrayBuffer>) => {
+      const frame = decodeFrame(event.data);
+      if (frame) handleMetricsFrame(worldId, frame, socket);
+    };
+    socket.onerror = () => socket.close();
+    socket.onclose = () => {
+      metricsSockets.delete(worldId);
+    };
+  }
+
+  /// Keeps exactly one metrics socket per currently-listed world: opens one
+  /// for every world not yet covered, closes one for every world that has
+  /// dropped off the list — so the socket count never exceeds the card
+  /// count (bounded by the schema's max_worlds) in either direction.
+  function syncMetricsSockets(worlds: WorldSummary[]): void {
+    const liveIds = new Set(worlds.map((world) => world.world_id));
+    for (const worldId of Array.from(metricsSockets.keys())) {
+      if (!liveIds.has(worldId)) closeMetricsSocket(worldId);
+    }
+    for (const worldId of Array.from(deadSockets)) {
+      if (!liveIds.has(worldId)) deadSockets.delete(worldId);
+    }
+    for (const world of worlds) {
+      // A stream closed with 410 belongs to a stopped world; once the card
+      // reports it running or paused again, the stream is worth reopening.
+      if (world.status !== "stopped") deadSockets.delete(world.world_id);
+      openMetricsSocket(world.world_id);
+    }
+  }
 
   function currentFocusRef(): { worldId: number; buttonLabel: string | null } | null {
     const active = document.activeElement;
@@ -208,7 +324,9 @@ export function worldsScreen(ctx: AppContext): Screen {
       metaRow("Tick cost", formatTickCost(world.tick_mean_us)),
     ]);
 
-    const children: (Node | string)[] = [head, meta, buildSparkline(hist)];
+    const spark = buildSparkline(hist);
+    sparklineRefs.set(world.world_id, { canvas: spark.canvas, textEl: spark.textEl });
+    const children: (Node | string)[] = [head, meta, spark.element];
 
     const errorMessage = cardErrors.get(world.world_id);
     if (errorMessage) {
@@ -218,7 +336,7 @@ export function worldsScreen(ctx: AppContext): Screen {
     const actions = el("div", { class: "card-actions" }, []);
     actions.append(
       button("View", () => {
-        ctx.session.lastWorldId = world.world_id;
+        ctx.rememberWorld(world.world_id);
         void ctx.stack.push(liveScreen(world.world_id, ctx));
       }),
     );
@@ -278,7 +396,7 @@ export function worldsScreen(ctx: AppContext): Screen {
 
       actions.append(
         button("Branch", () => {
-          ctx.session.lastWorldId = world.world_id;
+          ctx.rememberWorld(world.world_id);
           void ctx.stack.push(savesScreen(ctx));
         }),
       );
@@ -354,18 +472,27 @@ export function worldsScreen(ctx: AppContext): Screen {
     const seen = new Set<number>();
     for (const world of lastWorlds) {
       seen.add(world.world_id);
-      const pop = numOr(world.population, 0);
-      const samples = history.get(world.world_id) ?? [];
-      samples.push(pop);
-      while (samples.length > HISTORY_LENGTH) samples.shift();
-      history.set(world.world_id, samples);
+      // Once the world's metrics socket has delivered a real sample, the
+      // socket alone feeds this world's history — mixing REST snapshots
+      // and streamed samples into one series would make the sparkline's
+      // x-axis (evenly spaced "samples") lie about elapsed time.
+      if (!hasLiveSample.has(world.world_id)) {
+        const pop = numOr(world.population, 0);
+        const samples = history.get(world.world_id) ?? [];
+        samples.push(pop);
+        while (samples.length > HISTORY_LENGTH) samples.shift();
+        history.set(world.world_id, samples);
+      }
     }
     for (const key of Array.from(history.keys())) {
       if (!seen.has(key)) {
         history.delete(key);
         cardErrors.delete(key);
+        hasLiveSample.delete(key);
+        sparklineRefs.delete(key);
       }
     }
+    syncMetricsSockets(lastWorlds);
     paintCards();
   }
 
@@ -393,6 +520,10 @@ export function worldsScreen(ctx: AppContext): Screen {
         window.clearInterval(pollTimer);
         pollTimer = null;
       }
+      for (const worldId of Array.from(metricsSockets.keys())) closeMetricsSocket(worldId);
+      deadSockets.clear();
+      hasLiveSample.clear();
+      sparklineRefs.clear();
       root = null;
       cardsContainer = null;
       statusBanner = null;

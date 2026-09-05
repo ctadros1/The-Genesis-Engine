@@ -333,7 +333,7 @@ export function savesScreen(ctx: AppContext): Screen {
     if (worldId === undefined) return;
     const proceed = await confirm({
       title: `Verify save "${save.name}"?`,
-      body: `Rebuild save "${save.name}" (#${save.save_id}) in isolation and check it against its recorded checksum.`,
+      body: `Rebuild save "${save.name}" (#${save.save_id}) of ${worldLabel} in isolation and check it against its recorded checksum.`,
       confirmLabel: "Verify",
     });
     if (!proceed) return;
@@ -375,7 +375,7 @@ export function savesScreen(ctx: AppContext): Screen {
     }
     const newName = typeof result.value.name === "string" && result.value.name.length > 0 ? result.value.name : name;
     ctx.announce(`Branched into new world "${newName}".`);
-    ctx.session.lastWorldId = result.value.world_id;
+    ctx.rememberWorld(result.value.world_id);
     await ctx.stack.push(liveScreen(result.value.world_id, ctx));
   }
 
@@ -410,6 +410,24 @@ export function savesScreen(ctx: AppContext): Screen {
       listContainer = null;
       bannerNode = null;
       headingNode = null;
+    },
+
+    onKey(event: KeyboardEvent): boolean {
+      if (event.key !== "ArrowUp" && event.key !== "ArrowDown") return false;
+      if (!listContainer) return false;
+      // Each row's first button (Verify, when admin actions are rendered
+      // at all) — Up/Down step between rows rather than between a row's
+      // own buttons, which Tab already reaches.
+      const rowButtons = Array.from(
+        listContainer.querySelectorAll<HTMLButtonElement>(".saves-table tbody tr td.saves-actions button:first-of-type"),
+      );
+      if (rowButtons.length === 0) return false;
+      const currentIndex = rowButtons.indexOf(document.activeElement as HTMLButtonElement);
+      if (currentIndex === -1) return false;
+      const delta = event.key === "ArrowDown" ? 1 : -1;
+      const nextIndex = (currentIndex + delta + rowButtons.length) % rowButtons.length;
+      rowButtons[nextIndex]!.focus();
+      return true;
     },
   };
 }

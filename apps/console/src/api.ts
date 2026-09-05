@@ -244,9 +244,11 @@ export class ApiClient {
   }
 
   createSave(worldId: number, name: string): Promise<ApiResult<SaveRecord>> {
-    return this.request<SaveRecord>(`/api/worlds/${worldId}/saves`, {
+    // The server reads the save name from the query string (docs/11), not
+    // from a body; a body-borne name is silently ignored and the save is
+    // recorded as "manual".
+    return this.request<SaveRecord>(`/api/worlds/${worldId}/saves?name=${encodeURIComponent(name)}`, {
       method: "POST",
-      body: { name },
       admin: true,
       mutating: true,
     });

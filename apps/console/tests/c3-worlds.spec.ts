@@ -8,7 +8,7 @@
 // finishes, and the confirmation test cancels every dialog it opens, so
 // world 1's state is unchanged for any spec that runs after this one.
 
-import { adminTest, observerTest, expect } from "./fixtures";
+import { adminTest, observerTest, expect, stopNonPrimaryWorlds, waitForBuilderReady } from "./fixtures";
 
 const WORLD_ID = "1";
 const WORLD_NAME = "primary";
@@ -89,4 +89,124 @@ observerTest.describe("C3: worlds screen — observer role", () => {
       await expect(actions.first()).toHaveText("View");
     }
   });
+
+  observerTest("an observer-only profile sees no Create button in the builder", async ({ page }) => {
+    await page.goto("/");
+    await page.getByRole("button", { name: "New World" }).click();
+
+    // The observer can still read the schema (explanation banner + every
+    // settings group), just never mutate it.
+    await expect(page.locator(".readonly-banner")).toBeVisible();
+    await expect(page.locator(".builder-groups")).toBeVisible();
+    await expect(page.getByRole("button", { name: "Create World" })).toHaveCount(0);
+    await expect(page.locator(".builder-footer")).toHaveCount(0);
+  });
+});
+
+adminTest.describe("C3: worlds screen — delete and saves confirmations", () => {
+  // "Delete" creates and then removes its own world, and "Branch" creates
+  // one that only this describe block's afterEach ever sees (it starts
+  // stopped, so it needs no manual restore); both stay off world 1.
+  adminTest.afterEach(async () => {
+    await stopNonPrimaryWorlds();
+  });
+
+  adminTest(
+    "Delete on a stopped world confirms, names the world, and removes its card",
+    async ({ page }) => {
+      await page.goto("/");
+      await page.getByRole("button", { name: "New World" }).click();
+      await waitForBuilderReady(page);
+      await page.locator(".builder-left input[type=text]").first().fill("Delete Me World");
+      const createButton = page.getByRole("button", { name: "Create World" });
+      await expect(createButton).toBeEnabled();
+      await createButton.click();
+      await expect(page.locator(".live-connection-status")).toContainText("Connected", {
+        timeout: 15_000,
+      });
+
+      // Fresh load so the new world shows up in the Worlds screen's list
+      // (a reload also re-derives Continue — covered by continue-last-
+      // world.spec.ts, not here).
+      await page.goto("/");
+      await page.getByRole("button", { name: "Worlds" }).click();
+      const card = page.locator(".card", { hasText: "Delete Me World" });
+      await expect(card).toBeVisible();
+
+      await card.getByRole("button", { name: "Stop", exact: true }).click();
+      const stopDialog = page.getByRole("alertdialog");
+      await expect(stopDialog).toContainText("Delete Me World");
+      await stopDialog.getByRole("button", { name: "Stop", exact: true }).click();
+      await expect(card.locator(".status-badge")).toHaveText("Stopped", { timeout: 2_000 });
+
+      await card.getByRole("button", { name: "Delete", exact: true }).click();
+      const deleteDialog = page.getByRole("alertdialog");
+      await expect(deleteDialog).toBeVisible();
+      await expect(deleteDialog).toContainText("Delete Me World");
+      await deleteDialog.getByRole("button", { name: "Delete", exact: true }).click();
+      await expect(card).toHaveCount(0);
+    },
+  );
+
+  adminTest(
+    "Save now, Verify and Branch on the Saves screen each confirm and name the world",
+    async ({ page }) => {
+      await page.goto("/");
+      await page.getByRole("button", { name: "Worlds" }).click();
+      const card = page.locator(`[data-world-id="${WORLD_ID}"]`);
+      await expect(card).toBeVisible();
+      // Start listening before the click that triggers savesScreen's mount
+      // (and its initial GET) — reading a row-count baseline off the DOM
+      // before that fetch lands would see the pre-refresh() empty state.
+      const initialSavesLoad = page.waitForResponse(
+        (response) => response.url().includes(`/worlds/${WORLD_ID}/saves`) && response.request().method() === "GET",
+      );
+      await card.getByRole("button", { name: "Branch" }).click();
+      await expect(page.locator(".screen-header h1")).toContainText(WORLD_NAME);
+      await initialSavesLoad;
+
+      // Save now. The row is found by count rather than by the entered
+      // name: the server's save-create route reads "name" from the URL's
+      // query string (crates/sim-server/src/main.rs's create_save), but
+      // the client currently sends it in the POST body, so every save
+      // lands named "manual" regardless — a pre-existing mismatch outside
+      // this task's five items. New saves sort first (ORDER BY save_id
+      // DESC), so the row this created is always .first().
+      const rows = page.locator(".saves-table tbody tr");
+      const rowCountBefore = await rows.count();
+      await page.getByRole("button", { name: "Save now" }).click();
+      const saveDialog = page.getByRole("alertdialog");
+      await expect(saveDialog).toBeVisible();
+      await expect(saveDialog).toContainText(WORLD_NAME);
+      await saveDialog.locator("input[type=text]").fill("c3-coverage-save");
+      await saveDialog.getByRole("button", { name: "Save now", exact: true }).click();
+      await expect(saveDialog).toBeHidden();
+      await expect(rows).toHaveCount(rowCountBefore + 1, { timeout: 10_000 });
+
+      const row = rows.first();
+
+      // Verify
+      await row.getByRole("button", { name: "Verify" }).click();
+      const verifyDialog = page.getByRole("alertdialog");
+      await expect(verifyDialog).toBeVisible();
+      await expect(verifyDialog).toContainText(WORLD_NAME);
+      await verifyDialog.getByRole("button", { name: "Verify", exact: true }).click();
+      await expect(verifyDialog).toBeHidden();
+      await expect(page.locator(".verify-report")).toBeVisible();
+
+      // Branch — its dialog is the name-prompt variant, so it carries an
+      // input as well as naming the world.
+      await row.getByRole("button", { name: "Branch" }).click();
+      const branchDialog = page.getByRole("alertdialog");
+      await expect(branchDialog).toBeVisible();
+      await expect(branchDialog).toContainText(WORLD_NAME);
+      await expect(branchDialog.locator("input[type=text]")).toBeVisible();
+      await branchDialog.locator("input[type=text]").fill("c3-coverage-branch");
+      await branchDialog.getByRole("button", { name: "Branch", exact: true }).click();
+
+      await expect(page.locator(".live-connection-status")).toContainText("Connected", {
+        timeout: 15_000,
+      });
+    },
+  );
 });

@@ -5,6 +5,7 @@
 
 const STORAGE_KEY = "lifesim-console.profiles.v1";
 const ACTIVE_KEY = "lifesim-console.activeProfile.v1";
+const LAST_WORLD_KEY = "lifesim-console.lastWorld.v1";
 
 export interface Profile {
   id: string;
@@ -56,6 +57,39 @@ function writeActiveId(id: string | null): void {
     else window.localStorage.setItem(ACTIVE_KEY, id);
   } catch {
     // Storage blocked: the active profile choice is not persisted.
+  }
+}
+
+/// The last-viewed world per profile, kept beside the profile list under
+/// its own key (rather than inside a Profile itself, which is round-
+/// tripped through the Server screen's edit form and would otherwise need
+/// to preserve a field it never displays). Keyed by profile id so switching
+/// profiles never leaks one profile's last world into another's Continue.
+function readLastWorldMap(): Record<string, number> {
+  try {
+    const text = window.localStorage.getItem(LAST_WORLD_KEY);
+    if (!text) return {};
+    const parsed = JSON.parse(text) as unknown;
+    return parsed && typeof parsed === "object" ? (parsed as Record<string, number>) : {};
+  } catch {
+    return {};
+  }
+}
+
+export function getLastWorldId(profileId: string): number | null {
+  const value = readLastWorldMap()[profileId];
+  return typeof value === "number" ? value : null;
+}
+
+export function setLastWorldId(profileId: string, worldId: number): void {
+  try {
+    const map = readLastWorldMap();
+    map[profileId] = worldId;
+    window.localStorage.setItem(LAST_WORLD_KEY, JSON.stringify(map));
+  } catch {
+    // Storage blocked: the last-viewed world for this profile is not
+    // persisted — Continue falls back to the first listed world on the
+    // next boot, same as if nothing had ever been viewed.
   }
 }
 
