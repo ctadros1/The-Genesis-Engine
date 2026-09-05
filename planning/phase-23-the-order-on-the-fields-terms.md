@@ -63,17 +63,20 @@ the entity cap, the record says the question cannot be put there.
   disjoint from every world read so far (23001..23031 without 23011,
   which preflight refused; the pilot runs 23901..23904), 100,000 ticks,
   events on. Under the shipped order: P1 (2, the shipped production,
-  the control), P4 (8), P16 (32), P64 (128 - 64 percent of a take per
-  tick) and **PT, the top dose past one take** - P128 (256) or P256
-  (512), whichever is the highest at which every pilot world is
-  generable and none trips the entity-cap gate. Under the other order
-  (youngest first, `physiology.intake_order descending`): **P1D** at
-  the shipped production (Phase 21's O2 on these seeds - the in-campaign
-  reference) and **PTD** at the top dose (the order contrast on the
-  field's terms). A nine-arm, four-seed pilot on disjoint seeds licenses
-  the top dose, calibrates the SESOI and measures the cost per world.
+  the control), P64 (128 - 64 percent of a take per tick, the highest
+  rung under a take), P128 (256) and **P256 (512), the top dose the
+  pilot licensed**. Under the other order (youngest first,
+  `physiology.intake_order descending`): **P1D** at the shipped
+  production (Phase 21's O2 on these seeds - the in-campaign reference),
+  **P128D** and **P256D** at the rungs past a take (the order contrast
+  on the field's terms, bracketing where it stops mattering). A
+  nine-arm, four-seed pilot on disjoint seeds (P1, P4, P16, P64, P128,
+  P256, P1D, P128D, P256D) licensed the top dose, calibrated the SESOI
+  and measured the cost per world; its findings and the amendments they
+  forced are in the pre-registration.
 - **30 seeds per arm** (ADR-0022: the primary endpoint is a per-world
-  median, neither rare nor fixation-driven); 210 worlds.
+  median, neither rare nor fixation-driven); 210 worlds, about 14 hours
+  at 8 workers on the VM (a capped world costs about 46 minutes).
 
 ## Non-Goals
 
@@ -97,8 +100,8 @@ pre-registration before any confirmatory world runs.
       21's census) at the top dose against the control: the count of
       pairs where PT clears P1 by the SESOI, against 22 of 30 (alpha
       0.008; power 0.87 at a per-pair clearing rate of 0.8), with the
-      median pair difference and its bootstrap interval; every
-      intermediate rung (P4, P16, P64) reported the same way.
+      median pair difference and its bootstrap interval; the
+      intermediate rungs (P64, P128) reported the same way.
       **Expected, stated in advance**: met at every rung - production
       raises every life.
 - [ ] **C23.2 The order at the top dose (D-136's question).** PTD
@@ -108,8 +111,9 @@ pre-registration before any confirmatory world runs.
       order stopped mattering* - the bootstrap interval of the median
       paired difference lies within plus or minus the SESOI
       (equivalence), with the count of pairs within it reported; (iii)
-      neither - undecided, reported as such. P1D against P1 reported
-      the same way (Phase 21's contrast replicated on these seeds).
+      neither - undecided, reported as such. P1D against P1 and P128D
+      against P128 reported the same way (Phase 21's contrast
+      replicated on these seeds; the bracket below the top dose).
       **Expected**: (i) or (iii) - the effect shrinks past a take but
       the newborn's cell still empties ahead of it.
 - [ ] **C23.3 The reference, on the same seeds.** PT against P1D: the

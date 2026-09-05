@@ -1,17 +1,20 @@
-# Phase 23 confirmatory (ADR-0038): the field's production swept under the
-# shipped intake order - P1 the shipped 2 milli per cell per step (the
-# control), P4 8, P16 32, P64 128 (64 percent of a take per tick), and the
-# top dose PT the pilot licensed [PILOT: P128 256 or P256 512, the highest
-# rung past one take at which every pilot world was generable and none
-# tripped the entity-cap gate] - and the other order (youngest first,
-# physiology.intake_order descending) at the shipped dose (P1D, Phase 21's
-# O2 on these seeds) and at the top dose (PTD, the order contrast on the
-# field's terms). Thirty matched seeds disjoint from every world read so
-# far, 100,000 ticks, events on. Runs only after
+# Phase 23 confirmatory (ADR-0038): the field's production under the shipped
+# intake order - P1 the shipped 2 milli per cell per step (the control),
+# P64 128 (64 percent of a 200-milli take per tick, the highest rung under
+# a take), P128 256 (128 percent, one eater's take within a tick) and P256
+# 512 (256 percent, the top dose the pilot licensed) - and the other order
+# (youngest first, physiology.intake_order descending) at the shipped dose
+# (P1D, Phase 21's O2 on these seeds) and at both rungs past a take (P128D,
+# P256D: the order contrast where the arithmetic says it should stop
+# mattering). Thirty matched seeds disjoint from every world read so far,
+# 100,000 ticks, events on. The pilot (seeds 23901..23904) found the entity
+# cap binding from 16x up under both orders through the materialization
+# path, and the born cohort at the age ceiling past a take; the arms below
+# are the pre-registration's amended set. Runs only after
 # experiments/phase23-production-preregistration.md is LOCKED and committed.
 campaign phase23-production-confirmatory
 ticks 100000
-workers 10
+workers 8
 seeds 23001..23010 23012..23031
 check-interval 10000
 base preset phase2
@@ -52,19 +55,20 @@ base transition.max_organisms_per_event 4
 base transition.max_materializations_per_tick 64
 base chemistry.consumption_fraction_q16 65536
 condition P1
-condition P4
-set P4 chemistry.production_milli_per_step 8
-condition P16
-set P16 chemistry.production_milli_per_step 32
 condition P64
 set P64 chemistry.production_milli_per_step 128
-condition PT
-set PT chemistry.production_milli_per_step 256
+condition P128
+set P128 chemistry.production_milli_per_step 256
+condition P256
+set P256 chemistry.production_milli_per_step 512
 condition P1D
 set P1D physiology.intake_order descending
-condition PTD
-set PTD chemistry.production_milli_per_step 256
-set PTD physiology.intake_order descending
+condition P128D
+set P128D chemistry.production_milli_per_step 256
+set P128D physiology.intake_order descending
+condition P256D
+set P256D chemistry.production_milli_per_step 512
+set P256D physiology.intake_order descending
 vary chemistry.production_milli_per_step
 vary physiology.intake_order
 output events on

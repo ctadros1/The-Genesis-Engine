@@ -43,7 +43,21 @@ Usage:
 
     python3 phase23-production-reduction.py <dir> <cohort.txt> <lineage.txt> <seeds> \\
         <max_entities> --control P1 --top PT --top-order PTD --reference-order P1D \\
-        [--rungs P4,P16,P64] --sesoi N --bar N [--pin-archive]
+        [--rungs P4,P16,P64] [--order-pairs P128D:P128:20] [--ceiling 36000] \\
+        --sesoi N [--sesoi-top N] [--sesoi-reference N] --bar N [--pin-archive]
+
+One SESOI per contrast, each a tenth of the level at which that contrast
+is read (fixed from the pilot, never from the data reduced): `--sesoi`
+for every contrast read at the control's level (the rungs and the top
+dose against the control, the other order at the control dose),
+`--sesoi-top` for the other order at the top dose (default: `--sesoi`),
+`--sesoi-reference` for the top dose against the reference (default:
+`--sesoi`), and a third field on each `--order-pairs` entry.
+`--order-pairs` names further order contrasts (order arm : base arm :
+sesoi) reported exactly as C23.2's; `--ceiling` is the config's `max_age_ticks`, so the
+count of worlds whose born median sits at the age ceiling is reported per
+arm (a born cohort that lives to the ceiling makes the order contrast a
+contrast of ceilings, which the count makes visible).
 
 `--pin-archive` tolerates a manifest without the transition columns (the
 Phase 21 archive the script is pinned on predates them) and says so in
@@ -172,7 +186,8 @@ def opt(args, name, cast, default=None):
 
 def main():
     args = sys.argv[1:]
-    valued = {"--control", "--top", "--top-order", "--reference-order", "--rungs", "--sesoi", "--bar"}
+    valued = {"--control", "--top", "--top-order", "--reference-order", "--rungs", "--order-pairs", "--ceiling",
+              "--sesoi", "--sesoi-top", "--sesoi-reference", "--bar"}
     pin_archive = "--pin-archive" in args
     positional = [a for i, a in enumerate(args) if not a.startswith("--") and not (i > 0 and args[i - 1] in valued)]
     if len(positional) != 5:
@@ -183,9 +198,17 @@ def main():
     control = opt(args, "--control", str); top = opt(args, "--top", str)
     top_order = opt(args, "--top-order", str); reference_order = opt(args, "--reference-order", str)
     rungs = [r for r in opt(args, "--rungs", str, "").split(",") if r]
+    ceiling = opt(args, "--ceiling", int, 0)
     sesoi = opt(args, "--sesoi", float); bar = opt(args, "--bar", int)
+    sesoi_top = opt(args, "--sesoi-top", float, sesoi); sesoi_reference = opt(args, "--sesoi-reference", float, sesoi)
+    order_pairs = []
+    for entry in [p for p in opt(args, "--order-pairs", str, "").split(",") if p]:
+        parts = entry.split(":")
+        if len(parts) != 3:
+            raise SystemExit(f"--order-pairs entry must be order:base:sesoi, got {entry!r}")
+        order_pairs.append((parts[0], parts[1], float(parts[2])))
     arms = []
-    for arm in [control] + rungs + [top, top_order, reference_order]:
+    for arm in [control] + rungs + [top, top_order, reference_order] + [a for pair in order_pairs for a in pair[:2]]:
         if arm not in arms:
             arms.append(arm)
 
@@ -251,7 +274,9 @@ def main():
         return 1
 
     print(f"phase23 reduction: control {control}, rungs {rungs}, top {top}, top-order {top_order}, "
-          f"reference-order {reference_order}; {len(seeds)} seeds; SESOI {sesoi} ticks, bar {bar}; "
+          f"reference-order {reference_order}, further order pairs {order_pairs}, age ceiling {ceiling or 'none'}; "
+          f"{len(seeds)} seeds; SESOI {sesoi} ticks at the control level, {sesoi_top} at the top dose, "
+          f"{sesoi_reference} against the reference; bar {bar}; "
           f"transition columns {'TOLERATED ABSENT (pin on an archive)' if pin_archive else 'REQUIRED'}")
 
     def fmt(v):
@@ -270,7 +295,8 @@ def main():
               f"materialized count {med('materialized')}; births {med('births')}; population {med('population')}; "
               f"field mass {med('field_mass')}; born-site food {med('born_food')}; born occupants {med('born_occupants')}; "
               f"multi-module total {med('multi_total')}; "
-              f"worlds with any second-generation organism {sum(1 for w in rows if w['second_generation'] > 0)} / {len(seeds)}")
+              f"worlds with any second-generation organism {sum(1 for w in rows if w['second_generation'] > 0)} / {len(seeds)}; "
+              f"worlds with the born median at the age ceiling {sum(1 for w in rows if ceiling and w['born_median'] >= ceiling)} / {len(seeds)}")
         print(f"  entity-cap gate (final population at {max_entities}, or any capacity rejection, or any "
               f"materialization deferred for capacity): {len(capped)} / {len(seeds)}; "
               f"worlds with any per-tick materialization deferral: "
@@ -287,26 +313,27 @@ def main():
               f"(bar {bar}: {'MET' if count >= bar else 'NOT MET'}); delta median {median(deltas)} "
               f"interval [{low}, {high}] min {min(deltas)} max {max(deltas)}")
 
-    for label, order_arm, base_arm in (("top dose", top_order, top), ("control dose", reference_order, control)):
+    for label, order_arm, base_arm, band in [("top dose", top_order, top, sesoi_top), ("control dose", reference_order, control, sesoi)] + [
+            ("further pair", o, b, s_) for o, b, s_ in order_pairs]:
         deltas = paired(order_arm, base_arm)
-        count = sum(1 for d in deltas if d > sesoi)
-        within = sum(1 for d in deltas if abs(d) <= sesoi)
+        count = sum(1 for d in deltas if d > band)
+        within = sum(1 for d in deltas if abs(d) <= band)
         low, high = bootstrap_interval(deltas)
         if count >= bar:
             reading = "the order still matters (directed count at or above the bar)"
-        elif -sesoi <= low and high <= sesoi:
+        elif -band <= low and high <= band:
             reading = "the order stopped mattering (interval within +-SESOI)"
         else:
             reading = "undecided (neither the bar nor equivalence)"
-        print(f"C23.2 {order_arm} vs {base_arm} ({label}): pairs with delta > {sesoi}: {count} / {len(seeds)} "
-              f"(bar {bar}: {'MET' if count >= bar else 'NOT MET'}); pairs within +-{sesoi}: {within} / {len(seeds)}; "
+        print(f"C23.2 {order_arm} vs {base_arm} ({label}, SESOI {band}): pairs with delta > {band}: {count} / {len(seeds)} "
+              f"(bar {bar}: {'MET' if count >= bar else 'NOT MET'}); pairs within +-{band}: {within} / {len(seeds)}; "
               f"delta median {median(deltas)} interval [{low}, {high}]; reading: {reading}")
 
     deltas = paired(top, reference_order)
     low, high = bootstrap_interval(deltas)
-    at_or_above = sum(1 for d in deltas if d >= -sesoi)
-    print(f"C23.3 {top} vs {reference_order} (the reference on the same seeds): delta median {median(deltas)} "
-          f"interval [{low}, {high}]; lower bound >= -{sesoi}: {'REACHED' if low >= -sesoi else 'NOT REACHED'}; "
+    at_or_above = sum(1 for d in deltas if d >= -sesoi_reference)
+    print(f"C23.3 {top} vs {reference_order} (the reference on the same seeds, SESOI {sesoi_reference}): delta median {median(deltas)} "
+          f"interval [{low}, {high}]; lower bound >= -{sesoi_reference}: {'REACHED' if low >= -sesoi_reference else 'NOT REACHED'}; "
           f"pairs at or above the reference less the SESOI: {at_or_above} / {len(seeds)}")
     return 0
 

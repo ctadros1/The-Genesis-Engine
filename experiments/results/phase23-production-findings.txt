@@ -54,14 +54,45 @@ wiring test against a solo run's metrics under two caps.
 
 The pilot
 ---------
-PENDING - experiments/phase23-production-pilot.campaign, seeds
-23901..23904, nine arms; licenses the top dose by the pre-registered
-rule, calibrates the SESOI, measures the cost per world.
+runs/phase23-production-pilot-0xca50383c46389d13: seeds 23901..23904,
+nine arms (P1, P4, P16, P64, P128, P256, P1D, P128D, P256D), 36 worlds,
+0 failed, 8,537 s at 8 workers on the VM; reduction.txt beside it.
+Three findings decided the confirmatory's shape (pre-registration,
+"Pilot and the amendment"):
+- The entity cap binds from 16x up under both orders - final
+  population 4,000 in 3 of 4 worlds at P16 and 4 of 4 at every higher
+  dose - and only through the materialization path: capacity
+  rejections 0 everywhere, materializations deferred for capacity 2.5
+  to 9.1 million per world. The gate as first drafted (population or
+  birth rejections) would have caught the population clause and
+  nothing else; the manifest's transition columns were the difference.
+  The cap is the regime's property past 4x, reported per arm, and
+  disqualifies no arm.
+- Below a take, production LOWERS the born cohort's life: born median
+  213 at P1, 166.5 at P4, 137 at P16, 141 at P64; every pair negative,
+  deltas -52, -75, -72 with intervals excluding zero. Past a take it
+  lifts it to the age ceiling (max_age_ticks 36,000): P256 at 36,000 in
+  3 of 4 worlds (the fourth at 175), P128 in 1 of 4.
+- The other order at the shipped dose replicates Phase 21 on fresh
+  seeds (P1D born median 2,130, 4 of 4 pairs above P1 by 1,905) and at
+  the two rungs past a take sits at the ceiling in 4 of 4 worlds (P128D
+  36,000, P256D 36,000). At P128 the order still matters (3 of 4 pairs;
+  born occupants per site 30 to 35 against 1 at the shipped dose); at
+  P256 3 of 4 pairs are exactly 0 - both orders at the ceiling - and
+  one is +35,825.
+Licensed: top dose P256; P128/P128D kept as the bracket; P4/P16 dropped
+for cost; one SESOI per contrast, a tenth of the level it is read at
+(21 against the control, 20 at P128, 3,600 at the ceiling, 213 against
+the reference - the drafted single-level formula gave 3,600 for all and
+read the shipped-dose order effect as "equivalent", so the formula was
+made to match its own words before the lock); bar 22 of 30; the
+age-ceiling count reported per arm.
 
 Confirmatory (C23.1 - C23.5)
 ----------------------------
 PENDING - experiments/phase23-production-confirmatory.campaign, seeds
-23001..23010 23012..23031, seven arms.
+23001..23010 23012..23031, seven arms (P1, P64, P128, P256, P1D, P128D,
+P256D), launched on the VM after the lock.
 
 Decided outside the campaign
 ----------------------------
