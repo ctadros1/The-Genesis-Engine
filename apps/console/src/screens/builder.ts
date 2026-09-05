@@ -645,6 +645,11 @@ export function builderScreen(ctx: AppContext): Screen {
       field("Name", nameInput),
       presetFieldset,
       field("Recipe", recipeSelectEl),
+    el("p", { class: "field-hint" }, [
+      "Phase 1 and phase 2 are the only presets. Every later phase - artifacts and structures, signals and culture, ",
+      "the chemistry field, the transition, morphology, ageing - is a group of settings switched on inside the same ",
+      "configuration; a recipe loads one phase's campaign base verbatim, then you edit from there.",
+    ]),
       seedRow,
     ]);
 

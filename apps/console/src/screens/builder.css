@@ -370,3 +370,10 @@
     position: static;
   }
 }
+
+.field-hint {
+  font-size: 0.85em;
+  color: var(--fg-muted, #9aa3ad);
+  margin: 0.25rem 0 0.75rem;
+  max-width: 40ch;
+}
