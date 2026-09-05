@@ -17,17 +17,17 @@ evidence, fixtures, and benchmark records are preserved unchanged.
 | 5 | Headless scale and multi-world experiments | done |
 | 6 | Biomes, climate drift, and world origin modes | done |
 | 7 | Territory, contest, and damage | done |
-| 8 | Demography and life history | implemented; C8.1 met, C8.5/C8.6/C8.7 unmet |
-| 9 | Evolvable genome: diploid genetics and variable topology | planned |
-| 10 | Modular morphology and development | planned |
-| 11 | Lifetime learning | planned |
-| 12 | Mutable world and artifacts | planned |
-| 13 | Social channel, and organized conflict | planned |
-| 14 | Ontogeny and sexual selection | planned |
-| 15 | Abiogenesis and the unicellular regime | planned |
+| 8 | Demography and life history | complete 2026-08-05 (C8.1 met 26/30 against 0/30; C8.5 a measured null 16/30, C8.6 13/30 unmet, C8.7 unmet on its own control; D-063, D-064, D-065) |
+| 9 | Evolvable genome: diploid genetics and variable topology | complete 2026-08-10 (C9.1/C9.2/C9.5 measured over 210 worlds: structural change is fixation-scale and absent at shipped rates; C9.3/C9.4 Mendelian and linkage met after two crossover defects; C9.6/C9.7 closed last; D-068, D-078, D-079, D-088, D-089) |
+| 10 | Modular morphology and development | complete 2026-08-06 (C10.3 a fixation-scale null 0/30; C10.4's discontinuity gate passes narrowly at 89% silent mutations; C10.1, C10.2, C10.5-C10.11 met; D-080, D-085, D-087) |
+| 11 | Lifetime learning | complete 2026-08-16 (C11.1/C11.2 a measured reachability null at ten times the shipped mutation rate; C11.3-C11.8 met; D-092, D-105, D-113) |
+| 12 | Mutable world and artifacts | complete 2026-08-16 (C12.1-C12.3 measured nulls with controls, not a reachability null; C12.4-C12.8 met; D-114, D-117, D-119) |
+| 13 | Social channel, and organized conflict | complete 2026-09-02 (the pre-registered expected null on both required contrasts; C13.1-C13.3 and C13.7-C13.10 measured nulls, C13.4 both arms fail, C13.5/C13.6 zero; C13.11-C13.13 met; D-126) |
+| 14 | Ontogeny and sexual selection | complete 2026-09-02 (C14.2 the pre-registered null 0/50; C14.1 decisive 50/50 juvenile mortality; C14.3 expected null; C14.4 deferred; C14.5 met; D-129) |
+| 15 | Abiogenesis and the unicellular regime | complete 2026-09-02 (C15.1-C15.9 closed; persistence at ceiling in every condition including neutral N against the a-priori null; the contrast lever saturates by 4x; D-128) |
 | 16 | The multicellularity transition | complete 2026-09-02 (C16.5 met 30/30 vs 0/30, C16.6 the pre-registered null, C16.1 soaked exact; D-131) |
 | 17 | Offline era and tradition detection | complete 2026-09-02 (C17.5 met 30/30 null, C17.4 at the locked penalty; D-132) |
-| 18 | Intra-world parallelism (**cross-cutting; after 8, before 13**) | planned |
+| 18 | Intra-world parallelism (**cross-cutting; after 8, before 13**) | designed 2026-08-04 (ADR-0026, D-058), execution deferred by D-121 (2026-09-01): campaign worlds stay single-threaded by rule so no world that decides a criterion runs under it; C18.1-C18.9 not built |
 | 19 | Chemistry as food (coupling v2) and the unicell ecology | COMPLETE 2026-09-03 (D-133): C19.3 met 30/30, C19.4 met 30/30, C19.5 v2 17/30 vs v1 0/30 - first bodies above one module, no multi-module lineage; soak exact over 10^6 ticks (`planning/phase-19-chemistry-as-food.md`) |
 | 20 | The second module: why no lineage | COMPLETE 2026-09-03 (D-134): price ruled out by arithmetic, transmission Mendelian by test, and lineages found - 127 second-generation two-module organisms in 8 of 50 worlds, 1.94 per 10,000 births against a SESOI of 0.5; Phase 19's null was a sampling artefact (`planning/phase-20-second-module-lineage.md`) |
 | 21 | The born cohort's life | COMPLETE 2026-09-03 (D-135): the youngest eats last - a fact of the tick pinned by test; a youngest-first probe lifts the born median lifespan from ~220 to ~2,190 ticks in 30 of 30 matched worlds (SESOI 971); place and company were the order's shadow (`planning/phase-21-born-cohort.md`) |

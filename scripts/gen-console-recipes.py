@@ -55,6 +55,12 @@ RECIPES = [
     ("era-tradition-phase17", "Era and tradition (Phase 17)",
      "Variable genomes with plasticity on 64x64, 10,000 entities: the world the era and tradition detectors were validated on. The Phase 17 null-control base.",
      "phase17-era-null.campaign", None),
+    ("everything-all-phases", "Everything: all developed phases (128x128)",
+     "Every developed mechanism at once: variable genomes, morphology, physiology and ageing, contest, the marker probe, plasticity, the relocating food patch, artifacts and structures, the signal channel with observational learning, the chemistry field as food and the transition. Climate is left off because the validator refuses a capacity-scaled food patch under it. 128x128, up to 40,000 organisms: very heavy - expect a slow tick on the VM.",
+     "phase14-physiology-confirmatory.campaign", "everything"),
+    ("everything-all-phases-small", "Everything: all developed phases (64x64)",
+     "The same full stack on a 64x64 map with 10,000 entities and a 16-cell food patch: the one to spin up interactively.",
+     "phase14-physiology-confirmatory.campaign", "everything-small"),
     ("chemistry-field-phase22-base", "Chemistry field (Phase 22 base)",
      "Phase 19 to 23's world: scratch origin, the field as food, the transition, morphology; 64x64, 4,000 entities. The Phase 22 confirmatory base.",
      "phase22-lineages-confirmatory.campaign", None),
@@ -75,6 +81,27 @@ def base_lines(name):
         else:
             settings.append((parts[1], parts[2].strip()))
     return preset, settings
+
+
+def everything(phase14, small):
+    """Phase 14's full stack plus the field, the transition, the signal
+    channel and plasticity, as Phases 13 and 16 configured them. The
+    validator settles what composes: climate stays off (a capacity-scaled
+    food patch is inert under it), and the small variant shrinks the patch
+    to fit its map."""
+    settings = dict(phase14)
+    _, phase16 = base_lines("phase16-transition-confirmatory.campaign")
+    for field, value in phase16:
+        if field.startswith(("chemistry.", "transition.")):
+            settings[field] = value
+    _, phase13 = base_lines("phase13-social-confirmatory.campaign")
+    for field, value in phase13:
+        if field.startswith(("social.", "plasticity.")) or field == "genome2.mutation.plasticity_enabled":
+            settings[field] = value
+    if small:
+        settings.update({"cells_x": "64", "cells_y": "64", "max_entities": "10000",
+                         "initial_organisms": "120", "worldmod.patch_radius_cells": "16"})
+    return list(settings.items())
 
 
 def ts_string(value):
@@ -104,6 +131,8 @@ def main():
         preset, settings = ("phase2", []) if campaign is None else base_lines(campaign)
         if override == "descending":
             settings = settings + [("physiology.intake_order", "descending")]
+        elif override in ("everything", "everything-small"):
+            settings = everything(settings, small=override == "everything-small")
         elif override:
             preset = override
         out.append("  {")
