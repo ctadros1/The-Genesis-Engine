@@ -47,6 +47,10 @@ struct Options {
     organisms: u32,
     phase2: bool,
     rest_port: u16,
+    /// Address both listeners bind. Loopback by default (the documented
+    /// posture: Caddy is the browser-facing boundary); a LAN address is a
+    /// developer-instance choice made explicitly on the command line.
+    bind: String,
     ws_port: u16,
     speed_q16: u32,
     paused: bool,
@@ -69,6 +73,7 @@ fn parse_options() -> Result<Options, String> {
         organisms: 500,
         phase2: true,
         rest_port: DEFAULT_REST_PORT,
+        bind: "127.0.0.1".to_owned(),
         ws_port: DEFAULT_WS_PORT,
         speed_q16: 1 << 16,
         paused: false,
@@ -110,6 +115,9 @@ fn parse_options() -> Result<Options, String> {
                         options.organisms = value
                             .parse()
                             .map_err(|_| format!("invalid count {value}"))?;
+                    }
+                    "--bind" => {
+                        options.bind = value.to_owned();
                     }
                     "--rest-port" => {
                         options.rest_port =
@@ -293,13 +301,20 @@ fn run() -> Result<(), String> {
     // readiness signal every integration test waits on, so printing it
     // while the REST port is still unbound makes it a lie that fails as an
     // intermittent connection-refused in whichever test connects fastest.
-    let ws_listener = TcpListener::bind(("127.0.0.1", options.ws_port))
+    let ws_listener = TcpListener::bind((options.bind.as_str(), options.ws_port))
         .map_err(|error| format!("ws bind: {error}"))?;
-    let server = tiny_http::Server::http(("127.0.0.1", options.rest_port))
+    let server = tiny_http::Server::http((options.bind.as_str(), options.rest_port))
         .map_err(|error| format!("rest bind: {error}"))?;
     println!(
-        "lifesim-server: REST on 127.0.0.1:{} WS on 127.0.0.1:{} (private, loopback only)",
-        options.rest_port, options.ws_port
+        "lifesim-server: REST on {bind}:{} WS on {bind}:{} ({})",
+        options.rest_port,
+        options.ws_port,
+        if options.bind == "127.0.0.1" || options.bind == "localhost" || options.bind == "::1" {
+            "private, loopback only"
+        } else {
+            "private LAN boundary: bearer tokens in the clear, developer instance only"
+        },
+        bind = options.bind
     );
 
     {

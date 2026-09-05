@@ -75,8 +75,8 @@ checkpoints the first one wrote. Note what ADR-0039 does not promise: the
 **world registry** is not durable. A restart boots world 1 only; every
 other world comes back by branching one of its saves.
 
-Everything is loopback-only on the VM, so reach it from the development Mac
-through the SSH alias's local port-forward, then open
+By default everything is loopback-only on the VM, so reach it from the
+development Mac through the SSH alias's local port-forward, then open
 `http://127.0.0.1:5280`:
 
 ```sh
@@ -86,6 +86,19 @@ ssh -L 5280:127.0.0.1:5280 -L 8960:127.0.0.1:8960 -L 8961:127.0.0.1:8961 genesis
 In the console's Server screen, point the profile at
 `http://127.0.0.1:8960` and `ws://127.0.0.1:8961`, paste the two tokens,
 and press Test before Connect.
+
+**Serving the private LAN directly.** `CONSOLE_BIND=0.0.0.0
+scripts/run-console-dev.sh` binds both the server (`lifesim-server
+--bind`) and the console to every interface and prints the VM's LAN
+address (`192.168.75.186`) in the URLs, so a browser on the LAN opens
+`http://192.168.75.186:5280` and the profile points at
+`http://192.168.75.186:8960` / `ws://192.168.75.186:8961`. What that
+changes: the bearer tokens travel in the clear on the private LAN, and
+anyone on it who has them controls the developer instance's worlds. That
+is the developer instance's documented posture (a private LAN boundary,
+its own tokens, never the production process or its data); production
+stays behind Caddy and TLS at `genesisengine.local` and is not affected.
+`lifesim-server` itself still defaults to loopback.
 
 Playwright specs for the console run against a real server through
 `scripts/run-console-e2e.sh`, which is separate from this one: its own

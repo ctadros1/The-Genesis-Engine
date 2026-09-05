@@ -638,3 +638,16 @@ fn the_world_count_bound_refuses_a_creation_rather_than_growing() {
     let (status, again) = create_world(&guard, &body);
     assert_eq!(status, 201, "{again}");
 }
+
+/// `--bind` chooses the listeners' address; the default stays loopback so
+/// every existing test and the production posture are unchanged. Passing
+/// the loopback address explicitly must behave exactly like the default.
+#[test]
+fn the_bind_flag_is_accepted_and_loopback_is_the_default() {
+    let explicit = common::spawn_server(&["--bind", "127.0.0.1"]);
+    let (status, body) = common::request(&explicit, "GET", "/api/health", None, None, None);
+    assert_eq!(status, 200, "health over an explicit loopback bind: {body}");
+    let default = common::spawn_server(&[]);
+    let (status, body) = common::request(&default, "GET", "/api/health", None, None, None);
+    assert_eq!(status, 200, "health over the default bind: {body}");
+}
