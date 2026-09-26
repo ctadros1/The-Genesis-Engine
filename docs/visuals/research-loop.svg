@@ -1,0 +1,9 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1100 280" role="img" aria-labelledby="title desc">
+  <title id="title">Genesis Engine research boundary</title><desc id="desc">A versioned configuration runs a deterministic kernel. Logs feed offline analysis and a read-only observer; analysis never feeds simulation rules.</desc>
+  <rect width="1100" height="280" rx="24" fill="#0c1820"/>
+  <g fill="#16313a" stroke="#467279" stroke-width="2"><rect x="36" y="70" width="210" height="130" rx="16"/><rect x="316" y="70" width="210" height="130" rx="16"/><rect x="596" y="70" width="210" height="130" rx="16"/><rect x="876" y="70" width="188" height="130" rx="16"/></g>
+  <g fill="#9ce5cc" font-family="Arial,sans-serif" font-size="22" font-weight="700"><text x="56" y="113">Configuration</text><text x="336" y="113">Kernel</text><text x="616" y="113">Event log</text><text x="896" y="113">Analysis</text></g>
+  <g fill="#d4e9e2" font-family="Arial,sans-serif" font-size="16"><text x="56" y="144">Seeds + policy versions</text><text x="336" y="144">Deterministic ticks</text><text x="616" y="144">Snapshots + replay</text><text x="896" y="144">Controls + reports</text></g>
+  <g stroke="#9ce5cc" stroke-width="3" fill="none"><path d="M251 135h59m-11-9 11 9-11 9M531 135h59m-11-9 11 9-11 9M811 135h59m-11-9 11 9-11 9"/></g>
+  <text x="317" y="247" fill="#aabfc4" font-family="Arial,sans-serif" font-size="17">Observer reads state; offline analysis cannot instruct the kernel.</text>
+</svg>

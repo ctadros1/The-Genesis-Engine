@@ -1,220 +1,108 @@
-# Artificial Life Simulation
+<p align="center"><img src="docs/visuals/genesis-mark.svg" width="96" height="96" alt="Genesis Engine mark"></p>
+<h1 align="center">The Genesis Engine</h1>
+<p align="center"><strong>A deterministic artificial-life research instrument.</strong></p>
+<p align="center">Build worlds, evolve neural-controlled organisms, replay what happened, and test behavioral claims across seeded experiments.</p>
+<p align="center">
+  <a href="#what-this-project-does">Overview</a> · <a href="#visual-concept">Visual concept</a> · <a href="#research-boundary">Research boundary</a> · <a href="#run-it-locally">Run locally</a> · <a href="#explore-the-repository">Explore the repo</a>
+</p>
+<p align="center">
+  <img src="https://img.shields.io/badge/Rust-simulation%20kernel-b7410e?style=flat-square&amp;logo=rust&amp;logoColor=white" alt="Rust simulation kernel">
+  <img src="https://img.shields.io/badge/TypeScript-PixiJS%20observer-3178c6?style=flat-square&amp;logo=typescript&amp;logoColor=white" alt="TypeScript and PixiJS observer">
+  <img src="https://img.shields.io/badge/Access-private%20observer-315f55?style=flat-square" alt="Private observer">
+</p>
 
-## Status
+## What this project does
 
-**Phase 5 experiment instrument.** The stack spans the deterministic
-Phase 1/2 kernel (`crates/sim-core`), the binary observer protocol and
-private server (`crates/sim-protocol`, `crates/sim-server`), the
-TypeScript/PixiJS observer (`apps/observer`), versioned persistence
-(`crates/sim-persist`), and the multi-seed experiment harness
-(`crates/sim-experiment`).
+The engine simulates a bounded 2D ecosystem with inheritable controllers, resources, physiology, and an evolving population. Its Rust kernel produces deterministic ticks; the browser observer reads state through a server; versioned logs and snapshots make runs inspectable. A separate experiment harness runs matched seeds and control conditions, while offline analysis evaluates the recorded outcomes.
 
-Phase 8 removed the reason most later measurements would have been
-meaningless. The Phase 2 long run died 199,871 times of starvation against
-180 of old age, with population pinned on a memory guard; a world like that
-returns nulls about culture that are really nulls about food. With
-allometry, thermoregulation, senescence, and extrinsic mortality live, the
-starvation share falls from 1000/1000 to 494/1000 across 30 seeds, the food
-field sits at 99 percent of capacity instead of 74, and no world comes near
-the guard. Three further predictions it hoped to demonstrate - that evolved
-lifespan responds to extrinsic mortality, that a life-history tradeoff falls
-out of the energy budget, and that thermal preference becomes load-bearing -
-**did not survive their own controls**, and are recorded as unmet.
+The goal is to study what can emerge inside an *authored possibility space*. The simulation defines physics and available interactions. It does not assign a technology tree, eras, recipes, or rewards for reaching a civilization stage. Tool use, transmitted behavior, structures, and complex social organization are research ambitions, **not observed results or promised features**. Null findings remain part of the record.
 
-Phase 7 closed the loop that instrument was built for. Its primary
-endpoint needed a world-level spatial statistic that did not exist; that is
-now `crates/sim-analysis`, computing a two-scale Morisita index offline
-from a versioned position-sample artifact, with no kernel change of any
-kind. Measured over 300 worlds, contest reduces short-range co-occurrence
-by about a quarter -- and does so *against* the direction its own
-population decline would push the measure, which is what makes the result
-worth having. The companion result is that the aggregation half of the same
-endpoint is confounded, and it is reported as confounded.
+| Area | What is in the repository |
+| --- | --- |
+| Simulation | Fixed-point, deterministic Rust kernel with evolvable controllers |
+| Observation | TypeScript/PixiJS browser observer and binary-protocol server |
+| Persistence | Versioned snapshots and an append-only event log |
+| Experiments | Campaigns, seeded worlds, manifests, reports, and offline analysis |
+| Method | Pre-registered criteria, controls, ablations, benchmark records, and decision logs |
 
-Phase 5 turned the prototype into an instrument: an append-only ALEV event
-log with fail-closed decode, an independent-world scheduler proven not to
-reach a result at any worker count, campaigns whose conditions are named
-config deltas with their own hashes, manifests that carry their own
-campaign source, comparison reports that refuse to aggregate anything they
-cannot justify, and asynchronous checkpointing that cuts the tick-thread
-stall by 14 to 18 times. Both original fixtures still reproduce from clean
-processes under every new execution path.
+### Current public-repository snapshot
 
-The private VM deployment is active; see
-[Server Development Workflow](docs/28-server-development-workflow.md). The server binds 127.0.0.1
-only. No Proxmox or other homelab service is accessed or changed by any of
-this work. Infrastructure and physical-device gates remain open; see
-`planning/backlog.md`.
+The [backlog](planning/backlog.md) records completed work through Phase 22 and a planned Phase 23 experiment. It also records unfinished work, measured nulls, and an observer/console track in progress. This README is an orientation to the checked-in repository; it does not claim that the long-term artificial-life goals have been achieved or that the private deployment is publicly accessible. Read the backlog and the relevant phase record for the current experimental status.
 
-**The project goal changed on 2026-08-04** (see Purpose below). Phases 0
-through 4 are unchanged and their records, fixtures, and benchmarks are
-preserved exactly. Phases 5, 6, and 7 are complete. Phase 8 is implemented: its primary
-endpoint is met and three secondary criteria are unmet and recorded as
-unmet. Phases 9 through 18 are planned and none has started. All ADRs
-remain Proposed.
+### Examples of measured work
 
-Run it locally:
+| Study | What the record says |
+| --- | --- |
+| [Territory and contest](planning/phase-7-territory-and-conflict.md) | A controlled multi-world study found reduced short-range co-occurrence; its companion aggregation result was confounded. |
+| [Demography and life history](planning/phase-8-demography-and-life-history.md) | The primary starvation and resource-field criterion was met; three secondary predictions were not supported by their controls. |
+| [Lineages under another intake order](planning/phase-22-lineages-under-the-other-order.md) | A paired probe found more lineages under the alternative order. The shipped order was not changed based on that probe. |
 
-~~~sh
+These are bounded results from particular campaigns, not proof of open-ended evolution. Each phase record states its seeds, comparison, and limits.
+
+## Visual concept
+
+**Illustrative concept art, generated for this README.**
+
+![Illustrative concept of a top-down artificial-life world with a research dashboard](docs/visuals/observer-concept.png)
+
+*This is not a capture of the running observer, measured simulation output, or evidence that every pictured control exists.* The actual observer is defined by the [interface documentation](docs/10-observer-interface.md) and [source](apps/observer/src/main.ts).
+
+## Research boundary
+
+![Versioned configuration flows through a deterministic kernel and event log to offline analysis](docs/visuals/research-loop.svg)
+
+Three boundaries shape the project:
+
+1. **Replayable world state.** Seed, configuration, policy versions, and event history make runs comparable.
+2. **An observer that reads the world.** The browser visualizes and requests actions; the server validates requests and owns simulation state.
+3. **Analysis that cannot steer the world.** Offline results never feed a rule, input channel, or intervention. Behavioral claims require multiple seeds and a stated control or ablation.
+
+The [emergence and epistemic position](docs/25-emergence-and-epistemic-position.md) explains the difference between a possible mechanism, an aspiration, and a result supported by measurement.
+
+## Run it locally
+
+The repository includes a bootstrap script for its development toolchain. From the repository root:
+
+```sh
 scripts/bootstrap-phase0-toolchain.sh
 cargo build --release -p sim-server
-target/release/lifesim-server        # prints generated tokens
-cd apps/observer && npm install && npm run dev
-~~~
+target/release/lifesim-server
+```
 
-Run a multi-seed experiment:
+The server prints generated tokens needed by the observer. In a second terminal:
 
-~~~sh
+```sh
+cd apps/observer
+npm install
+npm run dev
+```
+
+The observer is a local development client. Production hosting is private; the [server workflow](docs/28-server-development-workflow.md) describes that boundary.
+
+### Run a seeded campaign
+
+```sh
 cargo build --release -p sim-cli
-target/release/lifesim fields                        # settable config fields
+target/release/lifesim fields
 target/release/lifesim batch --campaign my.campaign --output runs/ --workers 4
 target/release/lifesim report --manifest runs/manifest.txt
-~~~
+```
 
-## Purpose
+Use `lifesim fields` to inspect settable configuration fields and the [experiment configuration schema](specifications/experiment-config-schema.md) when creating a campaign. Existing campaign definitions under [`experiments/`](experiments/) show the project’s recorded studies. Report claims depend on their specific seeds, controls, and criteria.
 
-Build a persistent, browser-observable artificial-life ecosystem inspired by the readability and sandbox appeal of WorldBox, not a scripted game. A continuous 2D bounded continent contains evolving organisms with inherited neural controllers, simulating biology and genetics as realistically as the determinism contract and the compute budget allow.
+## Explore the repository
 
-The long-term ambition is that organisms evolve from simple foragers toward tool use, persistent structures, transmitted knowledge, technological accumulation, territoriality, and organized inter-group conflict, without any of that being scripted as stages.
+| Start here | For |
+| --- | --- |
+| [Vision](docs/00-project-vision.md) and [scope](docs/02-scope-and-non-goals.md) | The aim, constraints, and explicit non-goals |
+| [Architecture](docs/03-system-architecture.md) and [simulation model](docs/04-simulation-model.md) | Components, tick ownership, and data flow |
+| [Observer interface](docs/10-observer-interface.md) | Current and proposed views and controls |
+| [Backlog](planning/backlog.md) and [decision log](docs/22-decision-log.md) | Phase status, measured results, and unresolved decisions |
+| [Benchmarks](benchmarks/README.md) | Reproduction steps and performance evidence |
+| [Agent guide](AGENTS.md) and [Codex guide](CODEX.md) | Contribution workflow and research safeguards |
 
-The governing philosophy is **emergence inside an authored possibility space**: we author physics, not progress. The simulation defines what is physically possible, and never defines a technology tree, a research prerequisite graph, an era, a building recipe, or a civilization stage. What organisms do inside that space is discovered by evolution and learning. "Eras" are a narrative an observer detects post hoc from the event log, never a state the simulation enters and never something an organism is told about.
+The core code lives in [`crates/sim-core`](crates/sim-core), [`crates/sim-experiment`](crates/sim-experiment), [`crates/sim-analysis`](crates/sim-analysis), [`crates/sim-persist`](crates/sim-persist), and [`apps/observer`](apps/observer). Specifications live in [`specifications/`](specifications/).
 
-Three things are kept separate, because conflating them is how projects like this mislead people:
+## Contributing and interpretation
 
-- **What the simulation makes possible** is a property of the code.
-- **What we hope to observe** is a research aspiration.
-- **What we predict will actually happen** is a falsifiable expectation with an honest prior attached, and that prior is not favorable. Open-ended evolution is an unsolved grand challenge in artificial life, and no system has produced a technological era progression from genuine evolution.
-
-Tool use, persistent structures, behavioral traditions that outlive individuals, and organized inter-group conflict are plausible-to-remarkable outcomes. A recognizable stone-age-to-enlightenment arc, language, and civilization are **not planned around and not promised**. A null result is a likely outcome of several phases and an acceptable outcome of all of them, because every phase states its ablation before it is run.
-
-The full position, including why the project's determinism and benchmark discipline let it make claims most artificial-life projects cannot, is in [docs/25-emergence-and-epistemic-position.md](docs/25-emergence-and-epistemic-position.md).
-
-## How A World Starts
-
-Three origin modes ([specifications/world-origin-modes.md](specifications/world-origin-modes.md)). Each is a **starting condition**, never a trajectory: authoring where the search begins is not authoring the path it takes.
-
-| Mode | Founders |
-|---|---|
-| `random` | Bounded-random organisms of one body plan, optionally in several separated demes. The current behavior |
-| `seeded` | A head start: founder archetypes placed in the biomes that suit them. On a large enough map, several adapted populations start at once in different biomes |
-| `scratch` | No organisms at all. A chemistry field from which protocells may arise, then unicells, then possibly differentiated multicellular bodies |
-
-Two things this deliberately does **not** do. There is no scripted progression through microbe, fish, and reptile grades; that arrow is a hypothesis being tested, not a mechanism being executed, and reaching anything fish-like is not planned around. And there is no ice age the world *enters*: cold regions exist at generation and climate genuinely drifts over long timescales, so an observer may label a cold stretch afterwards, but no rule ever reads an era.
-
-Archetypes are trait distributions, not designed creatures, and none is named after a real species. No rule or analysis may read an archetype ID, and a test enforces it.
-
-For the `scratch` mode only, ADR-0018 permits deliberately shaping environments toward the major transitions. That genuinely weakens the resulting claims, so every scaffolded result carries an unscaffolded control on the same seeds and reports both.
-
-## Product Decisions
-
-- World: continuous 2D big-continent island with bounded coastlines.
-- Environment: high realism as a direction, including day/night, seasons, renewable resources, and rare configurable disasters.
-- Organisms: one adaptable body plan with visible trait variation; predation and herbivory emerge from traits.
-- Evolution release: sexual reproduction and lineage tracking are in scope.
-- Experience: pixel-art world view with a scientific-marker overlay, sandbox controls, mobile support, and wall-dashboard support.
-- Science: fixed seeds, replayable configurations, and exportable data are required.
-- Operations: private continuous deployment is acceptable; servernode3 is the proposed initial host with 16-24 GiB RAM and no initial GPU passthrough.
-
-These are adjustable project policies, not permanent laws. Any behavioral rule or formula may change through a versioned configuration, a documented decision, migration/replay impact analysis, tests, and benchmark evidence.
-
-## Core Goals
-
-1. Keep the simulation kernel deterministic, inspectable, and independent from UI and transport.
-2. Start correct at 500-2,000 organisms; prove every higher scale through benchmarks.
-3. Keep the browser responsive through viewport-based binary deltas rather than full-world updates.
-4. Preserve worlds safely with versioned snapshots, checkpoints, crash recovery, and validated restore.
-5. Run privately on the homelab without changing existing production services during planning.
-6. Make every behavioral claim a multi-seed measurement with a stated control or ablation. "It looked interesting" is never an acceptance criterion.
-7. Model biology and genetics realistically enough that mechanisms can be checked against textbook results they were not tuned to produce.
-
-## Major Non-Goals
-
-These are permanent, and the change of ambition does not reopen any of them.
-
-- A large language model, or any language model, as an organism decision engine. Optional narration may consume recorded events after the fact and may never influence a tick.
-- An authored technology tree, recipe list, research graph, era state, or civilization mechanic. We author physics; we never author progress.
-- Reinforcement learning against a hand-authored reward. Lifetime learning is in scope; the signal that gates it must be an evolved output of the organism's own network.
-- Analysis output feeding back into simulation state. Analysis observes; it never instructs.
-- Claims of emergent cognition, language, or society. The ambition is stated; the claims are earned by measurement or not made.
-- A distributed single-world simulation before a single-node baseline is proven.
-- Public internet exposure in the first deployment.
-- GPU passthrough or a database cluster without measured benefit.
-
-## Proposed Architecture
-
-~~~mermaid
-flowchart LR
-  UI["TypeScript observer\nPixiJS pixel view + scientific overlay"] <-- "REST + binary WebSocket" --> API["Rust simulation server"]
-  API --> K["Deterministic simulation kernel"]
-  K --> S["Versioned snapshots + SQLite catalog"]
-  API --> M["Prometheus metrics"]
-  M --> G["Existing Grafana"]
-  E["Experiment runner"] --> K
-~~~
-
-The proposed baseline is a Rust simulation server with a TypeScript/PixiJS observer, custom compact neural networks, compressed binary saves, SQLite world metadata, and Prometheus metrics. All technology choices remain proposed until Phase 0 benchmarks.
-
-## Target Hardware
-
-The proposed primary host is servernode3 because its 64 GiB ECC memory and large CPU capacity are better suited to an isolated VM and concurrent experiment jobs than the other described nodes. Start with an Ubuntu LTS VM, 16 vCPUs, 16-24 GiB RAM, and verified fast local storage. Do not assume storage capacity, CPU feature exposure, GPU availability, or Prometheus targets without a live Phase 0 audit.
-
-## Expected Scale
-
-- Prototype: 500-2,000 organisms at a deterministic 10 Hz baseline.
-- Early optimized: 5,000-20,000 organisms after profiling and spatial indexing.
-- Long-term experiment: 10,000-50,000 active organisms only if benchmark evidence supports it.
-- Live observer: target 10-30 state frames/second per client, decoupled from tick rate.
-
-The open-ended-evolution goal adds a second scale axis that matters more
-than organism count: **generations reached, multiplied by seeds, multiplied
-by ablation conditions.** The Phase 2 long run reached 127 ancestry
-generations in 200,000 ticks; a cultural ratchet plausibly needs far more,
-and every ablation multiplies the requirement. Phase 5 decoupled runs from
-observer pacing and added an independent-world scheduler. Measured on the
-development host: 8,805 ticks/s per world at the 500 tier, 1,653 at the
-2,000 tier, and 3.67x aggregate throughput across 16 worlds at 4 workers.
-**No supported campaign size is claimed from that**; it is one host, and the
-deployment-VM measurement remains an open gate.
-
-## Observer Experience
-
-The initial browser observer emphasizes clear top-down pixel art, pan/zoom, terrain and biome visibility, selection and lineage inspection, live charts, replay controls, intervention audit trails, and a scientific marker/heatmap overlay. The UI must remain an observer/control client, not the owner of simulation truth.
-
-## Repository Map
-
-- [Project vision](docs/00-project-vision.md)
-- [Emergence and epistemic position](docs/25-emergence-and-epistemic-position.md)
-- [Biological realism policy](docs/26-biological-realism-policy.md)
-- [Requirements and decision status](docs/01-user-requirements.md)
-- [Architecture](docs/03-system-architecture.md)
-- [Simulation model](docs/04-simulation-model.md)
-- [Determinism extensions](specifications/determinism-extensions.md)
-- [Observer design](docs/10-observer-interface.md)
-- [Deployment plan](docs/17-proxmox-deployment.md)
-- [Implementation roadmap](docs/19-implementation-roadmap.md)
-- [Agent rules](AGENTS.md)
-- [Codex operating guide](CODEX.md)
-- [Complete file manifest](FILE_MANIFEST.md)
-- [Simulation kernel](crates/sim-core/src/lib.rs)
-- [Experiment harness](crates/sim-experiment/src/lib.rs)
-- [Offline analysis](crates/sim-analysis/src/lib.rs)
-- [Campaign definitions](experiments/)
-- [Event log format](crates/sim-persist/src/eventlog.rs)
-- [Headless CLI](crates/sim-cli/src/main.rs)
-- [Observer protocol](crates/sim-protocol/src/lib.rs)
-- [Observer server](crates/sim-server/src/main.rs)
-- [Observer app](apps/observer/src/main.ts)
-- [Phase 0 simulation spike](spikes/sim-spike/README.md)
-- [Phase 0 renderer spike](spikes/renderer-spike/README.md)
-- [Benchmark reproduction guide](benchmarks/README.md)
-
-## Starting A Future Codex Session
-
-Read README.md, AGENTS.md, CODEX.md, the active phase file in planning/, the relevant specifications/, and docs/22-decision-log.md. Run existing tests before changing code. Establish the current benchmark baseline before claiming performance. Record behavioral, schema, protocol, or operational changes in the relevant documents and a proposed/accepted ADR.
-
-## Important Warnings
-
-- Do not deploy, change Proxmox, alter DNS/firewalls, configure GPU passthrough, or edit existing monitoring during the planning phase.
-- Never silently change deterministic rules, save schemas, or binary WebSocket schemas.
-- Simulation rules are mutable experiments, but replay compatibility and past experiment interpretation are not optional.
-- Performance targets are hypotheses until benchmarked on the deployment VM.
+Read [AGENTS.md](AGENTS.md) and the relevant phase documents before changing simulation behavior. Preserve deterministic replay, versioned formats, and the separation between simulation and analysis. A visual pattern in one run is a question to test, not a behavioral finding.
